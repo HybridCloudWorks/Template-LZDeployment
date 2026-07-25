@@ -1,4 +1,4 @@
 {
   "$comment": "Toggle for the post-task capability usage report. Flip with 'turn on agent report' / 'turn off agent report', or edit this file directly. Read by .claude/hooks/agent-report.ps1 (Stop hook).",
-  "enabled": false
+  "enabled": true
 }
