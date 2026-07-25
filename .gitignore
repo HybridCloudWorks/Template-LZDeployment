@@ -41,3 +41,6 @@ terraform.rc
 
 # Bootstrap state (contains tenant/subscription IDs and app client IDs)
 .bootstrap-state.json
+
+# Per-session offsets for the agent-report Stop hook (local runtime state)
+.claude/.agent-report-state/
