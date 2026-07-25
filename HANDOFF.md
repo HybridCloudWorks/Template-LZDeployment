@@ -2,7 +2,8 @@
 
 **Last updated:** 2026-07-25 · **Factory version:** 0.1.0 · **Config schema:** 1.0.0
 **Progress:** Stages 1–6 of 13 complete. Stage 7 is next.
-**First action:** merge the three open PRs — see §1.1. Nothing is on `main` yet.
+**First action:** start on stage 7 (§1.2). Everything through stage 6 is merged
+to `main` and there are no open PRs.
 
 You are continuing a multi-session build. This document is the single source of
 truth for where the work stopped. Read the *Next steps* section first, then
@@ -12,48 +13,50 @@ truth for where the work stopped. Read the *Next steps* section first, then
 
 ## 1. NEXT STEPS — start here
 
-### 1.1 Immediate: land the three open PRs
+### 1.1 Everything is merged — how `main` got here
 
-**Everything built so far is on branches. `main` still has none of it.** All
-three PRs report `MERGEABLE`. Merging them is the first thing to do.
+**Nothing is pending. Stages 1–6, the test suite, this document, and the
+capability-routing layer are all on `main`.** No open PRs.
 
-| PR | Branch | Contains | Base |
-|---|---|---|---|
-| [#30](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/30) | `chore/claude-capability-routing-clean` | `CLAUDE.md`, the agent-report hook | `main` |
-| [#28](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/28) | `feat/lz-factory-config-plane-and-engines` | Stages 1–5 (36 files) | `main` |
-| [#31](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/31) | `docs/factory-handoff-and-tests` | This doc, the test suite, **and stage 6** | `feat/lz-factory-…` |
+| PR | Outcome |
+|---|---|
+| [#31](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/31) | Merged into `feat/lz-factory-…` |
+| [#28](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/28) | Squash-merged into `main` as `11f09cd` — carried everything |
+| [#30](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/30) | Closed as **superseded**, not abandoned — see below |
+| [#32](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/32) | Squash-merged as `7568bc3` — agent git/gh permissions |
 
-Merge in this order — #31 is stacked on #28, so #28 must land first or #31 has
-to be retargeted:
+**Read this before you open your next PR against `main`**, because two branch
+protection settings constrain how anything can land:
+
+| Setting on `main` | Value | Consequence |
+|---|---|---|
+| `enforce_admins` | `true` | Direct push to `main` is rejected server-side, for everyone. A PR is the only route. |
+| `required_linear_history` | `true` | **`--merge` is rejected.** |
+| `allow_force_pushes` | `false` | — |
+| `required_status_checks` | *absent* | Red CI does not block a merge (§6.4) |
+
+So `gh pr merge <n> --merge` always fails on `main`. `--rebase` also fails on any
+branch containing merge commits, because GitHub cannot replay them — which is
+what happened to #28. **`--squash` is the reliable option**, and it is why the
+whole factory arrived as one commit rather than as its individual commits:
 
 ```bash
-gh pr merge 30 --squash --delete-branch
-gh pr merge 28 --merge
-gh pr merge 31 --merge
+gh pr merge <n> --squash --delete-branch
 ```
 
-Then reset the stale local `main`:
+Two things worth knowing about how the stack was landed, because the reasoning
+generalises:
 
-```bash
-git checkout main && git fetch origin && git reset --hard origin/main
-```
-
-Three things that will otherwise waste your time:
-
-- **`settings.json` denies `gh pr merge` and `git push origin main`.** An agent
-  cannot run the commands above; a human has to. This is deliberate — see §9.
-- **All three PRs show `mergeStateStatus: UNSTABLE`.** That is the pre-existing
-  red CI from §6.2, not a merge blocker. No required check is failing, because
-  the guardrails are switched off in GitHub (§6.4). A green tick here would not
-  mean much either way.
-- **Local `main` is 1 commit ahead of `origin/main`** (`655e268`). A direct push
-  to `main` was attempted in an earlier session and denied. That commit is
-  preserved inside #28, so the `reset --hard` above loses nothing. **Do not
-  force-push `main`.**
-
-#31 already contains #30's commit by a real merge rather than a cherry-pick, so
-the SHA is shared and the two cannot conflict — merging both is safe in any
-order.
+- **#30 was deliberately not merged on its own.** Its commit `0040033` had
+  already reached `docs/factory-handoff-and-tests` by a *real merge* rather than
+  a cherry-pick, so it kept its SHA and travelled to `main` inside #28. Squashing
+  #30 separately would have minted a second SHA for identical content and
+  conflicted on `.gitignore`, `.claude/settings.json`, and `CLAUDE.md`. When you
+  stack branches, prefer `git merge` over `git cherry-pick` for exactly this
+  reason — a shared SHA cannot conflict with itself.
+- **`gh` needs to run inside the repository.** `gh pr merge` from a home
+  directory fails with `fatal: not a git repository`. Either `cd` first or pass
+  `--repo saulpatinojr/HCW-Plan_LZDeployment`.
 
 ### 1.2 Then: Stage 7 — promote `.github/workflows/` into the corpus
 
@@ -99,6 +102,7 @@ non-prod spoke. The options are:
 | High | Add federated credential for `pull_request` subject | Unblocks all CI — see §6.2 |
 | Medium | Wire the 208 tests into a CI workflow | They only run locally today |
 | Medium | Backport the stage-6 fixes to `terraform/live/` | The corpus and the live tree have diverged — see §6.3 |
+| Low | Mark the GitGuardian incident a false positive | Dashboard-only action; the finding is a public test vector — see §6.5 |
 | Later | Stages 8–13 | See §7 |
 
 ---
@@ -112,20 +116,19 @@ building anything.
 git branch -vv && git log --oneline -3 && git status --short
 ```
 
-Expected at handoff time — **before** the §1.1 merges:
+Expected:
 
 | | |
 |---|---|
-| Current branch | `docs/factory-handoff-and-tests`, in sync with its remote |
-| Its HEAD | `5b41af4` — turn the capability usage report on |
-| | `6345207` — merge `chore/claude-capability-routing-clean` |
-| | `ce8760f` — stage 6, the Terraform corpus |
-| | `d0806ea` — handoff + test suites |
-| `main` HEAD | `655e268` — **1 commit ahead of `origin/main`, unpushed**; see §1.1 |
+| Current branch | `main`, in sync with `origin/main` |
+| `main` HEAD | `7568bc3` — agent git/gh permissions (#32) |
+| | `11f09cd` — the whole factory, stages 1–6 (#28) |
 | Working tree | clean |
+| Open PRs | none |
+| Branches | `main` only; the four PR branches were deleted on merge |
 
-If you are reading this *after* the merges, expect `origin/main` to contain all
-four commits above and the three PR branches to be gone.
+Everything before `11f09cd` is ordinary dependabot traffic. If your `main` sits
+at `1a94d2b` you are on a stale checkout — `git fetch origin && git pull --ff-only`.
 
 Sanity check that the toolchain works:
 
@@ -348,6 +351,27 @@ actionable in one step.
 exist in the repo while being turned off in GitHub settings. Relevant when
 judging whether a green PR actually means anything.
 
+Concretely, `main` has **no** `required_status_checks`. Every check on a PR is
+advisory, so a merge succeeding tells you nothing about whether CI passed. See
+the protection table in §1.1 for what *is* enforced.
+
+### 6.5 GitGuardian fails on a public test vector — do not chase it
+
+`factory/tests/Test-Discovery.ps1:85` holds the canonical jwt.io sample token:
+header `{"alg":"HS256"}`, payload `{"sub":"1234567890"}`. It exists only to prove
+`Protect-LzSecretText` redacts JWT-shaped strings.
+
+**It is not a credential. There is nothing to revoke, and nothing to rotate.**
+The line carries an inline comment saying exactly this, and it was reviewed
+before merge.
+
+The check will keep failing until someone marks the incident a false positive in
+the GitGuardian dashboard — which is a UI action outside the repository, so no
+amount of editing here clears it. Do **not** "fix" it by deleting the test or by
+splitting the literal so the scanner stops matching: the first removes real
+coverage of the redaction path, and the second is evading a security scanner
+rather than resolving its finding.
+
 ---
 
 ## 7. Remaining stages (7–13)
@@ -407,10 +431,25 @@ also absent: `az extension add --name resource-graph`.
   pwsh -NoProfile -File .claude/hooks/agent-report.ps1 -Mode Toggle -State Off
   ```
 
-- `settings.json` denies `terraform apply`/`destroy`/`state rm|mv`, `az` deletion,
-  `gh workflow run`, `gh pr merge`, and force-push to `main`. **Produce the plan,
-  then stop** — applying is the operator's call. The `gh pr merge` denial is why
-  §1.1 asks a human to run the merges; do not try to route around it.
+- `settings.json` **allows** an agent the ordinary git and GitHub verbs — commit,
+  branch, push, and `gh pr create`/`edit`/`merge` (granted by
+  [#32](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/32)). It still
+  **denies** `terraform apply`/`destroy`/`import`/`state rm|mv`, the `az`
+  deletions, `gh workflow run`, and force-push to `main`. **Produce the plan,
+  then stop** — applying is the operator's call, and `gh workflow run` is denied
+  because it can reach `terraform-apply.yml` by another route.
+- **The `git push origin main` deny entries are not the guarantee.** They are a
+  fast local failure with a clearer message, and they are not exhaustive —
+  `git switch main && git push` would not match the pattern. What actually holds
+  is `enforce_admins: true` on the branch protection (§1.1).
+- **An agent cannot widen its own permissions.** Editing `.claude/settings.json`,
+  and merging a PR that edits it, are both refused. That is deliberate: #32 had
+  to be merged by a human. Do not look for a way around it — write the change
+  out for the operator instead.
+- **Commit a `settings.json` change immediately.** An earlier uncommitted edit to
+  it was destroyed by a `git reset --hard` that ran after an `&&`-chained
+  `git checkout` had already failed on the dirty tree. Never chain `reset --hard`
+  behind a command that can fail on uncommitted work.
 - `generated-output/` is gitignored; it holds per-company configs containing
   tenant and subscription IDs.
 - PowerShell follows the house style in `scripts/Start-LandingZoneBootstrap.ps1`
