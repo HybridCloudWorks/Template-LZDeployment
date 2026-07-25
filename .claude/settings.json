@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git show:*)",
+      "Bash(terraform fmt:*)",
+      "Bash(terraform validate:*)",
+      "Bash(terraform version:*)",
+      "Bash(terraform providers:*)",
+      "Bash(terraform output:*)",
+      "Bash(terraform test:*)",
+      "Bash(tflint:*)",
+      "Bash(tfsec:*)",
+      "Bash(az account show:*)",
+      "Bash(az account list:*)",
+      "Bash(az group list:*)",
+      "Bash(az resource list:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh workflow list:*)",
+      "Bash(gh workflow view:*)",
+      "Bash(ansible-lint:*)",
+      "Bash(ansible-playbook --check:*)",
+      "Bash(actionlint:*)"
+    ],
+    "deny": [
+      "Bash(terraform apply:*)",
+      "Bash(terraform destroy:*)",
+      "Bash(terraform state rm:*)",
+      "Bash(terraform state mv:*)",
+      "Bash(terraform force-unlock:*)",
+      "Bash(terraform import:*)",
+      "Bash(az group delete:*)",
+      "Bash(az resource delete:*)",
+      "Bash(az deployment * create:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push origin main:*)"
+    ]
+  }
+}
