@@ -1,0 +1,104 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Terraform plan — runs on pull requests.
+#
+# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
+# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+#
+# This workflow authenticates as the READ-ONLY plan identity. It cannot apply,
+# and it cannot assume the apply identity: the apply federated credential is
+# bound to `environment:<name>`, a subject a pull_request-triggered run never
+# presents. That separation is structural, not procedural.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Terraform Plan
+
+on:
+  pull_request:
+    branches: [{{FACTORY-RAW:computed.defaultBranch}}]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-plan.yml'
+
+# Least privilege at the workflow root; each job opts in to what it needs.
+permissions: {}
+
+concurrency:
+  group: terraform-plan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Plan (${{ matrix.layer }})
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write       # OIDC token for Azure federation
+      contents: read
+      pull-requests: write  # to post the plan summary
+
+    strategy:
+      # Serialised deliberately: management group and policy operations are
+      # heavily throttled, and parallel plans across layers trip the limit.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        layer:
+#{{FOREACH lyr IN computed.layers}}
+          - {{FACTORY-RAW:lyr}}
+#{{ENDFOREACH}}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Azure login (plan identity, read-only)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ vars.AZURE_PLAN_CLIENT_ID }}
+          tenant-id: {{FACTORY-RAW:azure.tenantId}}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: '1.9.8'
+#{{IF computed.backendIsHcp}}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+#{{ENDIF}}
+
+      - name: Terraform init
+        working-directory: terraform/live/${{ matrix.layer }}
+        run: terraform init -input=false
+
+      - name: Terraform format check
+        working-directory: terraform/live/${{ matrix.layer }}
+        run: terraform fmt -check -recursive
+
+      - name: Terraform validate
+        working-directory: terraform/live/${{ matrix.layer }}
+        run: terraform validate -no-color
+
+      - name: Terraform plan
+        id: plan
+        working-directory: terraform/live/${{ matrix.layer }}
+        run: terraform plan -input=false -no-color -out=tfplan
+        continue-on-error: true
+
+      # A plan that destroys resources is treated as a failure by default.
+      # Discovering a destroy at apply time is too late; this is the gate.
+      - name: Check for destructive operations
+        working-directory: terraform/live/${{ matrix.layer }}
+        run: |
+          terraform show -json tfplan > plan.json
+          destroys=$(jq '[.resource_changes[]? | select(.change.actions[]? == "delete")] | length' plan.json)
+          echo "Resources scheduled for destruction: $destroys"
+          if [ "$destroys" -gt 0 ]; then
+            echo "::error::This plan destroys $destroys resource(s) in layer ${{ matrix.layer }}."
+            if [ "${{ contains(github.event.pull_request.labels.*.name, 'approved-destroy') }}" != "true" ]; then
+              echo "::error::Add the 'approved-destroy' label to acknowledge, after reviewing the plan output."
+              exit 1
+            fi
+            echo "::warning::Destruction acknowledged via the approved-destroy label."
+          fi
+
+      - name: Fail if plan errored
+        if: steps.plan.outcome == 'failure'
+        run: exit 1

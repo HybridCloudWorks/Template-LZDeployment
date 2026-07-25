@@ -1,0 +1,331 @@
+#Requires -Version 7.0
+<#
+    Render guards — the checks that refuse to emit a repository.
+
+    The wizard already enforces most of these client-side. They are re-enforced
+    here, independently, because the renderer must be safe when driven by a
+    hand-edited lz-config.json, by CI, or by a config produced by an older
+    factory version. A validation that exists only in the UI is a suggestion,
+    not a guarantee.
+
+    Every guard blocks rather than warns. The failure mode being prevented is
+    always the same shape: emitting Terraform that plans cleanly and then does
+    nothing, or does the wrong thing.
+#>
+
+Set-StrictMode -Version Latest
+
+function New-LzGuardViolation {
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [Parameter(Mandatory)][string]$Message,
+        [string]$Remediation = '',
+        [ValidateSet('Block', 'Warn')][string]$Severity = 'Block'
+    )
+    [pscustomobject]@{ Id = $Id; Message = $Message; Remediation = $Remediation; Severity = $Severity }
+}
+
+function Test-LzRenderGuards {
+    <#
+    .SYNOPSIS
+        Validate that a configuration can actually be rendered.
+    .PARAMETER Config
+        Parsed lz-config.json.
+    .PARAMETER FactoryVersion
+        Parsed factory-version.json, used to read per-module implementation
+        status so the scaffold-module guards stay in sync with reality rather
+        than with a hard-coded list here.
+    .OUTPUTS
+        Object with Violations, BlockCount, WarnCount, CanRender.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Config,
+        [object]$FactoryVersion = $null
+    )
+
+    $v = @()
+
+    # ── Contract version ─────────────────────────────────────────────────────
+    if ($FactoryVersion) {
+        $expected = $FactoryVersion.contracts.configSchemaVersion
+        if ($Config.schemaVersion -ne $expected) {
+            $v += New-LzGuardViolation -Id 'G01' `
+                -Message "Configuration declares schema version '$($Config.schemaVersion)', but this factory implements '$expected'." `
+                -Remediation 'Re-export the configuration from the wizard shipped with this factory version. Rendering a schema the renderer does not implement would silently drop or misplace keys.'
+        }
+    }
+
+    # ── Scaffold modules ─────────────────────────────────────────────────────
+    # Read status from factory-version.json rather than hard-coding, so
+    # implementing a module automatically lifts its guard.
+    $moduleStatus = @{}
+    if ($FactoryVersion -and (Test-LzHasProperty $FactoryVersion 'modules')) {
+        foreach ($p in $FactoryVersion.modules.PSObject.Properties) {
+            if ($p.Value -is [psobject] -and (Test-LzHasProperty $p.Value 'status')) {
+                $moduleStatus[$p.Name] = $p.Value.status
+            }
+        }
+    }
+
+    $isScaffold = {
+        param([string]$name)
+        return ($moduleStatus.ContainsKey($name) -and $moduleStatus[$name] -eq 'scaffold')
+    }
+
+    if ($Config.security.sentinel.enabled -and (& $isScaffold 'sentinel-siem')) {
+        $v += New-LzGuardViolation -Id 'G02' `
+            -Message 'Sentinel is enabled, but the sentinel-siem module is scaffold-only and declares no resources.' `
+            -Remediation 'Implement terraform/modules/sentinel-siem and set its status to "implemented" in factory-version.json, or disable Sentinel. Emitting it now would produce a layer that applies successfully and deploys nothing.'
+    }
+
+    if ($Config.security.keyVault.customerManagedKeys -and (& $isScaffold 'keyvault-cmk')) {
+        $v += New-LzGuardViolation -Id 'G03' `
+            -Message 'Customer-managed keys are enabled, but the keyvault-cmk module is scaffold-only and declares no resources.' `
+            -Remediation 'Implement terraform/modules/keyvault-cmk and update its status in factory-version.json, or disable customer-managed keys. A no-op CMK module means data you believe is protected by your own keys is not.'
+    }
+
+    # ── Layers with no corpus ────────────────────────────────────────────────
+    # Get-LzActiveLayers can select layers that terraform/live has never had a
+    # source for. Before this guard, such a layer was emitted as a directory
+    # containing only backend.tf: `terraform init` succeeded, `terraform plan`
+    # reported no changes, and the operator concluded the layer had nothing to
+    # do — rather than that it did not exist. Refuse instead.
+    # Read from factory-version.json for the same reason the scaffold-module
+    # guards do: promoting a new layer into the corpus should lift its guard by
+    # declaring it there, not by editing a list here that nothing else knows
+    # about. When no factory version is supplied the guard cannot decide, and
+    # stays silent rather than guessing.
+    $implementedLayers = @()
+    if ($FactoryVersion -and (Test-LzHasProperty $FactoryVersion 'landingZone') -and
+        (Test-LzHasProperty $FactoryVersion.landingZone 'layers')) {
+        $implementedLayers = @($FactoryVersion.landingZone.layers)
+    }
+    foreach ($layer in (Get-LzActiveLayers -Config $Config)) {
+        if ($implementedLayers.Count -gt 0 -and $layer -notin $implementedLayers) {
+            $v += New-LzGuardViolation -Id 'G21' `
+                -Message "This configuration selects the '$layer' layer, for which the template corpus has no Terraform." `
+                -Remediation "Either author terraform/live/$layer and promote it into factory/templates (see `$pendingLayers in variable-map.json), or change the configuration so the layer is not selected. Emitting it would produce a layer that initialises and plans zero resources, which reads as 'nothing to do' rather than 'not implemented'."
+        }
+    }
+
+    # ── Unimplemented topologies ─────────────────────────────────────────────
+    if ($Config.connectivity.model -eq 'virtual-wan') {
+        $v += New-LzGuardViolation -Id 'G04' `
+            -Message 'Connectivity model is virtual-wan, but no virtual-wan module exists in the corpus.' `
+            -Remediation 'Use hub-spoke, or contribute a virtual-wan module and register it in factory-version.json.'
+    }
+
+    if ($Config.github.useSelfHostedRunners) {
+        $v += New-LzGuardViolation -Id 'G05' `
+            -Message 'Self-hosted runners are requested, but v1 emits GitHub-hosted workflows only.' `
+            -Remediation 'Set github.useSelfHostedRunners to false. Extension point: the runs-on value is centralised in the workflow templates and can be parameterised once self-hosted runner labels are part of the schema.'
+    }
+
+    # ── Tag coverage ─────────────────────────────────────────────────────────
+    # A landing zone whose own tagging policy denies its first apply is the
+    # single most common self-inflicted deployment failure.
+    $required = @($Config.governance.policyBaseline.requiredTags)
+    $defaults = $Config.naming.defaultTags
+    $missing = @()
+    foreach ($t in $required) {
+        $has = (Test-LzHasProperty $defaults $t) -and
+               -not [string]::IsNullOrWhiteSpace([string]$defaults.$t)
+        if (-not $has) { $missing += $t }
+    }
+    if ($missing.Count -gt 0) {
+        $v += New-LzGuardViolation -Id 'G06' `
+            -Message "Policy requires tag(s) [$($missing -join ', ')] but naming.defaultTags supplies no value for them." `
+            -Remediation 'Add a default value for every policy-required tag. Otherwise the deployment is denied by its own tagging policy on the first apply.'
+    }
+
+    # ── Region / policy coherence ────────────────────────────────────────────
+    $allowed = @($Config.azure.allowedLocations)
+    $deployedRegions = @($Config.azure.primaryRegion)
+    # drRegion is optional and stripped from the export when absent; reading it
+    # unconditionally throws under StrictMode on a single-region configuration.
+    if (Test-LzHasProperty $Config.azure 'drRegion') { $deployedRegions += $Config.azure.drRegion }
+    foreach ($r in $deployedRegions) {
+        if ($r -and $allowed -notcontains $r) {
+            $v += New-LzGuardViolation -Id 'G07' `
+                -Message "Region '$r' is deployed to but is absent from azure.allowedLocations." `
+                -Remediation 'Add the region to allowedLocations. The allowed-locations policy would otherwise deny the landing zone its own resources.'
+        }
+    }
+
+    if (@($Config.governance.dataResidencyRegions).Count -gt 0) {
+        $outside = @($allowed | Where-Object { $_ -notin @($Config.governance.dataResidencyRegions) })
+        if ($outside.Count -gt 0) {
+            $v += New-LzGuardViolation -Id 'G08' `
+                -Message "Allowed locations [$($outside -join ', ')] fall outside the declared data-residency regions." `
+                -Remediation 'Reconcile azure.allowedLocations with governance.dataResidencyRegions.'
+        }
+    }
+
+    # ── Subscription availability per layer ──────────────────────────────────
+    $subs = $Config.azure.subscriptions
+    $hasSub = { param([string]$n) return ((Test-LzHasProperty $subs $n) -and $subs.$n) }
+
+    foreach ($req in @('management', 'connectivity', 'workloadProd')) {
+        if (-not (& $hasSub $req)) {
+            $v += New-LzGuardViolation -Id 'G09' `
+                -Message "Required subscription '$req' is missing from the configuration." `
+                -Remediation "Supply the $req subscription ID. The layer consuming it cannot be rendered without one."
+        }
+    }
+
+    if ($Config.environments.application -contains 'sandbox' -and -not (& $hasSub 'sandbox')) {
+        $v += New-LzGuardViolation -Id 'G10' -Severity 'Warn' `
+            -Message 'A sandbox environment is selected but no sandbox subscription was supplied.' `
+            -Remediation 'The sandbox layer will be omitted from the output. Supply a sandbox subscription ID to emit it.'
+    }
+
+    if ($Config.identity.deployIdentitySubscription -and -not (& $hasSub 'identity')) {
+        $v += New-LzGuardViolation -Id 'G11' `
+            -Message 'An identity subscription layer is requested but no identity subscription ID was supplied.' `
+            -Remediation 'Supply azure.subscriptions.identity, or set identity.deployIdentitySubscription to false.'
+    }
+
+    # ── Address space sanity ─────────────────────────────────────────────────
+    if ($Config.connectivity.model -eq 'hub-spoke') {
+        $hs = $Config.connectivity.hubSpoke
+        $spaces = @()
+        foreach ($n in @('primaryHubAddressSpace', 'drHubAddressSpace', 'primarySpokeAddressSpace', 'drSpokeAddressSpace')) {
+            if ((Test-LzHasProperty $hs $n) -and $hs.$n) { $spaces += , @($n, $hs.$n) }
+        }
+        for ($i = 0; $i -lt $spaces.Count; $i++) {
+            for ($j = $i + 1; $j -lt $spaces.Count; $j++) {
+                if (Test-LzRendererCidrOverlap -CidrA $spaces[$i][1] -CidrB $spaces[$j][1]) {
+                    $v += New-LzGuardViolation -Id 'G12' `
+                        -Message "Address spaces $($spaces[$i][0]) ($($spaces[$i][1])) and $($spaces[$j][0]) ($($spaces[$j][1])) overlap." `
+                        -Remediation 'Overlapping ranges cannot be peered, and the failure appears only after the virtual networks exist. Choose non-overlapping CIDRs.'
+                }
+            }
+        }
+    }
+
+    # ── Promotion path coherence ─────────────────────────────────────────────
+    $app = @($Config.environments.application)
+    foreach ($stage in @($Config.environments.promotionPath)) {
+        if ($stage -notin $app) {
+            $v += New-LzGuardViolation -Id 'G13' `
+                -Message "Promotion path includes '$stage', which is not a selected application environment." `
+                -Remediation 'The promotion workflow would gate on an environment that is never deployed. Re-export from the wizard, which derives the path automatically.'
+        }
+    }
+
+    # ── Approval gates on production ─────────────────────────────────────────
+    if ($app -contains 'prod') {
+        $approvals = $Config.environments.approvals
+        $reviewers = @()
+        if ((Test-LzHasProperty $approvals 'prod')) {
+            $reviewers = @($approvals.prod.requiredReviewers)
+        }
+        if ($reviewers.Count -eq 0) {
+            $v += New-LzGuardViolation -Id 'G14' -Severity 'Warn' `
+                -Message 'The prod environment has no required reviewers.' `
+                -Remediation 'Production applies will run without human approval. Add reviewers unless this is deliberate.'
+        }
+    }
+
+    # ── Naming patterns ──────────────────────────────────────────────────────
+    if ($Config.naming.standard -eq 'custom') {
+        $allowedTokens = @('org', 'scope', 'workload', 'type', 'region', 'regionCode', 'env', 'nn')
+        foreach ($pair in @(
+            @('resourceGroupPattern', $Config.naming.resourceGroupPattern),
+            @('resourcePattern', $Config.naming.resourcePattern)
+        )) {
+            $name = $pair[0]; $pattern = $pair[1]
+            if ([string]::IsNullOrWhiteSpace($pattern)) {
+                $v += New-LzGuardViolation -Id 'G15' `
+                    -Message "naming.standard is 'custom' but $name is empty." `
+                    -Remediation "Supply a $name, or set naming.standard to 'caf'."
+                continue
+            }
+            foreach ($m in [regex]::Matches($pattern, '\{([^}]*)\}')) {
+                $tok = $m.Groups[1].Value
+                if ($tok -notin $allowedTokens) {
+                    $v += New-LzGuardViolation -Id 'G16' `
+                        -Message "$name uses unknown token {$tok}." `
+                        -Remediation "Allowed tokens: $(($allowedTokens | ForEach-Object { '{' + $_ + '}' }) -join ' '). An unrecognised token would survive into resource names verbatim."
+                }
+            }
+        }
+    }
+
+    # ── Backend coherence ────────────────────────────────────────────────────
+    if ($Config.backend.type -eq 'hcp-terraform') {
+        if (-not ((Test-LzHasProperty $Config.backend 'hcpTerraform')) -or
+            [string]::IsNullOrWhiteSpace($Config.backend.hcpTerraform.organization)) {
+            $v += New-LzGuardViolation -Id 'G17' `
+                -Message 'Backend is hcp-terraform but no organization is configured.' `
+                -Remediation 'Supply backend.hcpTerraform.organization.'
+        }
+    }
+    elseif ($Config.backend.type -eq 'azurerm') {
+        if (-not ((Test-LzHasProperty $Config.backend 'azurerm')) -or
+            [string]::IsNullOrWhiteSpace($Config.backend.azurerm.storageAccountName)) {
+            $v += New-LzGuardViolation -Id 'G18' `
+                -Message 'Backend is azurerm but no state storage account is configured.' `
+                -Remediation 'Supply backend.azurerm.storageAccountName and resourceGroupName.'
+        }
+    }
+
+    if ($Config.governance.policyAsCodeEngines -contains 'sentinel' -and $Config.backend.type -ne 'hcp-terraform') {
+        $v += New-LzGuardViolation -Id 'G19' `
+            -Message 'Sentinel policy enforcement requires the HCP Terraform backend.' `
+            -Remediation 'Remove sentinel from governance.policyAsCodeEngines, or switch the backend to hcp-terraform.'
+    }
+
+    # ── Repository visibility ────────────────────────────────────────────────
+    if ($Config.github.visibility -eq 'internal' -and $Config.github.ownershipModel -ne 'enterprise') {
+        $v += New-LzGuardViolation -Id 'G20' `
+            -Message 'Internal visibility requires GitHub Enterprise Cloud.' `
+            -Remediation 'Set github.visibility to private, or correct the ownership model.'
+    }
+
+    $blocks = @($v | Where-Object { $_.Severity -eq 'Block' })
+    $warns = @($v | Where-Object { $_.Severity -eq 'Warn' })
+
+    [pscustomobject]@{
+        Violations = $v
+        BlockCount = $blocks.Count
+        WarnCount  = $warns.Count
+        CanRender  = ($blocks.Count -eq 0)
+    }
+}
+
+function Test-LzRendererCidrOverlap {
+    <#
+    .SYNOPSIS
+        True when two IPv4 CIDR ranges intersect.
+    .DESCRIPTION
+        Duplicated from the discovery engine rather than shared, so the renderer
+        has no dependency on the discovery module — the two run at different
+        phases and must be independently usable. Arithmetic is int64 because
+        PowerShell's -bnot on uint32 yields a signed value.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$CidrA,
+        [Parameter(Mandatory)][string]$CidrB
+    )
+
+    function ConvertTo-Range([string]$cidr) {
+        if ($cidr -notmatch '^(\d{1,3}(?:\.\d{1,3}){3})/(\d{1,2})$') { return $null }
+        $ip = $Matches[1]; $bits = [int]$Matches[2]
+        if ($bits -lt 0 -or $bits -gt 32) { return $null }
+        $octets = @($ip -split '\.' | ForEach-Object { [int]$_ })
+        if (@($octets | Where-Object { $_ -gt 255 }).Count -gt 0) { return $null }
+
+        [int64]$addr = ([int64]$octets[0] -shl 24) -bor ([int64]$octets[1] -shl 16) -bor
+                       ([int64]$octets[2] -shl 8)  -bor  [int64]$octets[3]
+        [int64]$mask = if ($bits -eq 0) { 0L } else { (0xFFFFFFFFL -shl (32 - $bits)) -band 0xFFFFFFFFL }
+        [int64]$net = $addr -band $mask
+        return @($net, ($net -bor (0xFFFFFFFFL -bxor $mask)))
+    }
+
+    $a = ConvertTo-Range $CidrA
+    $b = ConvertTo-Range $CidrB
+    if (-not $a -or -not $b) { return $false }
+    return ($a[0] -le $b[1] -and $b[0] -le $a[1])
+}

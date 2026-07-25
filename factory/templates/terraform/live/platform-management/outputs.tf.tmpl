@@ -1,0 +1,28 @@
+# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
+# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+
+#{{IF security.backup.enabled}}
+output "backup_primary_rsv_id" {
+  description = "Recovery Services vault ID in the primary region"
+  value       = module.backup_primary.recovery_services_vault_id
+}
+
+#{{IF computed.hasDrRegion}}
+output "backup_dr_rsv_id" {
+  description = "Recovery Services vault ID in the DR region"
+  value       = module.backup_dr.recovery_services_vault_id
+}
+#{{ENDIF}}
+#{{ENDIF}}
+
+#{{IF defined azure.subscriptions.sandbox}}
+output "automation_account_id" {
+  description = "Platform automation account ID"
+  value       = azurerm_automation_account.main.id
+}
+
+output "automation_identity_principal_id" {
+  description = "System-assigned identity of the automation account. Grant this the rights the cleanup runbook needs in the sandbox subscription."
+  value       = azurerm_automation_account.main.identity[0].principal_id
+}
+#{{ENDIF}}

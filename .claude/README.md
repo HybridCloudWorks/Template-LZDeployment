@@ -82,6 +82,22 @@ The four `notion-*` skills additionally need Notion's MCP server; it is not
 declared here because it requires a personal credential. Connect it yourself if
 you use those skills.
 
+## Capability usage report
+
+`hooks/agent-report.ps1` is registered in `settings.json` as a **`Stop`** hook. It
+is **off by default** (`agent-report.json` → `"enabled": false`) and exits silently
+in that state. When enabled it parses the session transcript, counts actual
+`tool_use` records (agents by `subagent_type`, skills by `skill`, everything else
+as a tool) since the previous report, and prints the tally. It never blocks a turn.
+
+```bash
+pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/agent-report.ps1 -Mode Toggle -State On
+```
+
+This is local-only — nothing is transmitted anywhere, unlike the Azure pack's
+telemetry hooks below, which remain unimported. Routing and reporting rules live in
+[`../CLAUDE.md`](../CLAUDE.md).
+
 ## Guardrails
 
 `settings.json` allowlists routine read-only commands (`git status`,

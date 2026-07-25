@@ -1,0 +1,1971 @@
+/* =====================================================================
+ * Azure Landing Zone Factory — Configuration Wizard
+ * =====================================================================
+ * Offline-only. This file deliberately contains NO fetch, XMLHttpRequest,
+ * WebSocket, EventSource, navigator.sendBeacon, or dynamic import. The page's
+ * Content-Security-Policy sets connect-src 'none', so any attempt would be
+ * blocked by the browser anyway. Factory CI greps this directory for those
+ * identifiers and fails the build if one appears.
+ *
+ * The wizard's only job is to produce an lz-config.json that validates against
+ * factory/schema/lz-config.schema.json, plus the artifacts that are directly
+ * derivable from it. Rendering the full Terraform/workflow/doc corpus is the
+ * renderer's job (factory/renderer/), not this page's — that boundary exists
+ * so template changes never require touching the UI.
+ * ===================================================================== */
+'use strict';
+
+/* ---------------------------------------------------------------------
+ * Constants
+ * ------------------------------------------------------------------- */
+
+const SCHEMA_VERSION = '1.0.0';
+
+/* Kept in sync with factory-version.json. This page cannot read that file
+ * (a file:// fetch is both blocked by CSP and unreliable across browsers),
+ * so the value is mirrored here and a factory CI check asserts the two match. */
+const FACTORY_VERSION = '0.1.0';
+
+const DRAFT_KEY = 'alz-factory-draft-v1';
+
+/* HCP Terraform free tier, verified 2026-07: the legacy free plan ended
+ * 31 March 2026 and was replaced by a pay-as-you-go free tier capped at 500
+ * managed resources with unlimited users and one policy set of up to five
+ * policies. Billing above that is on peak hourly resource count. */
+const HCP_FREE_RUM_CAP = 500;
+
+/* Region -> conventional CAF abbreviation. Not exhaustive; unknown regions
+ * simply leave the code field for the user to fill. */
+const REGION_CODES = {
+  eastus: 'eus', eastus2: 'eus2', westus: 'wus', westus2: 'wus2', westus3: 'wus3',
+  centralus: 'cus', northcentralus: 'ncus', southcentralus: 'scus', westcentralus: 'wcus',
+  canadacentral: 'cnc', canadaeast: 'cne', brazilsouth: 'brs',
+  northeurope: 'neu', westeurope: 'weu', uksouth: 'uks', ukwest: 'ukw',
+  francecentral: 'frc', germanywestcentral: 'gwc', switzerlandnorth: 'chn',
+  norwayeast: 'nwe', swedencentral: 'sdc', polandcentral: 'plc', italynorth: 'itn',
+  spaincentral: 'spc', uaenorth: 'uan', southafricanorth: 'san', qatarcentral: 'qac',
+  eastasia: 'ea', southeastasia: 'sea', japaneast: 'jpe', japanwest: 'jpw',
+  koreacentral: 'krc', australiaeast: 'aue', australiasoutheast: 'ause',
+  centralindia: 'inc', southindia: 'ins', westindia: 'inw', israelcentral: 'ilc'
+};
+
+const DEFENDER_PLANS = [
+  ['CloudPosture', 'Cloud Security Posture Management'],
+  ['VirtualMachines', 'Servers'],
+  ['StorageAccounts', 'Storage'],
+  ['SqlServers', 'SQL'],
+  ['AppServices', 'App Service'],
+  ['KeyVaults', 'Key Vault'],
+  ['Containers', 'Containers'],
+  ['Arm', 'Resource Manager'],
+  ['OpenSourceRelationalDatabases', 'Open-source databases'],
+  ['CosmosDbs', 'Cosmos DB'],
+  ['Api', 'APIs']
+];
+
+const SENTINEL_CONNECTORS = [
+  ['AzureActiveDirectory', 'Entra ID sign-in & audit'],
+  ['AzureActivity', 'Azure Activity Log'],
+  ['DefenderForCloud', 'Defender for Cloud alerts'],
+  ['Office365', 'Office 365'],
+  ['ThreatIntelligence', 'Threat intelligence'],
+  ['Dns', 'DNS']
+];
+
+const COMPLIANCE_FRAMEWORKS = [
+  ['cis-azure', 'CIS Azure Foundations'],
+  ['nist-800-53', 'NIST SP 800-53'],
+  ['iso-27001', 'ISO/IEC 27001'],
+  ['pci-dss', 'PCI DSS'],
+  ['hipaa-hitrust', 'HIPAA / HITRUST'],
+  ['soc2', 'SOC 2'],
+  ['fedramp-moderate', 'FedRAMP Moderate']
+];
+
+const APP_ENV_ORDER = ['sandbox', 'dev', 'test', 'uat', 'prod'];
+
+const DEFAULT_ENV_ABBREV = {
+  bootstrap: 'boot', identity: 'id', connectivity: 'conn', management: 'mgmt',
+  'shared-services': 'shrd', sandbox: 'sbx', dev: 'dev', test: 'tst', uat: 'uat', prod: 'prd'
+};
+
+/* Rough managed-resource counts per feature. Order of magnitude only — enough
+ * to tell "comfortably under 500" from "well over", which is the only question
+ * the free-tier cap actually poses.
+ *
+ * Calibrated against the actual module corpus in terraform/modules/ by counting
+ * top-level `resource` blocks, then scaling up the modules that fan out via
+ * for_each (hub-network, defender-baseline, nsg-flow-logs, sandbox). Observed
+ * block counts at time of writing: hub-network 24, spoke-network 17,
+ * policy-baseline 17, defender-baseline 13, management-groups 10, management-
+ * baseline 6, nsg-flow-logs 6, backup-baseline 5.
+ *
+ * These are estimates, not a plan. Treat the output as a signal to check your
+ * HCP Terraform usage, never as a billing figure. */
+const RUM_WEIGHTS = {
+  managementGroupsCafStandard: 9,
+  managementGroupsCafMinimal: 4,
+  policyBaselineCore: 28,        // 17 blocks, assignments fanning out across scopes
+  policyPerFramework: 12,
+  hubPerRegion: 30,              // 24 blocks; subnets/NSGs/routes fan out per for_each
+  firewallAzfw: 14,
+  firewallNva: 10,
+  spokePerRegion: 20,            // 17 blocks + peerings
+  bastion: 4,
+  vpnGateway: 6,
+  expressRoute: 7,
+  privateDnsPerZone: 3,          // zone + vnet links
+  privateDnsDefaultZones: 12,
+  managementBaseline: 18,        // LAW, solutions, automation account
+  backupBaseline: 12,
+  nsgFlowLogsPerRegion: 8,
+  defenderPerPlan: 2,
+  sentinel: 16,
+  keyVaultPerScope: 6,
+  budgetEach: 1,
+  costExports: 2,
+  locksPlatform: 6,
+  rbacPerEnvironment: 4,
+  diagnosticsPerRegion: 10
+};
+
+/* ---------------------------------------------------------------------
+ * State
+ * ------------------------------------------------------------------- */
+
+/** The live configuration object. Shaped exactly like lz-config.json. */
+let config = defaultConfig();
+
+/** Default tags are edited as an array of {k,v} rows, then folded into an
+ *  object on export. Kept outside `config` under a __-prefixed repeater key. */
+let defaultTagRows = [
+  { k: 'owner', v: '' },
+  { k: 'application', v: '' },
+  { k: 'environment', v: '' },
+  { k: 'cost_center', v: '' }
+];
+
+let steps = [];
+let currentStep = 0;
+
+function defaultConfig() {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    factoryVersion: FACTORY_VERSION,
+    generatedAt: null,
+    organization: { companyName: '', companyShortName: '', businessUnit: '', outputDirectoryName: '' },
+    azure: {
+      tenantId: '', primaryRegion: '', primaryRegionCode: '', drRegion: '', drRegionCode: '',
+      allowedLocations: [],
+      subscriptions: { management: '', identity: '', connectivity: '', workloadProd: '', workloadNonProd: '', sandbox: '' },
+      managementGroups: { rootId: '', strategy: 'caf-standard', customHierarchy: [] }
+    },
+    github: {
+      ownershipModel: 'organization', ownerName: '', enterpriseSlug: '', repositoryName: '',
+      visibility: 'private', defaultBranch: 'main',
+      branchProtection: {
+        enabled: true, requiredApprovals: 1, requireCodeOwnerReview: true,
+        dismissStaleReviews: true, requireLinearHistory: true, enforceAdmins: false
+      },
+      useSelfHostedRunners: false
+    },
+    backend: {
+      type: 'hcp-terraform',
+      hcpTerraform: {
+        organization: '', workspacePrefix: '', executionMode: 'remote',
+        useDynamicProviderCredentials: true, acknowledgedResourceLimit: false
+      },
+      azurerm: {
+        resourceGroupName: '', storageAccountName: '', containerName: 'tfstate',
+        subscriptionId: '', useAzureAdAuth: true
+      }
+    },
+    deploymentStrategy: {
+      mode: 'greenfield',
+      brownfield: {
+        defaultClassification: 'ignore', generateImportBlocks: true,
+        generateImportCommands: true, allowDestructivePlans: false
+      }
+    },
+    environments: {
+      platform: ['bootstrap', 'connectivity', 'management'],
+      application: ['dev', 'prod'],
+      promotionPath: ['dev', 'prod'],
+      approvals: {}
+    },
+    connectivity: {
+      model: 'hub-spoke',
+      hubSpoke: {
+        primaryHubAddressSpace: '10.0.0.0/16', drHubAddressSpace: '10.10.0.0/16',
+        primarySpokeAddressSpace: '10.1.0.0/16', drSpokeAddressSpace: '10.11.0.0/16',
+        availabilityZones: ['1', '2', '3']
+      },
+      firewall: {
+        type: 'azfw', azfwTier: 'Standard', threatIntelligenceMode: 'Deny',
+        nvaTrustIpPrimary: '', nvaTrustIpDr: ''
+      },
+      expressRoute: { enabled: false, circuitName: '', peeringLocation: '', bandwidthMbps: null, serviceProvider: '' },
+      vpn: { enabled: false, sku: 'VpnGw1AZ', activeActive: true },
+      bastion: { enabled: true, sku: 'Standard' },
+      privateDns: { enabled: true, centralizedInHub: true, zones: [] },
+      privateEndpoints: { enabled: true, denyPublicNetworkAccessPolicy: true }
+    },
+    identity: {
+      strategy: 'cloud-only', deployIdentitySubscription: false,
+      privilegedAccessModel: 'pim-eligible', breakGlassAccounts: []
+    },
+    security: {
+      defender: { enabled: false, plans: [], securityContactEmail: '' },
+      sentinel: { enabled: false, dataConnectors: [], retentionDays: 90 },
+      keyVault: {
+        strategy: 'per-environment', enablePurgeProtection: true,
+        softDeleteRetentionDays: 90, customerManagedKeys: false, enableRbacAuthorization: true
+      },
+      nsgFlowLogs: { enabled: true, retentionDays: 90, trafficAnalytics: true },
+      backup: { enabled: true, immutableVault: true, geoRedundant: true }
+    },
+    governance: {
+      policyBaseline: {
+        enforcementMode: 'audit',
+        requiredTags: ['owner', 'application', 'environment', 'cost_center'],
+        enforceAllowedLocations: true, enforceTlsMinimum: true, enforceNsgOnSubnets: true,
+        denyPublicIpOnNics: false, enforceDiagnosticSettings: true, enforceEncryptionAtRest: true
+      },
+      policyAsCodeEngines: ['azure-policy', 'conftest'],
+      complianceFrameworks: [],
+      regulatoryNotes: '',
+      dataResidencyRegions: [],
+      resourceLocks: { lockPlatformResourceGroups: true, lockLevel: 'CanNotDelete' }
+    },
+    observability: {
+      logAnalytics: { retentionDays: 90, dailyQuotaGb: -1, sku: 'PerGB2018' },
+      diagnosticSettings: { enabled: true, sendActivityLog: true, sendToStorage: false, sendToEventHub: false },
+      alerting: { actionGroupEmails: [], enablePlatformHealthAlerts: true, enableDriftAlerts: true },
+      driftDetection: { enabled: true, schedule: '0 6 * * 1', failOnDrift: false, openIssueOnDrift: true }
+    },
+    operations: {
+      operatingModel: 'centralized',
+      platformTeam: { name: '', githubTeamSlug: '', contacts: [], supportHours: '', escalationUrl: '' },
+      approvalChain: [],
+      breakGlassContacts: []
+    },
+    finops: {
+      costCenter: '',
+      businessOwner: { name: '', email: '', role: 'Business Owner' },
+      budgets: [],
+      chargebackModel: 'showback',
+      costExports: { enabled: false, storageAccountName: '', frequency: 'Daily' }
+    },
+    naming: {
+      standard: 'caf', resourceGroupPattern: '', resourcePattern: '',
+      environmentAbbreviations: {}, defaultTags: {}
+    }
+  };
+}
+
+/* ---------------------------------------------------------------------
+ * Small utilities
+ * ------------------------------------------------------------------- */
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+function getPath(obj, path) {
+  return path.split('.').reduce((o, k) => (o === undefined || o === null ? undefined : o[k]), obj);
+}
+
+function setPath(obj, path, value) {
+  const keys = path.split('.');
+  const last = keys.pop();
+  let node = obj;
+  for (const k of keys) {
+    if (typeof node[k] !== 'object' || node[k] === null) node[k] = {};
+    node = node[k];
+  }
+  node[last] = value;
+}
+
+const csv = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+const lines = (s) => String(s || '').split('\n').map((x) => x.trim()).filter(Boolean);
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+let toastTimer = null;
+function toast(msg, kind = 'ok') {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.className = 'toast toast-show toast-' + kind;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 3200);
+}
+
+/** Trigger a file download entirely client-side. No network involved: the Blob
+ *  lives in memory and the object URL is revoked immediately after the click. */
+function download(filename, content, mime = 'text/plain') {
+  const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/* ---------------------------------------------------------------------
+ * Validators (mirror of the JSON Schema constraints)
+ * ------------------------------------------------------------------- */
+
+const RE = {
+  guid: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+  shortName: /^[a-z0-9]{2,10}$/,
+  region: /^[a-z0-9]+$/,
+  regionCode: /^[a-z]{2,5}$/,
+  email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/,
+  ghLogin: /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/,
+  repoName: /^[A-Za-z0-9._-]{1,100}$/,
+  storageAccount: /^[a-z0-9]{3,24}$/,
+  cidr: /^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\/(3[0-2]|[12]?[0-9])$/,
+  ipv4: /^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$/,
+  tagKey: /^[A-Za-z_][A-Za-z0-9_-]*$/,
+  cron: /^(\S+\s+){4}\S+$/
+};
+
+/** Parse a CIDR into [networkInt, broadcastInt] for overlap testing. */
+function cidrRange(c) {
+  const [ip, bitsStr] = c.split('/');
+  const bits = parseInt(bitsStr, 10);
+  const n = ip.split('.').reduce((acc, o) => (acc << 8 >>> 0) + parseInt(o, 10), 0) >>> 0;
+  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+  const net = (n & mask) >>> 0;
+  const bc = (net | (~mask >>> 0)) >>> 0;
+  return [net, bc];
+}
+
+function cidrsOverlap(a, b) {
+  const [a1, a2] = cidrRange(a);
+  const [b1, b2] = cidrRange(b);
+  return a1 <= b2 && b1 <= a2;
+}
+
+/**
+ * Full-config validation. Returns { errors: [], warnings: [] } where each entry
+ * is { step, message }. Errors block export; warnings do not.
+ */
+function validate() {
+  const errors = [];
+  const warnings = [];
+  const err = (step, message) => errors.push({ step, message });
+  const warn = (step, message) => warnings.push({ step, message });
+
+  // --- Organization
+  const o = config.organization;
+  if (!o.companyName.trim()) err('organization', 'Company name is required.');
+  if (!RE.shortName.test(o.companyShortName)) {
+    err('organization', 'Short name must be 2–10 lowercase letters or digits.');
+  }
+  if (!o.businessUnit.trim()) err('organization', 'Business unit is required.');
+
+  // --- Azure
+  const a = config.azure;
+  if (!RE.guid.test(a.tenantId)) err('azure', 'Tenant ID must be a GUID.');
+  if (!RE.region.test(a.primaryRegion || '')) err('azure', 'Primary region is required.');
+  if (!RE.regionCode.test(a.primaryRegionCode || '')) err('azure', 'Primary region code must be 2–5 lowercase letters.');
+  if (a.drRegion && !RE.regionCode.test(a.drRegionCode || '')) {
+    err('azure', 'A DR region was set, so a DR region code is required.');
+  }
+  if (!a.drRegion) warn('azure', 'No DR region set. The landing zone will be single-region, and the DR hub/spoke layers will not be emitted.');
+  if (a.drRegion && a.drRegion === a.primaryRegion) err('azure', 'DR region must differ from the primary region.');
+  if (!a.allowedLocations.length) err('azure', 'At least one allowed location is required.');
+  for (const [key, required] of [['management', true], ['connectivity', true], ['workloadProd', true]]) {
+    if (required && !RE.guid.test(a.subscriptions[key] || '')) {
+      err('azure', `The ${key} subscription ID must be a GUID.`);
+    }
+  }
+  for (const key of ['identity', 'workloadNonProd', 'sandbox']) {
+    const v = a.subscriptions[key];
+    if (v && !RE.guid.test(v)) err('azure', `The ${key} subscription ID is not a valid GUID.`);
+  }
+  const subVals = Object.values(a.subscriptions).filter(Boolean);
+  const dupes = subVals.filter((v, i) => subVals.indexOf(v) !== i);
+  if (dupes.length) {
+    warn('azure', 'The same subscription ID is used for more than one role. This is valid but collapses the isolation boundary between those planes.');
+  }
+  if (!a.managementGroups.rootId.trim()) err('azure', 'Root management group ID is required.');
+  if (a.managementGroups.strategy === 'custom') {
+    const h = a.managementGroups.customHierarchy || [];
+    if (!h.length) err('azure', 'Custom hierarchy selected but no management groups defined.');
+    const ids = new Set(h.map((x) => x.id));
+    for (const mg of h) {
+      if (!mg.id || !mg.displayName || !mg.parentId) { err('azure', 'Every custom management group needs an ID, display name and parent.'); break; }
+      if (mg.parentId !== a.managementGroups.rootId && !ids.has(mg.parentId)) {
+        err('azure', `Management group "${mg.id}" has parent "${mg.parentId}", which is neither the root nor another entry.`);
+      }
+      if (mg.id === mg.parentId) err('azure', `Management group "${mg.id}" is its own parent.`);
+    }
+  }
+  if (a.managementGroups.rootId === a.tenantId) {
+    warn('azure', 'Rooting at the Tenant Root Group requires write access at tenant root. If the readiness check fails on that, supply an existing intermediate management group ID instead.');
+  }
+
+  // --- GitHub
+  const g = config.github;
+  if (!RE.ghLogin.test(g.ownerName || '')) err('github', 'GitHub owner login is required and must be a valid login.');
+  if (!RE.repoName.test(g.repositoryName || '')) err('github', 'Repository name is required.');
+  if (g.ownershipModel === 'enterprise' && !g.enterpriseSlug.trim()) {
+    err('github', 'Enterprise slug is required for the enterprise ownership model.');
+  }
+  if (g.visibility === 'internal' && g.ownershipModel !== 'enterprise') {
+    err('github', 'Internal visibility is only available on GitHub Enterprise Cloud.');
+  }
+  if (g.ownershipModel === 'personal') {
+    warn('github', 'Personal accounts on the Free plan cannot use environments or branch protection on private repositories. The broker will configure what it can and name every control it could not apply in the bootstrap report — it will not skip them silently.');
+  }
+  if (g.useSelfHostedRunners) {
+    err('github', 'Self-hosted runners are not supported in v1. Discovery reports them, but the renderer emits GitHub-hosted workflows only.');
+  }
+  if (!g.branchProtection.enabled) {
+    warn('github', 'Branch protection is disabled. Anyone with write access can push directly to the branch that triggers apply.');
+  }
+
+  // --- Backend
+  const b = config.backend;
+  if (b.type === 'hcp-terraform') {
+    if (!b.hcpTerraform.organization.trim()) err('backend', 'HCP Terraform organization is required.');
+    const rum = estimateRum();
+    if (rum > HCP_FREE_RUM_CAP && !b.hcpTerraform.acknowledgedResourceLimit) {
+      err('backend', `Estimated ${rum} managed resources exceeds the ${HCP_FREE_RUM_CAP}-resource free tier. Acknowledge the billing exposure, reduce scope, or switch to the azurerm backend.`);
+    }
+    if (!b.hcpTerraform.useDynamicProviderCredentials) {
+      warn('backend', 'Dynamic provider credentials are off, so Azure credentials must be stored in the HCP Terraform workspace. The generated threat model records this as a finding.');
+    }
+  } else {
+    if (!b.azurerm.resourceGroupName.trim()) err('backend', 'State resource group name is required.');
+    if (!RE.storageAccount.test(b.azurerm.storageAccountName || '')) {
+      err('backend', 'State storage account must be 3–24 lowercase alphanumeric characters.');
+    }
+    if (!b.azurerm.useAzureAdAuth) {
+      warn('backend', 'Storage-key authentication to state means a long-lived shared secret. Entra ID auth is strongly preferred.');
+    }
+  }
+
+  // --- Environments
+  const e = config.environments;
+  if (!e.platform.length) err('environments', 'At least one platform environment is required.');
+  if (!e.application.length) err('environments', 'At least one application environment is required.');
+  if (e.application.includes('prod')) {
+    const rev = (e.approvals.prod && e.approvals.prod.requiredReviewers) || [];
+    if (!rev.length) warn('environments', 'The prod environment has no required reviewers, so production applies run without human approval.');
+  }
+  if (config.azure.subscriptions.sandbox === '' && e.application.includes('sandbox')) {
+    warn('environments', 'A sandbox environment is selected but no sandbox subscription was supplied. The sandbox layer will not be emitted.');
+  }
+
+  // --- Connectivity
+  const c = config.connectivity;
+  if (c.model === 'virtual-wan') {
+    err('connectivity', 'Virtual WAN is not implemented in the current module corpus. The renderer rejects it rather than emitting a broken layer — choose hub-and-spoke, or contribute a virtual-wan module first.');
+  }
+  if (c.model === 'hub-spoke') {
+    const spaces = [
+      ['primary hub', c.hubSpoke.primaryHubAddressSpace],
+      ['DR hub', c.hubSpoke.drHubAddressSpace],
+      ['primary spoke', c.hubSpoke.primarySpokeAddressSpace],
+      ['DR spoke', c.hubSpoke.drSpokeAddressSpace]
+    ].filter(([, v]) => v);
+    for (const [label, v] of spaces) {
+      if (!RE.cidr.test(v)) err('connectivity', `The ${label} address space is not valid CIDR notation.`);
+    }
+    const valid = spaces.filter(([, v]) => RE.cidr.test(v));
+    for (let i = 0; i < valid.length; i++) {
+      for (let j = i + 1; j < valid.length; j++) {
+        if (cidrsOverlap(valid[i][1], valid[j][1])) {
+          err('connectivity', `The ${valid[i][0]} and ${valid[j][0]} address spaces overlap.`);
+        }
+      }
+    }
+    if (!c.hubSpoke.availabilityZones.length) {
+      warn('connectivity', 'No availability zones selected. Zonal resources will be deployed without zone redundancy.');
+    }
+  }
+  if (['palo', 'fortinet'].includes(c.firewall.type)) {
+    if (!RE.ipv4.test(c.firewall.nvaTrustIpPrimary || '')) err('connectivity', 'An NVA firewall requires a primary trust IP.');
+    if (config.azure.drRegion && !RE.ipv4.test(c.firewall.nvaTrustIpDr || '')) {
+      err('connectivity', 'A DR region is set, so a DR NVA trust IP is required.');
+    }
+  }
+  if (c.firewall.type === 'azfw' && c.firewall.threatIntelligenceMode === 'Off') {
+    warn('connectivity', 'Azure Firewall threat intelligence is Off. The secure default is Deny; this needs a recorded governance exception.');
+  }
+  if (c.firewall.type === 'none') {
+    warn('connectivity', 'No firewall selected. Egress from spokes will be unfiltered unless you provide filtering another way.');
+  }
+  if (c.expressRoute.enabled && !c.expressRoute.peeringLocation.trim()) {
+    err('connectivity', 'ExpressRoute is enabled but no peering location was given.');
+  }
+
+  // --- Identity
+  const bg = config.identity.breakGlassAccounts.filter((x) => x.name || x.email);
+  if (bg.length < 2) err('identity', 'At least two break-glass accounts are required.');
+  for (const acct of bg) {
+    if (acct.email && !RE.email.test(acct.email)) err('identity', `Break-glass notification address "${acct.email}" is not a valid email.`);
+  }
+  if (config.identity.privilegedAccessModel === 'standing-access') {
+    warn('identity', 'Standing privileged access is selected. This is recorded as an explicit governance exception in the generated security documentation.');
+  }
+
+  // --- Security
+  const s = config.security;
+  if (s.sentinel.enabled) {
+    err('security', 'Sentinel cannot be emitted: the sentinel-siem module is scaffold-only and declares no resources. Implement the module first, or clear this to record it as a future intent only.');
+  }
+  if (s.keyVault.customerManagedKeys) {
+    err('security', 'Customer-managed keys cannot be emitted: the keyvault-cmk module is scaffold-only and declares no resources.');
+  }
+  if (s.defender.enabled) {
+    if (!s.defender.plans.length) err('security', 'Defender is enabled but no plans were selected.');
+    if (s.defender.securityContactEmail && !RE.email.test(s.defender.securityContactEmail)) {
+      err('security', 'Defender security contact must be a valid email address.');
+    }
+    if (!s.defender.securityContactEmail) warn('security', 'No Defender security contact set — alerts will have no notification recipient.');
+  }
+  if (!s.backup.enabled) warn('security', 'The backup baseline is disabled. Nothing in the landing zone will be backed up by default.');
+
+  // --- Governance
+  const gv = config.governance;
+  if (!gv.policyBaseline.requiredTags.length) err('governance', 'At least one required tag must be defined.');
+  for (const t of gv.policyBaseline.requiredTags) {
+    if (!RE.tagKey.test(t)) err('governance', `"${t}" is not a valid tag key.`);
+  }
+  if (gv.policyBaseline.enforcementMode === 'deny' && config.deploymentStrategy.mode === 'brownfield') {
+    warn('governance', 'Deny enforcement on a brownfield tenant will block deployments against existing non-compliant resources. Start at Audit, clear the compliance report, then promote to Deny.');
+  }
+  if (gv.policyAsCodeEngines.includes('sentinel') && config.backend.type !== 'hcp-terraform') {
+    err('governance', 'Sentinel policy enforcement requires the HCP Terraform backend.');
+  }
+  if (gv.policyAsCodeEngines.includes('sentinel') && config.backend.type === 'hcp-terraform') {
+    warn('governance', 'The HCP Terraform free tier allows one policy set of up to five policies. Beyond that requires a paid tier.');
+  }
+  if (gv.dataResidencyRegions.length) {
+    const outside = config.azure.allowedLocations.filter((r) => !gv.dataResidencyRegions.includes(r));
+    if (outside.length) {
+      err('governance', `Allowed locations include ${outside.join(', ')}, which fall outside the declared data-residency regions.`);
+    }
+  }
+
+  // --- Observability
+  const ob = config.observability;
+  if (ob.logAnalytics.dailyQuotaGb > 0) {
+    warn('observability', `A ${ob.logAnalytics.dailyQuotaGb} GB/day ingestion cap is set. Once hit, ingestion stops for the day and security telemetry is lost, not queued.`);
+  }
+  if (ob.driftDetection.enabled && !RE.cron.test(ob.driftDetection.schedule.trim())) {
+    err('observability', 'Drift schedule must be a five-field cron expression.');
+  }
+  for (const em of ob.alerting.actionGroupEmails) {
+    if (!RE.email.test(em)) err('observability', `Action group address "${em}" is not a valid email.`);
+  }
+  if (!ob.alerting.actionGroupEmails.length && ob.alerting.enablePlatformHealthAlerts) {
+    warn('observability', 'Platform health alerts are enabled but no action group recipients are configured, so alerts will fire into nothing.');
+  }
+
+  // --- Operations
+  const op = config.operations;
+  if (!op.platformTeam.name.trim()) err('operations', 'Platform team name is required.');
+  const contacts = op.platformTeam.contacts.filter((x) => x.name || x.email);
+  if (!contacts.length) err('operations', 'At least one platform team contact is required.');
+  for (const ct of contacts) {
+    if (ct.email && !RE.email.test(ct.email)) err('operations', `Platform contact "${ct.email}" is not a valid email.`);
+  }
+  const bgc = op.breakGlassContacts.filter((x) => x.name || x.email);
+  if (!bgc.length) err('operations', 'At least one break-glass contact is required.');
+
+  // --- FinOps
+  const f = config.finops;
+  if (!f.costCenter.trim()) err('finops', 'Cost center is required.');
+  if (!f.businessOwner.name.trim()) err('finops', 'Business owner name is required.');
+  if (!RE.email.test(f.businessOwner.email || '')) err('finops', 'Business owner email is required and must be valid.');
+  for (const bud of f.budgets) {
+    if (!bud.scope) err('finops', 'Every budget needs a scope.');
+    if (!(Number(bud.amountUsd) > 0)) err('finops', `Budget for "${bud.scope || 'unnamed'}" needs an amount greater than zero.`);
+  }
+  if (!f.budgets.length) warn('finops', 'No budgets defined. Nothing will alert on cost overrun.');
+  if (f.costExports.enabled && !RE.storageAccount.test(f.costExports.storageAccountName || '')) {
+    err('finops', 'Cost exports are enabled but the export storage account name is invalid.');
+  }
+
+  // --- Naming
+  const n = config.naming;
+  if (n.standard === 'custom') {
+    const ALLOWED = ['org', 'scope', 'workload', 'type', 'region', 'regionCode', 'env', 'nn'];
+    for (const [label, pat] of [['resource group', n.resourceGroupPattern], ['resource', n.resourcePattern]]) {
+      if (!pat.trim()) { err('naming', `A custom ${label} pattern is required.`); continue; }
+      const tokens = (pat.match(/\{([^}]*)\}/g) || []).map((t) => t.slice(1, -1));
+      for (const t of tokens) {
+        if (!ALLOWED.includes(t)) err('naming', `The ${label} pattern uses unknown token {${t}}. Allowed: ${ALLOWED.map((x) => '{' + x + '}').join(' ')}.`);
+      }
+    }
+  }
+  const tagObj = tagsObject();
+  for (const t of gv.policyBaseline.requiredTags) {
+    if (!tagObj[t] || !String(tagObj[t]).trim()) {
+      err('naming', `Tag "${t}" is required by policy but has no default value. The landing zone would deny its own first apply.`);
+    }
+  }
+  for (const row of defaultTagRows) {
+    if (row.k && !RE.tagKey.test(row.k)) err('naming', `"${row.k}" is not a valid tag key.`);
+  }
+
+  return { errors, warnings };
+}
+
+function tagsObject() {
+  const out = {};
+  for (const row of defaultTagRows) {
+    if (row.k && String(row.k).trim()) out[String(row.k).trim()] = String(row.v || '');
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------
+ * Managed-resource (RUM) estimate
+ * ------------------------------------------------------------------- */
+
+/**
+ * Order-of-magnitude estimate of resources with mode="managed" that this
+ * configuration would put into state. Used only to answer one question:
+ * does this fit inside HCP Terraform's 500-resource free tier?
+ */
+function estimateRum() {
+  const w = RUM_WEIGHTS;
+  const c = config;
+  let n = 0;
+
+  const regions = 1 + (c.azure.drRegion ? 1 : 0);
+
+  n += c.azure.managementGroups.strategy === 'caf-minimal'
+    ? w.managementGroupsCafMinimal
+    : c.azure.managementGroups.strategy === 'custom'
+      ? (c.azure.managementGroups.customHierarchy || []).length
+      : w.managementGroupsCafStandard;
+
+  n += w.policyBaselineCore;
+  n += (c.governance.complianceFrameworks || []).length * w.policyPerFramework;
+
+  if (c.connectivity.model === 'hub-spoke') {
+    n += w.hubPerRegion * regions;
+    n += w.spokePerRegion * regions;
+    if (c.connectivity.firewall.type === 'azfw') n += w.firewallAzfw * regions;
+    else if (['palo', 'fortinet'].includes(c.connectivity.firewall.type)) n += w.firewallNva * regions;
+    if (c.connectivity.bastion.enabled) n += w.bastion * regions;
+    if (c.connectivity.vpn.enabled) n += w.vpnGateway * regions;
+    if (c.connectivity.expressRoute.enabled) n += w.expressRoute;
+    if (c.connectivity.privateDns.enabled) {
+      const z = (c.connectivity.privateDns.zones || []).length;
+      n += (z > 0 ? z : w.privateDnsDefaultZones) * w.privateDnsPerZone;
+    }
+  }
+
+  n += w.managementBaseline;
+  n += w.diagnosticsPerRegion * regions;
+  if (c.security.backup.enabled) n += w.backupBaseline;
+  if (c.security.nsgFlowLogs.enabled) n += w.nsgFlowLogsPerRegion * regions;
+  if (c.security.defender.enabled) n += (c.security.defender.plans || []).length * w.defenderPerPlan;
+  if (c.security.sentinel.enabled) n += w.sentinel;
+
+  const kvScopes = c.security.keyVault.strategy === 'centralized'
+    ? 1
+    : c.security.keyVault.strategy === 'per-subscription'
+      ? Object.values(c.azure.subscriptions).filter(Boolean).length
+      : c.environments.application.length;
+  n += kvScopes * w.keyVaultPerScope;
+
+  n += (c.finops.budgets || []).length * w.budgetEach;
+  if (c.finops.costExports.enabled) n += w.costExports;
+  if (c.governance.resourceLocks.lockPlatformResourceGroups) n += w.locksPlatform;
+  n += (c.environments.platform.length + c.environments.application.length) * w.rbacPerEnvironment;
+
+  return n;
+}
+
+/* ---------------------------------------------------------------------
+ * Binding: DOM <-> config
+ * ------------------------------------------------------------------- */
+
+function readControl(el) {
+  const type = el.dataset.type || (el.type === 'checkbox' ? 'bool' : 'string');
+  if (type === 'bool') return el.checked;
+  if (type === 'int') return el.value === '' ? null : parseInt(el.value, 10);
+  if (type === 'float') return el.value === '' ? null : parseFloat(el.value);
+  if (type === 'csv') return csv(el.value);
+  if (type === 'lines') return lines(el.value);
+  return el.value;
+}
+
+function writeControl(el, value) {
+  const type = el.dataset.type || (el.type === 'checkbox' ? 'bool' : 'string');
+  if (type === 'bool') { el.checked = !!value; return; }
+  if (type === 'csv') { el.value = Array.isArray(value) ? value.join(', ') : (value || ''); return; }
+  if (type === 'lines') { el.value = Array.isArray(value) ? value.join('\n') : (value || ''); return; }
+  el.value = value === null || value === undefined ? '' : value;
+}
+
+/** Bind every [data-path] control to its config path. */
+function bindPathControls() {
+  for (const el of $$('[data-path]')) {
+    writeControl(el, getPath(config, el.dataset.path));
+    const evt = el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input';
+    el.addEventListener(evt, () => {
+      setPath(config, el.dataset.path, readControl(el));
+      onChange(el);
+    });
+  }
+}
+
+/** Bind every [data-set] checkbox group to an array in config. */
+function bindSetControls() {
+  const groups = {};
+  for (const el of $$('[data-set]')) {
+    (groups[el.dataset.set] = groups[el.dataset.set] || []).push(el);
+  }
+  for (const [path, els] of Object.entries(groups)) {
+    const current = getPath(config, path) || [];
+    for (const el of els) el.checked = current.includes(el.value);
+    for (const el of els) {
+      el.addEventListener('change', () => {
+        const picked = els.filter((x) => x.checked).map((x) => x.value);
+        setPath(config, path, picked);
+        onChange(el);
+      });
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Repeaters (arrays of objects)
+ * ------------------------------------------------------------------- */
+
+function repeaterData(path) {
+  if (path === '__defaultTags') return defaultTagRows;
+  return getPath(config, path) || [];
+}
+
+function setRepeaterData(path, rows) {
+  if (path === '__defaultTags') { defaultTagRows = rows; return; }
+  setPath(config, path, rows);
+}
+
+function renderRepeater(host) {
+  const path = host.dataset.repeater;
+  const fields = JSON.parse(host.dataset.fields);
+  const min = parseInt(host.dataset.min || '0', 10);
+  const rows = repeaterData(path);
+
+  while (rows.length < min) rows.push({});
+
+  host.innerHTML = '';
+
+  rows.forEach((row, idx) => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'rep-row';
+
+    for (const f of fields) {
+      const wrap = document.createElement('div');
+      wrap.className = 'rep-field';
+
+      const lbl = document.createElement('label');
+      lbl.textContent = f.label;
+      lbl.htmlFor = `rep_${path.replace(/\W/g, '_')}_${idx}_${f.key}`;
+      wrap.appendChild(lbl);
+
+      const input = document.createElement('input');
+      input.type = f.type === 'float' ? 'number' : 'text';
+      if (f.type === 'float') input.step = 'any';
+      input.id = lbl.htmlFor;
+      input.placeholder = f.placeholder || '';
+      input.spellcheck = false;
+
+      const v = row[f.key];
+      input.value = Array.isArray(v) ? v.join(', ') : (v === undefined || v === null ? '' : v);
+
+      input.addEventListener('input', () => {
+        const raw = input.value;
+        if (f.type === 'csv') row[f.key] = csv(raw);
+        else if (f.type === 'csvint') row[f.key] = csv(raw).map((x) => parseInt(x, 10)).filter((x) => !Number.isNaN(x));
+        else if (f.type === 'float') row[f.key] = raw === '' ? null : parseFloat(raw);
+        else row[f.key] = raw;
+        onChange(input);
+      });
+
+      wrap.appendChild(input);
+      rowEl.appendChild(wrap);
+    }
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'rep-del';
+    del.title = 'Remove this row';
+    del.setAttribute('aria-label', 'Remove row ' + (idx + 1));
+    del.textContent = '×';
+    del.disabled = rows.length <= min;
+    del.addEventListener('click', () => {
+      rows.splice(idx, 1);
+      setRepeaterData(path, rows);
+      renderRepeater(host);
+      onChange(host);
+    });
+    rowEl.appendChild(del);
+
+    host.appendChild(rowEl);
+  });
+
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'btn btn-ghost btn-sm';
+  add.textContent = '+ Add';
+  add.addEventListener('click', () => {
+    rows.push({});
+    setRepeaterData(path, rows);
+    renderRepeater(host);
+    onChange(add);
+  });
+  host.appendChild(add);
+}
+
+function renderAllRepeaters() {
+  for (const host of $$('.repeater')) renderRepeater(host);
+}
+
+/* ---------------------------------------------------------------------
+ * Dynamically-generated checkbox groups
+ * ------------------------------------------------------------------- */
+
+function buildCheckGroup(hostId, items, setPathStr) {
+  const host = $('#' + hostId);
+  if (!host) return;
+  host.innerHTML = '';
+  const current = getPath(config, setPathStr) || [];
+  for (const [value, label] of items) {
+    const lbl = document.createElement('label');
+    lbl.className = 'check';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = value;
+    cb.checked = current.includes(value);
+    cb.addEventListener('change', () => {
+      const picked = $$('input[type=checkbox]', host).filter((x) => x.checked).map((x) => x.value);
+      setPath(config, setPathStr, picked);
+      onChange(cb);
+    });
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(' ' + label));
+    host.appendChild(lbl);
+  }
+}
+
+function buildRegionDatalist() {
+  const dl = $('#regionList');
+  dl.innerHTML = '';
+  for (const r of Object.keys(REGION_CODES).sort()) {
+    const opt = document.createElement('option');
+    opt.value = r;
+    dl.appendChild(opt);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Derived UI: approvals, env abbreviations, promotion path
+ * ------------------------------------------------------------------- */
+
+function renderApprovals() {
+  const host = $('#approvalsHost');
+  const envs = [...config.environments.platform, ...config.environments.application];
+  host.innerHTML = '';
+
+  if (!envs.length) {
+    host.innerHTML = '<p class="hint">Select environments above first.</p>';
+    return;
+  }
+
+  for (const env of envs) {
+    config.environments.approvals[env] = config.environments.approvals[env] || {
+      requiredReviewers: [], waitTimerMinutes: 0, preventSelfReview: true
+    };
+    const a = config.environments.approvals[env];
+
+    const row = document.createElement('div');
+    row.className = 'approval-row';
+
+    const name = document.createElement('div');
+    name.className = 'approval-name';
+    name.textContent = env;
+    row.appendChild(name);
+
+    const revWrap = document.createElement('div');
+    revWrap.className = 'rep-field';
+    const revLbl = document.createElement('label');
+    revLbl.textContent = 'Required reviewers';
+    revLbl.htmlFor = 'apr_' + env;
+    const rev = document.createElement('input');
+    rev.id = revLbl.htmlFor;
+    rev.type = 'text';
+    rev.spellcheck = false;
+    rev.placeholder = '@login or org/team, comma-separated';
+    rev.value = (a.requiredReviewers || []).join(', ');
+    rev.addEventListener('input', () => { a.requiredReviewers = csv(rev.value); onChange(rev); });
+    revWrap.appendChild(revLbl); revWrap.appendChild(rev);
+    row.appendChild(revWrap);
+
+    const waitWrap = document.createElement('div');
+    waitWrap.className = 'rep-field narrow';
+    const waitLbl = document.createElement('label');
+    waitLbl.textContent = 'Wait (min)';
+    waitLbl.htmlFor = 'apw_' + env;
+    const wait = document.createElement('input');
+    wait.id = waitLbl.htmlFor;
+    wait.type = 'number'; wait.min = '0'; wait.max = '43200';
+    wait.value = a.waitTimerMinutes || 0;
+    wait.addEventListener('input', () => {
+      a.waitTimerMinutes = wait.value === '' ? 0 : parseInt(wait.value, 10);
+      onChange(wait);
+    });
+    waitWrap.appendChild(waitLbl); waitWrap.appendChild(wait);
+    row.appendChild(waitWrap);
+
+    host.appendChild(row);
+  }
+
+  // Drop approvals for environments that are no longer selected.
+  for (const key of Object.keys(config.environments.approvals)) {
+    if (!envs.includes(key)) delete config.environments.approvals[key];
+  }
+}
+
+function renderEnvAbbreviations() {
+  const host = $('#envAbbrevHost');
+  const envs = [...config.environments.platform, ...config.environments.application];
+  host.innerHTML = '';
+  for (const env of envs) {
+    if (!config.naming.environmentAbbreviations[env]) {
+      config.naming.environmentAbbreviations[env] = DEFAULT_ENV_ABBREV[env] || env.slice(0, 4);
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'rep-field';
+    const lbl = document.createElement('label');
+    lbl.textContent = env;
+    lbl.htmlFor = 'abbr_' + env;
+    const inp = document.createElement('input');
+    inp.id = lbl.htmlFor;
+    inp.type = 'text';
+    inp.maxLength = 6;
+    inp.spellcheck = false;
+    inp.value = config.naming.environmentAbbreviations[env];
+    inp.addEventListener('input', () => {
+      config.naming.environmentAbbreviations[env] = inp.value;
+      onChange(inp);
+    });
+    wrap.appendChild(lbl); wrap.appendChild(inp);
+    host.appendChild(wrap);
+  }
+  for (const key of Object.keys(config.naming.environmentAbbreviations)) {
+    if (!envs.includes(key)) delete config.naming.environmentAbbreviations[key];
+  }
+}
+
+function recomputePromotionPath() {
+  config.environments.promotionPath = APP_ENV_ORDER.filter((e) => config.environments.application.includes(e));
+  const el = $('#promotionPreview');
+  el.textContent = config.environments.promotionPath.length
+    ? config.environments.promotionPath.join('  →  ')
+    : '— no application environments selected —';
+}
+
+/* ---------------------------------------------------------------------
+ * Conditional visibility
+ * ------------------------------------------------------------------- */
+
+function conditionMet(expr) {
+  const [path, expected] = expr.split('=');
+  const actual = getPath(config, path.trim());
+  if (expected === 'true') return actual === true;
+  if (expected === 'false') return actual === false;
+  return String(actual) === expected;
+}
+
+function applyVisibility() {
+  for (const el of $$('[data-visible-when]')) {
+    el.hidden = !conditionMet(el.dataset.visibleWhen);
+  }
+  for (const el of $$('[data-visible-when-any]')) {
+    el.hidden = !el.dataset.visibleWhenAny.split('|').some(conditionMet);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Contextual hints
+ * ------------------------------------------------------------------- */
+
+const CRON_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function describeCron(expr) {
+  const p = expr.trim().split(/\s+/);
+  if (p.length !== 5) return 'Not a valid five-field cron expression.';
+  const [min, hr, dom, mon, dow] = p;
+  if (dom === '*' && mon === '*' && dow === '*') return `Runs daily at ${hr}:${min.padStart(2, '0')} UTC.`;
+  if (dom === '*' && mon === '*' && /^[0-6]$/.test(dow)) {
+    return `Runs weekly on ${CRON_DAYS[+dow]} at ${hr}:${min.padStart(2, '0')} UTC.`;
+  }
+  return 'Custom schedule.';
+}
+
+function updateHints() {
+  const oh = $('#gh_ownershipHint');
+  oh.textContent = {
+    organization: 'Organizations support environments, branch protection, and team-based reviewers. This is the recommended model.',
+    enterprise: 'Enterprise Cloud adds internal visibility, enterprise-level Actions policies, and enterprise SSO. Discovery reads the enterprise Actions policy during readiness checks.',
+    personal: 'Personal accounts on the Free plan cannot use environments or branch protection on private repositories, so approval gates and protected applies are unavailable. Every control the broker cannot apply is named explicitly in the bootstrap report.'
+  }[config.github.ownershipModel];
+
+  const cm = $('#cn_modelHint');
+  cm.textContent = {
+    'hub-spoke': 'Uses the hub-network and spoke-network modules already present in this repository.',
+    'virtual-wan': 'Not implemented — there is no virtual-wan module in the corpus. Selecting this blocks export rather than emitting a layer that cannot apply.',
+    none: 'No platform networking is emitted. Workload subscriptions will have no connectivity from the platform.'
+  }[config.connectivity.model];
+
+  $('#cronHint').textContent = describeCron(config.observability.driftDetection.schedule || '');
+
+  const sth = $('#sentinelTierHint');
+  sth.textContent = config.governance.policyAsCodeEngines.includes('sentinel')
+    ? 'Sentinel requires the HCP Terraform backend. The free tier allows one policy set of up to five policies; more requires a paid tier.'
+    : '';
+
+  // Tag coverage against the required-tag list.
+  const tagObj = tagsObject();
+  const required = config.governance.policyBaseline.requiredTags || [];
+  const missing = required.filter((t) => !tagObj[t] || !String(tagObj[t]).trim());
+  const cov = $('#tagCoverage');
+  if (!required.length) {
+    cov.textContent = '';
+    cov.className = 'coverage';
+  } else if (missing.length) {
+    cov.textContent = `Missing a default value for required tag${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}. Without these, the landing zone's own tagging policy denies its first apply.`;
+    cov.className = 'coverage coverage-bad';
+  } else {
+    cov.textContent = `All ${required.length} policy-required tags have default values.`;
+    cov.className = 'coverage coverage-ok';
+  }
+
+  // RUM estimate.
+  const rum = estimateRum();
+  const rv = $('#rumValue');
+  if (rv) {
+    rv.textContent = String(rum);
+    const verdict = $('#rumVerdict');
+    if (rum <= HCP_FREE_RUM_CAP * 0.7) {
+      verdict.textContent = 'fits the free tier';
+      verdict.className = 'pill pill-ok';
+    } else if (rum <= HCP_FREE_RUM_CAP) {
+      verdict.textContent = 'close to the 500 cap';
+      verdict.className = 'pill pill-warn';
+    } else {
+      const monthly = ((rum - 0) * 0.10).toFixed(0);
+      verdict.textContent = `over the cap — roughly $${monthly}/mo at the $0.10 Essentials rate`;
+      verdict.className = 'pill pill-bad';
+    }
+  }
+
+  const outDir = config.organization.outputDirectoryName || config.organization.companyShortName || '<company>';
+  const oph = $('#outPathHint');
+  if (oph) oph.textContent = `generated-output/${outDir}/`;
+}
+
+/** Auto-fill derived values the user has not explicitly overridden. */
+function applyDerivedDefaults(changedEl) {
+  const id = changedEl && changedEl.id;
+
+  if (id === 'az_primaryRegion') {
+    const code = REGION_CODES[config.azure.primaryRegion];
+    if (code) {
+      config.azure.primaryRegionCode = code;
+      writeControl($('#az_primaryRegionCode'), code);
+    }
+  }
+  if (id === 'az_drRegion') {
+    const code = REGION_CODES[config.azure.drRegion];
+    if (code) {
+      config.azure.drRegionCode = code;
+      writeControl($('#az_drRegionCode'), code);
+    }
+  }
+  if (id === 'org_companyShortName') {
+    const sn = config.organization.companyShortName;
+    if (sn && !$('#gh_repositoryName').dataset.touched) {
+      config.github.repositoryName = `${sn}_LZ_Deployment`;
+      writeControl($('#gh_repositoryName'), config.github.repositoryName);
+    }
+  }
+
+  // Allowed locations must always contain the regions we deploy to, otherwise
+  // the allowed-locations policy denies the landing zone's own resources.
+  if (['az_primaryRegion', 'az_drRegion', 'az_allowedLocations'].includes(id)) {
+    const need = [config.azure.primaryRegion, config.azure.drRegion].filter(Boolean);
+    const set = new Set(config.azure.allowedLocations);
+    let added = false;
+    for (const r of need) if (!set.has(r)) { set.add(r); added = true; }
+    if (added) {
+      config.azure.allowedLocations = Array.from(set);
+      writeControl($('#az_allowedLocations'), config.azure.allowedLocations);
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Step navigation
+ * ------------------------------------------------------------------- */
+
+function buildStepNav() {
+  steps = $$('.step').map((el) => ({ el, key: el.dataset.step, title: el.dataset.title }));
+  const list = $('#stepList');
+  list.innerHTML = '';
+  steps.forEach((s, i) => {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'stepbtn';
+    btn.dataset.index = i;
+    btn.innerHTML = `<span class="stepnum">${i + 1}</span><span class="steptitle">${s.title}</span><span class="stepdot" aria-hidden="true"></span>`;
+    btn.addEventListener('click', () => goto(i));
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
+}
+
+function goto(index) {
+  currentStep = Math.max(0, Math.min(steps.length - 1, index));
+  steps.forEach((s, i) => s.el.classList.toggle('active', i === currentStep));
+  $$('.stepbtn').forEach((b, i) => b.classList.toggle('current', i === currentStep));
+  $('#btnPrev').disabled = currentStep === 0;
+  $('#btnNext').disabled = currentStep === steps.length - 1;
+  $('#stepIndicator').textContent = `Step ${currentStep + 1} of ${steps.length} · ${steps[currentStep].title}`;
+  $('#stepPanel').scrollTop = 0;
+  $('#stepPanel').focus({ preventScroll: true });
+  if (steps[currentStep].key === 'review') renderReview();
+}
+
+function updateStepStatus() {
+  const { errors } = validate();
+  const bad = new Set(errors.map((e) => e.step));
+  let done = 0;
+  steps.forEach((s, i) => {
+    const btn = $$('.stepbtn')[i];
+    if (!btn) return;
+    const isBad = bad.has(s.key);
+    btn.classList.toggle('has-error', isBad);
+    btn.classList.toggle('is-done', !isBad && s.key !== 'review');
+    if (!isBad && s.key !== 'review') done++;
+  });
+  const total = steps.length - 1;
+  $('#progressBar').style.width = `${Math.round((done / total) * 100)}%`;
+  $('#progressText').textContent = `${done} of ${total} complete`;
+}
+
+/* ---------------------------------------------------------------------
+ * Change pipeline
+ * ------------------------------------------------------------------- */
+
+let renderScheduled = false;
+function onChange(changedEl) {
+  applyDerivedDefaults(changedEl);
+  recomputePromotionPath();
+  applyVisibility();
+  updateHints();
+
+  if (renderScheduled) return;
+  renderScheduled = true;
+  requestAnimationFrame(() => {
+    renderScheduled = false;
+    renderApprovals();
+    renderEnvAbbreviations();
+    updateStepStatus();
+    if (steps[currentStep] && steps[currentStep].key === 'review') renderReview();
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * Review + export
+ * ------------------------------------------------------------------- */
+
+function buildConfig() {
+  const out = JSON.parse(JSON.stringify(config));
+  out.generatedAt = new Date().toISOString();
+  out.factoryVersion = FACTORY_VERSION;
+  out.schemaVersion = SCHEMA_VERSION;
+  out.naming.defaultTags = tagsObject();
+  if (!out.organization.outputDirectoryName) {
+    out.organization.outputDirectoryName = out.organization.companyShortName;
+  }
+  if (!out.github.repositoryName) {
+    out.github.repositoryName = `${out.organization.companyShortName}_LZ_Deployment`;
+  }
+  if (out.backend.type === 'hcp-terraform') {
+    delete out.backend.azurerm;
+    if (!out.backend.hcpTerraform.workspacePrefix) {
+      out.backend.hcpTerraform.workspacePrefix = out.organization.companyShortName;
+    }
+  } else {
+    delete out.backend.hcpTerraform;
+    if (!out.backend.azurerm.subscriptionId) {
+      out.backend.azurerm.subscriptionId = out.azure.subscriptions.management;
+    }
+  }
+  if (out.azure.managementGroups.strategy !== 'custom') delete out.azure.managementGroups.customHierarchy;
+  if (out.deploymentStrategy.mode !== 'brownfield') delete out.deploymentStrategy.brownfield;
+  if (out.naming.standard !== 'custom') {
+    delete out.naming.resourceGroupPattern;
+    delete out.naming.resourcePattern;
+  }
+  // Strip empty-string optionals so the export stays clean and the schema's
+  // "" -> "not provided" convention is only used where it carries meaning.
+  for (const k of ['identity', 'workloadNonProd', 'sandbox']) {
+    if (!out.azure.subscriptions[k]) delete out.azure.subscriptions[k];
+  }
+  return out;
+}
+
+function renderReview() {
+  const { errors, warnings } = validate();
+  const host = $('#validationHost');
+  host.innerHTML = '';
+
+  const summary = document.createElement('div');
+  summary.className = 'val-summary ' + (errors.length ? 'val-bad' : warnings.length ? 'val-warn' : 'val-ok');
+  summary.innerHTML = errors.length
+    ? `<strong>${errors.length} blocking issue${errors.length > 1 ? 's' : ''}</strong> — export is disabled until these are resolved.`
+    : warnings.length
+      ? `<strong>Ready to export</strong> with ${warnings.length} advisory${warnings.length > 1 ? ' items' : ' item'} to review.`
+      : '<strong>Ready to export</strong> — no issues found.';
+  host.appendChild(summary);
+
+  const renderList = (items, cls, heading) => {
+    if (!items.length) return;
+    const h = document.createElement('h3');
+    h.className = 'sub';
+    h.textContent = heading;
+    host.appendChild(h);
+    const ul = document.createElement('ul');
+    ul.className = 'val-list ' + cls;
+    for (const it of items) {
+      const li = document.createElement('li');
+      const step = steps.find((s) => s.key === it.step);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'val-jump';
+      btn.textContent = step ? step.title : it.step;
+      btn.addEventListener('click', () => goto(steps.findIndex((s) => s.key === it.step)));
+      li.appendChild(btn);
+      li.appendChild(document.createTextNode(' ' + it.message));
+      ul.appendChild(li);
+    }
+    host.appendChild(ul);
+  };
+
+  renderList(errors, 'val-list-bad', 'Blocking issues');
+  renderList(warnings, 'val-list-warn', 'Advisories');
+
+  $('#jsonPreview').textContent = JSON.stringify(buildConfig(), null, 2);
+  renderExportGrid(errors.length === 0);
+  $('#btnExport').disabled = errors.length > 0;
+}
+
+/** Artifacts this page can emit. Anything requiring the template corpus is
+ *  deliberately NOT here — that is the renderer's responsibility. */
+function exportArtifacts() {
+  const cfg = buildConfig();
+  return [
+    {
+      name: 'lz-config.json',
+      desc: 'The configuration contract. Every downstream tool reads this file. Everything else below is derived from it.',
+      primary: true,
+      build: () => JSON.stringify(cfg, null, 2),
+      mime: 'application/json'
+    },
+    {
+      name: 'terraform.auto.tfvars',
+      desc: 'Terraform variables for the global layer, mapped onto the variables already declared in terraform/live/global/variables.tf.',
+      build: () => tfvarsGlobal(cfg)
+    },
+    {
+      name: 'connectivity.auto.tfvars',
+      desc: 'Terraform variables for the platform-connectivity layer.',
+      build: () => tfvarsConnectivity(cfg)
+    },
+    {
+      name: 'backend.hcl',
+      desc: 'Partial backend configuration passed to terraform init -backend-config.',
+      build: () => backendHcl(cfg)
+    },
+    {
+      name: 'environments.json',
+      desc: 'Environment definitions, promotion order, and approval gates. Consumed by the bootstrap broker to create GitHub environments.',
+      build: () => JSON.stringify(environmentDefinitions(cfg), null, 2),
+      mime: 'application/json'
+    },
+    {
+      name: 'deployment-metadata.json',
+      desc: 'Provenance: factory version, schema version, timestamp, and the release gates that must pass before this configuration is production-ready.',
+      build: () => JSON.stringify(deploymentMetadata(cfg), null, 2),
+      mime: 'application/json'
+    },
+    {
+      name: 'CONFIGURATION.md',
+      desc: 'Human-readable summary of every decision recorded here, for the generated repository and for change review.',
+      build: () => configurationMarkdown(cfg),
+      mime: 'text/markdown'
+    },
+    {
+      name: 'NEXT-STEPS.md',
+      desc: 'The exact commands to run next, in order, with the prerequisites each one assumes.',
+      build: () => nextStepsMarkdown(cfg),
+      mime: 'text/markdown'
+    }
+  ];
+}
+
+function renderExportGrid(enabled) {
+  const grid = $('#exportGrid');
+  grid.innerHTML = '';
+  for (const art of exportArtifacts()) {
+    const card = document.createElement('div');
+    card.className = 'export-card' + (art.primary ? ' export-primary' : '');
+
+    const h = document.createElement('h4');
+    h.textContent = art.name;
+    card.appendChild(h);
+
+    const p = document.createElement('p');
+    p.textContent = art.desc;
+    card.appendChild(p);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm ' + (art.primary ? 'btn-primary' : 'btn-ghost');
+    btn.textContent = 'Download';
+    btn.disabled = !enabled;
+    btn.addEventListener('click', () => {
+      download(art.name, art.build(), art.mime || 'text/plain');
+      toast(`${art.name} downloaded.`);
+    });
+    card.appendChild(btn);
+
+    grid.appendChild(card);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Artifact builders
+ * ------------------------------------------------------------------- */
+
+function hclString(s) { return JSON.stringify(String(s === null || s === undefined ? '' : s)); }
+function hclList(arr) { return '[' + (arr || []).map(hclString).join(', ') + ']'; }
+function hclMap(obj, indent = '  ') {
+  const entries = Object.entries(obj || {});
+  if (!entries.length) return '{}';
+  return '{\n' + entries.map(([k, v]) => `${indent}  ${k} = ${hclString(v)}`).join('\n') + `\n${indent}}`;
+}
+
+function tfvarsHeader(cfg, layer, sourceFile) {
+  return [
+    `# Generated by the Azure Landing Zone Factory wizard.`,
+    `# Layer:      ${layer}`,
+    `# Company:    ${cfg.organization.companyName}`,
+    `# Generated:  ${cfg.generatedAt}`,
+    `# Factory:    v${cfg.factoryVersion} (schema ${cfg.schemaVersion})`,
+    `#`,
+    `# Every value here comes from lz-config.json. Do not hand-edit: re-run the`,
+    `# wizard and re-export, so the config and the variables cannot diverge.`,
+    `# Variables correspond to those declared in ${sourceFile}.`,
+    ''
+  ].join('\n');
+}
+
+function tfvarsGlobal(cfg) {
+  const s = cfg.azure.subscriptions;
+  return tfvarsHeader(cfg, 'global', 'terraform/live/global/variables.tf') + [
+    `org_prefix                     = ${hclString(cfg.organization.companyShortName)}`,
+    `management_subscription_id     = ${hclString(s.management)}`,
+    `identity_subscription_id       = ${hclString(s.identity || '')}`,
+    `connectivity_subscription_id   = ${hclString(s.connectivity)}`,
+    `workload_prod_subscription_id  = ${hclString(s.workloadProd)}`,
+    `workload_nonprod_subscription_id = ${hclString(s.workloadNonProd || '')}`,
+    `sandbox_subscription_id        = ${hclString(s.sandbox || '')}`,
+    `allowed_locations              = ${hclList(cfg.azure.allowedLocations)}`,
+    ''
+  ].join('\n');
+}
+
+function tfvarsConnectivity(cfg) {
+  const c = cfg.connectivity;
+  const hs = c.hubSpoke || {};
+  const out = [
+    `connectivity_subscription_id = ${hclString(cfg.azure.subscriptions.connectivity)}`,
+    `primary_region              = ${hclString(cfg.azure.primaryRegion)}`,
+    `primary_region_code         = ${hclString(cfg.azure.primaryRegionCode)}`
+  ];
+  if (cfg.azure.drRegion) {
+    out.push(`dr_region                   = ${hclString(cfg.azure.drRegion)}`);
+    out.push(`dr_region_code              = ${hclString(cfg.azure.drRegionCode)}`);
+  }
+  if (hs.primaryHubAddressSpace) out.push(`primary_hub_address_space   = ${hclString(hs.primaryHubAddressSpace)}`);
+  if (hs.drHubAddressSpace && cfg.azure.drRegion) out.push(`dr_hub_address_space        = ${hclString(hs.drHubAddressSpace)}`);
+  out.push(`firewall_type               = ${hclString(c.firewall.type)}`);
+  if (c.firewall.type === 'azfw') {
+    out.push(`azfw_tier                   = ${hclString(c.firewall.azfwTier)}`);
+    out.push(`firewall_threat_intel_mode  = ${hclString(c.firewall.threatIntelligenceMode)}`);
+  }
+  if (['palo', 'fortinet'].includes(c.firewall.type)) {
+    out.push(`primary_nva_trust_ip        = ${hclString(c.firewall.nvaTrustIpPrimary)}`);
+    if (cfg.azure.drRegion) out.push(`dr_nva_trust_ip             = ${hclString(c.firewall.nvaTrustIpDr)}`);
+  }
+  out.push(`deploy_bastion              = ${c.bastion.enabled}`);
+  out.push(`deploy_dns                  = ${c.privateDns.enabled}`);
+  out.push(`primary_availability_zones  = ${hclList(hs.availabilityZones || [])}`);
+  if (cfg.azure.drRegion) out.push(`dr_availability_zones       = ${hclList(hs.availabilityZones || [])}`);
+  out.push(`default_tags = ${hclMap(cfg.naming.defaultTags)}`);
+  out.push('');
+  return tfvarsHeader(cfg, 'platform-connectivity', 'terraform/live/platform-connectivity/variables.tf') + out.join('\n');
+}
+
+function backendHcl(cfg) {
+  const head = [
+    '# Partial backend configuration.',
+    '#   terraform init -backend-config=backend.hcl',
+    `# Generated ${cfg.generatedAt} by factory v${cfg.factoryVersion}.`,
+    '#',
+    '# One backend.hcl per layer: replace <layer> below with the layer name so',
+    '# each layer keeps an isolated state file. Shared state across layers is the',
+    '# single most common cause of an unrecoverable landing zone.',
+    ''
+  ].join('\n');
+
+  if (cfg.backend.type === 'hcp-terraform') {
+    const t = cfg.backend.hcpTerraform;
+    return head + [
+      `organization = ${hclString(t.organization)}`,
+      '',
+      'workspaces {',
+      `  name = ${hclString(t.workspacePrefix + '-<layer>')}`,
+      '}',
+      '',
+      '# Execution mode: ' + t.executionMode,
+      '# Dynamic provider credentials: ' + (t.useDynamicProviderCredentials
+        ? 'enabled — no static Azure credentials are stored in the workspace.'
+        : 'DISABLED — Azure credentials must be stored in the workspace. Recorded as a finding in the generated threat model.'),
+      ''
+    ].join('\n');
+  }
+
+  const a = cfg.backend.azurerm;
+  return head + [
+    `resource_group_name  = ${hclString(a.resourceGroupName)}`,
+    `storage_account_name = ${hclString(a.storageAccountName)}`,
+    `container_name       = ${hclString(a.containerName || 'tfstate')}`,
+    `key                  = ${hclString('<layer>.tfstate')}`,
+    `subscription_id      = ${hclString(a.subscriptionId)}`,
+    `use_azuread_auth     = ${a.useAzureAdAuth}`,
+    ''
+  ].join('\n');
+}
+
+function environmentDefinitions(cfg) {
+  const mk = (name, plane) => ({
+    name,
+    plane,
+    abbreviation: cfg.naming.environmentAbbreviations[name] || name,
+    approvals: cfg.environments.approvals[name] || { requiredReviewers: [], waitTimerMinutes: 0, preventSelfReview: true },
+    workspace: cfg.backend.type === 'hcp-terraform'
+      ? `${cfg.backend.hcpTerraform.workspacePrefix}-${name}`
+      : null,
+    stateKey: cfg.backend.type === 'azurerm' ? `${name}.tfstate` : null,
+    oidcSubject: `repo:${cfg.github.ownerName}/${cfg.github.repositoryName}:environment:${name}`,
+    identities: {
+      plan: {
+        appName: `sp-${cfg.organization.companyShortName}-${name}-plan`,
+        subject: `repo:${cfg.github.ownerName}/${cfg.github.repositoryName}:pull_request`,
+        azureRoles: ['Reader'],
+        note: 'Plan-time identity. Read-only by design so a compromised pull request cannot mutate Azure.'
+      },
+      apply: {
+        appName: `sp-${cfg.organization.companyShortName}-${name}-apply`,
+        subject: `repo:${cfg.github.ownerName}/${cfg.github.repositoryName}:environment:${name}`,
+        azureRoles: ['Contributor'],
+        note: 'Apply-time identity. Bound to the environment subject only, so it cannot be assumed from an arbitrary branch or pull request.'
+      }
+    }
+  });
+
+  return {
+    generatedAt: cfg.generatedAt,
+    factoryVersion: cfg.factoryVersion,
+    repository: `${cfg.github.ownerName}/${cfg.github.repositoryName}`,
+    platform: cfg.environments.platform.map((e) => mk(e, 'platform')),
+    application: cfg.environments.application.map((e) => mk(e, 'application')),
+    promotionPath: cfg.environments.promotionPath,
+    notes: [
+      'Two identities per environment is deliberate: it makes it structurally impossible for a pull-request-triggered run to hold write access.',
+      'The apply subject is pinned to environment:<name>. A wildcard subject such as repo:owner/repo:* would let any branch assume the apply identity.'
+    ]
+  };
+}
+
+function deploymentMetadata(cfg) {
+  return {
+    generatedAt: cfg.generatedAt,
+    factoryVersion: cfg.factoryVersion,
+    schemaVersion: cfg.schemaVersion,
+    company: cfg.organization.companyName,
+    companyShortName: cfg.organization.companyShortName,
+    tenantId: cfg.azure.tenantId,
+    repository: `${cfg.github.ownerName}/${cfg.github.repositoryName}`,
+    backend: cfg.backend.type,
+    deploymentMode: cfg.deploymentStrategy.mode,
+    estimatedManagedResources: estimateRum(),
+    hcpFreeTierCap: HCP_FREE_RUM_CAP,
+    unmetDependencies: unmetDependencies(cfg),
+    generatedBy: 'site/index.html (offline wizard)',
+    dataHandling: 'This configuration was produced entirely on the operator workstation. The wizard makes no network requests.'
+  };
+}
+
+/** Features the configuration asks for that the module corpus cannot yet deliver. */
+function unmetDependencies(cfg) {
+  const out = [];
+  if (cfg.security.sentinel && cfg.security.sentinel.enabled) {
+    out.push({ feature: 'Microsoft Sentinel', module: 'sentinel-siem', status: 'scaffold', impact: 'Cannot be emitted. Implement the module before enabling.' });
+  }
+  if (cfg.security.keyVault.customerManagedKeys) {
+    out.push({ feature: 'Customer-managed keys', module: 'keyvault-cmk', status: 'scaffold', impact: 'Cannot be emitted. Implement the module before enabling.' });
+  }
+  if (cfg.connectivity.model === 'virtual-wan') {
+    out.push({ feature: 'Virtual WAN', module: '(none)', status: 'missing', impact: 'No module exists. Choose hub-and-spoke or contribute the module.' });
+  }
+  if (cfg.security.defender.enabled) {
+    out.push({ feature: 'Defender for Cloud', module: 'defender-baseline', status: 'implemented-not-wired', impact: 'The module is implemented but no terraform/live layer currently calls it. The renderer wires it in; verify on first plan.' });
+  }
+  if (cfg.github.useSelfHostedRunners) {
+    out.push({ feature: 'Self-hosted runners', module: '(workflows)', status: 'unsupported', impact: 'v1 emits GitHub-hosted workflows only.' });
+  }
+  return out;
+}
+
+function md(...ls) { return ls.join('\n'); }
+
+function configurationMarkdown(cfg) {
+  const t = cfg.naming.defaultTags;
+  const unmet = unmetDependencies(cfg);
+  const { warnings } = validate();
+
+  return md(
+    `# Landing Zone Configuration — ${cfg.organization.companyName}`,
+    '',
+    `Generated ${cfg.generatedAt} by Landing Zone Factory v${cfg.factoryVersion} (schema ${cfg.schemaVersion}).`,
+    '',
+    'This document is a rendering of `lz-config.json`. That file is the source of truth;',
+    'if the two ever disagree, the JSON wins and this document is stale.',
+    '',
+    '## Organization',
+    '',
+    '| Field | Value |',
+    '|---|---|',
+    `| Company | ${cfg.organization.companyName} |`,
+    `| Short name (\`org_prefix\`) | \`${cfg.organization.companyShortName}\` |`,
+    `| Business unit | ${cfg.organization.businessUnit} |`,
+    '',
+    '## Azure',
+    '',
+    '| Field | Value |',
+    '|---|---|',
+    `| Tenant | \`${cfg.azure.tenantId}\` |`,
+    `| Primary region | ${cfg.azure.primaryRegion} (\`${cfg.azure.primaryRegionCode}\`) |`,
+    `| DR region | ${cfg.azure.drRegion ? `${cfg.azure.drRegion} (\`${cfg.azure.drRegionCode}\`)` : '_none — single-region deployment_'} |`,
+    `| Allowed locations | ${cfg.azure.allowedLocations.join(', ')} |`,
+    `| MG root | \`${cfg.azure.managementGroups.rootId}\` |`,
+    `| MG strategy | ${cfg.azure.managementGroups.strategy} |`,
+    '',
+    '### Subscriptions',
+    '',
+    '| Role | Subscription ID |',
+    '|---|---|',
+    ...Object.entries(cfg.azure.subscriptions).map(([k, v]) => `| ${k} | \`${v}\` |`),
+    '',
+    '## GitHub',
+    '',
+    '| Field | Value |',
+    '|---|---|',
+    `| Ownership model | ${cfg.github.ownershipModel} |`,
+    `| Repository | \`${cfg.github.ownerName}/${cfg.github.repositoryName}\` |`,
+    `| Visibility | ${cfg.github.visibility} |`,
+    `| Branch protection | ${cfg.github.branchProtection.enabled ? `enabled, ${cfg.github.branchProtection.requiredApprovals} approval(s)` : '**disabled**'} |`,
+    '',
+    '## State backend',
+    '',
+    cfg.backend.type === 'hcp-terraform'
+      ? md(
+          `HCP Terraform, organization \`${cfg.backend.hcpTerraform.organization}\`, workspace prefix \`${cfg.backend.hcpTerraform.workspacePrefix}\`.`,
+          '',
+          `Dynamic provider credentials: **${cfg.backend.hcpTerraform.useDynamicProviderCredentials ? 'enabled' : 'disabled'}**.`,
+          '',
+          `Estimated managed resources: **${estimateRum()}** against a free-tier cap of ${HCP_FREE_RUM_CAP}.`,
+          'The HCP Terraform legacy free plan ended 31 March 2026; the current free tier allows 500 managed',
+          'resources, unlimited users, and one policy set of up to five policies. Paid tiers bill on the peak',
+          'hourly resource count, starting at $0.10 per resource per month.'
+        )
+      : md(
+          `Azure Storage — \`${cfg.backend.azurerm.storageAccountName}\` in \`${cfg.backend.azurerm.resourceGroupName}\`,`,
+          `container \`${cfg.backend.azurerm.containerName}\`, Entra ID auth ${cfg.backend.azurerm.useAzureAdAuth ? 'enabled' : '**disabled**'}.`,
+          '',
+          'One state key per layer. The storage account is created by `terraform/backend-bootstrap/` with local',
+          'state, then the state is migrated — that ordering is unavoidable with this backend.'
+        ),
+    '',
+    '## Environments',
+    '',
+    `Platform: ${cfg.environments.platform.join(', ')}`,
+    '',
+    `Application: ${cfg.environments.application.join(', ')}`,
+    '',
+    `Promotion path: ${cfg.environments.promotionPath.join(' → ')}`,
+    '',
+    '| Environment | Reviewers | Wait (min) |',
+    '|---|---|---|',
+    ...[...cfg.environments.platform, ...cfg.environments.application].map((e) => {
+      const a = cfg.environments.approvals[e] || {};
+      const r = (a.requiredReviewers || []);
+      return `| ${e} | ${r.length ? r.join(', ') : '_none — deploys without approval_'} | ${a.waitTimerMinutes || 0} |`;
+    }),
+    '',
+    '## Connectivity',
+    '',
+    `Topology: **${cfg.connectivity.model}**. Firewall: **${cfg.connectivity.firewall.type}**${cfg.connectivity.firewall.type === 'azfw' ? ` (${cfg.connectivity.firewall.azfwTier}, threat intel ${cfg.connectivity.firewall.threatIntelligenceMode})` : ''}.`,
+    '',
+    cfg.connectivity.model === 'hub-spoke'
+      ? md(
+          '| Space | CIDR |',
+          '|---|---|',
+          `| Primary hub | \`${cfg.connectivity.hubSpoke.primaryHubAddressSpace}\` |`,
+          `| DR hub | \`${cfg.connectivity.hubSpoke.drHubAddressSpace}\` |`,
+          `| Primary spoke | \`${cfg.connectivity.hubSpoke.primarySpokeAddressSpace}\` |`,
+          `| DR spoke | \`${cfg.connectivity.hubSpoke.drSpokeAddressSpace}\` |`
+        )
+      : '_No platform networking._',
+    '',
+    `Hybrid: ExpressRoute ${cfg.connectivity.expressRoute.enabled ? 'yes' : 'no'}, VPN ${cfg.connectivity.vpn.enabled ? 'yes' : 'no'}, Bastion ${cfg.connectivity.bastion.enabled ? 'yes' : 'no'}.`,
+    '',
+    '## Governance',
+    '',
+    `Policy enforcement: **${cfg.governance.policyBaseline.enforcementMode}**.`,
+    '',
+    `Required tags: ${cfg.governance.policyBaseline.requiredTags.map((x) => `\`${x}\``).join(', ')}`,
+    '',
+    `Policy engines: ${cfg.governance.policyAsCodeEngines.join(', ')}`,
+    '',
+    `Compliance frameworks: ${cfg.governance.complianceFrameworks.length ? cfg.governance.complianceFrameworks.join(', ') : '_none declared_'}`,
+    '',
+    cfg.governance.regulatoryNotes ? md('### Regulatory notes', '', cfg.governance.regulatoryNotes) : '',
+    '',
+    '## Default tags',
+    '',
+    '| Key | Value |',
+    '|---|---|',
+    ...Object.entries(t).map(([k, v]) => `| \`${k}\` | ${v || '_(empty)_'} |`),
+    '',
+    '## Operations',
+    '',
+    `Operating model: **${cfg.operations.operatingModel}**. Platform team: ${cfg.operations.platformTeam.name}.`,
+    '',
+    '| Contact | Email | Role |',
+    '|---|---|---|',
+    ...cfg.operations.platformTeam.contacts.filter((c) => c.name || c.email).map((c) => `| ${c.name || ''} | ${c.email || ''} | ${c.role || ''} |`),
+    '',
+    '## FinOps',
+    '',
+    `Cost center \`${cfg.finops.costCenter}\`, ${cfg.finops.chargebackModel}, owner ${cfg.finops.businessOwner.name} <${cfg.finops.businessOwner.email}>.`,
+    '',
+    cfg.finops.budgets.length
+      ? md('| Scope | Amount (USD) | Thresholds |', '|---|---|---|',
+          ...cfg.finops.budgets.map((b) => `| ${b.scope} | ${b.amountUsd} | ${(b.alertThresholdPercents || [50, 80, 100]).join(', ')}% |`))
+      : '_No budgets defined. Nothing will alert on cost overrun._',
+    '',
+    unmet.length
+      ? md('## Unmet dependencies', '',
+          'The configuration asks for capabilities the current module corpus cannot deliver. These are',
+          'reported rather than silently dropped.',
+          '',
+          '| Feature | Module | Status | Impact |',
+          '|---|---|---|---|',
+          ...unmet.map((u) => `| ${u.feature} | \`${u.module}\` | ${u.status} | ${u.impact} |`))
+      : '',
+    '',
+    warnings.length
+      ? md('## Advisories', '', ...warnings.map((w) => `- **${w.step}** — ${w.message}`))
+      : '',
+    ''
+  );
+}
+
+function nextStepsMarkdown(cfg) {
+  const dir = `generated-output/${cfg.organization.outputDirectoryName}`;
+  return md(
+    `# Next steps — ${cfg.organization.companyName}`,
+    '',
+    `Generated ${cfg.generatedAt} by factory v${cfg.factoryVersion}.`,
+    '',
+    '## 1. Place the exported files',
+    '',
+    'Move every file you downloaded into the factory clone at:',
+    '',
+    '```',
+    `${dir}/`,
+    '```',
+    '',
+    '`lz-config.json` must be there; everything else is derived from it and can be regenerated.',
+    '',
+    '## 2. Authenticate',
+    '',
+    'These three sessions are the only manual step in the whole flow. Everything after this is scripted.',
+    '',
+    '```bash',
+    `az login --tenant ${cfg.azure.tenantId}`,
+    'gh auth login',
+    cfg.backend.type === 'hcp-terraform' ? 'terraform login' : '# no Terraform Cloud login needed for the azurerm backend',
+    '```',
+    '',
+    `The account you sign in with needs, at minimum: Application Administrator in Entra (to create app registrations and federated credentials), and Owner or User Access Administrator at \`${cfg.azure.managementGroups.rootId}\` (to create management groups and assign roles).`,
+    '',
+    '## 3. Run discovery and the readiness check',
+    '',
+    '```bash',
+    `pwsh ./bootstrap-broker.ps1 -ConfigPath ${dir}/lz-config.json -Phase discovery`,
+    '```',
+    '',
+    'This is read-only. It produces `tenant-readiness-report.md`. Resolve every **Fail** before continuing;',
+    '**Warning** entries are judgement calls with remediation guidance attached.',
+    '',
+    '## 4. Bootstrap',
+    '',
+    '```bash',
+    `pwsh ./bootstrap-broker.ps1 -ConfigPath ${dir}/lz-config.json`,
+    '```',
+    '',
+    'Idempotent — safe to re-run after fixing a failure. Progress is checkpointed, so a re-run resumes',
+    'rather than repeating completed steps. It creates the app registrations and federated credentials,',
+    `the private repository \`${cfg.github.ownerName}/${cfg.github.repositoryName}\`, branch protection,`,
+    'environments, variables, RBAC assignments' + (cfg.backend.type === 'hcp-terraform' ? ', and the Terraform Cloud workspaces.' : ', and the state storage account.'),
+    '',
+    'Pass `--rollback` to print the exact commands that reverse what it created.',
+    '',
+    '## 5. Scaffold',
+    '',
+    '```bash',
+    `pwsh ./scaffold-copy.ps1 -ConfigPath ${dir}/lz-config.json -DryRun`,
+    '```',
+    '',
+    'Review the file inventory, then re-run without `-DryRun` and add `-AutoPush` when you are satisfied.',
+    '',
+    '## 6. Deploy',
+    '',
+    'Open a pull request in the generated repository. `terraform-plan` runs against it with the read-only',
+    'plan identity. Merging triggers `terraform-apply`, which runs per layer in dependency order:',
+    '',
+    '```',
+    'global → platform-connectivity → platform-management → workloads-prod → sandbox',
+    '```',
+    '',
+    cfg.deploymentStrategy.mode === 'brownfield'
+      ? md('## Brownfield note', '',
+          'Run the `brownfield-discovery` workflow before the first plan. It is read-only and produces',
+          '`brownfield-assessment.md` plus import blocks for review. The destroy-protection gate fails any',
+          'plan containing a destroy or replace action unless the pull request carries the `approved-destroy` label.')
+      : '',
+    '',
+    '## Before you trust this in production',
+    '',
+    'As of factory v0.1.0 the release gates in `factory-version.json` are not all met — in particular the',
+    'pipeline has no recorded successful end-to-end run. Treat the first deployment as a verification',
+    'exercise, not a production cutover.',
+    ''
+  );
+}
+
+/* ---------------------------------------------------------------------
+ * Save / load draft
+ * ------------------------------------------------------------------- */
+
+function saveDraft(silent) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ config, defaultTagRows }));
+    if (!silent) toast('Draft saved in this browser.');
+  } catch (e) {
+    if (!silent) toast('Could not save the draft: ' + e.message, 'bad');
+  }
+}
+
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.config) return false;
+    adoptConfig(parsed.config, parsed.defaultTagRows);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Merge a loaded config over the defaults so a config from an older factory
+ *  version does not lose keys added since. */
+function mergeDefaults(target, source) {
+  for (const [k, v] of Object.entries(source || {})) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && target[k] && typeof target[k] === 'object' && !Array.isArray(target[k])) {
+      mergeDefaults(target[k], v);
+    } else if (v !== undefined) {
+      target[k] = v;
+    }
+  }
+  return target;
+}
+
+function adoptConfig(loaded, tagRows) {
+  const base = defaultConfig();
+  config = mergeDefaults(base, loaded);
+  config.schemaVersion = SCHEMA_VERSION;
+  config.factoryVersion = FACTORY_VERSION;
+
+  if (Array.isArray(tagRows) && tagRows.length) {
+    defaultTagRows = tagRows;
+  } else if (loaded.naming && loaded.naming.defaultTags) {
+    defaultTagRows = Object.entries(loaded.naming.defaultTags).map(([k, v]) => ({ k, v }));
+  }
+
+  rebind();
+}
+
+function rebind() {
+  for (const el of $$('[data-path]')) writeControl(el, getPath(config, el.dataset.path));
+  for (const el of $$('[data-set]')) {
+    const cur = getPath(config, el.dataset.set) || [];
+    el.checked = cur.includes(el.value);
+  }
+  buildCheckGroup('defenderPlans', DEFENDER_PLANS, 'security.defender.plans');
+  buildCheckGroup('sentinelConnectors', SENTINEL_CONNECTORS, 'security.sentinel.dataConnectors');
+  buildCheckGroup('complianceFrameworks', COMPLIANCE_FRAMEWORKS, 'governance.complianceFrameworks');
+  renderAllRepeaters();
+  onChange(null);
+}
+
+function handleFileLoad(file) {
+  const reader = new FileReader();
+  reader.onerror = () => toast('Could not read that file.', 'bad');
+  reader.onload = () => {
+    let parsed;
+    try {
+      parsed = JSON.parse(String(reader.result));
+    } catch (e) {
+      toast('That file is not valid JSON.', 'bad');
+      return;
+    }
+    if (!parsed.organization || !parsed.azure) {
+      toast('That does not look like an lz-config.json.', 'bad');
+      return;
+    }
+    if (parsed.schemaVersion && parsed.schemaVersion !== SCHEMA_VERSION) {
+      toast(`Loaded a schema ${parsed.schemaVersion} config into a ${SCHEMA_VERSION} wizard — review every step.`, 'warn');
+    } else {
+      toast('Configuration loaded.');
+    }
+    adoptConfig(parsed, null);
+    goto(0);
+  };
+  reader.readAsText(file);
+}
+
+/* ---------------------------------------------------------------------
+ * Init
+ * ------------------------------------------------------------------- */
+
+function init() {
+  $('#factoryVersionBadge').textContent = 'v' + FACTORY_VERSION;
+
+  buildRegionDatalist();
+  buildStepNav();
+  bindPathControls();
+  bindSetControls();
+  buildCheckGroup('defenderPlans', DEFENDER_PLANS, 'security.defender.plans');
+  buildCheckGroup('sentinelConnectors', SENTINEL_CONNECTORS, 'security.sentinel.dataConnectors');
+  buildCheckGroup('complianceFrameworks', COMPLIANCE_FRAMEWORKS, 'governance.complianceFrameworks');
+  renderAllRepeaters();
+
+  // Track whether the user has hand-edited the repo name, so the derived
+  // default stops overwriting it.
+  $('#gh_repositoryName').addEventListener('input', function () { this.dataset.touched = '1'; });
+
+  $('#btnPrev').addEventListener('click', () => goto(currentStep - 1));
+  $('#btnNext').addEventListener('click', () => goto(currentStep + 1));
+  $('#btnSave').addEventListener('click', () => saveDraft(false));
+  $('#btnLoad').addEventListener('click', () => $('#fileLoad').click());
+  $('#fileLoad').addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) handleFileLoad(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('#btnExport').addEventListener('click', () => {
+    const { errors } = validate();
+    if (errors.length) {
+      goto(steps.findIndex((s) => s.key === 'review'));
+      toast(`${errors.length} blocking issue${errors.length > 1 ? 's' : ''} must be resolved first.`, 'bad');
+      return;
+    }
+    goto(steps.findIndex((s) => s.key === 'review'));
+    toast('Download each artifact below.');
+  });
+  $('#btnCopyJson').addEventListener('click', () => {
+    const text = JSON.stringify(buildConfig(), null, 2);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        () => toast('Configuration copied.'),
+        () => selectPreview()
+      );
+    } else {
+      selectPreview();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.altKey && e.key === 'ArrowRight') { goto(currentStep + 1); e.preventDefault(); }
+    if (e.altKey && e.key === 'ArrowLeft') { goto(currentStep - 1); e.preventDefault(); }
+  });
+
+  // Autosave so a closed tab does not lose an hour of input.
+  setInterval(() => saveDraft(true), 15000);
+  window.addEventListener('beforeunload', () => saveDraft(true));
+
+  const restored = loadDraft();
+  onChange(null);
+  goto(0);
+  if (restored) toast('Restored your saved draft.');
+}
+
+function selectPreview() {
+  const pre = $('#jsonPreview');
+  const range = document.createRange();
+  range.selectNodeContents(pre);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  toast('Selected — press Ctrl+C to copy.', 'warn');
+}
+
+document.addEventListener('DOMContentLoaded', init);

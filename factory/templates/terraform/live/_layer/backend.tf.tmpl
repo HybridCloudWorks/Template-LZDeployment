@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Backend for the "{{FACTORY-RAW:layer}}" layer.
+#
+# GENERATED FILE. Do not hand-edit.
+#
+# Each layer keeps an isolated state file. Sharing state across layers is the
+# single most common way a landing zone becomes unrecoverable: a failure in one
+# layer then locks or corrupts every other layer's state.
+# ─────────────────────────────────────────────────────────────────────────────
+
+terraform {
+  required_version = ">= 1.9.0"
+
+#{{IF computed.backendIsHcp}}
+  cloud {
+    organization = {{FACTORY:backend.hcpTerraform.organization}}
+
+    workspaces {
+      name = "{{FACTORY-RAW:computed.workspacePrefix}}-{{FACTORY-RAW:layer}}"
+    }
+  }
+#{{ELSE}}
+  backend "azurerm" {
+    resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
+    storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
+    container_name       = {{FACTORY:backend.azurerm.containerName}}
+    key                  = "{{FACTORY-RAW:layer}}.tfstate"
+    use_azuread_auth     = {{FACTORY-BOOL:backend.azurerm.useAzureAdAuth}}
+  }
+#{{ENDIF}}
+}

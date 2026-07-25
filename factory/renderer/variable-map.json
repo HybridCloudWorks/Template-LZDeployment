@@ -1,0 +1,102 @@
+{
+  "$comment": "Declares the correspondence between configuration keys and the Terraform variables each layer consumes. Test-LzSchemaDrift validates this in both directions: a mapped config key with no matching Terraform variable would silently do nothing, and a required Terraform variable that nothing feeds would stall apply waiting for input. This is the mechanism that prevents the wizard/Terraform divergence recorded in TODO.md, where the generator's 47 policy toggles were never reconciled against the policy-baseline module.",
+
+  "mapVersion": "1.1.0",
+  "targetSchemaVersion": "1.0.0",
+
+  "$pathConventions": {
+    "plain": "A dotted path into lz-config.json, e.g. azure.primaryRegion.",
+    "computed.*": "A value derived by the renderer rather than stored in the config. Exempt from the schema-existence check.",
+    "literal:*": "A constant, or a string the template composes from several config values, supplied by the manifest rather than read from one key. Exempt from the schema-existence check."
+  },
+
+  "layers": {
+    "global": {
+      "variablesFile": "terraform/live/global/variables.tf",
+      "variables": {
+        "org_prefix": "organization.companyShortName",
+        "management_subscription_id": "azure.subscriptions.management",
+        "identity_subscription_id": "azure.subscriptions.identity",
+        "connectivity_subscription_id": "azure.subscriptions.connectivity",
+        "workload_prod_subscription_id": "azure.subscriptions.workloadProd",
+        "workload_nonprod_subscription_id": "azure.subscriptions.workloadNonProd",
+        "sandbox_subscription_id": "azure.subscriptions.sandbox",
+        "allowed_locations": "azure.allowedLocations"
+      }
+    },
+
+    "platform-connectivity": {
+      "variablesFile": "terraform/live/platform-connectivity/variables.tf",
+      "$comment": "management_ip_ranges and log_analytics_workspace_id are deliberately unmapped and surface as Info findings. The schema has no key for operator source ranges, and the workspace ID is owned by platform-management, which keeps separate state. Both are documented at their declaration.",
+      "variables": {
+        "connectivity_subscription_id": "azure.subscriptions.connectivity",
+        "primary_region": "azure.primaryRegion",
+        "primary_region_code": "azure.primaryRegionCode",
+        "dr_region": "azure.drRegion",
+        "dr_region_code": "azure.drRegionCode",
+        "primary_hub_address_space": "connectivity.hubSpoke.primaryHubAddressSpace",
+        "dr_hub_address_space": "connectivity.hubSpoke.drHubAddressSpace",
+        "firewall_type": "connectivity.firewall.type",
+        "azfw_tier": "connectivity.firewall.azfwTier",
+        "firewall_threat_intel_mode": "connectivity.firewall.threatIntelligenceMode",
+        "primary_nva_trust_ip": "connectivity.firewall.nvaTrustIpPrimary",
+        "dr_nva_trust_ip": "connectivity.firewall.nvaTrustIpDr",
+        "deploy_bastion": "connectivity.bastion.enabled",
+        "deploy_dns": "connectivity.privateDns.enabled",
+        "primary_availability_zones": "connectivity.hubSpoke.availabilityZones",
+        "dr_availability_zones": "connectivity.hubSpoke.availabilityZones",
+        "default_tags": "naming.defaultTags"
+      }
+    },
+
+    "platform-management": {
+      "variablesFile": "terraform/live/platform-management/variables.tf",
+      "variables": {
+        "management_subscription_id": "azure.subscriptions.management",
+        "sandbox_subscription_id": "azure.subscriptions.sandbox",
+        "primary_region": "azure.primaryRegion",
+        "primary_region_code": "azure.primaryRegionCode",
+        "dr_region": "azure.drRegion",
+        "dr_region_code": "azure.drRegionCode",
+        "default_tags": "naming.defaultTags"
+      }
+    },
+
+    "workloads-prod": {
+      "variablesFile": "terraform/live/workloads-prod/variables.tf",
+      "$comment": "The three state_* variables feed the azurerm form of the connectivity remote-state read. Under HCP Terraform that read is addressed by organization and workspace and these are unused, which is why none of them is required.",
+      "variables": {
+        "workload_prod_subscription_id": "azure.subscriptions.workloadProd",
+        "state_resource_group_name": "backend.azurerm.resourceGroupName",
+        "state_storage_account_name": "backend.azurerm.storageAccountName",
+        "state_container_name": "backend.azurerm.containerName",
+        "primary_region": "azure.primaryRegion",
+        "primary_region_code": "azure.primaryRegionCode",
+        "dr_region": "azure.drRegion",
+        "dr_region_code": "azure.drRegionCode",
+        "primary_spoke_address_space": "connectivity.hubSpoke.primarySpokeAddressSpace",
+        "dr_spoke_address_space": "connectivity.hubSpoke.drSpokeAddressSpace",
+        "default_tags": "naming.defaultTags"
+      }
+    },
+
+    "sandbox": {
+      "variablesFile": "terraform/live/sandbox/variables.tf",
+      "$comment": "create_sandbox_rg, resource_group_name and sandbox_tags are composed by the template from several config values rather than read from one key each, so they map to literal: rather than to a path that does not exist.",
+      "variables": {
+        "create_sandbox_rg": "literal:true",
+        "resource_group_name": "literal:template-derived",
+        "location": "azure.primaryRegion",
+        "sandbox_tags": "literal:template-derived"
+      }
+    }
+  },
+
+  "$pendingLayers": {
+    "$comment": "Layers Get-LzActiveLayers can select for which no source exists under terraform/live. This is not a promotion gap stage 6 overlooked — there is nothing to promote. Guard G21 refuses to render a configuration that selects one, so the failure is an explicit refusal rather than a layer directory containing only a backend.tf that plans zero resources. Implementing either means writing the Terraform first, then promoting it here.",
+    "pending": [
+      "platform-identity",
+      "workloads-nonprod"
+    ]
+  }
+}

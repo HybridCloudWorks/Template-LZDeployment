@@ -1,0 +1,124 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Platform management layer — backup baseline and platform automation.
+#
+# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
+# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+# ─────────────────────────────────────────────────────────────────────────────
+
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.2"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+  subscription_id = var.management_subscription_id
+}
+
+locals {
+  common_tags = merge(var.default_tags, {
+    layer = "platform-management"
+  })
+}
+
+#{{IF security.backup.enabled}}
+module "backup_primary" {
+  source = "../../modules/backup-baseline"
+
+  region                  = var.primary_region
+  region_code             = var.primary_region_code
+  environment             = "prod"
+  storage_redundancy      = {{FACTORY:computed.backupRedundancy}}
+  backup_vault_redundancy = {{FACTORY:computed.backupRedundancy}}
+  tags                    = local.common_tags
+}
+
+#{{IF computed.hasDrRegion}}
+module "backup_dr" {
+  source = "../../modules/backup-baseline"
+
+  region                  = var.dr_region
+  region_code             = var.dr_region_code
+  environment             = "prod"
+  storage_redundancy      = {{FACTORY:computed.backupRedundancy}}
+  backup_vault_redundancy = {{FACTORY:computed.backupRedundancy}}
+  tags                    = local.common_tags
+}
+#{{ENDIF}}
+#{{ENDIF}}
+
+#{{IF defined azure.subscriptions.sandbox}}
+# ── Sandbox cleanup automation ───────────────────────────────────────────────
+# Emitted only when a sandbox subscription exists. Without one the runbook
+# would be scheduled against an empty subscription ID and fail on every run,
+# producing a daily automation failure nobody can act on.
+
+resource "azurerm_resource_group" "automation" {
+  name     = "rg-automation-${var.primary_region_code}-prod-01"
+  location = var.primary_region
+  tags     = local.common_tags
+}
+
+resource "azurerm_automation_account" "main" {
+  name                = "aa-platform-${var.primary_region_code}-prod-01"
+  resource_group_name = azurerm_resource_group.automation.name
+  location            = azurerm_resource_group.automation.location
+  sku_name            = "Basic"
+  tags                = local.common_tags
+
+  identity {
+    type = "SystemAssigned"
+  }
+}
+
+resource "azurerm_automation_runbook" "sandbox_cleanup" {
+  name                    = "Cleanup-ExpiredSandboxResources"
+  resource_group_name     = azurerm_resource_group.automation.name
+  automation_account_name = azurerm_automation_account.main.name
+  location                = azurerm_resource_group.automation.location
+  runbook_type            = "PowerShell"
+  log_verbose             = true
+  log_progress            = true
+  description             = "Deletes sandbox resources with expiry_date older than 30 days"
+
+  content = file("${path.module}/../../scripts/Cleanup-ExpiredSandboxResources.ps1")
+
+  tags = local.common_tags
+}
+
+resource "azurerm_automation_schedule" "sandbox_cleanup_daily" {
+  name                    = "Daily-Sandbox-Cleanup"
+  resource_group_name     = azurerm_resource_group.automation.name
+  automation_account_name = azurerm_automation_account.main.name
+  frequency               = "Day"
+  interval                = 1
+  timezone                = "UTC"
+  description             = "Daily sandbox cleanup"
+
+  # Azure rejects a start_time in the past, so a literal date baked into the
+  # template expires the moment the factory ships. Derived at plan time and
+  # then ignored, because otherwise every subsequent plan shows a diff on a
+  # value that only matters once.
+  start_time = timeadd(plantimestamp(), "1h")
+
+  lifecycle {
+    ignore_changes = [start_time]
+  }
+}
+
+resource "azurerm_automation_job_schedule" "sandbox_cleanup" {
+  resource_group_name     = azurerm_resource_group.automation.name
+  automation_account_name = azurerm_automation_account.main.name
+  runbook_name            = azurerm_automation_runbook.sandbox_cleanup.name
+  schedule_name           = azurerm_automation_schedule.sandbox_cleanup_daily.name
+
+  parameters = {
+    sandbox_subscription_id = var.sandbox_subscription_id
+    dry_run                 = "false"
+  }
+}
+#{{ENDIF}}
