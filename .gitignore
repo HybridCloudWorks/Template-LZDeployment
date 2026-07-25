@@ -48,3 +48,6 @@ generated-output/
 
 # Landing Zone Factory test output. Regenerated on every run.
 factory/tests/.out/
+
+# Per-session offsets for the agent-report Stop hook (local runtime state)
+.claude/.agent-report-state/
