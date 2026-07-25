@@ -1,0 +1,33 @@
+# GENERATED FILE — Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}
+name: Terraform Policy Checks
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-policy-checks.yml'
+
+permissions: {}
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Reject disabled policy enforcement
+        shell: bash
+        run: |
+          if git diff --unified=0 origin/{{FACTORY-RAW:computed.defaultBranch}}...HEAD -- terraform/ | grep -E '^\+.*effect[[:space:]]*=[[:space:]]*"(Disabled|Audit)"'; then
+            echo "::error::Policy enforcement downgrade requires explicit architecture review."
+            exit 1
+          fi
+      - name: Reject floating module sources
+        shell: bash
+        run: |
+          if grep -RhnE 'source[[:space:]]*=[[:space:]]*"git::[^"]+"' terraform --include='*.tf' | grep -vE '\?ref='; then
+            echo "::error::Git module source is missing an immutable ref."
+            exit 1
+          fi
