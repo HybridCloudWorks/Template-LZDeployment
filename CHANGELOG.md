@@ -5,6 +5,18 @@
 
 ---
 
+## Stage 7 workflow corpus — prepared (2026-07-25)
+
+- Added generated plan, protected-environment apply, credential-free
+  format/validate, action-pinning, security, policy, and OIDC verification
+  workflows.
+- Added fork-safe cloud-plan behavior and Stage 7 renderer assertions.
+- Registered all generated workflows in manifest version 1.2.0.
+- Centralized the workflow Terraform version through the factory version
+  contract and advanced the pre-release to 0.2.0.
+- Did not trigger workflows, apply Terraform, mutate Azure/Entra, or change
+  branch protection.
+
 ## Pre-Stage 7 readiness alignment (2026-07-25)
 
 - Reviewed the implemented Stage 1–6 factory contract, code paths, tests,
