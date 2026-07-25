@@ -121,6 +121,7 @@ function New-LzRenderContext {
     # Layers are emitted per environment; the list drives both the workflow
     # matrix and the workspace naming, so it must be computed once.
     $map['computed.layers'] = Get-LzActiveLayers -Config $Config
+    $map['computed.layersCsv'] = (@($map['computed.layers']) -join ',')
 
     $map['computed.backendIsHcp'] = ($Config.backend.type -eq 'hcp-terraform')
     $map['computed.backendIsAzurerm'] = ($Config.backend.type -eq 'azurerm')
