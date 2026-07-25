@@ -27,6 +27,8 @@ concurrency:
 
 jobs:
   plan:
+    # Forks run terraform-fmt-validate without receiving cloud credentials.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     name: Plan (${{ matrix.layer }})
     runs-on: ubuntu-latest
     permissions:
