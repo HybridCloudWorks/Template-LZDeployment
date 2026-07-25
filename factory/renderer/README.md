@@ -203,6 +203,7 @@ Values derived once, centrally, so no template can invent its own:
 | Path | Notes |
 |---|---|
 | `computed.layers` | Active layers. Drives per-layer rendering and the workflow matrix. |
+| `computed.layersCsv` | Shell-safe allowlist used to reject an unknown apply layer. |
 | `computed.allEnvironments` | Platform + application environments |
 | `computed.repositorySlug` | `owner/repo` |
 | `computed.oidcSubjectPullRequest` | Plan-identity subject |
@@ -287,4 +288,7 @@ initialised cleanly and planned zero resources, which reads as "nothing to do"
 rather than "not implemented". `variable-map.json` keeps both in
 `$pendingLayers` so the gap stays visible.
 
-Stage 7 promotes `.github/workflows/` the same way.
+Stage 7 emits plan, protected-environment apply, credential-free format/validate,
+action pinning, security, policy, and OIDC verification workflows. Forked PRs
+run validation without cloud credentials; the plan job is limited to branches in
+the generated repository.
