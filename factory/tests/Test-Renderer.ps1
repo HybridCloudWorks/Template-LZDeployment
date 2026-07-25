@@ -229,5 +229,60 @@ if (Test-Path $badOut) { Remove-Item $badOut -Recurse -Force }
 ok 'blocked config throws'         (throws { Invoke-LzRender -ConfigPath $badCfgPath -OutputDirectory $badOut -Quiet })
 ok 'nothing written when blocked'  (-not (Test-Path (Join-Path $badOut 'README.md')))
 
+Write-Host "`n== 17. Stage 7 generated workflow corpus ==" -ForegroundColor Cyan
+$workflowRoot = Join-Path $out '.github/workflows'
+$expectedWorkflows = @(
+    'terraform-plan.yml',
+    'terraform-fmt-validate.yml',
+    'terraform-apply.yml',
+    'action-pinning-policy.yml',
+    'security-scan.yml',
+    'terraform-policy-checks.yml',
+    'azure-auth-test.yml'
+)
+foreach ($name in $expectedWorkflows) {
+    ok "workflow emitted: $name" (Test-Path (Join-Path $workflowRoot $name))
+}
+
+$workflowText = @{}
+foreach ($name in $expectedWorkflows) {
+    $workflowText[$name] = Get-Content (Join-Path $workflowRoot $name) -Raw
+    ok "$name has locked root permissions" ($workflowText[$name] -match '(?m)^permissions: \{\} -ForegroundColor $(if($script:fail){'Red'}else{'Green'})
+exit $(if ($script:fail) { 1 } else { 0 })
+)
+    ok "$name excludes pull_request_target" ($workflowText[$name] -notmatch 'pull_request_target')
+    ok "$name has no unresolved factory tokens" ($workflowText[$name] -notmatch '(?<!\$)\{\{')
+}
+
+$externalUses = [regex]::Matches(
+    (($workflowText.Values -join "`n")),
+    '(?m)^\s*uses:\s*(?!\./|docker://)([^@\s]+)@([^\s#]+)'
+)
+ok 'all external actions use full SHA pins' (
+    @($externalUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40} -ForegroundColor $(if($script:fail){'Red'}else{'Green'})
+exit $(if ($script:fail) { 1 } else { 0 })
+ }).Count -eq 0
+)
+
+ok 'forks receive credential-free validation' (
+    $workflowText['terraform-fmt-validate.yml'] -match 'pull_request' -and
+    $workflowText['terraform-fmt-validate.yml'] -notmatch 'id-token:\s*write'
+)
+ok 'cloud plan skips forked pull requests' (
+    $workflowText['terraform-plan.yml'] -match 'head\.repo\.full_name == github\.repository'
+)
+ok 'apply binds protected environment' (
+    $workflowText['terraform-apply.yml'] -match '(?m)^\s*environment:\s*\$\{\{ inputs\.environment \}\}'
+)
+ok 'apply uses apply identity variable' (
+    $workflowText['terraform-apply.yml'] -match 'AZURE_APPLY_CLIENT_ID'
+)
+ok 'apply does not contain plan identity' (
+    $workflowText['terraform-apply.yml'] -notmatch 'AZURE_PLAN_CLIENT_ID'
+)
+ok 'apply refuses destructive plan' (
+    $workflowText['terraform-apply.yml'] -match 'Refuse destructive apply'
+)
+
 Write-Host "`n$script:pass passed, $script:fail failed`n" -ForegroundColor $(if($script:fail){'Red'}else{'Green'})
 exit $(if ($script:fail) { 1 } else { 0 })
