@@ -24,7 +24,7 @@ const SCHEMA_VERSION = '1.0.0';
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
  * so the value is mirrored here and a factory CI check asserts the two match. */
-const FACTORY_VERSION = '0.1.0';
+const FACTORY_VERSION = '0.2.0';
 
 const DRAFT_KEY = 'alz-factory-draft-v1';
 
@@ -197,7 +197,7 @@ function defaultConfig() {
       model: 'hub-spoke',
       hubSpoke: {
         primaryHubAddressSpace: '10.0.0.0/16', drHubAddressSpace: '10.10.0.0/16',
-        primarySpokeAddressSpace: '10.1.0.0/16', drSpokeAddressSpace: '10.11.0.0/16',
+        primarySpokeAddressSpace: '10.2.0.0/16', drSpokeAddressSpace: '10.11.0.0/16',
         availabilityZones: ['1', '2', '3']
       },
       firewall: {
@@ -1793,7 +1793,7 @@ function nextStepsMarkdown(cfg) {
     '',
     '## Before you trust this in production',
     '',
-    'As of factory v0.1.0 the release gates in `factory-version.json` are not all met — in particular the',
+    'As of factory v0.2.0 the release gates in `factory-version.json` are not all met — in particular the',
     'pipeline has no recorded successful end-to-end run. Treat the first deployment as a verification',
     'exercise, not a production cutover.',
     ''
