@@ -1,6 +1,6 @@
 # Stage 7 Readiness — Workflow Corpus
 
-**Status:** Ready to begin after the decisions in §4 are confirmed  
+**Status:** Approved to begin; decisions in §4 confirmed 2026-07-25  
 **Prepared:** 2026-07-25  
 **Baseline:** `main` at `d219174`  
 **Scope:** Promote the generated-repository workflow corpus. Do not change the
@@ -54,16 +54,18 @@ workflow corpus around it; it does not start from an empty workflow directory.
 These implement controls SR1–SR8, OI1, AR3, SC2, TR1, and GH1 from the factory
 risk register.
 
-## 4. Decisions required before implementation
+## 4. Confirmed implementation decisions
 
-| Decision | Recommended default | Why it must be explicit |
+| Decision | Confirmed choice | Implementation consequence |
 |---|---|---|
 | Workflow set for v0.1 | Plan, apply, format/validate, security scan, policy checks, action pinning, and auth test | The design lists fifteen eventual workflows, while the live repo currently has ten |
 | Forked PR behavior | Run credential-free validation; skip cloud plan with an explicit neutral summary | Forks do not receive secrets, and untrusted code must not receive a cloud token |
 | Destroy approval | Require both the `approved-destroy` label and a protected environment/reviewer for apply | A label alone is not a sufficient production authorization boundary |
 | Workflow source | Treat the accepted factory controls as authoritative; port live workflow behavior selectively | Several live workflows predate the factory identity/backend/layer model |
 | Terraform version | Derive from `factory-version.json` through one computed value | Prevent workflow/toolchain drift |
-| HCP token handling | Decide whether generated repos use a workspace token/variable or dynamic credentials | The architecture prefers no static CI credential, but the proof template uses `TF_API_TOKEN` |
+| HCP token handling | Prefer HCP workload identity/dynamic credentials; do not introduce a new static CI token | Replace or isolate the proof template's `TF_API_TOKEN` path and document any unavoidable operator-provided token |
+
+These choices were approved by the repository owner on 2026-07-25.
 
 The non-production workload/schema decision in `HANDOFF.md` §1.3 is independent
 of workflow promotion. Stage 7 may proceed for the five implemented layers, but
