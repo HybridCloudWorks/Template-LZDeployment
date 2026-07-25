@@ -90,7 +90,7 @@ function Invoke-LzRender {
     if ($guards.Violations.Count -eq 0) { Write-LzRenderOK 'All guards passed.' }
 
     # ── Context ──────────────────────────────────────────────────────────────
-    $context = New-LzRenderContext -Config $config -Discovery $discovery
+    $context = New-LzRenderContext -Config $config -Discovery $discovery -FactoryVersion $factoryVersion
     Write-LzRenderOK "Render context built: $($context.Keys.Count) resolvable paths."
     Write-LzRenderInfo "Layers: $(($context.Tokens['computed.layers']) -join ', ')"
 
