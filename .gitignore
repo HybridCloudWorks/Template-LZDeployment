@@ -45,3 +45,6 @@ terraform.rc
 # Landing Zone Factory — per-company output. Never commit: contains tenant and
 # subscription identifiers, and is regenerated from the wizard on demand.
 generated-output/
+
+# Per-session offsets for the agent-report Stop hook (local runtime state)
+.claude/.agent-report-state/
