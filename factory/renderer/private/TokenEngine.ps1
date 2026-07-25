@@ -96,11 +96,22 @@ function New-LzRenderContext {
     $map['computed.repositoryUrl'] = "https://github.com/$slug"
     $map['computed.defaultBranch'] = $Config.github.defaultBranch
     $map['computed.generatedAt'] = $Config.generatedAt
+
+    # Date-only form of generatedAt. Terraform variables that carry an ISO date
+    # (the sandbox lifecycle tags, for one) validate against ^\d{4}-\d{2}-\d{2}$
+    # and reject a full timestamp, so the truncation happens once here rather
+    # than in each template that needs it.
+    $map['computed.generatedDate'] = ([string]$Config.generatedAt) -replace 'T.*$', ''
     $map['computed.factoryVersion'] = $Config.factoryVersion
     $map['computed.schemaVersion'] = $Config.schemaVersion
 
-    $map['computed.hasDrRegion'] = [bool]$Config.azure.drRegion
-    $map['computed.regionCount'] = if ($Config.azure.drRegion) { 2 } else { 1 }
+    # drRegion is optional, and an exported configuration STRIPS optional keys
+    # rather than emitting them empty. Under StrictMode a bare property read
+    # therefore throws on every single-region landing zone, which is why the
+    # existence check comes first rather than relying on $null being falsy.
+    $hasDr = (Test-LzHasProperty $Config.azure 'drRegion') -and $Config.azure.drRegion
+    $map['computed.hasDrRegion'] = [bool]$hasDr
+    $map['computed.regionCount'] = if ($hasDr) { 2 } else { 1 }
 
     $platform = @($Config.environments.platform)
     $application = @($Config.environments.application)
@@ -123,6 +134,12 @@ function New-LzRenderContext {
     $map['computed.oidcSubjectDefaultBranch'] = "repo:${slug}:ref:refs/heads/$($Config.github.defaultBranch)"
     $map['computed.oidcIssuer'] = 'https://token.actions.githubusercontent.com'
     $map['computed.oidcAudience'] = 'api://AzureADTokenExchange'
+
+    # Backup redundancy is a boolean in the configuration and a provider enum in
+    # Terraform. Translating here keeps the mapping in one place: a template that
+    # emitted the boolean would produce `storage_redundancy = true`, which the
+    # provider rejects only at apply.
+    $map['computed.backupRedundancy'] = if ($Config.security.backup.geoRedundant) { 'GeoRedundant' } else { 'LocallyRedundant' }
 
     # Tag map rendered into every layer's default_tags.
     $map['computed.defaultTags'] = $Config.naming.defaultTags

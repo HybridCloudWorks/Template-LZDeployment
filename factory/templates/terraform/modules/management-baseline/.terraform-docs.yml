@@ -1,0 +1,20 @@
+---
+formatter: markdown table
+
+header-from: main.tf
+footer-from: ""
+
+sections:
+  inputs: true
+  outputs: true
+  modules: false
+  resources: true
+  providers: true
+  requirements: true
+
+sort:
+  by: required
+  
+output:
+  file: README.md
+  mode: overwrite

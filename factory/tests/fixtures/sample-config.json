@@ -16,7 +16,7 @@
     "useSelfHostedRunners": false },
   "backend": { "type": "hcp-terraform", "hcpTerraform": { "organization": "contoso", "workspacePrefix": "contoso", "executionMode": "remote", "useDynamicProviderCredentials": true, "acknowledgedResourceLimit": true } },
   "deploymentStrategy": { "mode": "greenfield" },
-  "environments": { "platform": ["bootstrap","connectivity","management"], "application": ["dev","prod"], "promotionPath": ["dev","prod"], "approvals": {} },
+  "environments": { "platform": ["bootstrap","connectivity","management"], "application": ["prod"], "promotionPath": ["prod"], "approvals": {} },
   "connectivity": { "model": "hub-spoke",
     "hubSpoke": { "primaryHubAddressSpace": "10.0.0.0/16", "drHubAddressSpace": "10.10.0.0/16", "primarySpokeAddressSpace": "10.1.0.0/16", "drSpokeAddressSpace": "10.11.0.0/16", "availabilityZones": ["1","2","3"] },
     "firewall": { "type": "azfw", "azfwTier": "Standard", "threatIntelligenceMode": "Deny" },

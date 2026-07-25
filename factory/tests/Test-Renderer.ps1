@@ -18,6 +18,13 @@ function errmsg([scriptblock]$sb) { try { & $sb | Out-Null; return '' } catch { 
 $cfg = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 30
 $ctx = New-LzRenderContext -Config $cfg
 
+# Identical to the sample except that it also selects a non-prod application
+# environment, which makes Get-LzActiveLayers select workloads-nonprod — a
+# layer the template corpus has no Terraform for. Kept as its own fixture so
+# the refusal is asserted rather than avoided.
+$cfgNonprod = Get-Content "$PSScriptRoot/fixtures/nonprod-config.json" -Raw | ConvertFrom-Json -Depth 30
+$ctxNonprod = New-LzRenderContext -Config $cfgNonprod
+
 Write-Host "`n== 1. Render context ==" -ForegroundColor Cyan
 ok 'context has resolvable paths'      ($ctx.Keys.Count -gt 100) $ctx.Keys.Count
 ok 'config paths flattened'            ((Get-LzTokenValue -Context $ctx -Path 'organization.companyShortName') -eq 'contoso')
@@ -98,7 +105,7 @@ Write-Host "`n== 9. FOREACH ==" -ForegroundColor Cyan
 $loop = Resolve-LzTemplate -Template "#{{FOREACH l IN computed.layers}}`n- {{FACTORY-RAW:l}}`n#{{ENDFOREACH}}" -Context $ctx
 ok 'loop emits one line per item'  (@($loop -split "`n" | Where-Object { $_ -match '^- ' }).Count -eq $layers.Count) $loop
 ok 'loop variable substituted'     ($loop -match '- global')
-$nested = Resolve-LzTemplate -Template "#{{FOREACH e IN environments.application}}`n#{{IF e == 'prod'}}`nPROD:{{FACTORY-RAW:e}}`n#{{ENDIF}}`n#{{ENDFOREACH}}" -Context $ctx
+$nested = Resolve-LzTemplate -Template "#{{FOREACH e IN environments.application}}`n#{{IF e == 'prod'}}`nPROD:{{FACTORY-RAW:e}}`n#{{ENDIF}}`n#{{ENDFOREACH}}" -Context $ctxNonprod
 ok 'IF nested inside FOREACH'      ($nested -match 'PROD:prod' -and $nested -notmatch 'PROD:dev')
 
 Write-Host "`n== 10. Render guards ==" -ForegroundColor Cyan
@@ -139,6 +146,14 @@ ok 'G16 blocks unknown name token'  ((Test-LzRenderGuards -Config $c -FactoryVer
 
 $c = Clone $cfg; $c.governance.policyAsCodeEngines = @('sentinel'); $c.backend.type = 'azurerm'
 ok 'G19 blocks Sentinel w/o HCP'    ((Test-LzRenderGuards -Config $c -FactoryVersion $fv).Violations.Id -contains 'G19')
+
+# A layer with no Terraform must be refused, not emitted as a directory holding
+# only backend.tf — which initialises cleanly and plans zero resources, and so
+# reads as "nothing to do" rather than "not implemented".
+$gNonprod = Test-LzRenderGuards -Config $cfgNonprod -FactoryVersion $fv
+ok 'G21 blocks unimplemented layer' ($gNonprod.Violations.Id -contains 'G21')
+ok 'G21 names the missing layer'    ((($gNonprod.Violations | Where-Object { $_.Id -eq 'G21' }).Message) -match 'workloads-nonprod')
+ok 'G21 refuses the render'         (throws { Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/nonprod-config.json" -OutputDirectory (Join-Path $PSScriptRoot '.out/g21') -Quiet })
 
 Write-Host "`n== 11. Schema drift detection ==" -ForegroundColor Cyan
 $d = Test-LzSchemaDrift -SchemaPath "$repo/factory/schema/lz-config.schema.json" `
@@ -187,11 +202,14 @@ ok 'README lists layers'           ($readme -match 'terraform/live/global')
 ok 'brownfield section omitted'    ($readme -notmatch '## Brownfield')
 
 $idm = Get-Content (Join-Path $out 'docs/identity-trust-matrix.md') -Raw
-ok 'identity matrix per env'       (($idm | Select-String -Pattern 'sp-contoso-.*-apply' -AllMatches).Matches.Count -eq 5)
+# Derived from the fixture rather than hard-coded, so changing which
+# environments the fixture selects does not require editing an unrelated count.
+$envCount = @($ctx.Tokens['computed.allEnvironments']).Count
+ok 'identity matrix per env'       (($idm | Select-String -Pattern 'sp-contoso-.*-apply' -AllMatches).Matches.Count -eq $envCount)
 # Scope to actual emitted subject rows. The document also contains prose warning
 # against wildcard subjects, which must not be mistaken for one.
 $subjectRows = @($idm -split "`n" | Where-Object { $_ -match '^\| \w+ \| `sp-' })
-ok 'subject rows were emitted'     ($subjectRows.Count -eq 10) $subjectRows.Count
+ok 'subject rows were emitted'     ($subjectRows.Count -eq ($envCount * 2)) $subjectRows.Count
 ok 'no wildcard subjects emitted'  (@($subjectRows | Where-Object { $_ -match '\*' }).Count -eq 0)
 
 $wf = Get-Content (Join-Path $out '.github/workflows/terraform-plan.yml') -Raw

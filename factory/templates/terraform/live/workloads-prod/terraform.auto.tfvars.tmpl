@@ -1,0 +1,32 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Production workload layer — application spokes peered to the platform hubs.
+#
+# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
+# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+# ─────────────────────────────────────────────────────────────────────────────
+
+workload_prod_subscription_id = {{FACTORY:azure.subscriptions.workloadProd}}
+
+#{{IF computed.backendIsAzurerm}}
+# The connectivity layer's outputs are read through its state. Under the
+# azurerm backend that read is addressed by storage account; under HCP
+# Terraform it is addressed by organization and workspace, and these two
+# variables are unused.
+state_resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
+state_storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
+state_container_name       = {{FACTORY:backend.azurerm.containerName}}
+#{{ENDIF}}
+
+primary_region      = {{FACTORY:azure.primaryRegion}}
+primary_region_code = {{FACTORY:azure.primaryRegionCode}}
+#{{IF computed.hasDrRegion}}
+dr_region      = {{FACTORY:azure.drRegion}}
+dr_region_code = {{FACTORY:azure.drRegionCode}}
+#{{ENDIF}}
+
+primary_spoke_address_space = {{FACTORY:connectivity.hubSpoke.primarySpokeAddressSpace}}
+#{{IF computed.hasDrRegion}}
+dr_spoke_address_space = {{FACTORY:connectivity.hubSpoke.drSpokeAddressSpace}}
+#{{ENDIF}}
+
+default_tags = {{FACTORY-MAP:naming.defaultTags}}

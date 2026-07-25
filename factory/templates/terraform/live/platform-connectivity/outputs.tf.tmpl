@@ -1,0 +1,48 @@
+# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
+# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+#
+# The *_hub_details objects are the contract the workload layers read through
+# remote state. Adding a field here is safe; removing or renaming one breaks
+# every spoke layer at plan time.
+
+output "primary_hub_vnet_id" {
+  description = "Primary hub VNet ID"
+  value       = module.hub_primary.hub_vnet_id
+}
+
+output "primary_hub_firewall_ip" {
+  description = "Primary hub firewall private IP"
+  value       = module.hub_primary.firewall_private_ip
+}
+
+output "primary_hub_details" {
+  description = "Primary hub details for spoke deployments"
+  value = {
+    vnet_id             = module.hub_primary.hub_vnet_id
+    vnet_name           = module.hub_primary.hub_vnet_name
+    resource_group_name = module.hub_primary.resource_group_name
+    firewall_private_ip = module.hub_primary.firewall_private_ip
+  }
+}
+
+#{{IF computed.hasDrRegion}}
+output "dr_hub_vnet_id" {
+  description = "DR hub VNet ID"
+  value       = module.hub_dr.hub_vnet_id
+}
+
+output "dr_hub_firewall_ip" {
+  description = "DR hub firewall private IP"
+  value       = module.hub_dr.firewall_private_ip
+}
+
+output "dr_hub_details" {
+  description = "DR hub details for spoke deployments"
+  value = {
+    vnet_id             = module.hub_dr.hub_vnet_id
+    vnet_name           = module.hub_dr.hub_vnet_name
+    resource_group_name = module.hub_dr.resource_group_name
+    firewall_private_ip = module.hub_dr.firewall_private_ip
+  }
+}
+#{{ENDIF}}

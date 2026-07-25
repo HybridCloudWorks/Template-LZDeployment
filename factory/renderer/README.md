@@ -1,4 +1,4 @@
-# Renderer — Stage 5
+# Renderer — Stages 5–6
 
 Turns a validated `lz-config.json` plus the template corpus into a rendered
 landing zone repository.
@@ -207,6 +207,8 @@ Values derived once, centrally, so no template can invent its own:
 | `computed.oidcSubjectPullRequest` | Plan-identity subject |
 | `computed.oidcIssuer` / `computed.oidcAudience` | Federation constants |
 | `computed.hasDrRegion` | Single- vs dual-region |
+| `computed.generatedDate` | `generatedAt` truncated to `YYYY-MM-DD`, for variables that validate an ISO date |
+| `computed.backupRedundancy` | `GeoRedundant` / `LocallyRedundant` — the config's boolean as the provider's enum |
 | `computed.backendIsHcp` / `computed.backendIsAzurerm` | Backend branch |
 | `computed.workspacePrefix` | HCP workspace naming |
 
@@ -230,6 +232,10 @@ here rather than inside templates so each template file stays valid on its own.
   "perLayerFiles": [
     { "source": "terraform/live/_layer/backend.tf.tmpl",
       "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.tf" }
+  ],
+  "directories": [
+    { "source": "terraform/modules", "destination": "terraform/modules",
+      "when": "always", "exclude": ["*/.terraform.lock.hcl"] }
   ]
 }
 ```
@@ -237,6 +243,12 @@ here rather than inside templates so each template file stays valid on its own.
 - `mode: "copy"` emits verbatim. `variables.tf` **must** be copied, never
   templated — it is the contract the drift check validates against.
 - `perLayerFiles` render once per active layer with `layer` bound.
+- `directories` copy a whole tree verbatim. Use this only for content with no
+  per-configuration variation: the module corpus is dozens of static files, and
+  listing each one would add no decision while creating a trap where a newly
+  added `.tf` is silently not shipped. Anything that *does* vary belongs in
+  `files`, where its condition is visible. `exclude` patterns are matched
+  against the path relative to `source`, with forward slashes.
 - `when` uses the same expression grammar as directives.
 
 ---
@@ -258,11 +270,20 @@ PATH.
 
 ## Status
 
-Stage 5 delivers the **engine**. The template corpus in `factory/templates/` is
-currently a proof set that exercises every engine feature end to end — plain and
-typed tokens, conditionals, loops, per-layer expansion, and verbatim copy.
+Stage 5 delivered the **engine**; stage 6 promoted the real Terraform into
+`factory/templates/`. The corpus now emits five live layers — `global`,
+`platform-connectivity`, `platform-management`, `workloads-prod`, `sandbox` —
+plus `terraform/modules/**` and `terraform/scripts/` verbatim. Both a
+dual-region HCP configuration and a single-region azurerm configuration render
+to trees that pass `terraform fmt -check -recursive` and `terraform validate`.
 
-Stages 6–8 grow it into the full corpus by promoting `terraform/` and
-`.github/workflows/` into `factory/templates/`. `variable-map.json` lists the
-layers still pending, so the coverage gap is explicit rather than looking
-complete.
+Two layers `Get-LzActiveLayers` can select — `platform-identity` and
+`workloads-nonprod` — have no Terraform anywhere in the repo, so there is
+nothing to promote. Guard **G21** refuses to render a configuration that selects
+one, reading the implemented-layer list from `factory-version.json`. Before that
+guard, such a layer was emitted as a directory holding only `backend.tf`: it
+initialised cleanly and planned zero resources, which reads as "nothing to do"
+rather than "not implemented". `variable-map.json` keeps both in
+`$pendingLayers` so the gap stays visible.
+
+Stage 7 promotes `.github/workflows/` the same way.

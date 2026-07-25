@@ -1,7 +1,7 @@
 # Landing Zone Factory — Session Handoff
 
 **Last updated:** 2026-07-25 · **Factory version:** 0.1.0 · **Config schema:** 1.0.0
-**Progress:** Stages 1–5 of 13 complete. Stage 6 is next.
+**Progress:** Stages 1–6 of 13 complete. Stage 7 is next.
 
 You are continuing a multi-session build. This document is the single source of
 truth for where the work stopped. Read the *Next steps* section first, then
@@ -23,50 +23,51 @@ Two PRs are open and stacked. Nothing is on `main` yet.
 Merge the stacked PR into `feat/lz-factory-…` first, then #28 into `main` — or
 merge #28 first and retarget this one to `main`. Either order works.
 
-### 1.2 Then: Stage 6 — promote the real Terraform into the template corpus
+### 1.2 Then: Stage 7 — promote `.github/workflows/` into the corpus
 
-This is the next build stage and the highest-value work remaining.
+Stage 6 is done (see §3.5). Stage 7 is the same exercise for the pipeline:
+`.github/workflows/` becomes templates so a generated repository ships its own
+plan/apply workflows rather than the single proof workflow that exists today.
 
-**Goal:** move `terraform/` into `factory/templates/terraform/` as tokenised
-templates, so generated repositories carry the actual module corpus rather than
-the current proof set.
+The identity decision in §5 is the constraint that governs it: a
+`pull_request`-triggered job may only ever assume the Reader `*-plan` identity,
+and an apply job may only ever be reached through `environment:<name>`. No
+subject uses a wildcard, and the tests assert that.
 
-**Concretely:**
+### 1.3 The one decision stage 6 surfaced and did not make
 
-1. For each layer in `terraform/live/` — `platform-connectivity`,
-   `platform-management`, `workloads-prod`, plus `platform-identity` and
-   `sandbox` if kept — copy `variables.tf` into
-   `factory/templates/terraform/live/<layer>/variables.tf` with
-   **`mode: "copy"`** in the manifest. Never templatise a `variables.tf`; it is
-   the contract the drift check validates against.
-2. Write a `terraform.auto.tfvars.tmpl` per layer, following the two that already
-   exist as worked examples (`global`, `platform-connectivity`).
-3. Add each layer to `factory/renderer/variable-map.json` under `layers`, and
-   remove it from `$pendingLayers.pending`. That list exists precisely so the
-   coverage gap stays visible — keep it honest.
-4. Copy `terraform/modules/**` into the corpus. Modules are mostly static; expect
-   `mode: "copy"` for nearly all of them.
-5. Register everything in `factory/renderer/template-manifest.json`.
-6. Run the drift check until clean, then the full suite:
+**The wizard offers non-prod application environments that the Terraform corpus
+cannot build.** `Get-LzActiveLayers` selects `workloads-nonprod` whenever `dev`,
+`test`, or `uat` is chosen, and `platform-identity` whenever an identity
+subscription is supplied — but neither layer exists under `terraform/live/`, so
+there is nothing to promote.
 
-```bash
-pwsh -NoProfile -Command "Import-Module ./factory/renderer/LZFactory.Renderer.psd1 -Force; Test-LzSchemaDrift -SchemaPath ./factory/schema/lz-config.schema.json -MappingPath ./factory/renderer/variable-map.json -TemplateRoot ./factory/templates | Format-List"
-```
+Before stage 6 this produced a layer directory containing only `backend.tf`:
+`terraform init` succeeded, `terraform plan` reported no changes, and the
+operator would reasonably read that as "this layer has nothing to do" rather
+than "this layer does not exist". **Guard G21 now refuses the render instead.**
 
-**Expect drift findings on the first run — that is the point.** The wizard exposes
-options that the Terraform corpus may not implement. Each finding is a real
-decision: implement the variable, or remove the wizard option. Do not silence
-them by deleting map entries.
+Resolving it properly needs a schema change, which is why it was not done
+silently: the corpus has `connectivity.hubSpoke.primarySpokeAddressSpace` and
+`drSpokeAddressSpace` and nothing else, so there is no address space to give a
+non-prod spoke. The options are:
 
-### 1.3 Known work queued behind stage 6
+- add per-environment spoke CIDRs to the schema (a `configSchemaVersion` bump)
+  and author `workloads-nonprod` against them; or
+- remove non-prod application environments from the wizard.
+
+`factory/tests/fixtures/nonprod-config.json` exercises the refusal.
+
+### 1.4 Known work queued behind stage 7
 
 | Priority | Item | Why |
 |---|---|---|
+| High | Decide the non-prod workload layer question | See §1.3 — most real configurations hit it |
 | High | `terraform fmt -recursive terraform/` | 26 files fail the repo's own fmt gate — see §6.1 |
 | High | Add federated credential for `pull_request` subject | Unblocks all CI — see §6.2 |
-| Medium | Wire the 205 tests into a CI workflow | They only run locally today |
-| Medium | Reconcile `org_prefix` in `terraform/live/global/variables.tf` | Still `^[a-z]{2,4}$` — see §6.3 |
-| Later | Stages 7–13 | See §7 |
+| Medium | Wire the 208 tests into a CI workflow | They only run locally today |
+| Medium | Backport the stage-6 fixes to `terraform/live/` | The corpus and the live tree have diverged — see §6.3 |
+| Later | Stages 8–13 | See §7 |
 
 ---
 
@@ -163,9 +164,51 @@ Key invariants — **do not break these**:
 - Use `defined path` for optional keys — an exported config *strips* them rather
   than emitting empty. Bare paths stay strict so typos fail loudly.
 
+### 3.5 Stage 6 — the real Terraform corpus
+
+`factory/templates/terraform/` now carries five live layers and the whole module
+corpus, so a generated repository is deployable rather than illustrative.
+
+| Layer | Emitted when | Form |
+|---|---|---|
+| `global` | always | `main.tf`/`outputs.tf` copied; tfvars rendered |
+| `platform-connectivity` | `connectivity.model != 'none'` | rendered — DR hub and hub-to-hub peering are conditional |
+| `platform-management` | always | rendered — backup and sandbox-cleanup sections are independently conditional |
+| `workloads-prod` | `prod` selected | rendered — the connectivity remote-state read takes the azurerm or HCP form |
+| `sandbox` | sandbox environment **and** sandbox subscription | copied; tfvars rendered |
+
+`terraform/modules/**` and `terraform/scripts/` are copied verbatim through a new
+`directories` section in the manifest. A directory is the right unit for content
+with no per-configuration variation: listing sixty static `.tf` files
+individually would add no decision while creating a trap where a newly added
+file is silently not shipped. Committed `.terraform.lock.hcl` files under
+`modules/` are excluded — a dependency lock only means anything at the root
+module, and shipping those would mislead anyone who trusted them.
+
+Both rendered trees pass `terraform fmt -check -recursive` and every layer
+passes `terraform validate`.
+
+**Reconciliations the promotion forced.** Each was a real defect, not a
+formatting change:
+
+| What | Was | Now |
+|---|---|---|
+| `firewall_threat_intel_mode` | `hub-network` implemented threat intelligence; the connectivity layer never plumbed a variable to it, so the wizard's choice landed in a tfvars entry Terraform ignored | Declared and passed through |
+| `location` validation in the sandbox layer **and** module | `^[a-z]+$` — rejects `eastus2`, `westus3`, every numbered region the schema allows | `^[a-z0-9]+$` |
+| `azfw_tier` | Unvalidated; the schema allows `Basic` | Validated against the schema's three values |
+| Remote-state container | The layer read a per-layer container; `backend.tf` writes one shared container keyed by layer | Reads `<container>/platform-connectivity.tfstate` |
+| Automation schedule `start_time` | Literal `2026-06-01T02:00:00Z` — Azure rejects a past start time, so it expired the day it was written | `timeadd(plantimestamp(), "1h")` with `ignore_changes` |
+| Single-region configs | `New-LzRenderContext` and `Test-LzRenderGuards` read `azure.drRegion` unconditionally; the export strips optional keys, so **every** single-region render crashed under StrictMode | Existence-checked |
+
+Two `Info` drift findings are expected and intentional:
+`management_ip_ranges` (no schema key for operator source ranges — the default
+is `"*"`, which reaches management interfaces from anywhere, and should be set
+per landing zone) and `log_analytics_workspace_id` (owned by
+`platform-management`, which keeps separate state).
+
 ---
 
-## 4. Tests — 205, all green
+## 4. Tests — 208, all green
 
 **These were rescued into the repo by this PR.** They previously existed only in
 a session-scoped temp directory and would have been lost permanently.
@@ -174,14 +217,14 @@ a session-scoped temp directory and would have been lost permanently.
 cd factory/tests
 node test.js                                  # 48 — wizard logic
 pwsh -NoProfile -File ./Test-Discovery.ps1    # 60 — discovery engine
-pwsh -NoProfile -File ./Test-Renderer.ps1     # 97 — renderer
+pwsh -NoProfile -File ./Test-Renderer.ps1     # 100 — renderer
 ```
 
 Paths resolve from `$PSScriptRoot`/`__dirname`, so they run from any checkout and
 any working directory. Generated output goes to `factory/tests/.out/`
 (gitignored). Fixtures live in `factory/tests/fixtures/`.
 
-**They are not wired into CI yet** — see §1.3.
+**They are not wired into CI yet** — see §1.4.
 
 ---
 
@@ -232,16 +275,27 @@ Fix (needs Application Administrator):
 az ad app federated-credential create --id <APP_ID> --parameters '{"name":"pr-plan","issuer":"https://token.actions.githubusercontent.com","subject":"repo:saulpatinojr/HCW-Plan_LZDeployment:pull_request","audiences":["api://AzureADTokenExchange"]}'
 ```
 
-### 6.3 `org_prefix` constraint mismatch in the live layer
+### 6.3 The corpus and `terraform/live/` have diverged
 
-`terraform/live/global/variables.tf` still validates `^[a-z]{2,4}$`, rejecting any
-org prefix longer than 4 characters. The **template corpus copy** was aligned to
-the schema (`^[a-z0-9]{2,10}$`) with the storage-account-length reasoning
-documented inline; the live layer was not touched.
+Stage 6 fixed several real defects in the promoted copies (§3.5) without
+touching the live tree, so the two now differ. This is deliberate — the live
+tree deploys *this* repository, and changing it is a separate reviewable
+change — but it will not stay tolerable for long. Stage 13 (regenerating this
+repo from the factory) resolves it permanently.
 
-This was found by `Test-LzSchemaDrift`, which reports a concrete counterexample
-rather than "these regexes differ". Re-running it after stage 6 will surface any
-similar conflicts in the newly promoted layers.
+Currently divergent:
+
+| File | Live tree | Corpus |
+|---|---|---|
+| `live/global/variables.tf` | `org_prefix` validates `^[a-z]{2,4}$` | `^[a-z0-9]{2,10}$`, matching the schema |
+| `live/sandbox/variables.tf`, `modules/sandbox/variables.tf` | `location` validates `^[a-z]+$` | `^[a-z0-9]+$` |
+| `live/platform-connectivity` | no `firewall_threat_intel_mode` | declared and wired to the module |
+| `live/platform-management/main.tf` | literal past `start_time` | derived at plan time |
+| `live/workloads-prod/main.tf` | per-layer state container | shared container, keyed by layer |
+
+`Test-LzSchemaDrift` reports a concrete counterexample rather than "these
+regexes differ", which is what made the `org_prefix` and `location` cases
+actionable in one step.
 
 ### 6.4 Guardrails are disabled in GitHub
 
@@ -255,16 +309,16 @@ judging whether a green PR actually means anything.
 
 | Stage | Deliverable |
 |---|---|
-| 6 | **Next.** Promote `terraform/` into the template corpus |
-| 7 | Promote `.github/workflows/` into the corpus |
+| 6 | Done — `terraform/` promoted into the template corpus (see §3.5) |
+| 7 | **Next.** Promote `.github/workflows/` into the corpus |
 | 8 | Documentation templates: operating model, governance, threat model, observability, FinOps, state management, DR, upgrade guide, phase model |
 | 9 | **Bootstrap broker** — creates Entra apps, federated credentials, GitHub environments, secrets. Consumes `discovery-inventory.json`. The first stage that *writes* anything. |
 | 10 | **Scaffold builder** — moves a rendered tree into a real repository |
 | 11 | Brownfield import generation |
-| 12 | Factory CI — run the 205 tests, drift check, and `terraform validate` over the raw corpus |
+| 12 | Factory CI — run the 208 tests, drift check, and `terraform validate` over the raw corpus |
 | 13 | Dogfood instance — regenerate this repo from the factory and prove it applies green |
 
-Stages 1–5 wrote **nothing** outside the repo. Stage 9 is the first that mutates
+Stages 1–6 wrote **nothing** outside the repo. Stage 9 is the first that mutates
 a tenant; treat that boundary carefully.
 
 ---
