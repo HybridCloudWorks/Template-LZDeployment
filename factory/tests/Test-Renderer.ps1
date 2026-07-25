@@ -183,8 +183,8 @@ ok 'bool false'        ((ConvertTo-LzBoolLiteral $false) -eq 'false')
 ok 'bool from null'    ((ConvertTo-LzBoolLiteral $null) -eq 'false')
 
 Write-Host "`n== 14. CIDR overlap (renderer copy) ==" -ForegroundColor Cyan
-ok 'overlap detected'  (Test-LzRendererCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.0.1.0/24')
-ok 'disjoint'          (-not (Test-LzRendererCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.1.0.0/16'))
+ok 'overlap detected'  (Test-LzRendererCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.0.2.0/24')
+ok 'disjoint'          (-not (Test-LzRendererCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.2.0.0/16'))
 ok 'malformed safe'    (-not (Test-LzRendererCidrOverlap -CidrA 'nope' -CidrB '10.0.0.0/16'))
 
 Write-Host "`n== 15. End-to-end render ==" -ForegroundColor Cyan
