@@ -48,9 +48,10 @@ environments. From there:
 - **OIDC only.** `permissions: id-token: write` on jobs that authenticate to
   Azure. Never add a client secret, PAT, or connection string to a workflow, and
   never widen `permissions` beyond what the job needs.
-- `pull_request` triggers do not receive secrets from forks. If a check needs
-  cloud credentials, it belongs on `pull_request_target` with an explicit
-  checkout-safety review, or in a post-merge job — say which and why.
+- `pull_request` triggers do not receive secrets from forks. Keep fork validation
+  credential-free and report the skipped cloud plan explicitly. Never use
+  `pull_request_target` to execute or check out PR-controlled code; the accepted
+  factory control SR6 forbids that trust-boundary shortcut.
 - Do not weaken `secrets-scan.yml` or the policy checks to make a build go green.
 - **Never trigger a deployment.** No `gh workflow run` on apply workflows, no
   pushing to `main`, no merging a PR unless the user explicitly asks in this

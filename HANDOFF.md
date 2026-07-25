@@ -2,8 +2,9 @@
 
 **Last updated:** 2026-07-25 · **Factory version:** 0.1.0 · **Config schema:** 1.0.0
 **Progress:** Stages 1–6 of 13 complete. Stage 7 is next.
-**First action:** start on stage 7 (§1.2). Everything through stage 6 is merged
-to `main` and there are no open PRs.
+**First action:** confirm the Stage 7 decisions in
+[`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md), then
+start Stage 7 (§1.2). Everything through Stage 6 is merged to `main`.
 
 You are continuing a multi-session build. This document is the single source of
 truth for where the work stopped. Read the *Next steps* section first, then
@@ -60,9 +61,15 @@ generalises:
 
 ### 1.2 Then: Stage 7 — promote `.github/workflows/` into the corpus
 
-Stage 6 is done (see §3.5). Stage 7 is the same exercise for the pipeline:
-`.github/workflows/` becomes templates so a generated repository ships its own
-plan/apply workflows rather than the single proof workflow that exists today.
+Stage 6 is done (see §3.5). It already includes one deliberately minimal proof
+template, `factory/templates/.github/workflows/terraform-plan.yml.tmpl`, plus its
+manifest entry and renderer assertions. Stage 7 expands that proof into the
+agreed generated-repository workflow corpus; it is not a first empty promotion.
+
+The reviewed entry criteria, decisions, implementation order, and definition of
+done are in
+[`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md). Treat
+that document as the Stage 7 execution contract.
 
 The identity decision in §5 is the constraint that governs it: a
 `pull_request`-triggered job may only ever assume the Reader `*-plan` identity,
@@ -121,7 +128,8 @@ Expected:
 | | |
 |---|---|
 | Current branch | `main`, in sync with `origin/main` |
-| `main` HEAD | `7568bc3` — agent git/gh permissions (#32) |
+| `main` snapshot at handoff | `d219174` — post-merge handoff correction (#33) |
+| | `7568bc3` — agent git/gh permissions (#32) |
 | | `11f09cd` — the whole factory, stages 1–6 (#28) |
 | Working tree | clean |
 | Open PRs | none |
@@ -256,10 +264,9 @@ per landing zone) and `log_analytics_workspace_id` (owned by
 
 ## 4. Tests — 208, all green
 
-**These were rescued into the repo by [#31](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/31).**
-They previously existed only in a session-scoped temp directory and would have
-been lost permanently. Until that PR merges they exist on one branch only —
-which is a further reason not to leave §1.1 sitting.
+**These were rescued into the repo by [#31](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/31)**
+and reached `main` through #28. They previously existed only in a session-scoped
+temp directory and would otherwise have been lost.
 
 ```bash
 cd factory/tests
@@ -285,7 +292,7 @@ any working directory. Generated output goes to `factory/tests/.out/`
 | **HCP Terraform is the default backend** | Validated: legacy free plan ended 2026-03-31; current cap is 500 managed resources; paid tiers bill on *peak hourly* count from $0.10/resource/month. `azurerm` is fully supported as the alternative. |
 | **Release gates start `false`** | This pipeline has no recorded successful run. A factory multiplies the blast radius of an unproven path. `dogfoodInstanceAppliesGreen` and `oidcTokenExchangeVerifiedLive` are deliberate v1.0.0 blockers. |
 | **Scaffold modules block rendering** | `sentinel-siem` and `keyvault-cmk` declare zero resources; `virtual-wan` doesn't exist. Emitting them would silently deploy nothing. Status is read from `factory-version.json`, so implementing a module lifts its guard automatically. |
-| **Renderer re-validates independently of the wizard** | A validation that exists only in the UI is a suggestion, not a guarantee. 20 guards (G01–G20). |
+| **Renderer re-validates independently of the wizard** | A validation that exists only in the UI is a suggestion, not a guarantee. 21 guards (G01–G21). |
 
 ---
 
@@ -303,7 +310,7 @@ terraform fmt -recursive terraform/
 
 Left unfixed because it touches 26 files unrelated to the factory work.
 
-### 6.2 CI is red on all PRs — pre-existing, blocks everything
+### 6.2 CI is red on all PRs — pre-existing, prevents trustworthy validation
 
 `RBAC Audit & Validation` and `RBAC Compliance Checks` both fail at Azure login:
 
@@ -312,7 +319,7 @@ AADSTS700213: No matching federated identity record found for presented
 assertion subject 'repo:saulpatinojr/HCW-Plan_LZDeployment:pull_request'
 ```
 
-No federated credential exists for the `pull_request` subject. This is exactly
+No live federated credential exists for the `pull_request` subject. This is exactly
 the gap `TODO.md` records as "root cause fixed in code, live verification
 pending" — the code fix landed, the Entra app registration was never updated.
 Nothing in the factory work touches these workflows; it reproduces on any PR.
@@ -375,6 +382,9 @@ rather than resolving its finding.
 ---
 
 ## 7. Remaining stages (7–13)
+
+Stage 7 readiness and acceptance criteria are maintained in
+[`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md).
 
 | Stage | Deliverable |
 |---|---|
@@ -454,3 +464,17 @@ also absent: `az extension add --name resource-graph`.
   tenant and subscription IDs.
 - PowerShell follows the house style in `scripts/Start-LandingZoneBootstrap.ps1`
   (box headers, `Write-LzOK`/`Warn`/`Fail`).
+
+---
+
+## 10. Pre-Stage 7 review record
+
+A static repository review was completed on 2026-07-25 before preparing Stage 7.
+It covered the Stage 1–6 design and implementation, the three test suites, the
+renderer manifest and existing workflow proof, all ten live workflows, and the
+repo-local orchestration files. The review corrected stale pre-factory routing
+and documentation claims but did not re-run the executable test suite because
+the review environment had connector access without a local checkout or `gh`.
+The last executable verification remains the 208-test and representative-render
+baseline recorded in §4 and §3.5.
+

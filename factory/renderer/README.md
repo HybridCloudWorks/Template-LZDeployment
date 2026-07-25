@@ -1,4 +1,4 @@
-# Renderer — Stages 5–6
+# Renderer — Stages 5–6 (Stage 7 workflow proof included)
 
 Turns a validated `lz-config.json` plus the template corpus into a rendered
 landing zone repository.
@@ -147,6 +147,7 @@ only in the UI is a suggestion, not a guarantee.
 | G17/G18 | Backend selected but not configured |
 | G19 | Sentinel policy engine without the HCP backend |
 | G20 | Internal visibility without Enterprise Cloud |
+| G21 | An active layer has no implemented Terraform corpus |
 
 G10 and G14 are advisory warnings (missing sandbox subscription, prod without
 reviewers) and do not block.

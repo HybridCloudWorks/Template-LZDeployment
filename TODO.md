@@ -1,5 +1,13 @@
 # TODO - HCW Landing Zone Platform
 
+> **Factory transition notice (2026-07-25):** This file is the legacy deployment
+> backlog. It is not the source of truth for the Landing Zone Factory build.
+> Stages 1–6 and current sequencing are recorded in [HANDOFF.md](HANDOFF.md);
+> Stage 7 entry criteria are in
+> [docs/factory/STAGE-7-READINESS.md](docs/factory/STAGE-7-READINESS.md).
+> Items below remain valid only where they are also confirmed by those documents
+> or by a fresh code review.
+
 **Last Updated**: July 1, 2026
 **Status**: 🟡 IN PROGRESS
 **Completed work**: [CHANGELOG.md](CHANGELOG.md)

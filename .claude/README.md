@@ -28,7 +28,7 @@ It reads `TODO.md` and `docs/` first, decomposes the request, and delegates.
 | `azure-cost-governance` | Cost, quotas, Azure Policy, compliance audits | "what will this cost", "check quotas" |
 | `deployment-troubleshooter` | Root-causing failed runs, applies, auth, drift | "the deploy failed" |
 | `ansible-automation-engineer` | Guest-OS config management, runbook conversion | "turn this script into automation" |
-| `frontend-experience-designer` | `frontend/` tfvars generator, visual design, UX | "improve the options page" |
+| `frontend-experience-designer` | `site/` factory configuration wizard, visual design, UX | "improve the options page" |
 | `docs-knowledge-curator` | `docs/`, `README.md`, `CHANGELOG.md`, `TODO.md` | "document what we just did" |
 | `lz-change-reviewer` | Read-only pre-merge review (no edit tools) | before opening or merging a PR |
 
@@ -85,8 +85,8 @@ you use those skills.
 ## Capability usage report
 
 `hooks/agent-report.ps1` is registered in `settings.json` as a **`Stop`** hook. It
-is **off by default** (`agent-report.json` → `"enabled": false`) and exits silently
-in that state. When enabled it parses the session transcript, counts actual
+is currently **enabled** (`agent-report.json` → `"enabled": true`). When disabled it
+exits silently; when enabled it parses the session transcript, counts actual
 `tool_use` records (agents by `subagent_type`, skills by `skill`, everything else
 as a tool) since the previous report, and prints the tally. It never blocks a turn.
 

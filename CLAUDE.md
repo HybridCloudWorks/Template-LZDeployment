@@ -22,7 +22,7 @@ capability inventory for a match.
   (→ `deployment-troubleshooter`), and none of them name a capability.
 - A path in the request is strong evidence: `terraform/**` →
   `terraform-module-engineer`; `.github/workflows/**` → `github-actions-engineer`;
-  `frontend/**` → `frontend-experience-designer`; `docs/`, `README.md`,
+  `site/**` → `frontend-experience-designer`; `docs/`, `README.md`,
   `CHANGELOG.md`, `TODO.md` → `docs-knowledge-curator`.
 - Prefer an **existing, more specific** capability over a general one, and prefer a
   repo-local capability (`.claude/agents/`, `.claude/commands/`) over a generic
@@ -48,7 +48,7 @@ capability inventory for a match.
 | Spend, budgets, forecasts, quota/capacity, Azure Policy, compliance audit | `azure-cost-governance` |
 | Something is broken and the cause is unknown — red run, apply error, auth, drift | `deployment-troubleshooter` |
 | Guest-OS configuration, playbooks/roles, converting scripts to automation | `ansible-automation-engineer` |
-| The `frontend/` tfvars generator — UX, layout, option wiring, variable sync | `frontend-experience-designer` |
+| The `site/` factory wizard — UX, layout, validation, and config export | `frontend-experience-designer` |
 | Recording what happened: docs, changelog, decision records, task breakdown | `docs-knowledge-curator` |
 | Read-only pre-merge review of a branch or PR | `lz-change-reviewer` |
 
@@ -64,8 +64,8 @@ silently skipping the match.
 
 ## 2. Capability usage report
 
-Reporting is **off by default**. The setting lives in
-[`.claude/agent-report.json`](.claude/agent-report.json) (`{"enabled": false}`).
+Reporting is **enabled in the current repository state**. The setting lives in
+[`.claude/agent-report.json`](.claude/agent-report.json) (`{"enabled": true}`).
 
 When it is on, end each completed task with:
 

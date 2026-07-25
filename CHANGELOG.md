@@ -5,6 +5,18 @@
 
 ---
 
+## Pre-Stage 7 readiness alignment (2026-07-25)
+
+- Reviewed the implemented Stage 1–6 factory contract, code paths, tests,
+  Terraform corpus, live workflows, workflow proof template, and repository
+  orchestration before beginning Stage 7.
+- Added `docs/factory/STAGE-7-READINESS.md` with the workflow-corpus decisions,
+  invariants, implementation sequence, and definition of done.
+- Reconciled stale handoff, design, renderer, TODO, and orchestration claims with
+  the current factory state.
+- No Terraform, workflow runtime, tenant, or repository permission behavior was
+  changed.
+
 ## Completed Deliverables
 
 ### ✅ Phase 0 Audit & CI/CD Reliability Fixes - COMPLETE (July 1, 2026)
