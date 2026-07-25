@@ -14,6 +14,7 @@
     "version": "0.1.0",
     "$comment": "Version of the emitted landing-zone content (templates + workflows + docs). Tracked separately from factoryVersion so tooling-only changes do not force customer-repo upgrades.",
     "architecture": "caf-enterprise-scale",
+    "$layersComment": "Layers the template corpus can actually emit. Guard G21 reads this list and REFUSES to render a configuration selecting anything absent from it, so promoting a new layer lifts its guard by being declared here. platform-identity and workloads-nonprod are deliberately absent: Get-LzActiveLayers can select both, but no Terraform exists for either.",
     "layers": [
       "global",
       "platform-connectivity",

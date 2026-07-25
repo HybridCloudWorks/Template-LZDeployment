@@ -85,6 +85,30 @@ function Test-LzRenderGuards {
             -Remediation 'Implement terraform/modules/keyvault-cmk and update its status in factory-version.json, or disable customer-managed keys. A no-op CMK module means data you believe is protected by your own keys is not.'
     }
 
+    # ── Layers with no corpus ────────────────────────────────────────────────
+    # Get-LzActiveLayers can select layers that terraform/live has never had a
+    # source for. Before this guard, such a layer was emitted as a directory
+    # containing only backend.tf: `terraform init` succeeded, `terraform plan`
+    # reported no changes, and the operator concluded the layer had nothing to
+    # do — rather than that it did not exist. Refuse instead.
+    # Read from factory-version.json for the same reason the scaffold-module
+    # guards do: promoting a new layer into the corpus should lift its guard by
+    # declaring it there, not by editing a list here that nothing else knows
+    # about. When no factory version is supplied the guard cannot decide, and
+    # stays silent rather than guessing.
+    $implementedLayers = @()
+    if ($FactoryVersion -and (Test-LzHasProperty $FactoryVersion 'landingZone') -and
+        (Test-LzHasProperty $FactoryVersion.landingZone 'layers')) {
+        $implementedLayers = @($FactoryVersion.landingZone.layers)
+    }
+    foreach ($layer in (Get-LzActiveLayers -Config $Config)) {
+        if ($implementedLayers.Count -gt 0 -and $layer -notin $implementedLayers) {
+            $v += New-LzGuardViolation -Id 'G21' `
+                -Message "This configuration selects the '$layer' layer, for which the template corpus has no Terraform." `
+                -Remediation "Either author terraform/live/$layer and promote it into factory/templates (see `$pendingLayers in variable-map.json), or change the configuration so the layer is not selected. Emitting it would produce a layer that initialises and plans zero resources, which reads as 'nothing to do' rather than 'not implemented'."
+        }
+    }
+
     # ── Unimplemented topologies ─────────────────────────────────────────────
     if ($Config.connectivity.model -eq 'virtual-wan') {
         $v += New-LzGuardViolation -Id 'G04' `
@@ -117,7 +141,11 @@ function Test-LzRenderGuards {
 
     # ── Region / policy coherence ────────────────────────────────────────────
     $allowed = @($Config.azure.allowedLocations)
-    foreach ($r in @($Config.azure.primaryRegion, $Config.azure.drRegion)) {
+    $deployedRegions = @($Config.azure.primaryRegion)
+    # drRegion is optional and stripped from the export when absent; reading it
+    # unconditionally throws under StrictMode on a single-region configuration.
+    if (Test-LzHasProperty $Config.azure 'drRegion') { $deployedRegions += $Config.azure.drRegion }
+    foreach ($r in $deployedRegions) {
         if ($r -and $allowed -notcontains $r) {
             $v += New-LzGuardViolation -Id 'G07' `
                 -Message "Region '$r' is deployed to but is absent from azure.allowedLocations." `

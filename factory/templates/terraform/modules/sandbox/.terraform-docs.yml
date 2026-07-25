@@ -1,0 +1,17 @@
+version: ">= 0.14"
+formatter: markdown
+
+header-from: "README.md"
+footer-from: "README.md"
+
+output:
+  file: "README.md"
+  mode: replace
+
+recursive:
+  enabled: false
+  path: modules
+
+sort:
+  enabled: true
+  by: name

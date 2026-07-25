@@ -190,6 +190,58 @@ function Invoke-LzRender {
         }
     }
 
+    # ── Directory copies ─────────────────────────────────────────────────────
+    # The module corpus is several hundred static files. Listing each one in the
+    # manifest would add no decision — modules are copied verbatim — while
+    # creating a trap where a newly added .tf is silently not shipped. A
+    # directory entry is therefore the safer unit for content that carries no
+    # per-configuration variation. Everything that DOES vary stays in `files`,
+    # where its condition is visible.
+    if ($manifest.PSObject.Properties.Name -contains 'directories') {
+        foreach ($entry in @($manifest.directories)) {
+            $when = if ($entry.PSObject.Properties.Name -contains 'when') { $entry.when } else { 'always' }
+            if ($when -ne 'always' -and -not (Test-LzExpression -Expression $when -Context $context)) {
+                $skipped += [pscustomobject]@{ Source = "$($entry.source)/**"; Reason = "condition not met: $when" }
+                continue
+            }
+
+            $sourceDir = Join-Path $TemplateRoot $entry.source
+            if (-not (Test-Path $sourceDir)) {
+                throw "Manifest references a directory that does not exist: $($entry.source)"
+            }
+
+            $exclude = @()
+            if ($entry.PSObject.Properties.Name -contains 'exclude') { $exclude = @($entry.exclude) }
+
+            $copied = 0
+            foreach ($file in @(Get-ChildItem -Path $sourceDir -Recurse -File -Force)) {
+                # Relative path with forward slashes, so exclude patterns read
+                # the same on Windows and Linux.
+                $relative = ($file.FullName.Substring((Resolve-Path $sourceDir).Path.Length)).TrimStart('\', '/') -replace '\\', '/'
+
+                $skip = $false
+                foreach ($pattern in $exclude) {
+                    if ($relative -like $pattern) { $skip = $true; break }
+                }
+                if ($skip) { continue }
+
+                $outPath = Join-Path $OutputDirectory (Join-Path $entry.destination $relative)
+                if ($PSCmdlet.ShouldProcess("$($entry.destination)/$relative", 'copy')) {
+                    $dir = Split-Path -Parent $outPath
+                    if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+                    Copy-Item -Path $file.FullName -Destination $outPath -Force
+                }
+                $emitted += [pscustomobject]@{
+                    Source      = "$($entry.source)/$relative"
+                    Destination = "$($entry.destination)/$relative"
+                    Mode        = 'copy'
+                }
+                $copied++
+            }
+            Write-LzRenderOK "$($entry.destination)/ ($copied file(s))"
+        }
+    }
+
     # ── Normalise formatting ─────────────────────────────────────────────────
     # HCL alignment cannot be correct at template time: conditionals change
     # which lines exist, and `terraform fmt` aligns `=` across the block that

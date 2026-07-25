@@ -1,10 +1,10 @@
 {
-  "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, path == 'v', path != 'v', path contains 'v', joined by && and ||.",
+  "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||.",
 
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "1.1.0",
   "targetSchemaVersion": "1.0.0",
 
-  "$statusComment": "Stage 5 delivers the rendering ENGINE. The entries below are the proof set that exercises every engine feature end to end: plain tokens, typed tokens, conditionals, loops, per-layer expansion, and verbatim copy. Stages 6-8 grow this manifest to the full corpus by promoting terraform/ and .github/workflows/ into factory/templates/.",
+  "$statusComment": "Stage 6 promoted the real Terraform corpus. Five live layers are emitted from templates (global, platform-connectivity, platform-management, workloads-prod, sandbox) and the module corpus is copied verbatim. Two layers Get-LzActiveLayers can select — platform-identity and workloads-nonprod — have no source under terraform/live and are therefore not emitted; guard G21 refuses a render that would select one, rather than shipping a layer directory containing only a backend. Stage 7 promotes .github/workflows.",
 
   "files": [
     {
@@ -14,13 +14,7 @@
       "when": "always",
       "description": "Landing zone repository README, self-documenting from the configuration."
     },
-    {
-      "source": "terraform/live/global/terraform.auto.tfvars.tmpl",
-      "destination": "terraform/live/global/terraform.auto.tfvars",
-      "mode": "render",
-      "when": "always",
-      "description": "Global layer variables: org prefix, subscriptions, allowed locations."
-    },
+
     {
       "source": "terraform/live/global/variables.tf",
       "destination": "terraform/live/global/variables.tf",
@@ -29,12 +23,143 @@
       "description": "Variable declarations. Copied verbatim — this file is the contract the schema-drift check validates against, so it must never be templated."
     },
     {
+      "source": "terraform/live/global/main.tf",
+      "destination": "terraform/live/global/main.tf",
+      "mode": "copy",
+      "when": "always",
+      "description": "Management group hierarchy and policy baseline. Nothing in it varies with configuration."
+    },
+    {
+      "source": "terraform/live/global/outputs.tf",
+      "destination": "terraform/live/global/outputs.tf",
+      "mode": "copy",
+      "when": "always",
+      "description": "Management group and policy assignment IDs."
+    },
+    {
+      "source": "terraform/live/global/terraform.auto.tfvars.tmpl",
+      "destination": "terraform/live/global/terraform.auto.tfvars",
+      "mode": "render",
+      "when": "always",
+      "description": "Global layer variables: org prefix, subscriptions, allowed locations."
+    },
+
+    {
+      "source": "terraform/live/platform-connectivity/variables.tf",
+      "destination": "terraform/live/platform-connectivity/variables.tf",
+      "mode": "copy",
+      "when": "connectivity.model != 'none'",
+      "description": "Connectivity variable declarations. Drift-checked against the schema."
+    },
+    {
+      "source": "terraform/live/platform-connectivity/main.tf.tmpl",
+      "destination": "terraform/live/platform-connectivity/main.tf",
+      "mode": "render",
+      "when": "connectivity.model != 'none'",
+      "description": "Regional hubs. The DR hub and the hub-to-hub peering are emitted only for a dual-region configuration."
+    },
+    {
+      "source": "terraform/live/platform-connectivity/outputs.tf.tmpl",
+      "destination": "terraform/live/platform-connectivity/outputs.tf",
+      "mode": "render",
+      "when": "connectivity.model != 'none'",
+      "description": "Hub identifiers. This is the contract the workload layers read through remote state."
+    },
+    {
       "source": "terraform/live/platform-connectivity/terraform.auto.tfvars.tmpl",
       "destination": "terraform/live/platform-connectivity/terraform.auto.tfvars",
       "mode": "render",
       "when": "connectivity.model != 'none'",
       "description": "Connectivity layer variables. Omitted entirely when no platform networking is deployed."
     },
+
+    {
+      "source": "terraform/live/platform-management/variables.tf",
+      "destination": "terraform/live/platform-management/variables.tf",
+      "mode": "copy",
+      "when": "always",
+      "description": "Management variable declarations. Drift-checked against the schema."
+    },
+    {
+      "source": "terraform/live/platform-management/main.tf.tmpl",
+      "destination": "terraform/live/platform-management/main.tf",
+      "mode": "render",
+      "when": "always",
+      "description": "Backup baseline and sandbox-cleanup automation. Both sections are conditional."
+    },
+    {
+      "source": "terraform/live/platform-management/outputs.tf.tmpl",
+      "destination": "terraform/live/platform-management/outputs.tf",
+      "mode": "render",
+      "when": "always",
+      "description": "Vault and automation identifiers, matching whichever sections main.tf emitted."
+    },
+    {
+      "source": "terraform/live/platform-management/terraform.auto.tfvars.tmpl",
+      "destination": "terraform/live/platform-management/terraform.auto.tfvars",
+      "mode": "render",
+      "when": "always",
+      "description": "Management layer variables."
+    },
+
+    {
+      "source": "terraform/live/workloads-prod/variables.tf",
+      "destination": "terraform/live/workloads-prod/variables.tf",
+      "mode": "copy",
+      "when": "environments.application contains 'prod'",
+      "description": "Production workload variable declarations. Drift-checked against the schema."
+    },
+    {
+      "source": "terraform/live/workloads-prod/main.tf.tmpl",
+      "destination": "terraform/live/workloads-prod/main.tf",
+      "mode": "render",
+      "when": "environments.application contains 'prod'",
+      "description": "Production spokes. The remote-state read of the connectivity layer takes whichever form the configured backend supports."
+    },
+    {
+      "source": "terraform/live/workloads-prod/outputs.tf.tmpl",
+      "destination": "terraform/live/workloads-prod/outputs.tf",
+      "mode": "render",
+      "when": "environments.application contains 'prod'",
+      "description": "Spoke VNet identifiers."
+    },
+    {
+      "source": "terraform/live/workloads-prod/terraform.auto.tfvars.tmpl",
+      "destination": "terraform/live/workloads-prod/terraform.auto.tfvars",
+      "mode": "render",
+      "when": "environments.application contains 'prod'",
+      "description": "Production workload layer variables."
+    },
+
+    {
+      "source": "terraform/live/sandbox/variables.tf",
+      "destination": "terraform/live/sandbox/variables.tf",
+      "mode": "copy",
+      "when": "environments.application contains 'sandbox' && defined azure.subscriptions.sandbox && azure.subscriptions.sandbox",
+      "description": "Sandbox variable declarations. Drift-checked against the schema."
+    },
+    {
+      "source": "terraform/live/sandbox/main.tf",
+      "destination": "terraform/live/sandbox/main.tf",
+      "mode": "copy",
+      "when": "environments.application contains 'sandbox' && defined azure.subscriptions.sandbox && azure.subscriptions.sandbox",
+      "description": "A single time-boxed resource group. Nothing in it varies with configuration."
+    },
+    {
+      "source": "terraform/live/sandbox/outputs.tf",
+      "destination": "terraform/live/sandbox/outputs.tf",
+      "mode": "copy",
+      "when": "environments.application contains 'sandbox' && defined azure.subscriptions.sandbox && azure.subscriptions.sandbox",
+      "description": "Sandbox resource group identifiers."
+    },
+    {
+      "source": "terraform/live/sandbox/terraform.auto.tfvars.tmpl",
+      "destination": "terraform/live/sandbox/terraform.auto.tfvars",
+      "mode": "render",
+      "when": "environments.application contains 'sandbox' && defined azure.subscriptions.sandbox && azure.subscriptions.sandbox",
+      "description": "Sandbox layer variables, including the lifecycle tags the cleanup runbook sweeps on."
+    },
+
     {
       "source": ".github/workflows/terraform-plan.yml.tmpl",
       "destination": ".github/workflows/terraform-plan.yml",
@@ -57,6 +182,40 @@
       "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.tf",
       "when": "always",
       "description": "Backend configuration, rendered once per active layer. Each layer keeps an isolated state file — layers are never merged (control AR3)."
+    }
+  ],
+
+  "$directoriesComment": "Whole-tree copies. The module corpus is dozens of static files with no per-configuration variation; listing each one here would add no decision while creating a trap where a newly added .tf is silently not shipped. Anything that DOES vary belongs in `files`, where its condition is visible. `exclude` patterns are matched against the path relative to `source`, with forward slashes.",
+
+  "directories": [
+    {
+      "source": "terraform/modules",
+      "destination": "terraform/modules",
+      "when": "always",
+      "exclude": [
+        "*/.terraform.lock.hcl",
+        "sentinel-siem/*",
+        "keyvault-cmk/*"
+      ],
+      "description": "The reusable module corpus, copied verbatim. Lock files are excluded because a dependency lock is only meaningful at the root module; the ones under modules/ are leftovers from running terraform inside a module directory and would mislead anyone who trusted them. The two scaffold modules are excluded here and re-added below only when the feature that needs them is enabled."
+    },
+    {
+      "source": "terraform/modules/sentinel-siem",
+      "destination": "terraform/modules/sentinel-siem",
+      "when": "security.sentinel.enabled",
+      "description": "Scaffold module. Guard G02 refuses to render at all when Sentinel is enabled and this module is still scaffold-only, so reaching this entry means it has been implemented."
+    },
+    {
+      "source": "terraform/modules/keyvault-cmk",
+      "destination": "terraform/modules/keyvault-cmk",
+      "when": "security.keyVault.customerManagedKeys",
+      "description": "Scaffold module. Guard G03 covers it the way G02 covers sentinel-siem."
+    },
+    {
+      "source": "terraform/scripts",
+      "destination": "terraform/scripts",
+      "when": "defined azure.subscriptions.sandbox && azure.subscriptions.sandbox",
+      "description": "Runbook content the platform-management layer loads with file(). Emitted only alongside the automation that reads it — file() resolves at plan time, so a missing script fails the plan, not the apply."
     }
   ]
 }

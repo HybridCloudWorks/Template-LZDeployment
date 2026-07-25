@@ -1,0 +1,14 @@
+# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
+# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+
+output "primary_spoke_vnet_id" {
+  description = "Production spoke VNet ID in the primary region"
+  value       = module.spoke_prod_primary.spoke_vnet_id
+}
+
+#{{IF computed.hasDrRegion}}
+output "dr_spoke_vnet_id" {
+  description = "Production spoke VNet ID in the DR region"
+  value       = module.spoke_prod_dr.spoke_vnet_id
+}
+#{{ENDIF}}
