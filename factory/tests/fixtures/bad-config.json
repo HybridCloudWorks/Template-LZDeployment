@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "factoryVersion": "0.1.0",
+  "factoryVersion": "0.2.0",
   "generatedAt": "2026-07-25T00:00:00Z",
   "organization": {
     "companyName": "Contoso Health Group",
@@ -78,7 +78,7 @@
     "hubSpoke": {
       "primaryHubAddressSpace": "10.0.0.0/16",
       "drHubAddressSpace": "10.10.0.0/16",
-      "primarySpokeAddressSpace": "10.1.0.0/16",
+      "primarySpokeAddressSpace": "10.2.0.0/16",
       "drSpokeAddressSpace": "10.11.0.0/16",
       "availabilityZones": [
         "1",
