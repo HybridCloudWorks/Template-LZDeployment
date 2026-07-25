@@ -5,9 +5,12 @@ description: Top-level router for Azure Landing Zone work in this repo. Use when
 
 # ALZ Orchestrator
 
-You coordinate work on **HCW-Plan_LZDeployment**, a repository that *is* the Azure
-Landing Zone deployment — not a template that generates one. Changes merged here
-deploy real Azure infrastructure.
+You coordinate work on **HCW-Plan_LZDeployment**, which is being converted from
+its original self-deploying landing zone into a reusable Landing Zone Factory.
+Stages 1–6 are implemented; read `HANDOFF.md` and the current stage readiness doc
+before routing work. The legacy `terraform/` and `.github/workflows/` still
+represent this repository's live deployment, while `factory/templates/` is the
+source corpus for generated customer repositories.
 
 ## Repository map
 
@@ -18,7 +21,9 @@ deploy real Azure infrastructure.
 | `terraform/backend-bootstrap/` | One-time state storage setup | `terraform-module-engineer` |
 | `.github/workflows/` | Numbered pipeline (`010-*`, `020-*`), `terraform-plan/apply`, `secrets-scan`, `action-pinning-policy` | `github-actions-engineer` |
 | `scripts/` | PowerShell entry points, chiefly `Start-LandingZoneBootstrap.ps1` | `github-actions-engineer` / `deployment-troubleshooter` |
-| `frontend/` | Static, backend-free `.tfvars` generator (HTML/JS/CSS, no build step) | `frontend-experience-designer` |
+| `site/` | Offline 15-step factory configuration wizard that emits `lz-config.json` | `frontend-experience-designer` |
+| `factory/schema/`, `factory/discovery/`, `factory/renderer/` | Factory contract, read-only probes, render engine and guards | `azure-platform-architect` / `terraform-module-engineer` |
+| `factory/templates/` | Generated-repository Terraform, workflow, and documentation corpus | specialist matching the template type |
 | `docs/`, `CHANGELOG.md`, `TODO.md` | Plans, standards, phase docs | `docs-knowledge-curator` |
 | `runbooks/`, `functions/`, `dashboards/`, `cli/` | Operational tooling | `ansible-automation-engineer` / `deployment-troubleshooter` |
 
@@ -32,14 +37,14 @@ deploy real Azure infrastructure.
 | Cost, quotas, budget, Azure Policy, compliance audit, governance baseline | `azure-cost-governance` |
 | A failing run, a broken `terraform apply`, auth errors, drift, production incident | `deployment-troubleshooter` |
 | Post-provisioning config, VM hardening, converting shell runbooks to automation | `ansible-automation-engineer` |
-| Anything under `frontend/` — layout, visual design, the tfvars form UX | `frontend-experience-designer` |
+| Anything under `site/` — layout, wizard behavior, config export UX | `frontend-experience-designer` |
 | Docs, changelog, phase plans, decision records, meeting/spec capture | `docs-knowledge-curator` |
 
 ## How to run a request
 
-1. **Read before routing.** Check `TODO.md` and the relevant `docs/` file first —
-   this repo tracks a phased build and the current phase constrains what is safe
-   to change.
+1. **Read before routing.** Check `HANDOFF.md`, then the current stage readiness
+   document and relevant design file. `TODO.md` contains legacy deployment debt
+   and is not the source of truth for factory stage status.
 2. **Decompose** the request into domain-scoped units of work. Name the units.
 3. **Sequence.** Design → IaC → pipeline → validation → docs. Anything that
    changes `terraform/live/` must be paired with a plan-review step before apply.
