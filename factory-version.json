@@ -1,7 +1,7 @@
 {
   "$comment": "Version contract for the Azure Landing Zone Factory. This file is read by site/ (stamped into every exported lz-config.json), by scaffold-copy (written into the generated repository root), and by the generated repo's upgrade-check workflow (diffed against the factory's published version to open an upgrade PR). Bump factoryVersion on any change to the schema, templates, or scripts.",
 
-  "factoryVersion": "0.1.0",
+  "factoryVersion": "0.2.0",
   "status": "pre-release",
   "releasedAt": "2026-07-24",
 
@@ -11,7 +11,7 @@
   },
 
   "landingZone": {
-    "version": "0.1.0",
+    "version": "0.2.0",
     "$comment": "Version of the emitted landing-zone content (templates + workflows + docs). Tracked separately from factoryVersion so tooling-only changes do not force customer-repo upgrades.",
     "architecture": "caf-enterprise-scale",
     "$layersComment": "Layers the template corpus can actually emit. Guard G21 reads this list and REFUSES to render a configuration selecting anything absent from it, so promoting a new layer lifts its guard by being declared here. platform-identity and workloads-nonprod are deliberately absent: Get-LzActiveLayers can select both, but no Terraform exists for either.",
