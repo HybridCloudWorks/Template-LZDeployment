@@ -1,8 +1,8 @@
 # Landing Zone Factory — Session Handoff
 
-**Last updated:** 2026-07-25 · **Factory version:** 0.1.0 · **Config schema:** 1.0.0
-**Progress:** Stages 1–6 of 13 complete. Stage 7 is next.
-**First action:** confirm the Stage 7 decisions in
+**Last updated:** 2026-07-25 · **Factory version:** 0.2.0 · **Config schema:** 1.0.0
+**Progress:** Stages 1–6 complete. Stage 7 implementation is prepared for review.
+**First action:** review the Stage 7 implementation and remaining fix items in
 [`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md), then
 start Stage 7 (§1.2). Everything through Stage 6 is merged to `main`.
 
