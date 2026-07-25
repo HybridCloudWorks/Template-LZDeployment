@@ -77,7 +77,8 @@ function New-LzRenderContext {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][object]$Config,
-        [object]$Discovery = $null
+        [object]$Discovery = $null,
+        [object]$FactoryVersion = $null
     )
 
     $map = [ordered]@{}
@@ -104,6 +105,9 @@ function New-LzRenderContext {
     $map['computed.generatedDate'] = ([string]$Config.generatedAt) -replace 'T.*$', ''
     $map['computed.factoryVersion'] = $Config.factoryVersion
     $map['computed.schemaVersion'] = $Config.schemaVersion
+    if ($FactoryVersion) {
+        $map['computed.terraformVersion'] = $FactoryVersion.toolchain.terraform.tested
+    }
 
     # drRegion is optional, and an exported configuration STRIPS optional keys
     # rather than emitting them empty. Under StrictMode a bare property read
