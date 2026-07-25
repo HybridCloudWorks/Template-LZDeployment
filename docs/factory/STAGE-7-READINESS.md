@@ -1,6 +1,6 @@
 # Stage 7 Readiness — Workflow Corpus
 
-**Status:** Approved to begin; decisions in §4 confirmed 2026-07-25  
+**Status:** Implementation prepared on `agent/stage-7-workflow-corpus`; executable verification pending  
 **Prepared:** 2026-07-25  
 **Baseline:** `main` at `d219174`  
 **Scope:** Promote the generated-repository workflow corpus. Do not change the
@@ -117,3 +117,31 @@ Stage 7 is complete only when:
   proof that validation passed.
 - The non-prod workload layer still requires the schema/product decision in
   `HANDOFF.md` §1.3.
+
+
+## 8. Fix items carried by the Stage 7 PR
+
+The repository owner approved carrying the following previously separate blockers
+as explicit fix items in the Stage 7 PR:
+
+- [x] Generated workflow corpus, manifest registration, fork-safe validation,
+      protected-environment apply, action pinning, security/policy checks, and
+      read-only OIDC verification.
+- [x] Centralize the generated workflow Terraform version in
+      `factory-version.json`.
+- [ ] Run the live `pull_request` federated-credential remediation and verify
+      token exchange by API read-back. The repository already creates the
+      credential; the live tenant mutation remains an operator action and is not
+      executed by this PR.
+- [ ] Decide and implement one non-prod resolution: add per-environment workload
+      CIDRs plus `workloads-nonprod`, or remove dev/test/uat from the wizard.
+      No product-scope choice is made implicitly.
+- [ ] Format the 26 pre-existing files under the legacy `terraform/` tree in an
+      environment with a checkout and Terraform installed.
+- [ ] Configure required status checks on `main` after the emitted check names
+      are stable, then verify branch-protection API read-back.
+
+The unchecked items are merge blockers unless the PR explicitly records an owner
+waiver. Live Entra, workflow execution, and branch-protection mutations remain
+outside this repository-only change because Stage 9 is the factory's first
+authorized mutation boundary.
