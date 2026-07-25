@@ -85,8 +85,8 @@ you use those skills.
 ## Capability usage report
 
 `hooks/agent-report.ps1` is registered in `settings.json` as a **`Stop`** hook. It
-is **off by default** (`agent-report.json` → `"enabled": false`) and exits silently
-in that state. When enabled it parses the session transcript, counts actual
+is currently **enabled** (`agent-report.json` → `"enabled": true`). When disabled it
+exits silently; when enabled it parses the session transcript, counts actual
 `tool_use` records (agents by `subagent_type`, skills by `skill`, everything else
 as a tool) since the previous report, and prints the tally. It never blocks a turn.
 
