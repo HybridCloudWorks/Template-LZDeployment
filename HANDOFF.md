@@ -2,6 +2,7 @@
 
 **Last updated:** 2026-07-25 · **Factory version:** 0.1.0 · **Config schema:** 1.0.0
 **Progress:** Stages 1–6 of 13 complete. Stage 7 is next.
+**First action:** merge the three open PRs — see §1.1. Nothing is on `main` yet.
 
 You are continuing a multi-session build. This document is the single source of
 truth for where the work stopped. Read the *Next steps* section first, then
@@ -11,17 +12,48 @@ truth for where the work stopped. Read the *Next steps* section first, then
 
 ## 1. NEXT STEPS — start here
 
-### 1.1 Immediate: land the open PRs
+### 1.1 Immediate: land the three open PRs
 
-Two PRs are open and stacked. Nothing is on `main` yet.
+**Everything built so far is on branches. `main` still has none of it.** All
+three PRs report `MERGEABLE`. Merging them is the first thing to do.
 
 | PR | Branch | Contains | Base |
 |---|---|---|---|
+| [#30](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/30) | `chore/claude-capability-routing-clean` | `CLAUDE.md`, the agent-report hook | `main` |
 | [#28](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/28) | `feat/lz-factory-config-plane-and-engines` | Stages 1–5 (36 files) | `main` |
-| this one | `docs/factory-handoff-and-tests` | This doc + the 205-test suite | `feat/lz-factory-…` |
+| [#31](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/31) | `docs/factory-handoff-and-tests` | This doc, the test suite, **and stage 6** | `feat/lz-factory-…` |
 
-Merge the stacked PR into `feat/lz-factory-…` first, then #28 into `main` — or
-merge #28 first and retarget this one to `main`. Either order works.
+Merge in this order — #31 is stacked on #28, so #28 must land first or #31 has
+to be retargeted:
+
+```bash
+gh pr merge 30 --squash --delete-branch
+gh pr merge 28 --merge
+gh pr merge 31 --merge
+```
+
+Then reset the stale local `main`:
+
+```bash
+git checkout main && git fetch origin && git reset --hard origin/main
+```
+
+Three things that will otherwise waste your time:
+
+- **`settings.json` denies `gh pr merge` and `git push origin main`.** An agent
+  cannot run the commands above; a human has to. This is deliberate — see §9.
+- **All three PRs show `mergeStateStatus: UNSTABLE`.** That is the pre-existing
+  red CI from §6.2, not a merge blocker. No required check is failing, because
+  the guardrails are switched off in GitHub (§6.4). A green tick here would not
+  mean much either way.
+- **Local `main` is 1 commit ahead of `origin/main`** (`655e268`). A direct push
+  to `main` was attempted in an earlier session and denied. That commit is
+  preserved inside #28, so the `reset --hard` above loses nothing. **Do not
+  force-push `main`.**
+
+#31 already contains #30's commit by a real merge rather than a cherry-pick, so
+the SHA is shared and the two cannot conflict — merging both is safe in any
+order.
 
 ### 1.2 Then: Stage 7 — promote `.github/workflows/` into the corpus
 
@@ -80,25 +112,36 @@ building anything.
 git branch -vv && git log --oneline -3 && git status --short
 ```
 
-Expected at handoff time:
+Expected at handoff time — **before** the §1.1 merges:
 
 | | |
 |---|---|
-| Branches | `main` (ahead of origin by 1), `feat/lz-factory-config-plane-and-engines`, `docs/factory-handoff-and-tests` |
-| `main` HEAD | `655e268` — **1 commit ahead of `origin/main`, unpushed** |
-| Feature HEAD | `4561df7` |
+| Current branch | `docs/factory-handoff-and-tests`, in sync with its remote |
+| Its HEAD | `5b41af4` — turn the capability usage report on |
+| | `6345207` — merge `chore/claude-capability-routing-clean` |
+| | `ce8760f` — stage 6, the Terraform corpus |
+| | `d0806ea` — handoff + test suites |
+| `main` HEAD | `655e268` — **1 commit ahead of `origin/main`, unpushed**; see §1.1 |
 | Working tree | clean |
 
-> **`main` is 1 commit ahead of `origin/main`.** A direct push to `main` was
-> attempted earlier and **denied by the permission layer**. That commit is
-> preserved on the PR branch, so once #28 merges you can safely run
-> `git checkout main && git reset --hard origin/main`. Do not force-push `main`.
+If you are reading this *after* the merges, expect `origin/main` to contain all
+four commits above and the three PR branches to be gone.
 
 Sanity check that the toolchain works:
 
 ```bash
 pwsh -NoProfile -Command "Import-Module ./factory/renderer/LZFactory.Renderer.psd1 -Force; Import-Module ./factory/discovery/LZFactory.Discovery.psd1 -Force; 'both modules loaded'"
 ```
+
+Then confirm the corpus is still self-consistent — this is the single most
+useful check in the repo, and it takes two seconds:
+
+```bash
+pwsh -NoProfile -Command "Import-Module ./factory/renderer/LZFactory.Renderer.psd1 -Force; Test-LzSchemaDrift -SchemaPath ./factory/schema/lz-config.schema.json -MappingPath ./factory/renderer/variable-map.json -TemplateRoot ./factory/templates | Format-List"
+```
+
+Expect `InSync: True`, `DriftCount: 0`, `InfoCount: 2`. The two Info findings are
+deliberate and explained in §3.5 — do not "fix" them by deleting map entries.
 
 ---
 
@@ -210,8 +253,10 @@ per landing zone) and `log_analytics_workspace_id` (owned by
 
 ## 4. Tests — 208, all green
 
-**These were rescued into the repo by this PR.** They previously existed only in
-a session-scoped temp directory and would have been lost permanently.
+**These were rescued into the repo by [#31](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/31).**
+They previously existed only in a session-scoped temp directory and would have
+been lost permanently. Until that PR merges they exist on one branch only —
+which is a further reason not to leave §1.1 sitting.
 
 ```bash
 cd factory/tests
@@ -336,6 +381,7 @@ Windows + PowerShell 7.6.4 + Git Bash. These bit during the build:
 | Empty pipeline | Yields `$null`, not `@()`. Wrap in `@(...)` before `.Count` under StrictMode. |
 | `-bnot` on `uint32` | Yields a signed value. CIDR maths uses `int64`. |
 | Git Bash `/tmp` | Not visible to `pwsh`. Use Windows paths when crossing shells. |
+| `git show <ref>:<path>` | MSYS path conversion rewrites the `:` to `;` and the `/` to `\`, so it fails with "unknown revision or path not in the working tree" on a perfectly valid ref. Prefix with `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'`. |
 | Console encoding | Set `[Console]::OutputEncoding = [Text.Encoding]::UTF8` or box-drawing glyphs render as `?`. |
 
 Local `az` context was an **expired grant (AADSTS50173)** at handoff — re-run
@@ -346,11 +392,25 @@ also absent: `az extension add --name resource-graph`.
 
 ## 9. Repo conventions
 
-- `CLAUDE.md` governs capability routing. Usage reporting is **off** by default
-  (`.claude/agent-report.json`).
+- `CLAUDE.md` governs capability routing across the 10 agents in `.claude/agents/`.
+  It arrived with [#30](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/30);
+  the orchestration layer it routes over arrived earlier with #27. If a previous
+  session told you `CLAUDE.md` does not exist, it was reading a branch that
+  predates #30 — check `git log --all` before concluding something is missing.
+- The capability usage report is now **on** (`.claude/agent-report.json`,
+  `enabled: true`). It is a `Stop` hook that counts real `tool_use` blocks out
+  of the session transcript rather than estimating, reporting only the segment
+  since the last report. Per-session offsets live in
+  `.claude/.agent-report-state/` and are gitignored. Toggle it with:
+
+  ```bash
+  pwsh -NoProfile -File .claude/hooks/agent-report.ps1 -Mode Toggle -State Off
+  ```
+
 - `settings.json` denies `terraform apply`/`destroy`/`state rm|mv`, `az` deletion,
   `gh workflow run`, `gh pr merge`, and force-push to `main`. **Produce the plan,
-  then stop** — applying is the operator's call.
+  then stop** — applying is the operator's call. The `gh pr merge` denial is why
+  §1.1 asks a human to run the merges; do not try to route around it.
 - `generated-output/` is gitignored; it holds per-company configs containing
   tenant and subscription IDs.
 - PowerShell follows the house style in `scripts/Start-LandingZoneBootstrap.ps1`
