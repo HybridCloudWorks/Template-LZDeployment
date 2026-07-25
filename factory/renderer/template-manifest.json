@@ -1,0 +1,62 @@
+{
+  "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, path == 'v', path != 'v', path contains 'v', joined by && and ||.",
+
+  "manifestVersion": "1.0.0",
+  "targetSchemaVersion": "1.0.0",
+
+  "$statusComment": "Stage 5 delivers the rendering ENGINE. The entries below are the proof set that exercises every engine feature end to end: plain tokens, typed tokens, conditionals, loops, per-layer expansion, and verbatim copy. Stages 6-8 grow this manifest to the full corpus by promoting terraform/ and .github/workflows/ into factory/templates/.",
+
+  "files": [
+    {
+      "source": "README.md.tmpl",
+      "destination": "README.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Landing zone repository README, self-documenting from the configuration."
+    },
+    {
+      "source": "terraform/live/global/terraform.auto.tfvars.tmpl",
+      "destination": "terraform/live/global/terraform.auto.tfvars",
+      "mode": "render",
+      "when": "always",
+      "description": "Global layer variables: org prefix, subscriptions, allowed locations."
+    },
+    {
+      "source": "terraform/live/global/variables.tf",
+      "destination": "terraform/live/global/variables.tf",
+      "mode": "copy",
+      "when": "always",
+      "description": "Variable declarations. Copied verbatim — this file is the contract the schema-drift check validates against, so it must never be templated."
+    },
+    {
+      "source": "terraform/live/platform-connectivity/terraform.auto.tfvars.tmpl",
+      "destination": "terraform/live/platform-connectivity/terraform.auto.tfvars",
+      "mode": "render",
+      "when": "connectivity.model != 'none'",
+      "description": "Connectivity layer variables. Omitted entirely when no platform networking is deployed."
+    },
+    {
+      "source": ".github/workflows/terraform-plan.yml.tmpl",
+      "destination": ".github/workflows/terraform-plan.yml",
+      "mode": "render",
+      "when": "always",
+      "description": "Pull-request plan workflow. Uses the read-only plan identity."
+    },
+    {
+      "source": "docs/IDENTITY.md.tmpl",
+      "destination": "docs/identity-trust-matrix.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Identity trust matrix, generated from the environment list so it cannot drift from what the broker actually creates."
+    }
+  ],
+
+  "perLayerFiles": [
+    {
+      "source": "terraform/live/_layer/backend.tf.tmpl",
+      "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.tf",
+      "when": "always",
+      "description": "Backend configuration, rendered once per active layer. Each layer keeps an isolated state file — layers are never merged (control AR3)."
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+# {{FACTORY-RAW:organization.companyName}} — Azure Landing Zone
+
+GENERATED REPOSITORY. Produced by Landing Zone Factory
+v{{FACTORY-RAW:computed.factoryVersion}} on {{FACTORY-RAW:computed.generatedAt}}
+from `lz-config.json`.
+
+Re-render rather than hand-editing generated files. An edit here is drift the
+factory cannot see, and the next upgrade will overwrite it.
+
+## What this deploys
+
+| | |
+|---|---|
+| Business unit | {{FACTORY-RAW:organization.businessUnit}} |
+| Tenant | `{{FACTORY-RAW:azure.tenantId}}` |
+| Primary region | {{FACTORY-RAW:azure.primaryRegion}} (`{{FACTORY-RAW:azure.primaryRegionCode}}`) |
+#{{IF computed.hasDrRegion}}
+| DR region | {{FACTORY-RAW:azure.drRegion}} (`{{FACTORY-RAW:azure.drRegionCode}}`) |
+#{{ELSE}}
+| DR region | _none — single-region deployment_ |
+#{{ENDIF}}
+| Deployment mode | {{FACTORY-RAW:deploymentStrategy.mode}} |
+| Connectivity | {{FACTORY-RAW:connectivity.model}} |
+| Firewall | {{FACTORY-RAW:connectivity.firewall.type}} |
+| State backend | {{FACTORY-RAW:backend.type}} |
+| Operating model | {{FACTORY-RAW:operations.operatingModel}} |
+
+## Layers
+
+Deployed in dependency order. Each layer is an isolated state file with its own
+environment gate — layers are never merged, because shared state across layers
+is the most common way a landing zone becomes unrecoverable.
+
+#{{FOREACH lyr IN computed.layers}}
+- `terraform/live/{{FACTORY-RAW:lyr}}`
+#{{ENDFOREACH}}
+
+## Environments
+
+Platform: {{FACTORY-LIST:environments.platform}}
+
+Application: {{FACTORY-LIST:environments.application}}
+
+Promotion path: {{FACTORY-LIST:environments.promotionPath}}
+
+## Governance
+
+Policy enforcement mode is **{{FACTORY-RAW:governance.policyBaseline.enforcementMode}}**.
+
+Required tags: {{FACTORY-LIST:governance.policyBaseline.requiredTags}}
+
+#{{IF governance.policyBaseline.enforcementMode == 'audit'}}
+> Audit mode reports violations without blocking deployment. Promote to `deny`
+> once the compliance report is clean — until then, the guardrails observe but
+> do not enforce.
+#{{ENDIF}}
+
+#{{IF deploymentStrategy.mode == 'brownfield'}}
+## Brownfield
+
+This tenant already contains resources. Run the `brownfield-discovery` workflow
+before the first plan — it is read-only and produces an assessment plus import
+blocks for review. The destroy-protection gate fails any plan containing a
+destroy or replace action unless the pull request carries the `approved-destroy`
+label.
+#{{ENDIF}}
+
+## Working in this repository
+
+Pull requests run `terraform plan` using a read-only identity. Merging to
+`{{FACTORY-RAW:computed.defaultBranch}}` runs `terraform apply` per layer, in
+dependency order, behind the environment approval gates.
+
+A plan that destroys resources fails the pull request by default.
+
+## Operations
+
+Platform team: **{{FACTORY-RAW:operations.platformTeam.name}}**
+
+- `docs/identity-trust-matrix.md` — identity model, federated subjects, recovery
+- `render-manifest.json` — exactly what the factory generated, and what it skipped
+
+## Provenance
+
+| | |
+|---|---|
+| Factory version | {{FACTORY-RAW:computed.factoryVersion}} |
+| Config schema | {{FACTORY-RAW:computed.schemaVersion}} |
+| Rendered | {{FACTORY-RAW:computed.generatedAt}} |

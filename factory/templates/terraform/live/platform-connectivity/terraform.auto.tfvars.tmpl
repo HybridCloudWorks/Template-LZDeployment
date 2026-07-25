@@ -1,0 +1,46 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Platform connectivity layer — hub networking and egress filtering.
+#
+# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
+# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+# ─────────────────────────────────────────────────────────────────────────────
+
+connectivity_subscription_id = {{FACTORY:azure.subscriptions.connectivity}}
+
+primary_region      = {{FACTORY:azure.primaryRegion}}
+primary_region_code = {{FACTORY:azure.primaryRegionCode}}
+#{{IF computed.hasDrRegion}}
+dr_region      = {{FACTORY:azure.drRegion}}
+dr_region_code = {{FACTORY:azure.drRegionCode}}
+#{{ENDIF}}
+
+primary_hub_address_space = {{FACTORY:connectivity.hubSpoke.primaryHubAddressSpace}}
+#{{IF computed.hasDrRegion}}
+dr_hub_address_space = {{FACTORY:connectivity.hubSpoke.drHubAddressSpace}}
+#{{ENDIF}}
+
+firewall_type = {{FACTORY:connectivity.firewall.type}}
+#{{IF connectivity.firewall.type == 'azfw'}}
+azfw_tier                  = {{FACTORY:connectivity.firewall.azfwTier}}
+firewall_threat_intel_mode = {{FACTORY:connectivity.firewall.threatIntelligenceMode}}
+#{{ELSEIF connectivity.firewall.type == 'palo'}}
+primary_nva_trust_ip = {{FACTORY:connectivity.firewall.nvaTrustIpPrimary}}
+#{{IF computed.hasDrRegion}}
+dr_nva_trust_ip = {{FACTORY:connectivity.firewall.nvaTrustIpDr}}
+#{{ENDIF}}
+#{{ELSEIF connectivity.firewall.type == 'fortinet'}}
+primary_nva_trust_ip = {{FACTORY:connectivity.firewall.nvaTrustIpPrimary}}
+#{{IF computed.hasDrRegion}}
+dr_nva_trust_ip = {{FACTORY:connectivity.firewall.nvaTrustIpDr}}
+#{{ENDIF}}
+#{{ENDIF}}
+
+deploy_bastion = {{FACTORY-BOOL:connectivity.bastion.enabled}}
+deploy_dns     = {{FACTORY-BOOL:connectivity.privateDns.enabled}}
+
+primary_availability_zones = {{FACTORY-LIST:connectivity.hubSpoke.availabilityZones}}
+#{{IF computed.hasDrRegion}}
+dr_availability_zones = {{FACTORY-LIST:connectivity.hubSpoke.availabilityZones}}
+#{{ENDIF}}
+
+default_tags = {{FACTORY-MAP:naming.defaultTags}}

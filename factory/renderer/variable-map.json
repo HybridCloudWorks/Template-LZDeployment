@@ -1,0 +1,40 @@
+{
+  "$comment": "Declares the correspondence between configuration keys and the Terraform variables each layer consumes. Test-LzSchemaDrift validates this in both directions: a mapped config key with no matching Terraform variable would silently do nothing, and a required Terraform variable that nothing feeds would stall apply waiting for input. This is the mechanism that prevents the wizard/Terraform divergence recorded in TODO.md, where the generator's 47 policy toggles were never reconciled against the policy-baseline module.",
+
+  "mapVersion": "1.0.0",
+  "targetSchemaVersion": "1.0.0",
+
+  "$pathConventions": {
+    "plain": "A dotted path into lz-config.json, e.g. azure.primaryRegion.",
+    "computed.*": "A value derived by the renderer rather than stored in the config. Exempt from the schema-existence check.",
+    "literal:*": "A constant supplied by the manifest rather than the config. Exempt from the schema-existence check."
+  },
+
+  "layers": {
+    "global": {
+      "variablesFile": "terraform/live/global/variables.tf",
+      "variables": {
+        "org_prefix": "organization.companyShortName",
+        "management_subscription_id": "azure.subscriptions.management",
+        "identity_subscription_id": "azure.subscriptions.identity",
+        "connectivity_subscription_id": "azure.subscriptions.connectivity",
+        "workload_prod_subscription_id": "azure.subscriptions.workloadProd",
+        "workload_nonprod_subscription_id": "azure.subscriptions.workloadNonProd",
+        "sandbox_subscription_id": "azure.subscriptions.sandbox",
+        "allowed_locations": "azure.allowedLocations"
+      }
+    }
+  },
+
+  "$pendingLayers": {
+    "$comment": "Layers whose variables.tf has not yet been promoted into factory/templates. Stage 6 adds them, at which point each moves into `layers` above and becomes drift-checked. Listed here so the gap is explicit rather than looking like full coverage.",
+    "pending": [
+      "platform-connectivity",
+      "platform-management",
+      "platform-identity",
+      "workloads-prod",
+      "workloads-nonprod",
+      "sandbox"
+    ]
+  }
+}

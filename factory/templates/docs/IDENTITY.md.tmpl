@@ -1,0 +1,73 @@
+# Identity Trust Matrix — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Rendered from `lz-config.json` by Landing Zone Factory
+v{{FACTORY-RAW:computed.factoryVersion}} on {{FACTORY-RAW:computed.generatedAt}}.
+
+This document is generated from the same configuration the bootstrap broker
+reads, so it cannot drift from the identities that actually exist. If it
+disagrees with the tenant, the tenant was changed outside the factory.
+
+## Trust relationships
+
+| # | Source identity | Target | Method | Credential type | Rotation |
+|---|---|---|---|---|---|
+| 1 | GitHub Actions (per environment) | Azure | Workload identity federation | None — OIDC | N/A |
+#{{IF computed.backendIsHcp}}
+| 2 | GitHub Actions | HCP Terraform | API token | Static token | 90 days |
+| 3 | HCP Terraform | Azure | Dynamic provider credentials | None — OIDC | N/A |
+#{{ENDIF}}
+| 4 | Bootstrap operator | Azure | `az login`, interactive with MFA | User token | Per session |
+| 5 | Bootstrap operator | GitHub | `gh auth login`, device flow | User token | Per session |
+#{{IF computed.backendIsHcp}}
+| 6 | Bootstrap operator | HCP Terraform | User API token | Static token | 90 days |
+#{{ENDIF}}
+
+#{{IF computed.backendIsHcp}}
+The HCP Terraform token is the only static credential in the system, and it
+exists only on the operator workstation and in the repository secret store —
+never in Terraform state and never in a rendered file.
+#{{ELSE}}
+There are no static credentials in this deployment. State authenticates to Azure
+Storage with Entra ID rather than a shared storage key.
+#{{ENDIF}}
+
+## Federated credential subjects
+
+- Issuer: `{{FACTORY-RAW:computed.oidcIssuer}}`
+- Audience: `{{FACTORY-RAW:computed.oidcAudience}}`
+
+Two applications per environment. The split is what makes it structurally
+impossible for a pull-request-triggered run to hold write access — it is not a
+convention reviewers have to remember to enforce.
+
+| Environment | Application | Subject | Azure role |
+|---|---|---|---|
+#{{FOREACH env IN computed.allEnvironments}}
+| {{FACTORY-RAW:env}} | `sp-{{FACTORY-RAW:organization.companyShortName}}-{{FACTORY-RAW:env}}-plan` | `repo:{{FACTORY-RAW:computed.repositorySlug}}:pull_request` | Reader |
+| {{FACTORY-RAW:env}} | `sp-{{FACTORY-RAW:organization.companyShortName}}-{{FACTORY-RAW:env}}-apply` | `repo:{{FACTORY-RAW:computed.repositorySlug}}:environment:{{FACTORY-RAW:env}}` | Contributor |
+#{{ENDFOREACH}}
+
+> No subject uses a wildcard. A subject such as `repo:owner/repo:*` would let any
+> branch or pull request assume the apply identity, defeating the environment
+> gate entirely. This is risk SR1 in the factory design.
+
+## Recovery
+
+Federation failures surface as `AADSTS700213` or *no matching federated identity
+record found* at the first Azure login step. Check in this order:
+
+1. **Subject mismatch.** The credential subject must match the trigger exactly.
+   A `pull_request` run never presents an `environment:` subject — this is the
+   single most common cause, and it is the failure this repository's parent
+   factory was built after encountering.
+2. **Issuer.** Must be `{{FACTORY-RAW:computed.oidcIssuer}}` with no trailing slash.
+3. **Audience.** Must be `{{FACTORY-RAW:computed.oidcAudience}}`.
+4. **Job permissions.** The job must declare `permissions: id-token: write`.
+5. **Conditional Access.** A policy requiring a compliant device or blocking
+   non-interactive sign-in will break workload identity federation even though
+   bootstrap reported success.
+
+Re-running the bootstrap broker is safe and idempotent; it reconciles the
+credential set rather than recreating it.
+
+Break-glass contacts are listed in `docs/operating-model.md`.

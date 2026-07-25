@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Global layer — management groups and policy baseline.
+#
+# GENERATED FILE. Do not hand-edit.
+#   Source of truth : lz-config.json
+#   Rendered by     : Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}
+#   Generated       : {{FACTORY-RAW:computed.generatedAt}}
+#
+# To change a value, re-run the wizard and re-render. Editing here creates
+# drift between the configuration and the deployment that nothing detects.
+#
+# Variables correspond to terraform/live/global/variables.tf.
+# ─────────────────────────────────────────────────────────────────────────────
+
+org_prefix = {{FACTORY:organization.companyShortName}}
+
+management_subscription_id       = {{FACTORY:azure.subscriptions.management}}
+connectivity_subscription_id     = {{FACTORY:azure.subscriptions.connectivity}}
+workload_prod_subscription_id    = {{FACTORY:azure.subscriptions.workloadProd}}
+#{{IF defined azure.subscriptions.identity}}
+identity_subscription_id         = {{FACTORY:azure.subscriptions.identity}}
+#{{ELSE}}
+identity_subscription_id         = ""
+#{{ENDIF}}
+#{{IF defined azure.subscriptions.workloadNonProd}}
+workload_nonprod_subscription_id = {{FACTORY:azure.subscriptions.workloadNonProd}}
+#{{ELSE}}
+workload_nonprod_subscription_id = ""
+#{{ENDIF}}
+#{{IF defined azure.subscriptions.sandbox}}
+sandbox_subscription_id          = {{FACTORY:azure.subscriptions.sandbox}}
+#{{ELSE}}
+sandbox_subscription_id          = ""
+#{{ENDIF}}
+
+# Enforced by the allowed-locations policy. Every region deployed to must be
+# listed here, or the landing zone denies its own resources.
+allowed_locations = {{FACTORY-LIST:azure.allowedLocations}}
