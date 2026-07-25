@@ -64,7 +64,7 @@ silently skipping the match.
 
 ## 2. Capability usage report
 
-Reporting is **off by default**. The setting lives in
+Reporting is **enabled in the current repository state**. The setting lives in
 [`.claude/agent-report.json`](.claude/agent-report.json) (`{"enabled": false}`).
 
 When it is on, end each completed task with:
