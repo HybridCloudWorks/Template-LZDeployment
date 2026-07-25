@@ -1,0 +1,804 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/saulpatinojr/HCW-Plan_LZDeployment/factory/schema/lz-config.schema.json",
+  "title": "Azure Landing Zone Factory — Configuration Contract",
+  "description": "The single contract read by the wizard (site/), the renderer (factory/renderer/), the bootstrap broker, the scaffold builder, and every generated Terraform layer. Any key emitted by the wizard that is not declared here is a build-breaking error; any Terraform variable in factory/templates/**/variables.tf with no corresponding key here is likewise an error. This bidirectional check is what prevents the wizard/Terraform drift recorded in TODO.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "factoryVersion",
+    "generatedAt",
+    "organization",
+    "azure",
+    "github",
+    "backend",
+    "deploymentStrategy",
+    "environments",
+    "connectivity",
+    "security",
+    "governance",
+    "operations",
+    "finops",
+    "naming"
+  ],
+
+  "$defs": {
+    "azureRegion": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+$",
+      "description": "Azure region short name, e.g. southcentralus. Lowercase, no spaces.",
+      "examples": ["southcentralus", "northcentralus", "eastus2", "westeurope"]
+    },
+    "regionCode": {
+      "type": "string",
+      "pattern": "^[a-z]{2,5}$",
+      "description": "Abbreviation used in resource names, e.g. scus for southcentralus.",
+      "examples": ["scus", "ncus", "eus2", "weu"]
+    },
+    "guid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "guidOrEmpty": {
+      "type": "string",
+      "pattern": "^$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "description": "A subscription GUID, or empty string meaning 'not yet provisioned / reuse another subscription'."
+    },
+    "cidr": {
+      "type": "string",
+      "pattern": "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/(3[0-2]|[12]?[0-9])$"
+    },
+    "ipv4": {
+      "type": "string",
+      "pattern": "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    },
+    "contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "email"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "email": { "$ref": "#/$defs/email" },
+        "role": { "type": "string" },
+        "phone": {
+          "type": "string",
+          "description": "Optional. Used only in generated runbook contact tables. Never transmitted."
+        }
+      }
+    }
+  },
+
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0",
+      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement."
+    },
+    "factoryVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Copied from factory-version.json at generation time. Stamped into the generated repo so upgrade-check can diff."
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of wizard export."
+    },
+
+    "organization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["companyName", "companyShortName", "businessUnit"],
+      "properties": {
+        "companyName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Display name. Used in docs and report headers only."
+        },
+        "companyShortName": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{2,10}$",
+          "description": "Lowercase alphanumeric, 2-10 chars. This becomes org_prefix in Terraform and the leading token in every resource name, so it is length-constrained by Azure storage-account naming (24 chars total).",
+          "examples": ["hcw", "contoso"]
+        },
+        "businessUnit": { "type": "string", "minLength": 1 },
+        "outputDirectoryName": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9._-]+$",
+          "description": "Folder created under generated-output/. Defaults to companyShortName if omitted."
+        }
+      }
+    },
+
+    "azure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenantId", "primaryRegion", "primaryRegionCode", "subscriptions", "managementGroups"],
+      "properties": {
+        "tenantId": { "$ref": "#/$defs/guid" },
+        "primaryRegion": { "$ref": "#/$defs/azureRegion" },
+        "primaryRegionCode": { "$ref": "#/$defs/regionCode" },
+        "drRegion": { "$ref": "#/$defs/azureRegion" },
+        "drRegionCode": { "$ref": "#/$defs/regionCode" },
+        "allowedLocations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/azureRegion" },
+          "minItems": 1,
+          "description": "Enforced by the allowed-locations Azure Policy. Must include primaryRegion and drRegion."
+        },
+        "subscriptions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["management", "connectivity", "workloadProd"],
+          "description": "Maps 1:1 onto the *_subscription_id variables in terraform/live/*/variables.tf. Empty string means the layer consuming it will not be deployed.",
+          "properties": {
+            "management": { "$ref": "#/$defs/guid" },
+            "identity": { "$ref": "#/$defs/guidOrEmpty" },
+            "connectivity": { "$ref": "#/$defs/guid" },
+            "workloadProd": { "$ref": "#/$defs/guid" },
+            "workloadNonProd": { "$ref": "#/$defs/guidOrEmpty" },
+            "sandbox": { "$ref": "#/$defs/guidOrEmpty" }
+          }
+        },
+        "managementGroups": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rootId", "strategy"],
+          "properties": {
+            "rootId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Management group ID the hierarchy is rooted under. Use the tenant ID to root at Tenant Root Group; use an existing intermediate MG ID to avoid requiring tenant-root write (see assumption A7)."
+            },
+            "strategy": {
+              "enum": ["caf-standard", "caf-minimal", "custom"],
+              "description": "caf-standard: Platform (Identity/Management/Connectivity) + Landing Zones (Corp/Online) + Sandbox + Decommissioned. caf-minimal: Platform + Landing Zones only. custom: hierarchy supplied in customHierarchy."
+            },
+            "customHierarchy": {
+              "type": "array",
+              "description": "Required when strategy=custom. Flat list; parentId references another entry's id or rootId.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "displayName", "parentId"],
+                "properties": {
+                  "id": { "type": "string", "pattern": "^[A-Za-z0-9._()-]{1,90}$" },
+                  "displayName": { "type": "string", "minLength": 1 },
+                  "parentId": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "strategy": { "const": "custom" } }, "required": ["strategy"] },
+              "then": { "required": ["customHierarchy"] }
+            }
+          ]
+        }
+      }
+    },
+
+    "github": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownershipModel", "ownerName", "repositoryName", "visibility"],
+      "properties": {
+        "ownershipModel": {
+          "enum": ["personal", "organization", "enterprise"],
+          "description": "Drives which control set the broker can configure. See risk GH1: personal accounts on the Free plan cannot use environments or branch protection on private repos, so the broker degrades and reports the reduced control set rather than skipping silently."
+        },
+        "ownerName": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$",
+          "description": "GitHub user or org login. Combined with repositoryName to form the OIDC subject claim."
+        },
+        "enterpriseSlug": {
+          "type": "string",
+          "description": "Required when ownershipModel=enterprise. Used for enterprise-level Actions policy discovery."
+        },
+        "repositoryName": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]{1,100}$",
+          "description": "Defaults to {companyShortName}_LZ_Deployment."
+        },
+        "visibility": {
+          "enum": ["private", "internal"],
+          "description": "Public is deliberately not permitted. OIDC subject claims and MG topology must not be world-readable (assumption A3)."
+        },
+        "defaultBranch": { "type": "string", "default": "main" },
+        "branchProtection": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "requiredApprovals": { "type": "integer", "minimum": 0, "maximum": 6, "default": 1 },
+            "requireCodeOwnerReview": { "type": "boolean", "default": true },
+            "dismissStaleReviews": { "type": "boolean", "default": true },
+            "requireLinearHistory": { "type": "boolean", "default": true },
+            "enforceAdmins": { "type": "boolean", "default": false }
+          }
+        },
+        "useSelfHostedRunners": {
+          "type": "boolean",
+          "default": false,
+          "description": "v1 emits GitHub-hosted runners only (decision D6). Discovery reports self-hosted runners; setting this true is currently rejected by the renderer with a documented extension point."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "ownershipModel": { "const": "enterprise" } }, "required": ["ownershipModel"] },
+          "then": { "required": ["enterpriseSlug"] }
+        }
+      ]
+    },
+
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "Resolves the split-brain recorded in TODO.md / Issue #11: exactly one backend is selected here and it drives both the rendered backend.tf and which broker steps run.",
+      "properties": {
+        "type": { "enum": ["hcp-terraform", "azurerm"] },
+        "hcpTerraform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["organization"],
+          "properties": {
+            "organization": { "type": "string", "minLength": 1 },
+            "workspacePrefix": {
+              "type": "string",
+              "description": "Workspaces are created as {prefix}-{layer}. Defaults to companyShortName."
+            },
+            "executionMode": { "enum": ["remote", "local"], "default": "remote" },
+            "useDynamicProviderCredentials": {
+              "type": "boolean",
+              "default": true,
+              "description": "TFC->Azure OIDC. Eliminates static Azure credentials in the workspace (trust relationship 3 in the identity matrix)."
+            },
+            "acknowledgedResourceLimit": {
+              "type": "boolean",
+              "default": false,
+              "description": "The HCP Terraform free tier is capped at 500 managed resources (RUM). A full CAF landing zone commonly exceeds this. The wizard computes an estimate and requires explicit acknowledgement before allowing hcp-terraform when the estimate exceeds the cap."
+            }
+          }
+        },
+        "azurerm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resourceGroupName", "storageAccountName"],
+          "properties": {
+            "resourceGroupName": { "type": "string", "minLength": 1 },
+            "storageAccountName": {
+              "type": "string",
+              "pattern": "^[a-z0-9]{3,24}$",
+              "description": "Globally unique, lowercase alphanumeric, max 24 chars."
+            },
+            "containerName": { "type": "string", "default": "tfstate" },
+            "subscriptionId": { "$ref": "#/$defs/guidOrEmpty" },
+            "useAzureAdAuth": { "type": "boolean", "default": true }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "hcp-terraform" } }, "required": ["type"] },
+          "then": { "required": ["hcpTerraform"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "azurerm" } }, "required": ["type"] },
+          "then": { "required": ["azurerm"] }
+        }
+      ]
+    },
+
+    "deploymentStrategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "enum": ["greenfield", "brownfield"],
+          "description": "brownfield triggers read-only discovery, import generation, and the destructive-plan gate (risk BR1). No destructive operation is ever emitted by default (assumption A5)."
+        },
+        "brownfield": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "defaultClassification": {
+              "enum": ["adopt", "ignore", "replace", "require-approval"],
+              "default": "ignore",
+              "description": "Applied to every discovered resource with no explicit classification. Defaults to ignore so adoption is always an opt-in act (risk BR3)."
+            },
+            "generateImportBlocks": { "type": "boolean", "default": true },
+            "generateImportCommands": { "type": "boolean", "default": true },
+            "allowDestructivePlans": {
+              "type": "boolean",
+              "default": false,
+              "description": "When false, the destroy-protection workflow fails any plan containing destroy or replace actions."
+            }
+          }
+        }
+      }
+    },
+
+    "environments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "application", "promotionPath"],
+      "properties": {
+        "platform": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["bootstrap", "identity", "connectivity", "management", "shared-services"] },
+          "description": "Platform-plane environments. Each becomes a GitHub environment, a state file, and (for hcp-terraform) a workspace."
+        },
+        "application": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["sandbox", "dev", "test", "uat", "prod"] }
+        },
+        "promotionPath": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["sandbox", "dev", "test", "uat", "prod"] },
+          "description": "Ordered. Must be a subsequence of application. environment-promotion.yml enforces that a change reaching stage N has succeeded at N-1."
+        },
+        "approvals": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "requiredReviewers": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "GitHub logins or team slugs gating the GitHub environment."
+              },
+              "waitTimerMinutes": { "type": "integer", "minimum": 0, "maximum": 43200, "default": 0 },
+              "preventSelfReview": { "type": "boolean", "default": true }
+            }
+          },
+          "description": "Keyed by environment name from platform or application."
+        }
+      }
+    },
+
+    "connectivity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model"],
+      "properties": {
+        "model": {
+          "enum": ["hub-spoke", "virtual-wan", "none"],
+          "description": "hub-spoke renders terraform/live/platform-connectivity using the hub-network module. virtual-wan is declared here but is NOT implemented in the current module corpus — the renderer rejects it until the module exists rather than emitting a broken layer."
+        },
+        "hubSpoke": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "primaryHubAddressSpace": { "$ref": "#/$defs/cidr" },
+            "drHubAddressSpace": { "$ref": "#/$defs/cidr" },
+            "primarySpokeAddressSpace": { "$ref": "#/$defs/cidr" },
+            "drSpokeAddressSpace": { "$ref": "#/$defs/cidr" },
+            "availabilityZones": {
+              "type": "array",
+              "items": { "enum": ["1", "2", "3"] },
+              "default": ["1", "2", "3"]
+            }
+          }
+        },
+        "firewall": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "enum": ["azfw", "palo", "fortinet", "none"],
+              "description": "Maps to the firewall_type variable already present in terraform/live/platform-connectivity."
+            },
+            "azfwTier": { "enum": ["Standard", "Premium", "Basic"], "default": "Standard" },
+            "threatIntelligenceMode": {
+              "enum": ["Alert", "Deny", "Off"],
+              "default": "Deny",
+              "description": "Secure default is Deny. Off requires an explicit governance exception."
+            },
+            "nvaTrustIpPrimary": { "$ref": "#/$defs/ipv4" },
+            "nvaTrustIpDr": { "$ref": "#/$defs/ipv4" }
+          }
+        },
+        "expressRoute": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "circuitName": { "type": "string" },
+            "peeringLocation": { "type": "string" },
+            "bandwidthMbps": { "type": "integer", "minimum": 50 },
+            "serviceProvider": { "type": "string" }
+          }
+        },
+        "vpn": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "sku": { "type": "string", "default": "VpnGw1AZ" },
+            "activeActive": { "type": "boolean", "default": true }
+          }
+        },
+        "bastion": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "sku": { "enum": ["Basic", "Standard"], "default": "Standard" }
+          }
+        },
+        "privateDns": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "centralizedInHub": { "type": "boolean", "default": true },
+            "zones": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Private DNS zones to create, e.g. privatelink.blob.core.windows.net. Empty means use the renderer's CAF default set."
+            }
+          }
+        },
+        "privateEndpoints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "denyPublicNetworkAccessPolicy": { "type": "boolean", "default": true }
+          }
+        }
+      }
+    },
+
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "enum": ["cloud-only", "hybrid-adconnect", "hybrid-ad-domain-services"],
+          "default": "cloud-only"
+        },
+        "deployIdentitySubscription": { "type": "boolean", "default": false },
+        "privilegedAccessModel": {
+          "enum": ["pim-eligible", "standing-access"],
+          "default": "pim-eligible",
+          "description": "standing-access is recorded as a governance exception in the generated security docs."
+        },
+        "breakGlassAccounts": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/contact" },
+          "description": "At least two, per Microsoft guidance. Names/emails only — never credentials (see risk SR7; the schema forbids secret-typed fields entirely)."
+        }
+      }
+    },
+
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defender": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "plans": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": ["VirtualMachines", "StorageAccounts", "SqlServers", "AppServices", "KeyVaults", "Containers", "Arm", "OpenSourceRelationalDatabases", "CosmosDbs", "CloudPosture", "Api"]
+              }
+            },
+            "securityContactEmail": { "$ref": "#/$defs/email" }
+          }
+        },
+        "sentinel": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "dataConnectors": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "enum": ["AzureActiveDirectory", "AzureActivity", "Office365", "DefenderForCloud", "ThreatIntelligence", "Dns"] }
+            },
+            "retentionDays": { "type": "integer", "minimum": 30, "maximum": 730, "default": 90 }
+          }
+        },
+        "keyVault": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "strategy": {
+              "enum": ["per-environment", "per-subscription", "centralized"],
+              "default": "per-environment"
+            },
+            "enablePurgeProtection": { "type": "boolean", "default": true },
+            "softDeleteRetentionDays": { "type": "integer", "minimum": 7, "maximum": 90, "default": 90 },
+            "customerManagedKeys": {
+              "type": "boolean",
+              "default": false,
+              "description": "Consumes the keyvault-cmk module, which is scaffold-only today. The renderer rejects true until that module is implemented rather than silently producing a no-op."
+            },
+            "enableRbacAuthorization": { "type": "boolean", "default": true }
+          }
+        },
+        "nsgFlowLogs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "retentionDays": { "type": "integer", "minimum": 1, "maximum": 365, "default": 90 },
+            "trafficAnalytics": { "type": "boolean", "default": true }
+          }
+        },
+        "backup": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "immutableVault": { "type": "boolean", "default": true },
+            "geoRedundant": { "type": "boolean", "default": true }
+          }
+        }
+      }
+    },
+
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyBaseline"],
+      "properties": {
+        "policyBaseline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enforcementMode"],
+          "properties": {
+            "enforcementMode": {
+              "enum": ["audit", "deny"],
+              "description": "Global default effect. Downgrading an individual policy from Deny to Audit is blocked by the policy-checks workflow (risk GR1)."
+            },
+            "requiredTags": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$" },
+              "default": ["owner", "application", "environment", "cost_center"],
+              "description": "Enforced by the require-tag policies in the policy-baseline module."
+            },
+            "enforceAllowedLocations": { "type": "boolean", "default": true },
+            "enforceTlsMinimum": { "type": "boolean", "default": true },
+            "enforceNsgOnSubnets": { "type": "boolean", "default": true },
+            "denyPublicIpOnNics": { "type": "boolean", "default": false },
+            "enforceDiagnosticSettings": { "type": "boolean", "default": true },
+            "enforceEncryptionAtRest": { "type": "boolean", "default": true }
+          }
+        },
+        "policyAsCodeEngines": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["azure-policy", "opa", "conftest", "sentinel"] },
+          "default": ["azure-policy", "conftest"],
+          "description": "sentinel requires an HCP Terraform tier that includes policy enforcement; the free tier allows one policy set of up to five policies."
+        },
+        "complianceFrameworks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["cis-azure", "nist-800-53", "iso-27001", "pci-dss", "hipaa-hitrust", "soc2", "fedramp-moderate", "none"] },
+          "default": ["none"],
+          "description": "Drives which built-in Azure Policy initiatives are assigned and which sections appear in the generated compliance docs."
+        },
+        "regulatoryNotes": {
+          "type": "string",
+          "maxLength": 4000,
+          "description": "Free text reproduced verbatim into docs/governance-model.md. Not parsed."
+        },
+        "dataResidencyRegions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/azureRegion" },
+          "description": "If non-empty, allowedLocations is intersected with this set and a residency policy is assigned."
+        },
+        "resourceLocks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lockPlatformResourceGroups": { "type": "boolean", "default": true },
+            "lockLevel": { "enum": ["CanNotDelete", "ReadOnly"], "default": "CanNotDelete" }
+          }
+        }
+      }
+    },
+
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "logAnalytics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "retentionDays": { "type": "integer", "minimum": 30, "maximum": 730, "default": 90 },
+            "dailyQuotaGb": {
+              "type": "number",
+              "minimum": -1,
+              "default": -1,
+              "description": "-1 means no cap. Any positive value risks dropped security telemetry and is flagged in the generated observability doc."
+            },
+            "sku": { "enum": ["PerGB2018", "CapacityReservation"], "default": "PerGB2018" }
+          }
+        },
+        "diagnosticSettings": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "sendActivityLog": { "type": "boolean", "default": true },
+            "sendToStorage": { "type": "boolean", "default": false },
+            "sendToEventHub": { "type": "boolean", "default": false }
+          }
+        },
+        "alerting": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "actionGroupEmails": { "type": "array", "items": { "$ref": "#/$defs/email" } },
+            "enablePlatformHealthAlerts": { "type": "boolean", "default": true },
+            "enableDriftAlerts": { "type": "boolean", "default": true }
+          }
+        },
+        "driftDetection": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "schedule": {
+              "type": "string",
+              "default": "0 6 * * 1",
+              "description": "Five-field cron for the scheduled drift-detection workflow, UTC."
+            },
+            "failOnDrift": { "type": "boolean", "default": false },
+            "openIssueOnDrift": { "type": "boolean", "default": true }
+          }
+        }
+      }
+    },
+
+    "operations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operatingModel", "platformTeam"],
+      "properties": {
+        "operatingModel": {
+          "enum": ["centralized", "federated", "decentralized"],
+          "description": "CAF operating model. Determines default RBAC scoping in the generated governance docs: centralized keeps write access at platform MG, federated delegates at landing-zone MG, decentralized at subscription."
+        },
+        "platformTeam": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "contacts"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "githubTeamSlug": { "type": "string" },
+            "contacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/contact" } },
+            "supportHours": { "type": "string", "examples": ["24x7", "Mon-Fri 08:00-18:00 CT"] },
+            "escalationUrl": { "type": "string" }
+          }
+        },
+        "approvalChain": {
+          "type": "array",
+          "description": "Ordered approval stages reproduced into docs/operating-model.md and used to seed GitHub environment reviewers.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stage", "approvers"],
+            "properties": {
+              "stage": { "type": "string", "minLength": 1 },
+              "approvers": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+              "appliesToEnvironments": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "breakGlassContacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/contact" },
+          "description": "Humans reachable during an identity or OIDC outage. Distinct from identity.breakGlassAccounts, which are Entra accounts."
+        }
+      }
+    },
+
+    "finops": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["costCenter", "businessOwner"],
+      "properties": {
+        "costCenter": { "type": "string", "minLength": 1 },
+        "businessOwner": { "$ref": "#/$defs/contact" },
+        "budgets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scope", "amountUsd"],
+            "properties": {
+              "scope": {
+                "type": "string",
+                "description": "Environment name, or 'subscription:<name>', or 'mg:<id>'."
+              },
+              "amountUsd": { "type": "number", "exclusiveMinimum": 0 },
+              "timeGrain": { "enum": ["Monthly", "Quarterly", "Annually"], "default": "Monthly" },
+              "alertThresholdPercents": {
+                "type": "array",
+                "items": { "type": "integer", "minimum": 1, "maximum": 1000 },
+                "default": [50, 80, 100]
+              },
+              "contactEmails": { "type": "array", "items": { "$ref": "#/$defs/email" } }
+            }
+          }
+        },
+        "chargebackModel": { "enum": ["showback", "chargeback", "none"], "default": "showback" },
+        "costExports": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "storageAccountName": { "type": "string", "pattern": "^$|^[a-z0-9]{3,24}$" },
+            "frequency": { "enum": ["Daily", "Weekly", "Monthly"], "default": "Daily" }
+          }
+        }
+      }
+    },
+
+    "naming": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["standard"],
+      "properties": {
+        "standard": {
+          "enum": ["caf", "custom"],
+          "description": "caf uses the Microsoft CAF abbreviations already documented in README.md: mg-{scope}, rg-{scope}-{region}-{env}-{nn}, {type}-{name}-{region}-{env}-{nn}."
+        },
+        "resourceGroupPattern": {
+          "type": "string",
+          "description": "Required when standard=custom. Supported tokens: {org} {scope} {workload} {region} {regionCode} {env} {nn}. Any other token is a render-time error, so no placeholder can silently survive into output.",
+          "examples": ["rg-{scope}-{regionCode}-{env}-{nn}"]
+        },
+        "resourcePattern": {
+          "type": "string",
+          "description": "Required when standard=custom. Same token set, plus {type} for the CAF resource abbreviation.",
+          "examples": ["{type}-{workload}-{regionCode}-{env}-{nn}"]
+        },
+        "environmentAbbreviations": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "pattern": "^[a-z0-9]{1,6}$" },
+          "description": "Maps environment name to the token substituted for {env}, e.g. { \"prod\": \"prd\", \"sandbox\": \"sbx\" }."
+        },
+        "defaultTags": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Merged into the default_tags variable of every live layer. Keys listed in governance.policyBaseline.requiredTags must all be present here or the renderer fails — otherwise the generated deployment would be denied by its own policy on first apply."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "standard": { "const": "custom" } }, "required": ["standard"] },
+          "then": { "required": ["resourceGroupPattern", "resourcePattern"] }
+        }
+      ]
+    }
+  }
+}

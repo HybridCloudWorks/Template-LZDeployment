@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<!--
+  Azure Landing Zone Factory — Configuration Wizard
+  ================================================
+  Runs entirely from the local filesystem. Open this file directly (file:///...).
+
+  PRIVACY CONTRACT: this page makes zero network requests. There is no fetch, no
+  XMLHttpRequest, no WebSocket, no form action, no external stylesheet, font, image,
+  or script. The Content-Security-Policy below enforces that at the browser level —
+  if any code ever tries to reach the network, the browser blocks it and logs a CSP
+  violation. A factory CI check greps this directory for network APIs and fails the
+  build if one appears (release gate: siteMakesZeroNetworkRequests).
+
+  OUTPUT: generated-output/<company>/lz-config.json, validated against
+  factory/schema/lz-config.schema.json, plus the artifacts derivable directly from it.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Azure Landing Zone Factory — Configuration</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<a class="skip-link" href="#stepPanel">Skip to form</a>
+
+<header class="topbar">
+  <div class="topbar-brand">
+    <span class="brand-mark" aria-hidden="true">◆</span>
+    <div>
+      <h1>Landing Zone Factory</h1>
+      <p class="brand-sub">Configuration wizard &middot; runs offline &middot; nothing leaves this machine</p>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <span id="factoryVersionBadge" class="badge" title="Read from factory-version.json at export time">v—</span>
+    <button type="button" id="btnLoad" class="btn btn-ghost">Load config</button>
+    <input type="file" id="fileLoad" accept="application/json,.json" hidden>
+    <button type="button" id="btnSave" class="btn btn-ghost">Save draft</button>
+    <button type="button" id="btnExport" class="btn btn-primary">Export</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── Step navigation ─────────────────────────────────────────────── -->
+  <nav class="stepnav" aria-label="Configuration steps">
+    <ol id="stepList"></ol>
+    <div class="progress-wrap">
+      <div class="progress"><div id="progressBar" class="progress-bar"></div></div>
+      <p id="progressText" class="progress-text">0 of 15 complete</p>
+    </div>
+  </nav>
+
+  <!-- ── Step panel ──────────────────────────────────────────────────── -->
+  <main id="stepPanel" class="panel" tabindex="-1">
+
+    <!-- 1. ORGANIZATION -->
+    <section class="step" data-step="organization" data-title="Organization">
+      <header class="step-head">
+        <h2>Organization</h2>
+        <p>Identifies the tenant this landing zone belongs to. The short name becomes the prefix on every Azure resource, so it is length-constrained.</p>
+      </header>
+
+      <div class="field">
+        <label for="org_companyName">Company name <span class="req">*</span></label>
+        <input id="org_companyName" data-path="organization.companyName" type="text" maxlength="100" placeholder="Contoso Health Group">
+        <p class="hint">Display name only. Appears in generated documentation and reports.</p>
+      </div>
+
+      <div class="field">
+        <label for="org_companyShortName">Company short name <span class="req">*</span></label>
+        <input id="org_companyShortName" data-path="organization.companyShortName" type="text" maxlength="10" placeholder="contoso" spellcheck="false">
+        <p class="hint">Lowercase letters and digits, 2&ndash;10 characters. Becomes <code>org_prefix</code> in Terraform and the leading token in every resource name. Capped at 10 because Azure storage account names are limited to 24 characters total.</p>
+      </div>
+
+      <div class="field">
+        <label for="org_businessUnit">Business unit <span class="req">*</span></label>
+        <input id="org_businessUnit" data-path="organization.businessUnit" type="text" placeholder="Platform Engineering">
+      </div>
+
+      <div class="field">
+        <label for="org_outputDirectoryName">Output directory name</label>
+        <input id="org_outputDirectoryName" data-path="organization.outputDirectoryName" type="text" placeholder="(defaults to short name)" spellcheck="false">
+        <p class="hint">Folder created under <code>generated-output/</code>. Leave blank to use the short name.</p>
+      </div>
+    </section>
+
+    <!-- 2. AZURE -->
+    <section class="step" data-step="azure" data-title="Azure tenant">
+      <header class="step-head">
+        <h2>Azure tenant &amp; regions</h2>
+        <p>Where the landing zone is built. The regions chosen here are enforced by the allowed-locations policy, so adding a region later requires a policy change.</p>
+      </header>
+
+      <div class="field">
+        <label for="az_tenantId">Tenant ID <span class="req">*</span></label>
+        <input id="az_tenantId" data-path="azure.tenantId" type="text" spellcheck="false" placeholder="00000000-0000-0000-0000-000000000000">
+        <p class="hint">Run <code>az account show --query tenantId -o tsv</code>.</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="az_primaryRegion">Primary region <span class="req">*</span></label>
+          <input id="az_primaryRegion" data-path="azure.primaryRegion" type="text" list="regionList" spellcheck="false" placeholder="southcentralus">
+        </div>
+        <div class="field">
+          <label for="az_primaryRegionCode">Primary region code <span class="req">*</span></label>
+          <input id="az_primaryRegionCode" data-path="azure.primaryRegionCode" type="text" maxlength="5" spellcheck="false" placeholder="scus">
+          <p class="hint">Auto-filled from the region where known.</p>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="az_drRegion">DR region</label>
+          <input id="az_drRegion" data-path="azure.drRegion" type="text" list="regionList" spellcheck="false" placeholder="northcentralus">
+          <p class="hint">Leave blank for single-region. Paired regions are strongly preferred.</p>
+        </div>
+        <div class="field">
+          <label for="az_drRegionCode">DR region code</label>
+          <input id="az_drRegionCode" data-path="azure.drRegionCode" type="text" maxlength="5" spellcheck="false" placeholder="ncus">
+        </div>
+      </div>
+
+      <datalist id="regionList"></datalist>
+
+      <div class="field">
+        <label for="az_allowedLocations">Allowed locations <span class="req">*</span></label>
+        <input id="az_allowedLocations" data-path="azure.allowedLocations" data-type="csv" type="text" spellcheck="false" placeholder="southcentralus, northcentralus">
+        <p class="hint">Comma-separated. Must include the primary and DR regions &mdash; the wizard adds them for you if missing, because a landing zone whose own policy denies its own regions cannot apply.</p>
+      </div>
+
+      <h3 class="sub">Subscriptions</h3>
+      <p class="note">These map 1:1 onto the <code>*_subscription_id</code> variables already present in <code>terraform/live/*/variables.tf</code>. An empty optional subscription means the layer that consumes it will not be deployed.</p>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="az_sub_management">Management <span class="req">*</span></label>
+          <input id="az_sub_management" data-path="azure.subscriptions.management" type="text" spellcheck="false" placeholder="GUID">
+        </div>
+        <div class="field">
+          <label for="az_sub_connectivity">Connectivity <span class="req">*</span></label>
+          <input id="az_sub_connectivity" data-path="azure.subscriptions.connectivity" type="text" spellcheck="false" placeholder="GUID">
+        </div>
+        <div class="field">
+          <label for="az_sub_workloadProd">Workload &mdash; production <span class="req">*</span></label>
+          <input id="az_sub_workloadProd" data-path="azure.subscriptions.workloadProd" type="text" spellcheck="false" placeholder="GUID">
+        </div>
+        <div class="field">
+          <label for="az_sub_identity">Identity</label>
+          <input id="az_sub_identity" data-path="azure.subscriptions.identity" type="text" spellcheck="false" placeholder="GUID (optional)">
+        </div>
+        <div class="field">
+          <label for="az_sub_workloadNonProd">Workload &mdash; non-production</label>
+          <input id="az_sub_workloadNonProd" data-path="azure.subscriptions.workloadNonProd" type="text" spellcheck="false" placeholder="GUID (optional)">
+        </div>
+        <div class="field">
+          <label for="az_sub_sandbox">Sandbox</label>
+          <input id="az_sub_sandbox" data-path="azure.subscriptions.sandbox" type="text" spellcheck="false" placeholder="GUID (optional)">
+        </div>
+      </div>
+
+      <h3 class="sub">Management group hierarchy</h3>
+
+      <div class="field">
+        <label for="az_mg_rootId">Root management group ID <span class="req">*</span></label>
+        <input id="az_mg_rootId" data-path="azure.managementGroups.rootId" type="text" spellcheck="false" placeholder="tenant ID, or an existing intermediate MG ID">
+        <p class="hint">Use the tenant ID to root at the Tenant Root Group &mdash; that requires write access at tenant root. Supplying an existing intermediate management group ID avoids that requirement.</p>
+      </div>
+
+      <div class="field">
+        <label for="az_mg_strategy">Hierarchy strategy <span class="req">*</span></label>
+        <select id="az_mg_strategy" data-path="azure.managementGroups.strategy">
+          <option value="caf-standard">CAF standard &mdash; Platform (Identity/Management/Connectivity) + Landing Zones (Corp/Online) + Sandbox + Decommissioned</option>
+          <option value="caf-minimal">CAF minimal &mdash; Platform + Landing Zones only</option>
+          <option value="custom">Custom hierarchy</option>
+        </select>
+      </div>
+
+      <div class="field" data-visible-when="azure.managementGroups.strategy=custom">
+        <label>Custom hierarchy</label>
+        <p class="hint">Flat list. Each parent must reference another entry&rsquo;s ID or the root MG ID above.</p>
+        <div class="repeater" data-repeater="azure.managementGroups.customHierarchy"
+             data-fields='[{"key":"id","label":"MG ID","placeholder":"mg-contoso-platform"},{"key":"displayName","label":"Display name","placeholder":"Platform"},{"key":"parentId","label":"Parent ID","placeholder":"mg-contoso"}]'></div>
+      </div>
+    </section>
+
+    <!-- 3. GITHUB -->
+    <section class="step" data-step="github" data-title="GitHub">
+      <header class="step-head">
+        <h2>GitHub ownership</h2>
+        <p>Determines which controls the bootstrap broker can actually configure. The broker never skips a control silently &mdash; if your plan cannot support it, the bootstrap report names it explicitly.</p>
+      </header>
+
+      <div class="field">
+        <label for="gh_ownershipModel">Ownership model <span class="req">*</span></label>
+        <select id="gh_ownershipModel" data-path="github.ownershipModel">
+          <option value="organization">Organization</option>
+          <option value="enterprise">Enterprise Cloud</option>
+          <option value="personal">Personal account</option>
+        </select>
+        <p class="hint" id="gh_ownershipHint"></p>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="gh_ownerName">Owner login <span class="req">*</span></label>
+          <input id="gh_ownerName" data-path="github.ownerName" type="text" spellcheck="false" placeholder="contoso-platform">
+          <p class="hint">User or organization login. Combined with the repository name to form the OIDC subject claim.</p>
+        </div>
+        <div class="field" data-visible-when="github.ownershipModel=enterprise">
+          <label for="gh_enterpriseSlug">Enterprise slug <span class="req">*</span></label>
+          <input id="gh_enterpriseSlug" data-path="github.enterpriseSlug" type="text" spellcheck="false" placeholder="contoso">
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="gh_repositoryName">Repository name <span class="req">*</span></label>
+          <input id="gh_repositoryName" data-path="github.repositoryName" type="text" spellcheck="false" placeholder="contoso_LZ_Deployment">
+          <p class="hint">Auto-filled as <code>{short name}_LZ_Deployment</code>.</p>
+        </div>
+        <div class="field">
+          <label for="gh_visibility">Visibility <span class="req">*</span></label>
+          <select id="gh_visibility" data-path="github.visibility">
+            <option value="private">Private</option>
+            <option value="internal">Internal (Enterprise only)</option>
+          </select>
+          <p class="hint">Public is not offered. OIDC subject claims and management-group topology must not be world-readable.</p>
+        </div>
+      </div>
+
+      <h3 class="sub">Branch protection</h3>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="github.branchProtection.enabled" checked> Enable branch protection on the default branch</label>
+        <label class="check"><input type="checkbox" data-path="github.branchProtection.requireCodeOwnerReview" checked> Require CODEOWNERS review</label>
+        <label class="check"><input type="checkbox" data-path="github.branchProtection.dismissStaleReviews" checked> Dismiss stale approvals on new commits</label>
+        <label class="check"><input type="checkbox" data-path="github.branchProtection.requireLinearHistory" checked> Require linear history</label>
+        <label class="check"><input type="checkbox" data-path="github.branchProtection.enforceAdmins"> Enforce for administrators</label>
+      </div>
+      <div class="field narrow">
+        <label for="gh_requiredApprovals">Required approvals</label>
+        <input id="gh_requiredApprovals" data-path="github.branchProtection.requiredApprovals" data-type="int" type="number" min="0" max="6" value="1">
+      </div>
+
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="github.useSelfHostedRunners"> Use self-hosted runners</label>
+      </div>
+      <p class="hint">Discovery reports self-hosted runners if present, but v1 emits GitHub-hosted workflows only. Enabling this is rejected at render time with a pointer to the extension point rather than producing workflows that will not schedule.</p>
+    </section>
+
+    <!-- 4. BACKEND -->
+    <section class="step" data-step="backend" data-title="State backend">
+      <header class="step-head">
+        <h2>Terraform state backend</h2>
+        <p>Exactly one backend is selected here, and it drives both the rendered <code>backend.tf</code> and which bootstrap steps run. This is the decision point that resolves the current repository&rsquo;s split-brain between Terraform Cloud and <code>azurerm</code>.</p>
+      </header>
+
+      <div class="field">
+        <label for="be_type">Backend <span class="req">*</span></label>
+        <select id="be_type" data-path="backend.type">
+          <option value="hcp-terraform">HCP Terraform</option>
+          <option value="azurerm">Azure Storage (azurerm)</option>
+        </select>
+      </div>
+
+      <div data-visible-when="backend.type=hcp-terraform">
+        <div class="callout callout-warn" id="rumCallout">
+          <h4>Free tier is capped at 500 managed resources</h4>
+          <p>HCP Terraform&rsquo;s legacy free plan ended 31 March 2026. The current free tier allows <strong>500 managed resources</strong>, unlimited users, and one policy set of up to five policies. Paid tiers bill on the <em>peak hourly</em> count of resources in state, starting at $0.10 per resource per month.</p>
+          <p>A managed resource is any resource in state with <code>mode = "managed"</code>. <code>null_resource</code> and <code>terraform_data</code> are excluded. Data sources are not billed. Note that individually-declared items &mdash; each policy assignment, each role assignment, each subnet, each diagnostic setting &mdash; counts separately, which is what pushes landing zones over the cap.</p>
+          <p class="rum-estimate">Estimate for your current selections: <strong id="rumValue">—</strong> managed resources <span id="rumVerdict" class="pill"></span></p>
+          <p class="hint">This is a rough order-of-magnitude estimate from the modules your configuration enables, not a plan. Treat it as a signal to check, not a bill.</p>
+        </div>
+
+        <div class="field">
+          <label for="be_tfc_org">HCP Terraform organization <span class="req">*</span></label>
+          <input id="be_tfc_org" data-path="backend.hcpTerraform.organization" type="text" spellcheck="false" placeholder="contoso">
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="be_tfc_prefix">Workspace prefix</label>
+            <input id="be_tfc_prefix" data-path="backend.hcpTerraform.workspacePrefix" type="text" spellcheck="false" placeholder="(defaults to short name)">
+            <p class="hint">Workspaces are created as <code>{prefix}-{layer}</code>.</p>
+          </div>
+          <div class="field">
+            <label for="be_tfc_mode">Execution mode</label>
+            <select id="be_tfc_mode" data-path="backend.hcpTerraform.executionMode">
+              <option value="remote">Remote</option>
+              <option value="local">Local (state storage only)</option>
+            </select>
+          </div>
+        </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" data-path="backend.hcpTerraform.useDynamicProviderCredentials" checked> Use dynamic provider credentials (HCP Terraform &rarr; Azure OIDC)</label>
+          <label class="check"><input type="checkbox" data-path="backend.hcpTerraform.acknowledgedResourceLimit"> I understand the 500-resource free-tier cap and my billing exposure above it</label>
+        </div>
+        <p class="hint">Dynamic provider credentials remove the last static Azure credential from the workspace. Leaving it off means storing Azure credentials in HCP Terraform, which the generated threat model flags as a finding.</p>
+      </div>
+
+      <div data-visible-when="backend.type=azurerm">
+        <div class="callout">
+          <h4>No per-resource cost, but you own the bootstrap</h4>
+          <p>Azure Storage state costs cents per month and has no resource cap. The tradeoff is a chicken-and-egg step: the storage account must exist before any layer can initialise, so the broker runs <code>terraform/backend-bootstrap/</code> with local state first, then migrates. Locking uses blob leases rather than a managed lock service.</p>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="be_az_rg">State resource group <span class="req">*</span></label>
+            <input id="be_az_rg" data-path="backend.azurerm.resourceGroupName" type="text" spellcheck="false" placeholder="rg-tfstate-scus-prod-01">
+          </div>
+          <div class="field">
+            <label for="be_az_sa">State storage account <span class="req">*</span></label>
+            <input id="be_az_sa" data-path="backend.azurerm.storageAccountName" type="text" maxlength="24" spellcheck="false" placeholder="stcontosotfstate01">
+            <p class="hint">Globally unique, lowercase alphanumeric, max 24 characters.</p>
+          </div>
+          <div class="field">
+            <label for="be_az_container">Container</label>
+            <input id="be_az_container" data-path="backend.azurerm.containerName" type="text" spellcheck="false" placeholder="tfstate">
+          </div>
+          <div class="field">
+            <label for="be_az_sub">State subscription</label>
+            <input id="be_az_sub" data-path="backend.azurerm.subscriptionId" type="text" spellcheck="false" placeholder="(defaults to management subscription)">
+          </div>
+        </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" data-path="backend.azurerm.useAzureAdAuth" checked> Authenticate to state with Entra ID rather than storage keys</label>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. DEPLOYMENT STRATEGY -->
+    <section class="step" data-step="deploymentStrategy" data-title="Greenfield / brownfield">
+      <header class="step-head">
+        <h2>Deployment strategy</h2>
+        <p>Whether this tenant is empty or already has resources that must be adopted.</p>
+      </header>
+
+      <div class="field">
+        <label for="ds_mode">Mode <span class="req">*</span></label>
+        <select id="ds_mode" data-path="deploymentStrategy.mode">
+          <option value="greenfield">Greenfield &mdash; build the hierarchy from scratch</option>
+          <option value="brownfield">Brownfield &mdash; discover and adopt existing resources</option>
+        </select>
+      </div>
+
+      <div data-visible-when="deploymentStrategy.mode=brownfield">
+        <div class="callout">
+          <h4>Brownfield is read-only until you say otherwise</h4>
+          <p>Discovery never writes. Import blocks and commands are generated for review, and the destroy-protection workflow fails any plan containing a destroy or replace action unless it carries the <code>approved-destroy</code> label. A discovery run that lacks read permission reports <em>forbidden</em>, never an empty inventory &mdash; an empty result and a blocked result must never look alike.</p>
+        </div>
+        <div class="field">
+          <label for="ds_defaultClass">Default classification for discovered resources</label>
+          <select id="ds_defaultClass" data-path="deploymentStrategy.brownfield.defaultClassification">
+            <option value="ignore">Ignore &mdash; leave unmanaged (recommended)</option>
+            <option value="require-approval">Require approval</option>
+            <option value="adopt">Adopt into Terraform state</option>
+            <option value="replace">Replace</option>
+          </select>
+          <p class="hint">Defaults to Ignore so adoption is always a deliberate act.</p>
+        </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" data-path="deploymentStrategy.brownfield.generateImportBlocks" checked> Generate Terraform <code>import</code> blocks</label>
+          <label class="check"><input type="checkbox" data-path="deploymentStrategy.brownfield.generateImportCommands" checked> Generate <code>terraform import</code> commands</label>
+          <label class="check"><input type="checkbox" data-path="deploymentStrategy.brownfield.allowDestructivePlans"> Allow destructive plans</label>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. ENVIRONMENTS -->
+    <section class="step" data-step="environments" data-title="Environments">
+      <header class="step-head">
+        <h2>Environments</h2>
+        <p>Each environment becomes a GitHub environment, an isolated state file, and &mdash; on HCP Terraform &mdash; a workspace. Isolation is per environment <em>and</em> per layer.</p>
+      </header>
+
+      <h3 class="sub">Platform plane</h3>
+      <div class="checks" id="envPlatform">
+        <label class="check"><input type="checkbox" data-set="environments.platform" value="bootstrap" checked> Bootstrap</label>
+        <label class="check"><input type="checkbox" data-set="environments.platform" value="identity"> Identity</label>
+        <label class="check"><input type="checkbox" data-set="environments.platform" value="connectivity" checked> Connectivity</label>
+        <label class="check"><input type="checkbox" data-set="environments.platform" value="management" checked> Management</label>
+        <label class="check"><input type="checkbox" data-set="environments.platform" value="shared-services"> Shared services</label>
+      </div>
+
+      <h3 class="sub">Application plane</h3>
+      <div class="checks" id="envApplication">
+        <label class="check"><input type="checkbox" data-set="environments.application" value="sandbox"> Sandbox</label>
+        <label class="check"><input type="checkbox" data-set="environments.application" value="dev" checked> Dev</label>
+        <label class="check"><input type="checkbox" data-set="environments.application" value="test"> Test</label>
+        <label class="check"><input type="checkbox" data-set="environments.application" value="uat"> UAT</label>
+        <label class="check"><input type="checkbox" data-set="environments.application" value="prod" checked> Prod</label>
+      </div>
+
+      <div class="field">
+        <label>Promotion path</label>
+        <p id="promotionPreview" class="promo">—</p>
+        <p class="hint">Derived from the application environments you selected, in fixed order. The promotion workflow blocks a change from reaching a stage until it has succeeded at the previous one.</p>
+      </div>
+
+      <h3 class="sub">Approval gates</h3>
+      <p class="note">Reviewers are GitHub logins or <code>org/team</code> slugs. Environments left without reviewers deploy without human approval &mdash; acceptable for sandbox and dev, not for prod.</p>
+      <div id="approvalsHost"></div>
+    </section>
+
+    <!-- 7. CONNECTIVITY -->
+    <section class="step" data-step="connectivity" data-title="Connectivity">
+      <header class="step-head">
+        <h2>Network topology</h2>
+      </header>
+
+      <div class="field">
+        <label for="cn_model">Topology <span class="req">*</span></label>
+        <select id="cn_model" data-path="connectivity.model">
+          <option value="hub-spoke">Hub and spoke</option>
+          <option value="virtual-wan">Virtual WAN</option>
+          <option value="none">None &mdash; no platform networking</option>
+        </select>
+        <p class="hint" id="cn_modelHint"></p>
+      </div>
+
+      <div data-visible-when="connectivity.model=hub-spoke">
+        <div class="grid-2">
+          <div class="field">
+            <label for="cn_hubPrimary">Primary hub address space</label>
+            <input id="cn_hubPrimary" data-path="connectivity.hubSpoke.primaryHubAddressSpace" type="text" spellcheck="false" placeholder="10.0.0.0/16">
+          </div>
+          <div class="field">
+            <label for="cn_hubDr">DR hub address space</label>
+            <input id="cn_hubDr" data-path="connectivity.hubSpoke.drHubAddressSpace" type="text" spellcheck="false" placeholder="10.10.0.0/16">
+          </div>
+          <div class="field">
+            <label for="cn_spokePrimary">Primary spoke address space</label>
+            <input id="cn_spokePrimary" data-path="connectivity.hubSpoke.primarySpokeAddressSpace" type="text" spellcheck="false" placeholder="10.1.0.0/16">
+          </div>
+          <div class="field">
+            <label for="cn_spokeDr">DR spoke address space</label>
+            <input id="cn_spokeDr" data-path="connectivity.hubSpoke.drSpokeAddressSpace" type="text" spellcheck="false" placeholder="10.11.0.0/16">
+          </div>
+        </div>
+        <p class="hint">These four must not overlap each other or any on-premises range. The wizard checks for overlap between them; it cannot know your on-premises addressing.</p>
+
+        <div class="field">
+          <label>Availability zones</label>
+          <div class="checks inline">
+            <label class="check"><input type="checkbox" data-set="connectivity.hubSpoke.availabilityZones" value="1" checked> Zone 1</label>
+            <label class="check"><input type="checkbox" data-set="connectivity.hubSpoke.availabilityZones" value="2" checked> Zone 2</label>
+            <label class="check"><input type="checkbox" data-set="connectivity.hubSpoke.availabilityZones" value="3" checked> Zone 3</label>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="sub">Firewall</h3>
+      <div class="grid-2">
+        <div class="field">
+          <label for="cn_fwType">Type</label>
+          <select id="cn_fwType" data-path="connectivity.firewall.type">
+            <option value="azfw">Azure Firewall</option>
+            <option value="palo">Palo Alto NVA</option>
+            <option value="fortinet">Fortinet NVA</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div class="field" data-visible-when="connectivity.firewall.type=azfw">
+          <label for="cn_fwTier">Azure Firewall tier</label>
+          <select id="cn_fwTier" data-path="connectivity.firewall.azfwTier">
+            <option value="Standard">Standard</option>
+            <option value="Premium">Premium &mdash; adds IDPS and TLS inspection</option>
+            <option value="Basic">Basic</option>
+          </select>
+        </div>
+        <div class="field" data-visible-when="connectivity.firewall.type=azfw">
+          <label for="cn_fwTi">Threat intelligence mode</label>
+          <select id="cn_fwTi" data-path="connectivity.firewall.threatIntelligenceMode">
+            <option value="Deny">Deny &mdash; block known-bad (secure default)</option>
+            <option value="Alert">Alert only</option>
+            <option value="Off">Off</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid-2" data-visible-when-any="connectivity.firewall.type=palo|connectivity.firewall.type=fortinet">
+        <div class="field">
+          <label for="cn_nvaPrimary">Primary NVA trust IP</label>
+          <input id="cn_nvaPrimary" data-path="connectivity.firewall.nvaTrustIpPrimary" type="text" spellcheck="false" placeholder="10.0.1.4">
+        </div>
+        <div class="field">
+          <label for="cn_nvaDr">DR NVA trust IP</label>
+          <input id="cn_nvaDr" data-path="connectivity.firewall.nvaTrustIpDr" type="text" spellcheck="false" placeholder="10.10.1.4">
+        </div>
+      </div>
+
+      <h3 class="sub">Hybrid connectivity</h3>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="connectivity.expressRoute.enabled"> ExpressRoute</label>
+        <label class="check"><input type="checkbox" data-path="connectivity.vpn.enabled"> Site-to-site VPN</label>
+        <label class="check"><input type="checkbox" data-path="connectivity.bastion.enabled" checked> Azure Bastion</label>
+      </div>
+
+      <div class="grid-2" data-visible-when="connectivity.expressRoute.enabled=true">
+        <div class="field">
+          <label for="cn_erName">Circuit name</label>
+          <input id="cn_erName" data-path="connectivity.expressRoute.circuitName" type="text" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="cn_erLoc">Peering location</label>
+          <input id="cn_erLoc" data-path="connectivity.expressRoute.peeringLocation" type="text" spellcheck="false" placeholder="Dallas">
+        </div>
+        <div class="field">
+          <label for="cn_erBw">Bandwidth (Mbps)</label>
+          <input id="cn_erBw" data-path="connectivity.expressRoute.bandwidthMbps" data-type="int" type="number" min="50" placeholder="1000">
+        </div>
+        <div class="field">
+          <label for="cn_erSp">Service provider</label>
+          <input id="cn_erSp" data-path="connectivity.expressRoute.serviceProvider" type="text" spellcheck="false">
+        </div>
+      </div>
+
+      <div class="grid-2" data-visible-when="connectivity.vpn.enabled=true">
+        <div class="field">
+          <label for="cn_vpnSku">VPN gateway SKU</label>
+          <input id="cn_vpnSku" data-path="connectivity.vpn.sku" type="text" spellcheck="false" placeholder="VpnGw1AZ">
+        </div>
+        <div class="field">
+          <label class="check" style="margin-top:2rem"><input type="checkbox" data-path="connectivity.vpn.activeActive" checked> Active-active</label>
+        </div>
+      </div>
+
+      <div class="field" data-visible-when="connectivity.bastion.enabled=true">
+        <label for="cn_bastionSku">Bastion SKU</label>
+        <select id="cn_bastionSku" data-path="connectivity.bastion.sku">
+          <option value="Standard">Standard</option>
+          <option value="Basic">Basic</option>
+        </select>
+      </div>
+
+      <h3 class="sub">Private networking</h3>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="connectivity.privateDns.enabled" checked> Private DNS zones</label>
+        <label class="check"><input type="checkbox" data-path="connectivity.privateDns.centralizedInHub" checked> Centralize Private DNS in the hub</label>
+        <label class="check"><input type="checkbox" data-path="connectivity.privateEndpoints.enabled" checked> Private endpoints</label>
+        <label class="check"><input type="checkbox" data-path="connectivity.privateEndpoints.denyPublicNetworkAccessPolicy" checked> Assign policy denying public network access on PaaS</label>
+      </div>
+      <div class="field" data-visible-when="connectivity.privateDns.enabled=true">
+        <label for="cn_dnsZones">Private DNS zones</label>
+        <textarea id="cn_dnsZones" data-path="connectivity.privateDns.zones" data-type="lines" rows="4" spellcheck="false" placeholder="privatelink.blob.core.windows.net&#10;privatelink.vaultcore.azure.net"></textarea>
+        <p class="hint">One per line. Leave blank to use the CAF default zone set for the services you enabled.</p>
+      </div>
+    </section>
+
+    <!-- 8. IDENTITY -->
+    <section class="step" data-step="identity" data-title="Identity">
+      <header class="step-head">
+        <h2>Identity</h2>
+        <p>Break-glass entries here are <strong>names and addresses only</strong>. The configuration schema has no field capable of holding a credential, so no secret can be captured into the exported file.</p>
+      </header>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="id_strategy">Identity strategy</label>
+          <select id="id_strategy" data-path="identity.strategy">
+            <option value="cloud-only">Cloud-only (Entra ID)</option>
+            <option value="hybrid-adconnect">Hybrid &mdash; Entra Connect sync</option>
+            <option value="hybrid-ad-domain-services">Hybrid &mdash; AD Domain Services in Azure</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="id_pam">Privileged access</label>
+          <select id="id_pam" data-path="identity.privilegedAccessModel">
+            <option value="pim-eligible">PIM eligible &mdash; just-in-time elevation</option>
+            <option value="standing-access">Standing access</option>
+          </select>
+          <p class="hint">Standing access is recorded as an explicit governance exception in the generated security documentation.</p>
+        </div>
+      </div>
+
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="identity.deployIdentitySubscription"> Deploy a dedicated identity subscription layer</label>
+      </div>
+
+      <h3 class="sub">Break-glass accounts</h3>
+      <p class="note">Microsoft guidance is at least two, excluded from Conditional Access and from federation, with credentials held offline. List them here so they appear in the generated recovery runbooks.</p>
+      <div class="repeater" data-repeater="identity.breakGlassAccounts"
+           data-fields='[{"key":"name","label":"Account name","placeholder":"bg-admin-01@contoso.onmicrosoft.com"},{"key":"email","label":"Notification email","placeholder":"secops@contoso.com"},{"key":"role","label":"Role","placeholder":"Global Administrator"}]'
+           data-min="2"></div>
+    </section>
+
+    <!-- 9. SECURITY -->
+    <section class="step" data-step="security" data-title="Security">
+      <header class="step-head">
+        <h2>Security services</h2>
+      </header>
+
+      <h3 class="sub">Microsoft Defender for Cloud</h3>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="security.defender.enabled"> Enable Defender for Cloud</label>
+      </div>
+      <div data-visible-when="security.defender.enabled=true">
+        <div class="field">
+          <label>Plans</label>
+          <div class="checks inline" id="defenderPlans"></div>
+        </div>
+        <div class="field">
+          <label for="sec_defEmail">Security contact email</label>
+          <input id="sec_defEmail" data-path="security.defender.securityContactEmail" type="email" spellcheck="false" placeholder="secops@contoso.com">
+        </div>
+        <p class="hint">Defender plans are billed per resource per month and are the largest single cost lever in a landing zone. Enable deliberately.</p>
+      </div>
+
+      <h3 class="sub">Microsoft Sentinel</h3>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="security.sentinel.enabled"> Enable Sentinel</label>
+      </div>
+      <div data-visible-when="security.sentinel.enabled=true">
+        <div class="callout callout-block">
+          <h4>Blocked: the <code>sentinel-siem</code> module is scaffold-only</h4>
+          <p>That module currently declares zero resources. Rather than emit a configuration that silently does nothing, the renderer rejects this until the module is implemented. You can select it to record the intent; the readiness report will list it as an unmet dependency.</p>
+        </div>
+        <div class="field">
+          <label>Data connectors</label>
+          <div class="checks inline" id="sentinelConnectors"></div>
+        </div>
+        <div class="field narrow">
+          <label for="sec_sentRet">Retention (days)</label>
+          <input id="sec_sentRet" data-path="security.sentinel.retentionDays" data-type="int" type="number" min="30" max="730" value="90">
+        </div>
+      </div>
+
+      <h3 class="sub">Key Vault</h3>
+      <div class="grid-2">
+        <div class="field">
+          <label for="sec_kvStrategy">Strategy</label>
+          <select id="sec_kvStrategy" data-path="security.keyVault.strategy">
+            <option value="per-environment">One vault per environment</option>
+            <option value="per-subscription">One vault per subscription</option>
+            <option value="centralized">Centralized vault</option>
+          </select>
+        </div>
+        <div class="field narrow">
+          <label for="sec_kvSoftDelete">Soft-delete retention (days)</label>
+          <input id="sec_kvSoftDelete" data-path="security.keyVault.softDeleteRetentionDays" data-type="int" type="number" min="7" max="90" value="90">
+        </div>
+      </div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="security.keyVault.enablePurgeProtection" checked> Purge protection</label>
+        <label class="check"><input type="checkbox" data-path="security.keyVault.enableRbacAuthorization" checked> RBAC authorization (rather than access policies)</label>
+        <label class="check"><input type="checkbox" data-path="security.keyVault.customerManagedKeys"> Customer-managed keys</label>
+      </div>
+      <div class="callout callout-block" data-visible-when="security.keyVault.customerManagedKeys=true">
+        <h4>Blocked: the <code>keyvault-cmk</code> module is scaffold-only</h4>
+        <p>Same situation as Sentinel &mdash; the module exists but declares no resources. Selecting this records the intent and surfaces it as an unmet dependency rather than producing a no-op.</p>
+      </div>
+
+      <h3 class="sub">Network telemetry &amp; backup</h3>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="security.nsgFlowLogs.enabled" checked> NSG flow logs</label>
+        <label class="check"><input type="checkbox" data-path="security.nsgFlowLogs.trafficAnalytics" checked> Traffic Analytics</label>
+        <label class="check"><input type="checkbox" data-path="security.backup.enabled" checked> Backup baseline</label>
+        <label class="check"><input type="checkbox" data-path="security.backup.immutableVault" checked> Immutable vault (ransomware protection)</label>
+        <label class="check"><input type="checkbox" data-path="security.backup.geoRedundant" checked> Geo-redundant backup storage</label>
+      </div>
+      <div class="field narrow" data-visible-when="security.nsgFlowLogs.enabled=true">
+        <label for="sec_flowRet">Flow log retention (days)</label>
+        <input id="sec_flowRet" data-path="security.nsgFlowLogs.retentionDays" data-type="int" type="number" min="1" max="365" value="90">
+      </div>
+    </section>
+
+    <!-- 10. GOVERNANCE -->
+    <section class="step" data-step="governance" data-title="Governance">
+      <header class="step-head">
+        <h2>Governance &amp; policy</h2>
+      </header>
+
+      <div class="field">
+        <label for="gv_enforcement">Baseline enforcement mode <span class="req">*</span></label>
+        <select id="gv_enforcement" data-path="governance.policyBaseline.enforcementMode">
+          <option value="audit">Audit &mdash; report violations, allow deployment</option>
+          <option value="deny">Deny &mdash; block non-compliant deployments</option>
+        </select>
+        <p class="hint">Start at Audit on a brownfield tenant and promote to Deny once the compliance report is clean. Downgrading an individual policy from Deny back to Audit is blocked by the generated policy-checks workflow.</p>
+      </div>
+
+      <div class="field">
+        <label for="gv_tags">Required tags <span class="req">*</span></label>
+        <input id="gv_tags" data-path="governance.policyBaseline.requiredTags" data-type="csv" type="text" spellcheck="false" value="owner, application, environment, cost_center">
+        <p class="hint">Every tag listed here must also have a value in the Naming step&rsquo;s default tags, otherwise the landing zone&rsquo;s own policy denies its first apply. The wizard checks this for you.</p>
+      </div>
+
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.enforceAllowedLocations" checked> Restrict deployments to allowed locations</label>
+        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.enforceTlsMinimum" checked> Enforce TLS 1.2 minimum</label>
+        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.enforceNsgOnSubnets" checked> Require an NSG on every subnet</label>
+        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.enforceDiagnosticSettings" checked> Require diagnostic settings</label>
+        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.enforceEncryptionAtRest" checked> Require encryption at rest</label>
+        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.denyPublicIpOnNics"> Deny public IPs on network interfaces</label>
+      </div>
+      <p class="hint">The TLS 1.2 initiative in the current <code>policy-baseline</code> module covers Storage, App Service, Function Apps, MySQL and PostgreSQL. API Management is documented as covered but is not yet implemented &mdash; the generated compliance doc states the real coverage, not the claimed coverage.</p>
+
+      <div class="field">
+        <label>Policy-as-code engines</label>
+        <div class="checks inline">
+          <label class="check"><input type="checkbox" data-set="governance.policyAsCodeEngines" value="azure-policy" checked> Azure Policy</label>
+          <label class="check"><input type="checkbox" data-set="governance.policyAsCodeEngines" value="conftest" checked> Conftest</label>
+          <label class="check"><input type="checkbox" data-set="governance.policyAsCodeEngines" value="opa"> OPA / Rego</label>
+          <label class="check"><input type="checkbox" data-set="governance.policyAsCodeEngines" value="sentinel"> Sentinel</label>
+        </div>
+        <p class="hint" id="sentinelTierHint"></p>
+      </div>
+
+      <div class="field">
+        <label>Compliance frameworks</label>
+        <div class="checks inline" id="complianceFrameworks"></div>
+        <p class="hint">Drives which built-in Azure Policy initiatives are assigned and which sections appear in the generated compliance documentation.</p>
+      </div>
+
+      <div class="field">
+        <label for="gv_residency">Data residency regions</label>
+        <input id="gv_residency" data-path="governance.dataResidencyRegions" data-type="csv" type="text" spellcheck="false" placeholder="(none)">
+        <p class="hint">If set, allowed locations are intersected with this list and a residency policy is assigned.</p>
+      </div>
+
+      <div class="field">
+        <label for="gv_notes">Regulatory notes</label>
+        <textarea id="gv_notes" data-path="governance.regulatoryNotes" rows="4" maxlength="4000" placeholder="Reproduced verbatim into the generated governance model. Not parsed."></textarea>
+      </div>
+
+      <h3 class="sub">Resource locks</h3>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="governance.resourceLocks.lockPlatformResourceGroups" checked> Lock platform resource groups</label>
+      </div>
+      <div class="field narrow" data-visible-when="governance.resourceLocks.lockPlatformResourceGroups=true">
+        <label for="gv_lockLevel">Lock level</label>
+        <select id="gv_lockLevel" data-path="governance.resourceLocks.lockLevel">
+          <option value="CanNotDelete">CanNotDelete</option>
+          <option value="ReadOnly">ReadOnly</option>
+        </select>
+        <p class="hint">ReadOnly blocks Terraform from updating the locked scope. Use CanNotDelete unless you intend to freeze the resource group entirely.</p>
+      </div>
+    </section>
+
+    <!-- 11. OBSERVABILITY -->
+    <section class="step" data-step="observability" data-title="Observability">
+      <header class="step-head">
+        <h2>Observability</h2>
+      </header>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="ob_laRet">Log Analytics retention (days)</label>
+          <input id="ob_laRet" data-path="observability.logAnalytics.retentionDays" data-type="int" type="number" min="30" max="730" value="90">
+        </div>
+        <div class="field">
+          <label for="ob_laSku">Workspace SKU</label>
+          <select id="ob_laSku" data-path="observability.logAnalytics.sku">
+            <option value="PerGB2018">Pay-as-you-go (PerGB2018)</option>
+            <option value="CapacityReservation">Capacity reservation</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ob_laQuota">Daily ingestion cap (GB)</label>
+          <input id="ob_laQuota" data-path="observability.logAnalytics.dailyQuotaGb" data-type="float" type="number" min="-1" step="0.1" value="-1">
+          <p class="hint">&minus;1 means no cap. Any positive value can silently drop security telemetry once hit; the generated observability doc flags this.</p>
+        </div>
+      </div>
+
+      <h3 class="sub">Diagnostics</h3>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="observability.diagnosticSettings.enabled" checked> Diagnostic settings</label>
+        <label class="check"><input type="checkbox" data-path="observability.diagnosticSettings.sendActivityLog" checked> Ship the Activity Log</label>
+        <label class="check"><input type="checkbox" data-path="observability.diagnosticSettings.sendToStorage"> Archive to storage</label>
+        <label class="check"><input type="checkbox" data-path="observability.diagnosticSettings.sendToEventHub"> Stream to Event Hub</label>
+      </div>
+
+      <h3 class="sub">Alerting</h3>
+      <div class="field">
+        <label for="ob_alertEmails">Action group emails</label>
+        <input id="ob_alertEmails" data-path="observability.alerting.actionGroupEmails" data-type="csv" type="text" spellcheck="false" placeholder="platform-oncall@contoso.com">
+      </div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="observability.alerting.enablePlatformHealthAlerts" checked> Platform health alerts</label>
+        <label class="check"><input type="checkbox" data-path="observability.alerting.enableDriftAlerts" checked> Drift alerts</label>
+      </div>
+
+      <h3 class="sub">Drift detection</h3>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="observability.driftDetection.enabled" checked> Scheduled drift detection</label>
+      </div>
+      <div class="grid-2" data-visible-when="observability.driftDetection.enabled=true">
+        <div class="field">
+          <label for="ob_driftCron">Schedule (cron, UTC)</label>
+          <input id="ob_driftCron" data-path="observability.driftDetection.schedule" type="text" spellcheck="false" value="0 6 * * 1">
+          <p class="hint" id="cronHint"></p>
+        </div>
+        <div class="field">
+          <div class="checks" style="margin-top:1.7rem">
+            <label class="check"><input type="checkbox" data-path="observability.driftDetection.openIssueOnDrift" checked> Open an issue when drift is found</label>
+            <label class="check"><input type="checkbox" data-path="observability.driftDetection.failOnDrift"> Fail the workflow on drift</label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12. OPERATIONS -->
+    <section class="step" data-step="operations" data-title="Operating model">
+      <header class="step-head">
+        <h2>Operating model</h2>
+      </header>
+
+      <div class="field">
+        <label for="op_model">CAF operating model <span class="req">*</span></label>
+        <select id="op_model" data-path="operations.operatingModel">
+          <option value="centralized">Centralized &mdash; platform team holds write access at the platform MG</option>
+          <option value="federated">Federated &mdash; write access delegated at the landing-zone MG</option>
+          <option value="decentralized">Decentralized &mdash; write access at the subscription</option>
+        </select>
+        <p class="hint">Determines the default RBAC scoping in the generated governance model.</p>
+      </div>
+
+      <h3 class="sub">Platform team</h3>
+      <div class="grid-2">
+        <div class="field">
+          <label for="op_teamName">Team name <span class="req">*</span></label>
+          <input id="op_teamName" data-path="operations.platformTeam.name" type="text" placeholder="Cloud Platform Engineering">
+        </div>
+        <div class="field">
+          <label for="op_teamSlug">GitHub team slug</label>
+          <input id="op_teamSlug" data-path="operations.platformTeam.githubTeamSlug" type="text" spellcheck="false" placeholder="contoso/platform-engineering">
+        </div>
+        <div class="field">
+          <label for="op_hours">Support hours</label>
+          <input id="op_hours" data-path="operations.platformTeam.supportHours" type="text" placeholder="Mon-Fri 08:00-18:00 CT">
+        </div>
+        <div class="field">
+          <label for="op_escalation">Escalation URL</label>
+          <input id="op_escalation" data-path="operations.platformTeam.escalationUrl" type="text" spellcheck="false" placeholder="https://contoso.pagerduty.com/...">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Team contacts <span class="req">*</span></label>
+        <div class="repeater" data-repeater="operations.platformTeam.contacts"
+             data-fields='[{"key":"name","label":"Name","placeholder":"Alex Rivera"},{"key":"email","label":"Email","placeholder":"alex@contoso.com"},{"key":"role","label":"Role","placeholder":"Platform Lead"}]'
+             data-min="1"></div>
+      </div>
+
+      <h3 class="sub">Approval chain</h3>
+      <div class="repeater" data-repeater="operations.approvalChain"
+           data-fields='[{"key":"stage","label":"Stage","placeholder":"Security review"},{"key":"approvers","label":"Approvers (comma-separated)","placeholder":"@secops-team","type":"csv"},{"key":"appliesToEnvironments","label":"Environments (comma-separated)","placeholder":"prod, uat","type":"csv"}]'></div>
+
+      <h3 class="sub">Break-glass contacts</h3>
+      <p class="note">Humans reachable during an identity or OIDC outage &mdash; distinct from the break-glass Entra accounts in the Identity step.</p>
+      <div class="repeater" data-repeater="operations.breakGlassContacts"
+           data-fields='[{"key":"name","label":"Name","placeholder":"Dana Cole"},{"key":"email","label":"Email","placeholder":"dana@contoso.com"},{"key":"phone","label":"Phone","placeholder":"+1 555 0100"}]'
+           data-min="1"></div>
+    </section>
+
+    <!-- 13. FINOPS -->
+    <section class="step" data-step="finops" data-title="FinOps">
+      <header class="step-head">
+        <h2>Cost management</h2>
+      </header>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="fo_cc">Cost center <span class="req">*</span></label>
+          <input id="fo_cc" data-path="finops.costCenter" type="text" placeholder="CC-10420">
+          <p class="hint">Becomes the <code>cost_center</code> tag value enforced by policy.</p>
+        </div>
+        <div class="field">
+          <label for="fo_chargeback">Chargeback model</label>
+          <select id="fo_chargeback" data-path="finops.chargebackModel">
+            <option value="showback">Showback</option>
+            <option value="chargeback">Chargeback</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+      </div>
+
+      <h3 class="sub">Business owner</h3>
+      <div class="grid-2">
+        <div class="field">
+          <label for="fo_ownerName">Name <span class="req">*</span></label>
+          <input id="fo_ownerName" data-path="finops.businessOwner.name" type="text" placeholder="Jordan Blake">
+        </div>
+        <div class="field">
+          <label for="fo_ownerEmail">Email <span class="req">*</span></label>
+          <input id="fo_ownerEmail" data-path="finops.businessOwner.email" type="email" spellcheck="false" placeholder="jordan@contoso.com">
+        </div>
+      </div>
+
+      <h3 class="sub">Budgets</h3>
+      <div class="repeater" data-repeater="finops.budgets"
+           data-fields='[{"key":"scope","label":"Scope","placeholder":"prod"},{"key":"amountUsd","label":"Amount (USD)","placeholder":"5000","type":"float"},{"key":"alertThresholdPercents","label":"Alert thresholds %","placeholder":"50, 80, 100","type":"csvint"},{"key":"contactEmails","label":"Alert emails","placeholder":"finops@contoso.com","type":"csv"}]'></div>
+
+      <h3 class="sub">Cost exports</h3>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="finops.costExports.enabled"> Enable scheduled cost exports</label>
+      </div>
+      <div class="grid-2" data-visible-when="finops.costExports.enabled=true">
+        <div class="field">
+          <label for="fo_expSa">Export storage account</label>
+          <input id="fo_expSa" data-path="finops.costExports.storageAccountName" type="text" maxlength="24" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="fo_expFreq">Frequency</label>
+          <select id="fo_expFreq" data-path="finops.costExports.frequency">
+            <option value="Daily">Daily</option>
+            <option value="Weekly">Weekly</option>
+            <option value="Monthly">Monthly</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- 14. NAMING -->
+    <section class="step" data-step="naming" data-title="Naming &amp; tags">
+      <header class="step-head">
+        <h2>Naming standard &amp; default tags</h2>
+      </header>
+
+      <div class="field">
+        <label for="nm_standard">Standard <span class="req">*</span></label>
+        <select id="nm_standard" data-path="naming.standard">
+          <option value="caf">Microsoft CAF</option>
+          <option value="custom">Custom patterns</option>
+        </select>
+        <p class="hint">CAF produces <code>mg-{scope}</code>, <code>rg-{scope}-{region}-{env}-{nn}</code>, <code>{type}-{name}-{region}-{env}-{nn}</code>.</p>
+      </div>
+
+      <div data-visible-when="naming.standard=custom">
+        <div class="field">
+          <label for="nm_rgPattern">Resource group pattern <span class="req">*</span></label>
+          <input id="nm_rgPattern" data-path="naming.resourceGroupPattern" type="text" spellcheck="false" placeholder="rg-{scope}-{regionCode}-{env}-{nn}">
+        </div>
+        <div class="field">
+          <label for="nm_resPattern">Resource pattern <span class="req">*</span></label>
+          <input id="nm_resPattern" data-path="naming.resourcePattern" type="text" spellcheck="false" placeholder="{type}-{workload}-{regionCode}-{env}-{nn}">
+        </div>
+        <p class="hint">Supported tokens: <code>{org} {scope} {workload} {type} {region} {regionCode} {env} {nn}</code>. Any other token is a render-time error, so an unresolved placeholder can never reach the output.</p>
+      </div>
+
+      <h3 class="sub">Environment abbreviations</h3>
+      <div id="envAbbrevHost" class="grid-3"></div>
+
+      <h3 class="sub">Default tags</h3>
+      <p class="note">Merged into <code>default_tags</code> on every layer. Every tag named in the Governance step&rsquo;s required-tag list must have a value here.</p>
+      <div class="repeater" data-repeater="__defaultTags"
+           data-fields='[{"key":"k","label":"Tag key","placeholder":"owner"},{"key":"v","label":"Value","placeholder":"platform-engineering"}]'></div>
+      <p id="tagCoverage" class="coverage"></p>
+    </section>
+
+    <!-- 15. REVIEW -->
+    <section class="step" data-step="review" data-title="Review &amp; export">
+      <header class="step-head">
+        <h2>Review &amp; export</h2>
+        <p>Nothing is written until you press a download button, and nothing is transmitted at any point.</p>
+      </header>
+
+      <div id="validationHost"></div>
+
+      <h3 class="sub">Export</h3>
+      <p class="note">Each file downloads to your browser&rsquo;s download folder. Move them to <code id="outPathHint">generated-output/&lt;company&gt;/</code>, then run the bootstrap broker.</p>
+
+      <div class="export-grid" id="exportGrid"></div>
+
+      <h3 class="sub">Configuration preview</h3>
+      <div class="preview-head">
+        <button type="button" id="btnCopyJson" class="btn btn-ghost btn-sm">Copy JSON</button>
+      </div>
+      <pre id="jsonPreview" class="preview"></pre>
+    </section>
+
+  </main>
+</div>
+
+<footer class="footbar">
+  <button type="button" id="btnPrev" class="btn btn-ghost">&larr; Back</button>
+  <span id="stepIndicator" class="step-indicator"></span>
+  <button type="button" id="btnNext" class="btn btn-primary">Next &rarr;</button>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

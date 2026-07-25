@@ -41,3 +41,7 @@ terraform.rc
 
 # Bootstrap state (contains tenant/subscription IDs and app client IDs)
 .bootstrap-state.json
+
+# Landing Zone Factory — per-company output. Never commit: contains tenant and
+# subscription identifiers, and is regenerated from the wizard on demand.
+generated-output/
