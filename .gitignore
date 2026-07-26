@@ -60,6 +60,9 @@ generated-output/
 /dogfood-config.json
 /dogfood-output/
 /dogfood-evidence/
+/release-attestation.json
+/release-input/
+/release-evidence/
 *.lz-backup-*/
 
 # Landing Zone Factory test output. Regenerated on every run.
