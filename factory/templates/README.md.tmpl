@@ -58,11 +58,17 @@ Required tags: {{FACTORY-LIST:governance.policyBaseline.requiredTags}}
 #{{IF deploymentStrategy.mode == 'brownfield'}}
 ## Brownfield
 
-This tenant already contains resources. Run the `brownfield-discovery` workflow
-before the first plan — it is read-only and produces an assessment plus import
-blocks for review. The destroy-protection gate fails any plan containing a
-destroy or replace action unless the pull request carries the `approved-destroy`
-label.
+This tenant already contains resources. Run factory discovery and the Stage 11
+`brownfield-import.ps1` / `.sh` generator before scaffolding and before the
+first plan. Discovery is read-only; Stage 11 writes review artifacts only. The
+destroy-protection gate fails any plan containing a destroy or replace action
+unless the pull request carries the `approved-destroy` label.
+
+The Stage 11 generator plans by default and consumes an inventory-hash-pinned
+classification file. Only explicit Adopt decisions with exact Terraform
+addresses produce `imports.generated.tf` or review-only command scripts.
+Ignore produces nothing; Replace and Require-Approval remain operator gates.
+The generator never executes Terraform import.
 #{{ENDIF}}
 
 ## Working in this repository
