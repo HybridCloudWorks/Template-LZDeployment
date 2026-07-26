@@ -47,7 +47,7 @@ resource "azurerm_network_security_group" "app" {
   resource_group_name = azurerm_resource_group.spoke.name
   location            = azurerm_resource_group.spoke.location
   tags                = var.tags
-  
+
   # Default deny all inbound
   security_rule {
     name                       = "DenyAllInbound"
@@ -73,7 +73,7 @@ resource "azurerm_network_security_group" "data" {
   resource_group_name = azurerm_resource_group.spoke.name
   location            = azurerm_resource_group.spoke.location
   tags                = var.tags
-  
+
   security_rule {
     name                       = "DenyAllInbound"
     priority                   = 4096
@@ -113,7 +113,7 @@ resource "azurerm_route_table" "app" {
   location                      = azurerm_resource_group.spoke.location
   bgp_route_propagation_enabled = false
   tags                          = var.tags
-  
+
   route {
     name                   = "default-via-firewall"
     address_prefix         = "0.0.0.0/0"
@@ -136,7 +136,7 @@ resource "azurerm_route_table" "data" {
   location                      = azurerm_resource_group.spoke.location
   bgp_route_propagation_enabled = false
   tags                          = var.tags
-  
+
   route {
     name                   = "default-via-firewall"
     address_prefix         = "0.0.0.0/0"
