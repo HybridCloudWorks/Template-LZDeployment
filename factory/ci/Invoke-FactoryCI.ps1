@@ -96,7 +96,8 @@ try {
         'Test-Bootstrap.ps1',
         'Test-Scaffold.ps1',
         'Test-Import.ps1',
-        'Test-CI.ps1'
+        'Test-CI.ps1',
+        'Test-Dogfood.ps1'
     )) {
         Invoke-LzFactoryCheck $suite pwsh @('-NoLogo', '-NoProfile', '-File', "factory/tests/$suite") -Category 'tests' | Out-Null
     }
