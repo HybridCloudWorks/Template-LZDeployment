@@ -316,3 +316,9 @@ configurations. It generates only explicitly adopted import blocks/review
 commands, registers them in `render-manifest.json`, and removes obsolete
 Stage 11 artifacts on rerun. Stage 10 therefore continues to verify the exact
 managed inventory.
+
+Stage 12 adds the factory repository's credential-free `Factory CI / Factory
+CI` gate. It runs every suite plus schema drift, site no-network, action
+pinning, static analysis, and Terraform corpus checks, then uploads a
+machine-readable report. Generated repositories retain their own runtime gates;
+Factory CI validates the source factory that produced them.
