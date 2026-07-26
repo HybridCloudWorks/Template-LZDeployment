@@ -1,10 +1,11 @@
 # Landing Zone Factory — Session Handoff
 
-**Last updated:** 2026-07-26 · **Factory version:** 0.4.0 · **Config schema:** 2.0.0
-**Progress:** Stages 1–8 complete. Stage 9 implementation is prepared for review.
-**First action:** review the Stage 9 broker and completion record in
-[`docs/factory/STAGE-9-READINESS.md`](docs/factory/STAGE-9-READINESS.md).
-Everything through Stage 8 is merged to `main`.
+**Last updated:** 2026-07-26 · **Factory version:** 0.5.0 · **Config schema:** 2.0.0
+**Progress:** Stages 1–10 implemented.
+**First action:** review the Stage 10 scaffold builder and completion record in
+[`docs/factory/STAGE-10-READINESS.md`](docs/factory/STAGE-10-READINESS.md).
+Everything through Stage 10 is intended to be merged to `main` through the
+Stage 10 implementation PR.
 
 You are continuing a multi-session build. This document is the single source of
 truth for where the work stopped. Read the *Next steps* section first, then
@@ -16,8 +17,8 @@ truth for where the work stopped. Read the *Next steps* section first, then
 
 ### 1.1 Everything is merged — how `main` got here
 
-**Nothing is pending from Stages 1–8. The test suite, this document, and the
-capability-routing layer are all on `main`.** No open PRs.
+**Nothing is pending in code from Stages 1–10 after the Stage 10 PR merges.**
+Runtime operator activities remain in `USER-CHECKLIST.md`.
 
 | PR | Outcome |
 |---|---|
@@ -68,7 +69,18 @@ plan/audit evidence. User-owned authentication and live verification are in
 `USER-CHECKLIST.md`. Executable validation was skipped by owner direction; see
 [`docs/factory/STAGE-9-READINESS.md`](docs/factory/STAGE-9-READINESS.md).
 
-### 1.3 Non-production workloads — resolved
+### 1.3 Stage 10 — scaffold builder
+
+Stage 10 adds the non-interactive scaffold builder. It verifies the exact
+renderer inventory and hashes every managed file, plans by default, refuses
+unsafe/non-empty targets, preserves a recovery backup on forced updates, and
+creates/commits/pushes the config-selected repository only in apply mode.
+Operator authentication, force approval, backup retention, and remote read-back
+are in `USER-CHECKLIST.md`. Executable validation was skipped by owner
+direction; see
+[`docs/factory/STAGE-10-READINESS.md`](docs/factory/STAGE-10-READINESS.md).
+
+### 1.4 Non-production workloads — resolved
 
 Schema 2.0.0 adds primary and DR spoke CIDRs for each of `dev`, `test`, and
 `uat`. The wizard exposes those values, guard G22 requires a selected
@@ -76,7 +88,7 @@ environment's CIDRs and the shared `workloadNonProd` subscription, and the
 `workloads-nonprod` template emits only the selected environments. G21 remains
 the general protection against any active layer absent from the corpus.
 
-### 1.4 Known work queued behind stage 9
+### 1.5 Known work queued behind stage 10
 
 | Priority | Item | Why |
 |---|---|---|
@@ -84,7 +96,8 @@ the general protection against any active layer absent from the corpus.
 | Medium | Execute the new Stage 9 broker tests in a provisioned toolchain | Authenticated external services were intentionally unavailable/skipped |
 | Medium | Backport the stage-6 fixes to `terraform/live/` | The corpus and the live tree have diverged — see §6.3 |
 | Low | Mark the GitGuardian incident a false positive | Dashboard-only action; the finding is a public test vector — see §6.5 |
-| Later | Stages 10–13 | See §7 |
+| Medium | Execute the new Stage 10 scaffold tests in a provisioned toolchain | Git/PowerShell/GitHub runtime validation was intentionally skipped |
+| Later | Stages 11–13 | See §7 |
 
 ---
 
@@ -355,7 +368,7 @@ rather than resolving its finding.
 
 ---
 
-## 7. Remaining stages (10–13)
+## 7. Remaining stages (11–13)
 
 Stage 7 readiness and acceptance criteria are maintained in
 [`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md).
@@ -366,13 +379,14 @@ Stage 7 readiness and acceptance criteria are maintained in
 | 7 | Done — generated workflow corpus |
 | 8 | Done — generated documentation corpus |
 | 9 | Done — non-interactive bootstrap broker, evidence, and user checklists |
-| 10 | **Scaffold builder** — moves a rendered tree into a real repository |
+| 10 | Done — plan-first scaffold builder, exact inventory, evidence, and publication |
 | 11 | Brownfield import generation |
 | 12 | Factory CI — run the 283 tests, drift check, and `terraform validate` over the raw corpus |
 | 13 | Dogfood instance — regenerate this repo from the factory and prove it applies green |
 
-Stage 9 is the first code path authorized to mutate a tenant, but no live broker
-apply was executed during implementation.
+Stage 9 is the first code path authorized to mutate a tenant and Stage 10 is the
+first generated-repository publication path. Neither live path was executed
+during implementation.
 
 ---
 
