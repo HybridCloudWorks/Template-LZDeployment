@@ -1,0 +1,50 @@
+# Landing Zone Phase Model — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
+rendered {{FACTORY-RAW:computed.generatedAt}}.
+
+## Control rule
+
+Each phase has explicit inputs, outputs, success criteria, failure behavior, and
+rollback. A later phase must not hide an incomplete earlier phase.
+
+| Phase | Purpose | Success evidence | Failure behavior |
+|---|---|---|---|
+| 0 Discover | Read-only inventory and collision/risk assessment | `discovery-inventory.json`, readiness report | Stop; no mutation |
+| 1 Configure | Produce schema-valid `lz-config.json` | Schema and guard validation | Block export/render |
+| 2 Render | Emit deterministic repository content | `render-manifest.json`, no unresolved tokens | Delete output and correct config |
+| 3 Scaffold | Create/update target repository | Exact generated tree committed | Stop before settings/bootstrap |
+| 4 Bootstrap | Reconcile Entra, GitHub, backend prerequisites | API read-back and identity inventory | Stop; preserve partial inventory |
+| 5 Validate | Credential-free and read-only cloud checks | Required checks green | No apply |
+| 6 Plan | Plan each active layer independently | Reviewed, non-destructive plans | Block approval |
+| 7 Apply platform | Apply global/connectivity/management in order | State and health verification | Freeze affected layer |
+| 8 Apply workloads | Apply selected workload/sandbox layers | Workload handoff evidence | Isolate failed layer |
+| 9 Verify | Policy, diagnostics, backup, identity, cost validation | Acceptance report | Remediate before release |
+| 10 Operate | Drift, patch, access, cost, incident cadences | Operational review records | Escalate overdue controls |
+| 11 Upgrade | N-1 factory upgrade and layer plans | Upgrade evidence and clean drift | Roll back before unsafe apply |
+| 12 Recover | State/service/regional recovery | Exercise or incident closure report | Maintain incident command |
+
+## Active layer order
+
+#{{FOREACH layer IN computed.layers}}
+1. `{{FACTORY-RAW:layer}}`
+#{{ENDFOREACH}}
+
+The renderer preserves dependency order. Workflows must not collapse layers into
+one state or apply them concurrently where outputs create dependencies.
+
+## Phase gates
+
+- Discovery is always read-only.
+- Rendering is deterministic and safe to repeat.
+- External mutation begins only in bootstrap.
+- Validation and plan do not authorize apply.
+- Apply requires protected-environment approval.
+- Destructive plans require explicit exceptional authorization.
+- Verification is part of completion, not a post-project option.
+
+## Handoff package
+
+Every phase handoff identifies inputs, outputs, owner, timestamp, decisions,
+exceptions, unresolved risks, and the exact next authorized action.
+

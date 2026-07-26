@@ -1,0 +1,66 @@
+# Disaster Recovery — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
+rendered {{FACTORY-RAW:computed.generatedAt}}.
+
+## Deployment posture
+
+Primary region: **{{FACTORY-RAW:azure.primaryRegion}}**.
+#{{IF computed.hasDrRegion}}
+Recovery region: **{{FACTORY-RAW:azure.drRegion}}**.
+This deployment is configured for regional recovery.
+#{{ELSE}}
+No recovery region is configured. Regional disaster recovery is therefore an
+accepted gap until a second region is added.
+#{{ENDIF}}
+
+Backup enabled: {{FACTORY-BOOL:security.backup.enabled}}.
+Immutable vault: {{FACTORY-BOOL:security.backup.immutableVault}}.
+Geo-redundant storage: {{FACTORY-BOOL:security.backup.geoRedundant}}.
+
+## Recovery priorities
+
+1. Identity and privileged access.
+2. Terraform backend and repository control plane.
+3. Management-group and policy hierarchy.
+4. Connectivity, DNS, firewall, and private endpoints.
+5. Management/observability services.
+6. Workload spokes and application recovery.
+7. Sandbox and noncritical services.
+
+## Regional failure procedure
+
+1. Declare the incident and freeze unrelated applies.
+2. Validate GitHub, Entra, backend, and break-glass availability.
+3. Determine whether the event is control-plane, data-plane, or regional.
+4. Confirm recovery-region capacity and dependencies.
+5. Plan each layer in dependency order.
+6. Obtain emergency approvals and apply only required recovery changes.
+7. Validate network paths, policy, diagnostics, backup, and workload health.
+8. Communicate recovery state and residual risk.
+
+## Control-plane recovery
+
+The repository and `lz-config.json` recreate desired state; Terraform state
+preserves resource identity. Protect both. Restore state before attempting broad
+recreation, and reconcile emergency portal changes through code.
+
+## Exercises
+
+| Frequency | Exercise |
+|---|---|
+| Quarterly | State-version restore tabletop |
+| Semiannual | Identity and break-glass validation |
+| Annual | Regional recovery exercise |
+| After major change | Targeted recovery test for changed capability |
+
+Capture recovery time, recovery point, failed dependencies, manual steps, and
+corrective actions. Business RTO/RPO values must be set by workload owners; this
+template does not invent them.
+
+## Failback
+
+Failback is a separate planned change. Confirm data consistency, capacity,
+network routing, DNS, monitoring, and backup posture before returning service
+to the primary region.
+

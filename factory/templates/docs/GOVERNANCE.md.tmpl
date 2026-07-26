@@ -1,0 +1,79 @@
+# Governance — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
+rendered {{FACTORY-RAW:computed.generatedAt}}.
+
+## Governance posture
+
+| Control | Configured value |
+|---|---|
+| Management-group root | `{{FACTORY-RAW:azure.managementGroups.rootId}}` |
+| Hierarchy strategy | {{FACTORY-RAW:azure.managementGroups.strategy}} |
+| Policy enforcement | {{FACTORY-RAW:governance.policyBaseline.enforcementMode}} |
+| Allowed locations | {{FACTORY-LIST:azure.allowedLocations}} |
+| Data-residency regions | {{FACTORY-LIST:governance.dataResidencyRegions}} |
+| Policy engines | {{FACTORY-LIST:governance.policyAsCodeEngines}} |
+| Platform resource-group locks | {{FACTORY-BOOL:governance.resourceLocks.lockPlatformResourceGroups}} |
+| Lock level | {{FACTORY-RAW:governance.resourceLocks.lockLevel}} |
+
+Required tags: {{FACTORY-LIST:governance.policyBaseline.requiredTags}}
+
+## Control hierarchy
+
+1. Tenant and management groups define organizational scope.
+2. Subscription placement establishes platform and workload boundaries.
+3. Azure Policy evaluates location, tagging, diagnostics, encryption, network,
+   and service-specific controls.
+4. Repository policy checks reject IaC changes that weaken the baseline.
+5. Protected environments authorize deployment.
+6. Continuous compliance and drift checks detect out-of-band changes.
+
+#{{IF governance.policyBaseline.enforcementMode == 'audit'}}
+> Policy is configured in audit mode. Findings are visible but not blocked.
+> Promotion to deny requires a clean compliance report, approved exemptions,
+> and a tested rollback path.
+#{{ELSE}}
+Policy enforcement is blocking. Any exemption must be explicit, scoped,
+time-bound, owned, and reviewed before expiry.
+#{{ENDIF}}
+
+## Policy lifecycle
+
+| State | Required evidence |
+|---|---|
+| Propose | Business requirement, affected scopes, test cases |
+| Audit | Compliance impact and false-positive review |
+| Remediate | Owner and due date for existing resources |
+| Enforce | Clean pilot, exception record, rollback plan |
+| Retire | Replacement control or accepted risk |
+
+## Exception standard
+
+Every exception must record:
+
+- control and resource scope;
+- business justification and compensating controls;
+- accountable owner and approver;
+- creation and expiration dates;
+- remediation plan;
+- evidence link.
+
+Permanent undocumented exceptions are not permitted.
+
+## Subscription and location rules
+
+Configured subscriptions are placed under the generated CAF hierarchy.
+Resources may deploy only to {{FACTORY-LIST:azure.allowedLocations}}.
+#{{IF computed.hasDrRegion}}
+The designated recovery region is `{{FACTORY-RAW:azure.drRegion}}`.
+#{{ELSE}}
+This is a single-region configuration; any resilience exception must be
+explicitly accepted.
+#{{ENDIF}}
+
+## Compliance evidence
+
+Retain policy assignments, compliance snapshots, pull-request checks, approval
+records, activity logs, drift results, and exception records according to the
+organization's evidence-retention policy.
+

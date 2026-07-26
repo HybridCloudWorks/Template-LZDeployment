@@ -289,5 +289,65 @@ ok 'apply refuses destructive plan' (
     $workflowText['terraform-apply.yml'] -match 'Refuse destructive apply'
 )
 
+Write-Host "`n== 18. Stage 8 generated documentation corpus ==" -ForegroundColor Cyan
+$expectedDocs = @(
+    'operating-model.md',
+    'governance.md',
+    'threat-model.md',
+    'observability.md',
+    'finops.md',
+    'state-management.md',
+    'disaster-recovery.md',
+    'upgrade-guide.md',
+    'phase-model.md'
+)
+$docsRoot = Join-Path $out 'docs'
+$docText = @{}
+foreach ($name in $expectedDocs) {
+    $path = Join-Path $docsRoot $name
+    ok "documentation emitted: $name" (Test-Path $path)
+    if (Test-Path $path) {
+        $docText[$name] = Get-Content $path -Raw
+        ok "$name has no unresolved factory tokens" ($docText[$name] -notmatch '\{\{FACTORY')
+        ok "$name identifies generated provenance" (
+            $docText[$name] -match 'GENERATED FILE' -and
+            $docText[$name] -match '0\.3\.0'
+        )
+    }
+}
+
+ok 'operating model names platform team' (
+    $docText['operating-model.md'] -match 'Cloud Platform'
+)
+ok 'governance renders allowed locations' (
+    $docText['governance.md'] -match 'southcentralus' -and
+    $docText['governance.md'] -match 'northcentralus'
+)
+ok 'threat model renders exact PR subject' (
+    $docText['threat-model.md'] -match 'repo:contoso-platform/contoso_LZ_Deployment:pull_request'
+)
+ok 'observability renders configured retention' (
+    $docText['observability.md'] -match '90 days'
+)
+ok 'finops renders accountable owner' (
+    $docText['finops.md'] -match 'Jordan' -and
+    $docText['finops.md'] -match 'CC-1'
+)
+ok 'state guide renders HCP workspace contract' (
+    $docText['state-management.md'] -match 'HCP organization' -and
+    $docText['state-management.md'] -match 'contoso'
+)
+ok 'DR guide renders both regions' (
+    $docText['disaster-recovery.md'] -match 'southcentralus' -and
+    $docText['disaster-recovery.md'] -match 'northcentralus'
+)
+ok 'upgrade guide renders schema contract' (
+    $docText['upgrade-guide.md'] -match 'schema 2\.0\.0'
+)
+ok 'phase model renders active layers' (
+    $docText['phase-model.md'] -match 'platform-connectivity' -and
+    $docText['phase-model.md'] -match 'workloads-prod'
+)
+
 Write-Host "`n$script:pass passed, $script:fail failed`n" -ForegroundColor $(if($script:fail){'Red'}else{'Green'})
 exit $(if ($script:fail) { 1 } else { 0 })

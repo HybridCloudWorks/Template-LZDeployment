@@ -1,0 +1,62 @@
+# FinOps — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
+rendered {{FACTORY-RAW:computed.generatedAt}}.
+
+## Ownership and allocation
+
+| Field | Value |
+|---|---|
+| Cost center | `{{FACTORY-RAW:finops.costCenter}}` |
+| Business owner | {{FACTORY-RAW:finops.businessOwner.name}} |
+| Business-owner email | {{FACTORY-RAW:finops.businessOwner.email}} |
+| Allocation model | {{FACTORY-RAW:finops.chargebackModel}} |
+| Cost exports enabled | {{FACTORY-BOOL:finops.costExports.enabled}} |
+| Required tags | {{FACTORY-LIST:governance.policyBaseline.requiredTags}} |
+
+## Allocation standard
+
+Every billable resource must resolve to an owner, application, environment, and
+cost center. Shared platform costs are allocated using the configured
+**{{FACTORY-RAW:finops.chargebackModel}}** model. Untagged or ambiguously tagged
+spend is assigned to the platform exception queue until corrected.
+
+## Budget lifecycle
+
+Budgets are sourced from `finops.budgets`. For each budget:
+
+1. define scope, amount, period, and accountable owner;
+2. configure actual and forecast thresholds;
+3. route alerts to technical and business owners;
+4. record mitigation decisions;
+5. review threshold effectiveness quarterly.
+
+An empty budget list is an explicit onboarding gap, not evidence that cost is
+unbounded or unowned.
+
+## Review cadence
+
+| Frequency | Review |
+|---|---|
+| Daily | Material anomaly and unexpected service growth |
+| Weekly | Budget/forecast movement and new unallocated spend |
+| Monthly | Subscription, service, environment, and tag allocation |
+| Quarterly | Reservations/savings plans, SKU rightsizing, idle resources |
+| Annually | Allocation model and platform cost recovery |
+
+## Optimization guardrails
+
+- Never trade resilience, security, retention, or supportability for savings
+  without an approved risk decision.
+- Validate utilization before resizing or reservation commitments.
+- Treat sandbox expiry automation as a control, not a substitute for ownership.
+- Include data transfer, firewall, logging, backup, and state-platform costs in
+  architecture decisions.
+
+## Evidence
+
+Retain budget definitions, alerts, allocation reports, exception queues,
+optimization decisions, and realized savings. If exports are enabled, protect
+the export destination with the same identity and retention standards as other
+financial records.
+

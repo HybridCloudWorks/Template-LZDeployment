@@ -1,6 +1,6 @@
 # Azure Landing Zone Factory — Architecture & Risk Register
 
-**Status**: Design accepted / Stages 1–6 implemented; Stage 7 next
+**Status**: Design accepted / Stages 1–8 implemented; Stage 9 next
 **Date**: 2026-07-24
 **Scope**: Convert this repository from a single-tenant ALZ deployment into a reusable
 Landing Zone Factory that emits unlimited, independent ALZ repositories across tenants,
@@ -233,7 +233,7 @@ Per environment, two apps:
 
 Five layers, each with an owner, RBAC model, policy set, and diagnostic target:
 Tenant → Management Group → Subscription → Resource Group → Resource.
-Planned for Stage 8 in `factory/templates/docs/`. Policy-as-code in four dialects (Azure Policy,
+Implemented in Stage 8 under `factory/templates/docs/`. Policy-as-code in four dialects (Azure Policy,
 OPA/Rego, Conftest, Sentinel) covering naming, tagging, security, regions, public
 endpoints, networking, diagnostics, encryption, cost.
 
