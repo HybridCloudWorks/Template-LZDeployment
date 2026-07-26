@@ -2,9 +2,9 @@
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||.",
 
   "manifestVersion": "1.2.0",
-  "targetSchemaVersion": "1.0.0",
+  "targetSchemaVersion": "2.0.0",
 
-  "$statusComment": "Stage 6 promoted the real Terraform corpus. Five live layers are emitted from templates (global, platform-connectivity, platform-management, workloads-prod, sandbox) and the module corpus is copied verbatim. Two layers Get-LzActiveLayers can select — platform-identity and workloads-nonprod — have no source under terraform/live and are therefore not emitted; guard G21 refuses a render that would select one, rather than shipping a layer directory containing only a backend. Stage 7 workflow corpus is registered here.",
+  "$statusComment": "Stage 6 promoted the real Terraform corpus. Six live layers are emitted from templates (global, platform-connectivity, platform-management, workloads-nonprod, workloads-prod, sandbox) and the module corpus is copied verbatim. platform-identity has no source under terraform/live and is therefore not emitted; guard G21 refuses a render that would select it. Guard G22 validates selected non-production workload CIDRs. Stage 7 workflow corpus is registered here.",
 
   "files": [
     {
@@ -129,6 +129,34 @@
       "mode": "render",
       "when": "environments.application contains 'prod'",
       "description": "Production workload layer variables."
+    },
+    {
+      "source": "terraform/live/workloads-nonprod/variables.tf",
+      "destination": "terraform/live/workloads-nonprod/variables.tf",
+      "mode": "copy",
+      "when": "environments.application contains 'dev' || environments.application contains 'test' || environments.application contains 'uat'",
+      "description": "Non-production workload variable declarations."
+    },
+    {
+      "source": "terraform/live/workloads-nonprod/main.tf.tmpl",
+      "destination": "terraform/live/workloads-nonprod/main.tf",
+      "mode": "render",
+      "when": "environments.application contains 'dev' || environments.application contains 'test' || environments.application contains 'uat'",
+      "description": "Selected dev, test, and UAT spokes in the shared non-production subscription."
+    },
+    {
+      "source": "terraform/live/workloads-nonprod/outputs.tf.tmpl",
+      "destination": "terraform/live/workloads-nonprod/outputs.tf",
+      "mode": "render",
+      "when": "environments.application contains 'dev' || environments.application contains 'test' || environments.application contains 'uat'",
+      "description": "Selected non-production spoke VNet identifiers."
+    },
+    {
+      "source": "terraform/live/workloads-nonprod/terraform.auto.tfvars.tmpl",
+      "destination": "terraform/live/workloads-nonprod/terraform.auto.tfvars",
+      "mode": "render",
+      "when": "environments.application contains 'dev' || environments.application contains 'test' || environments.application contains 'uat'",
+      "description": "Non-production subscription, region, CIDR, backend, and tag values."
     },
 
     {
