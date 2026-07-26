@@ -1,11 +1,11 @@
-# User Checklist — {{FACTORY-RAW:organization.companyName}} Bootstrap
+# User Checklist — {{FACTORY-RAW:organization.companyName}} Bootstrap and Scaffold
 
 GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
 rendered {{FACTORY-RAW:computed.generatedAt}}.
 
-Stage 9 code is non-interactive. Complete these operator-owned activities
-without editing broker source; provide values through `lz-config.json` and the
-environment variables below.
+Stage 9–10 code is non-interactive. Complete these operator-owned activities
+without editing broker or scaffold source; provide values through
+`lz-config.json` and the environment variables below.
 
 ## Before broker apply
 
@@ -80,3 +80,36 @@ environment variables below.
 - GitHub user/device login tokens.
 - `TFE_TOKEN`.
 - Any client secret or storage access key.
+
+## Scaffold the generated repository
+
+- [ ] Export `LZ_RENDERED_PATH` with the reviewed renderer output.
+- [ ] Export `LZ_SCAFFOLD_TARGET` with a separate local working-tree path.
+- [ ] Export `LZ_SCAFFOLD_EVIDENCE` with a protected evidence directory.
+- [ ] Run `pwsh ./scaffold-copy.ps1` without `-Apply`; it is plan-only by
+  default.
+- [ ] Review `scaffold-plan.json` and confirm it targets
+  `{{FACTORY-RAW:computed.repositorySlug}}`, branch
+  `{{FACTORY-RAW:computed.defaultBranch}}`, and the approved
+  `{{FACTORY-RAW:github.visibility}}` visibility.
+- [ ] Confirm the manifest SHA-256 and exact file list match the approved
+  renderer output.
+- [ ] Authenticate GitHub CLI for repository creation and default-branch push.
+- [ ] If the target is non-empty, review it and set
+  `LZ_SCAFFOLD_FORCE=true`; the builder preserves a timestamped sibling backup.
+- [ ] Set `LZ_SCAFFOLD_CREATE_REPOSITORY=false` if the repository must already
+  exist, or `LZ_SCAFFOLD_PUSH=false` for a local-only commit.
+- [ ] Optionally set `LZ_SCAFFOLD_REMOTE_URL` and
+  `LZ_SCAFFOLD_COMMIT_MESSAGE`, and set `LZ_SCAFFOLD_BRANCH` to override the
+  update PR branch.
+- [ ] If the repository already exists, use a clean clone of
+  `{{FACTORY-RAW:computed.defaultBranch}}` as `LZ_SCAFFOLD_TARGET`; the builder
+  pushes an update branch and opens a draft PR instead of pushing the protected
+  default branch.
+- [ ] Set `LZ_SCAFFOLD_APPLY=true`, then run `./scaffold-copy.sh` or
+  `pwsh ./scaffold-copy.ps1 -Apply`.
+- [ ] Preserve and review `scaffold-plan.json`, `scaffold-audit.json`, and any
+  `*.lz-backup-*` directory.
+- [ ] Read back the remote default branch, compare the commit and managed files
+  with `scaffold-audit.json`, and approve the first generated-repository PR
+  checks before any Terraform apply.
