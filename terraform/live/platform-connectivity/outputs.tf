@@ -21,19 +21,19 @@ output "dr_hub_firewall_ip" {
 output "primary_hub_details" {
   description = "Primary hub details for spoke deployments"
   value = {
-    vnet_id              = module.hub_primary.hub_vnet_id
-    vnet_name            = module.hub_primary.hub_vnet_name
-    resource_group_name  = module.hub_primary.resource_group_name
-    firewall_private_ip  = module.hub_primary.firewall_private_ip
+    vnet_id             = module.hub_primary.hub_vnet_id
+    vnet_name           = module.hub_primary.hub_vnet_name
+    resource_group_name = module.hub_primary.resource_group_name
+    firewall_private_ip = module.hub_primary.firewall_private_ip
   }
 }
 
 output "dr_hub_details" {
   description = "DR hub details for spoke deployments"
   value = {
-    vnet_id              = module.hub_dr.hub_vnet_id
-    vnet_name            = module.hub_dr.hub_vnet_name
-    resource_group_name  = module.hub_dr.resource_group_name
-    firewall_private_ip  = module.hub_dr.firewall_private_ip
+    vnet_id             = module.hub_dr.hub_vnet_id
+    vnet_name           = module.hub_dr.hub_vnet_name
+    resource_group_name = module.hub_dr.resource_group_name
+    firewall_private_ip = module.hub_dr.firewall_private_ip
   }
 }
