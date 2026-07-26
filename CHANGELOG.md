@@ -5,6 +5,24 @@
 
 ---
 
+## Stage 11 brownfield import generation — prepared (2026-07-26)
+
+- Added plan-only `brownfield-import.ps1` and strict Bash launcher.
+- Added a SHA-256-pinned classification schema with Adopt, Ignore, Replace, and
+  Require-Approval behavior.
+- Added fail-closed conclusive-discovery enforcement and stable Azure candidate
+  ID derivation.
+- Added exact operator-supplied Terraform address/layer validation; the factory
+  never guesses adoption addresses.
+- Added deterministic import blocks and review-only command scripts without any
+  Terraform execution path.
+- Added renderer-manifest registration, stale Stage 11 artifact cleanup,
+  plan/audit evidence, checklists, and static test coverage.
+- Advanced factory/LZ versions to 0.6.0 and manifest to 1.6.0; schema remains
+  2.0.0.
+- No discovery, generator, Terraform, state, plan, import, or Azure operation
+  was executed.
+
 ## Stage 10 scaffold builder — prepared (2026-07-26)
 
 - Added non-interactive, plan-only `scaffold-copy.ps1` and strict Bash launcher.
