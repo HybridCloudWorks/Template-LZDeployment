@@ -9,7 +9,7 @@ terraform {
       version = "~> 4.2"
     }
   }
-  
+
   backend "azurerm" {}
 }
 
@@ -32,7 +32,7 @@ data "terraform_remote_state" "connectivity" {
 locals {
   primary_hub = data.terraform_remote_state.connectivity.outputs.primary_hub_details
   dr_hub      = data.terraform_remote_state.connectivity.outputs.dr_hub_details
-  
+
   common_tags = merge(var.default_tags, {
     layer = "workload-prod"
   })
@@ -41,7 +41,7 @@ locals {
 # Production spoke in primary region
 module "spoke_prod_primary" {
   source = "../../modules/spoke-network"
-  
+
   spoke_name              = "prod-app"
   region                  = var.primary_region
   region_code             = var.primary_region_code
@@ -60,7 +60,7 @@ module "spoke_prod_primary" {
 # Production spoke in DR region
 module "spoke_prod_dr" {
   source = "../../modules/spoke-network"
-  
+
   spoke_name              = "prod-app"
   region                  = var.dr_region
   region_code             = var.dr_region_code
