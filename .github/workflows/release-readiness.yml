@@ -1,0 +1,84 @@
+name: Release Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      factory_ci_run_id:
+        description: Successful Factory CI workflow run ID
+        required: true
+        type: string
+      dogfood_run_id:
+        description: Successful full dogfood Apply workflow run ID
+        required: true
+        type: string
+      allow_incomplete:
+        description: Emit an incomplete report instead of failing
+        required: true
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: release-readiness
+  cancel-in-progress: false
+
+jobs:
+  attest:
+    name: Attest Release Evidence
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    env:
+      LZ_RELEASE_FACTORY_CI_REPORT: release-input/factory-ci/factory-ci-report.json
+      LZ_RELEASE_DOGFOOD_REPORT: release-input/dogfood/dogfood-report.json
+      LZ_RELEASE_ATTESTATION_PATH: release-attestation.json
+      LZ_RELEASE_EVIDENCE: release-evidence
+      LZ_RELEASE_EXPECTED_REPOSITORY: ${{ github.repository }}
+      LZ_RELEASE_MAX_EVIDENCE_AGE_HOURS: ${{ vars.LZ_RELEASE_MAX_EVIDENCE_AGE_HOURS || '168' }}
+      LZ_RELEASE_ALLOW_INCOMPLETE: ${{ inputs.allow_incomplete }}
+      LZ_RELEASE_ATTESTATION_JSON: ${{ vars.LZ_RELEASE_ATTESTATION_JSON }}
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+      - name: Download Factory CI evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.2.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.factory_ci_run_id }}
+          pattern: factory-ci-*
+          path: release-input/factory-ci
+          merge-multiple: true
+      - name: Download dogfood evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.2.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.dogfood_run_id }}
+          pattern: dogfood-*-apply-all
+          path: release-input/dogfood
+          merge-multiple: true
+      - name: Materialize reviewed attestation
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LZ_RELEASE_ATTESTATION_JSON)) {
+            throw 'Repository variable LZ_RELEASE_ATTESTATION_JSON is required.'
+          }
+          [IO.File]::WriteAllText(
+            (Join-Path $env:GITHUB_WORKSPACE $env:LZ_RELEASE_ATTESTATION_PATH),
+            $env:LZ_RELEASE_ATTESTATION_JSON,
+            [Text.UTF8Encoding]::new($false)
+          )
+      - name: Compute release readiness
+        shell: pwsh
+        run: ./release-readiness.ps1
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-readiness-${{ github.run_id }}
+          path: release-evidence/
+          if-no-files-found: error
+          retention-days: 90
