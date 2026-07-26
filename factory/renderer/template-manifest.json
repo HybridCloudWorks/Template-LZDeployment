@@ -1,10 +1,10 @@
 {
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||.",
 
-  "manifestVersion": "1.2.0",
+  "manifestVersion": "1.3.0",
   "targetSchemaVersion": "2.0.0",
 
-  "$statusComment": "Stage 6 promoted the real Terraform corpus. Six live layers are emitted from templates (global, platform-connectivity, platform-management, workloads-nonprod, workloads-prod, sandbox) and the module corpus is copied verbatim. platform-identity has no source under terraform/live and is therefore not emitted; guard G21 refuses a render that would select it. Guard G22 validates selected non-production workload CIDRs. Stage 7 workflow corpus is registered here.",
+  "$statusComment": "Stages 6–8 promoted the Terraform, workflow, and self-documenting operations corpus. Six live layers, seven workflows, the identity matrix, and nine Stage 8 operating documents are emitted. platform-identity has no source under terraform/live and remains blocked by guard G21; guard G22 validates selected non-production workload CIDRs.",
 
   "files": [
     {
@@ -243,6 +243,69 @@
       "mode": "render",
       "when": "always",
       "description": "Identity trust matrix, generated from the environment list so it cannot drift from what the broker actually creates."
+    },
+    {
+      "source": "docs/OPERATING-MODEL.md.tmpl",
+      "destination": "docs/operating-model.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Ownership, decision rights, service boundaries, operating cadence, and incident escalation."
+    },
+    {
+      "source": "docs/GOVERNANCE.md.tmpl",
+      "destination": "docs/governance.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Management-group, policy, location, tagging, lock, exception, and compliance-evidence model."
+    },
+    {
+      "source": "docs/THREAT-MODEL.md.tmpl",
+      "destination": "docs/threat-model.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Assets, trust boundaries, principal threats, controls, residual risks, and review triggers."
+    },
+    {
+      "source": "docs/OBSERVABILITY.md.tmpl",
+      "destination": "docs/observability.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Signals, routing, drift detection, SLO guidance, and validation."
+    },
+    {
+      "source": "docs/FINOPS.md.tmpl",
+      "destination": "docs/finops.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Cost ownership, allocation, budgets, review cadence, optimization guardrails, and evidence."
+    },
+    {
+      "source": "docs/STATE-MANAGEMENT.md.tmpl",
+      "destination": "docs/state-management.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Backend, layer isolation, access, state change, recovery, and migration controls."
+    },
+    {
+      "source": "docs/DISASTER-RECOVERY.md.tmpl",
+      "destination": "docs/disaster-recovery.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Regional and control-plane recovery priorities, procedures, exercises, and failback."
+    },
+    {
+      "source": "docs/UPGRADE-GUIDE.md.tmpl",
+      "destination": "docs/upgrade-guide.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Supported factory upgrade, validation, rollback, drift, and evidence procedure."
+    },
+    {
+      "source": "docs/PHASE-MODEL.md.tmpl",
+      "destination": "docs/phase-model.md",
+      "mode": "render",
+      "when": "always",
+      "description": "End-to-end phase inputs, outputs, gates, failure behavior, and handoff requirements."
     }
   ],
 
