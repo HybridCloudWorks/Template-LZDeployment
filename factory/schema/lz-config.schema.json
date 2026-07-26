@@ -76,7 +76,7 @@
 
   "properties": {
     "schemaVersion": {
-      "const": "1.0.0",
+      "const": "2.0.0",
       "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement."
     },
     "factoryVersion": {
@@ -389,6 +389,40 @@
             "drHubAddressSpace": { "$ref": "#/$defs/cidr" },
             "primarySpokeAddressSpace": { "$ref": "#/$defs/cidr" },
             "drSpokeAddressSpace": { "$ref": "#/$defs/cidr" },
+            "nonProdSpokeAddressSpaces": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Per-environment workload spoke CIDRs. A selected dev, test, or uat environment requires its matching entry; the renderer enforces that relationship.",
+              "properties": {
+                "dev": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["primary"],
+                  "properties": {
+                    "primary": { "$ref": "#/$defs/cidr" },
+                    "dr": { "$ref": "#/$defs/cidr" }
+                  }
+                },
+                "test": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["primary"],
+                  "properties": {
+                    "primary": { "$ref": "#/$defs/cidr" },
+                    "dr": { "$ref": "#/$defs/cidr" }
+                  }
+                },
+                "uat": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["primary"],
+                  "properties": {
+                    "primary": { "$ref": "#/$defs/cidr" },
+                    "dr": { "$ref": "#/$defs/cidr" }
+                  }
+                }
+              }
+            },
             "availabilityZones": {
               "type": "array",
               "items": { "enum": ["1", "2", "3"] },
