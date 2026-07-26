@@ -5,6 +5,21 @@
 
 ---
 
+## Stage 10 scaffold builder — prepared (2026-07-26)
+
+- Added non-interactive, plan-only `scaffold-copy.ps1` and strict Bash launcher.
+- Added exact renderer-inventory verification, safe path enforcement, SHA-256
+  inventory evidence, and config/schema/company provenance checks.
+- Added staged target construction, explicit force control, `.git` preservation,
+  timestamped recovery backups, and origin URL verification.
+- Added variable-driven repository create, commit, and push behavior.
+- Added `scaffold-plan.json`, `scaffold-audit.json`, root/generated user
+  activities, and static scaffold coverage.
+- Advanced factory and landing-zone versions to 0.5.0 and manifest to 1.5.0;
+  schema remains 2.0.0.
+- No scaffold test, customer working-tree mutation, repository creation, commit,
+  or push was executed.
+
 ## Stage 9 bootstrap broker — prepared (2026-07-26)
 
 - Added non-interactive `bootstrap-broker.ps1` and strict Bash launcher.
