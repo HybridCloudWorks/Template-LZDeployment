@@ -2,9 +2,9 @@
 
 > **Factory transition notice (2026-07-25):** This file is the legacy deployment
 > backlog. It is not the source of truth for the Landing Zone Factory build.
-> Stages 1–11 and current sequencing are recorded in [HANDOFF.md](HANDOFF.md);
-> Stage 11 completion evidence is in
-> [docs/factory/STAGE-11-READINESS.md](docs/factory/STAGE-11-READINESS.md).
+> Stages 1–12 and current sequencing are recorded in [HANDOFF.md](HANDOFF.md);
+> Stage 12 completion evidence is in
+> [docs/factory/STAGE-12-READINESS.md](docs/factory/STAGE-12-READINESS.md).
 > Items below remain valid only where they are also confirmed by those documents
 > or by a fresh code review.
 

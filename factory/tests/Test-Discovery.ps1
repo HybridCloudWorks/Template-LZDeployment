@@ -146,7 +146,7 @@ $readiness = [pscustomobject]@{
     PassCount=1; WarningCount=1; FailCount=1; Ready=$false
 }
 $disc = [pscustomobject]@{
-    GeneratedAt=(Get-Date).ToUniversalTime().ToString('o'); FactoryVersion='0.6.0'
+    GeneratedAt=(Get-Date).ToUniversalTime().ToString('o'); FactoryVersion='0.7.0'
     DurationSeconds=3.2; ConfigPath='x'; Config=$cfg
     GitHub=$fakeGh; Entra=$null; Azure=$fakeAz; Terraform=$null; Readiness=$readiness
 }

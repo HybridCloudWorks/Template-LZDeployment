@@ -5,6 +5,24 @@
 
 ---
 
+## Stage 12 Factory CI — prepared (2026-07-26)
+
+- Added a credential-free, SHA-pinned Factory CI workflow for pull requests,
+  protected-branch pushes, and manual runs.
+- Added a variable-driven orchestrator covering Wizard, Discovery, Renderer,
+  Bootstrap, Scaffold, Import, and CI suites.
+- Added schema-variable drift, static wizard no-network, and immutable Action
+  reference policies.
+- Added ShellCheck/PSScriptAnalyzer and recursive Terraform format,
+  backend-disabled initialization, and validation.
+- Added per-check logs plus `factory-ci-report.json` and always-uploaded CI
+  evidence.
+- Added root/generated operator activities and static Factory CI coverage.
+- Advanced factory/LZ versions to 0.7.0 and manifest to 1.7.0; schema remains
+  2.0.0.
+- No local Factory CI, tests, analyzers, Terraform, or validation commands were
+  executed.
+
 ## Stage 11 brownfield import generation — prepared (2026-07-26)
 
 - Added plan-only `brownfield-import.ps1` and strict Bash launcher.

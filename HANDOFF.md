@@ -1,11 +1,11 @@
 # Landing Zone Factory — Session Handoff
 
-**Last updated:** 2026-07-26 · **Factory version:** 0.6.0 · **Config schema:** 2.0.0
-**Progress:** Stages 1–11 implemented.
-**First action:** review the Stage 11 brownfield generator and completion record
-in [`docs/factory/STAGE-11-READINESS.md`](docs/factory/STAGE-11-READINESS.md).
-Everything through Stage 11 is intended to be merged to `main` through the
-Stage 11 implementation PR.
+**Last updated:** 2026-07-26 · **Factory version:** 0.7.0 · **Config schema:** 2.0.0
+**Progress:** Stages 1–12 implemented.
+**First action:** review the Stage 12 Factory CI corpus and completion record in
+[`docs/factory/STAGE-12-READINESS.md`](docs/factory/STAGE-12-READINESS.md).
+Everything through Stage 12 is intended to be merged to `main` through the
+Stage 12 implementation PR.
 
 You are continuing a multi-session build. This document is the single source of
 truth for where the work stopped. Read the *Next steps* section first, then
@@ -17,7 +17,7 @@ truth for where the work stopped. Read the *Next steps* section first, then
 
 ### 1.1 Everything is merged — how `main` got here
 
-**Nothing is pending in code from Stages 1–11 after the Stage 11 PR merges.**
+**Nothing is pending in code from Stages 1–12 after the Stage 12 PR merges.**
 Runtime operator activities remain in `USER-CHECKLIST.md`.
 
 | PR | Outcome |
@@ -93,7 +93,19 @@ are in `USER-CHECKLIST.md`. Executable validation was skipped by owner
 direction; see
 [`docs/factory/STAGE-11-READINESS.md`](docs/factory/STAGE-11-READINESS.md).
 
-### 1.5 Non-production workloads — resolved
+### 1.5 Stage 12 — Factory CI
+
+Stage 12 adds a credential-free, SHA-pinned Factory CI workflow and
+variable-driven orchestrator. It registers all suites, schema drift, site
+no-network, action pinning, ShellCheck, PSScriptAnalyzer, Terraform format,
+backend-disabled init, and validate checks. Every run writes per-check logs and
+`factory-ci-report.json`. The stable context is `Factory CI / Factory CI`.
+Actions enablement, variables, evidence review, and required-status/API
+verification are in `USER-CHECKLIST.md`. Local executable validation was
+skipped by owner direction; see
+[`docs/factory/STAGE-12-READINESS.md`](docs/factory/STAGE-12-READINESS.md).
+
+### 1.6 Non-production workloads — resolved
 
 Schema 2.0.0 adds primary and DR spoke CIDRs for each of `dev`, `test`, and
 `uat`. The wizard exposes those values, guard G22 requires a selected
@@ -101,7 +113,7 @@ environment's CIDRs and the shared `workloadNonProd` subscription, and the
 `workloads-nonprod` template emits only the selected environments. G21 remains
 the general protection against any active layer absent from the corpus.
 
-### 1.6 Known work queued behind stage 11
+### 1.7 Known work queued behind stage 12
 
 | Priority | Item | Why |
 |---|---|---|
@@ -111,7 +123,8 @@ the general protection against any active layer absent from the corpus.
 | Low | Mark the GitGuardian incident a false positive | Dashboard-only action; the finding is a public test vector — see §6.5 |
 | Medium | Execute the new Stage 10 scaffold tests in a provisioned toolchain | Git/PowerShell/GitHub runtime validation was intentionally skipped |
 | Medium | Execute the new Stage 11 import tests in a provisioned toolchain | PowerShell/Terraform runtime validation was intentionally skipped |
-| Later | Stages 12–13 | See §7 |
+| High | Run Factory CI once and make `Factory CI / Factory CI` required | Workflow enablement and branch-protection read-back are operator activities |
+| Later | Stage 13 | See §7 |
 
 ---
 
@@ -382,7 +395,7 @@ rather than resolving its finding.
 
 ---
 
-## 7. Remaining stages (12–13)
+## 7. Remaining stage (13)
 
 Stage 7 readiness and acceptance criteria are maintained in
 [`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md).
@@ -395,13 +408,14 @@ Stage 7 readiness and acceptance criteria are maintained in
 | 9 | Done — non-interactive bootstrap broker, evidence, and user checklists |
 | 10 | Done — plan-first scaffold builder, exact inventory, evidence, and publication |
 | 11 | Done — brownfield classification and deterministic import generation |
-| 12 | Factory CI — run the 283 tests, drift check, and `terraform validate` over the raw corpus |
+| 12 | Done — credential-free Factory CI, complete contracts, policies, analyzers, Terraform checks, and evidence |
 | 13 | Dogfood instance — regenerate this repo from the factory and prove it applies green |
 
 Stage 9 is the first code path authorized to mutate a tenant, Stage 10 is the
 first generated-repository publication path, and Stage 11 emits reviewable
-adoption artifacts without executing state operations. None of these live paths
-was executed during implementation.
+adoption artifacts without executing state operations. Stage 12 validates
+source without cloud credentials. No tenant/state path or local validation
+corpus was executed during implementation.
 
 ---
 

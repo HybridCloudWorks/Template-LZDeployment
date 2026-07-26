@@ -1,10 +1,10 @@
 {
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||.",
 
-  "manifestVersion": "1.6.0",
+  "manifestVersion": "1.7.0",
   "targetSchemaVersion": "2.0.0",
 
-  "$statusComment": "Stages 6–11 promoted the Terraform, workflow, documentation, bootstrap, scaffold, and brownfield-adoption corpus. Six live layers, seven workflows, ten generated operational documents, and the Stage 11 user checklist are emitted. Stage 11 registers generated import artifacts into render-manifest.json only for explicit Adopt classifications. platform-identity remains blocked by guard G21; guard G22 validates selected non-production workload CIDRs.",
+  "$statusComment": "Stages 6–12 promoted the Terraform, workflow, documentation, bootstrap, scaffold, brownfield-adoption, and Factory CI corpus. Six live layers, seven generated workflows, ten generated operational documents, and the Stage 12 user checklist are emitted. Factory CI is a credential-free repository-level gate. Stage 11 registers import artifacts only for explicit Adopt classifications. platform-identity remains blocked by guard G21; guard G22 validates non-production workload CIDRs.",
 
   "files": [
     {

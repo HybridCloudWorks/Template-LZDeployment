@@ -311,7 +311,7 @@ foreach ($name in $expectedDocs) {
         ok "$name has no unresolved factory tokens" ($docText[$name] -notmatch '\{\{FACTORY')
         ok "$name identifies generated provenance" (
             $docText[$name] -match 'GENERATED FILE' -and
-            $docText[$name] -match '0\.6\.0'
+            $docText[$name] -match '0\.7\.0'
         )
     }
 }
@@ -399,6 +399,18 @@ ok 'import generator never executes Terraform' (
 ok 'factory checklist carries Stage 11 activities' (
     (Get-Content (Join-Path $repo 'USER-CHECKLIST.md') -Raw) -match 'LZ_IMPORT_ALLOW_STALE'
 )
+
+Write-Host "`n== 22. Stage 12 Factory CI integration ==" -ForegroundColor Cyan
+$factoryCiWorkflow = Get-Content (Join-Path $repo '.github/workflows/factory-ci.yml') -Raw
+$factoryCiRunner = Get-Content (Join-Path $repo 'factory/ci/Invoke-FactoryCI.ps1') -Raw
+ok 'Factory CI workflow exists' (Test-Path (Join-Path $repo '.github/workflows/factory-ci.yml'))
+ok 'Factory CI is credential-free' ($factoryCiWorkflow -notmatch 'azure/login|id-token:\s*write|TFE_TOKEN')
+ok 'Factory CI emits evidence' (
+    $factoryCiRunner -match 'factory-ci-report\.json' -and
+    $factoryCiWorkflow -match 'upload-artifact@[0-9a-f]{40}'
+)
+ok 'Factory CI includes schema drift' ($factoryCiRunner -match 'Test-LzSchemaDrift')
+ok 'Factory CI includes Terraform validation' ($factoryCiRunner -match "terraform @\('validate'")
 
 Write-Host "`n$script:pass passed, $script:fail failed`n" -ForegroundColor $(if($script:fail){'Red'}else{'Green'})
 exit $(if ($script:fail) { 1 } else { 0 })
