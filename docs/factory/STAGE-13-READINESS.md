@@ -85,4 +85,6 @@ login, OIDC exchange, or state operation was performed.
 Populate the documented variables, complete a render and plan, approve and run
 each layer through the protected apply environment, review evidence, and
 perform independent read-back. These activities are tracked in
-`USER-CHECKLIST.md` and do not block Stage 13 code publication.
+`USER-CHECKLIST.md` and do not block Stage 13 code publication. Stage 14
+subsequently adds release evidence attestation and promotion planning; see
+`STAGE-14-READINESS.md`.
