@@ -180,6 +180,33 @@ function Test-LzRenderGuards {
             -Remediation 'The sandbox layer will be omitted from the output. Supply a sandbox subscription ID to emit it.'
     }
 
+    $nonProdEnvironments = @($Config.environments.application | Where-Object { $_ -in @('dev', 'test', 'uat') })
+    if ($nonProdEnvironments.Count -gt 0 -and -not (& $hasSub 'workloadNonProd')) {
+        $v += New-LzGuardViolation -Id 'G22' `
+            -Message 'A non-production environment is selected but azure.subscriptions.workloadNonProd is missing.' `
+            -Remediation 'Supply the shared non-production workload subscription ID.'
+    }
+    if ($nonProdEnvironments.Count -gt 0) {
+        $pairs = if (Test-LzHasProperty $Config.connectivity.hubSpoke 'nonProdSpokeAddressSpaces') {
+            $Config.connectivity.hubSpoke.nonProdSpokeAddressSpaces
+        } else { $null }
+        foreach ($envName in $nonProdEnvironments) {
+            if ($null -eq $pairs -or -not (Test-LzHasProperty $pairs $envName) -or
+                -not (Test-LzHasProperty $pairs.$envName 'primary') -or -not $pairs.$envName.primary) {
+                $v += New-LzGuardViolation -Id 'G22' `
+                    -Message "Environment '$envName' is selected but has no primary non-production spoke CIDR." `
+                    -Remediation "Supply connectivity.hubSpoke.nonProdSpokeAddressSpaces.$envName.primary."
+                continue
+            }
+            if ((Test-LzHasProperty $Config.azure 'drRegion') -and $Config.azure.drRegion -and
+                (-not (Test-LzHasProperty $pairs.$envName 'dr') -or -not $pairs.$envName.dr)) {
+                $v += New-LzGuardViolation -Id 'G22' `
+                    -Message "Environment '$envName' is selected in a dual-region configuration but has no DR spoke CIDR." `
+                    -Remediation "Supply connectivity.hubSpoke.nonProdSpokeAddressSpaces.$envName.dr."
+            }
+        }
+    }
+
     if ($Config.identity.deployIdentitySubscription -and -not (& $hasSub 'identity')) {
         $v += New-LzGuardViolation -Id 'G11' `
             -Message 'An identity subscription layer is requested but no identity subscription ID was supplied.' `
@@ -192,6 +219,17 @@ function Test-LzRenderGuards {
         $spaces = @()
         foreach ($n in @('primaryHubAddressSpace', 'drHubAddressSpace', 'primarySpokeAddressSpace', 'drSpokeAddressSpace')) {
             if ((Test-LzHasProperty $hs $n) -and $hs.$n) { $spaces += , @($n, $hs.$n) }
+        }
+        if (Test-LzHasProperty $hs 'nonProdSpokeAddressSpaces') {
+            foreach ($envName in @('dev', 'test', 'uat')) {
+                if (-not (Test-LzHasProperty $hs.nonProdSpokeAddressSpaces $envName)) { continue }
+                foreach ($regionName in @('primary', 'dr')) {
+                    $pair = $hs.nonProdSpokeAddressSpaces.$envName
+                    if ((Test-LzHasProperty $pair $regionName) -and $pair.$regionName) {
+                        $spaces += , @("$envName-$regionName", $pair.$regionName)
+                    }
+                }
+            }
         }
         for ($i = 0; $i -lt $spaces.Count; $i++) {
             for ($j = $i + 1; $j -lt $spaces.Count; $j++) {

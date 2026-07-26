@@ -19,12 +19,12 @@
  * Constants
  * ------------------------------------------------------------------- */
 
-const SCHEMA_VERSION = '1.0.0';
+const SCHEMA_VERSION = '2.0.0';
 
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
  * so the value is mirrored here and a factory CI check asserts the two match. */
-const FACTORY_VERSION = '0.1.0';
+const FACTORY_VERSION = '0.2.0';
 
 const DRAFT_KEY = 'alz-factory-draft-v1';
 
@@ -197,7 +197,12 @@ function defaultConfig() {
       model: 'hub-spoke',
       hubSpoke: {
         primaryHubAddressSpace: '10.0.0.0/16', drHubAddressSpace: '10.10.0.0/16',
-        primarySpokeAddressSpace: '10.1.0.0/16', drSpokeAddressSpace: '10.11.0.0/16',
+        primarySpokeAddressSpace: '10.2.0.0/16', drSpokeAddressSpace: '10.11.0.0/16',
+        nonProdSpokeAddressSpaces: {
+          dev: { primary: '10.3.0.0/16', dr: '10.12.0.0/16' },
+          test: { primary: '10.4.0.0/16', dr: '10.13.0.0/16' },
+          uat: { primary: '10.5.0.0/16', dr: '10.14.0.0/16' }
+        },
         availabilityZones: ['1', '2', '3']
       },
       firewall: {
@@ -475,8 +480,18 @@ function validate() {
       ['primary hub', c.hubSpoke.primaryHubAddressSpace],
       ['DR hub', c.hubSpoke.drHubAddressSpace],
       ['primary spoke', c.hubSpoke.primarySpokeAddressSpace],
-      ['DR spoke', c.hubSpoke.drSpokeAddressSpace]
+      ['DR spoke', c.hubSpoke.drSpokeAddressSpace],
+      ...['dev', 'test', 'uat'].flatMap(env => {
+        const pair = (c.hubSpoke.nonProdSpokeAddressSpaces || {})[env] || {};
+        return [[`${env} primary spoke`, pair.primary], [`${env} DR spoke`, pair.dr]];
+      })
     ].filter(([, v]) => v);
+    for (const env of ['dev', 'test', 'uat']) {
+      if (!config.environments.application.includes(env)) continue;
+      const pair = (c.hubSpoke.nonProdSpokeAddressSpaces || {})[env];
+      if (!pair || !pair.primary) err('connectivity', `${env} is selected but has no primary workload spoke CIDR.`);
+      if (config.azure.drRegion && (!pair || !pair.dr)) err('connectivity', `${env} is selected in a dual-region configuration but has no DR workload spoke CIDR.`);
+    }
     for (const [label, v] of spaces) {
       if (!RE.cidr.test(v)) err('connectivity', `The ${label} address space is not valid CIDR notation.`);
     }
@@ -1793,7 +1808,7 @@ function nextStepsMarkdown(cfg) {
     '',
     '## Before you trust this in production',
     '',
-    'As of factory v0.1.0 the release gates in `factory-version.json` are not all met — in particular the',
+    'As of factory v0.2.0 the release gates in `factory-version.json` are not all met — in particular the',
     'pipeline has no recorded successful end-to-end run. Treat the first deployment as a verification',
     'exercise, not a production cutover.',
     ''

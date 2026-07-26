@@ -14,10 +14,10 @@ function ok($name, $cond, $extra = '') {
 }
 
 Write-Host "`n== 1. CIDR overlap ==" -ForegroundColor Cyan
-ok '10.0.0.0/16 vs 10.0.1.0/24 overlap'     (Test-LzCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.0.1.0/24')
-ok '10.0.0.0/16 vs 10.1.0.0/16 disjoint'   (-not (Test-LzCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.1.0.0/16'))
+ok '10.0.0.0/16 vs 10.0.2.0/24 overlap'     (Test-LzCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.0.2.0/24')
+ok '10.0.0.0/16 vs 10.2.0.0/16 disjoint'   (-not (Test-LzCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.2.0.0/16'))
 ok 'identical ranges overlap'               (Test-LzCidrOverlap -CidrA '172.16.0.0/12' -CidrB '172.16.0.0/12')
-ok 'adjacent /24s disjoint'                (-not (Test-LzCidrOverlap -CidrA '10.0.0.0/24' -CidrB '10.0.1.0/24'))
+ok 'adjacent /24s disjoint'                (-not (Test-LzCidrOverlap -CidrA '10.0.0.0/24' -CidrB '10.0.2.0/24'))
 ok 'supernet contains subnet'               (Test-LzCidrOverlap -CidrA '10.0.0.0/8' -CidrB '10.255.255.0/24')
 ok '0.0.0.0/0 overlaps everything'          (Test-LzCidrOverlap -CidrA '0.0.0.0/0' -CidrB '192.168.1.0/24')
 ok 'malformed input is not an overlap'     (-not (Test-LzCidrOverlap -CidrA 'garbage' -CidrB '10.0.0.0/16'))
@@ -146,7 +146,7 @@ $readiness = [pscustomobject]@{
     PassCount=1; WarningCount=1; FailCount=1; Ready=$false
 }
 $disc = [pscustomobject]@{
-    GeneratedAt=(Get-Date).ToUniversalTime().ToString('o'); FactoryVersion='0.1.0'
+    GeneratedAt=(Get-Date).ToUniversalTime().ToString('o'); FactoryVersion='0.2.0'
     DurationSeconds=3.2; ConfigPath='x'; Config=$cfg
     GitHub=$fakeGh; Entra=$null; Azure=$fakeAz; Terraform=$null; Readiness=$readiness
 }

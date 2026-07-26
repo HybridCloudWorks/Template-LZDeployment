@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "1.0.0",
-  "factoryVersion": "0.1.0",
+  "schemaVersion": "2.0.0",
+  "factoryVersion": "0.2.0",
   "generatedAt": "2026-07-25T00:00:00Z",
   "organization": {
     "companyName": "Contoso Health Group",
@@ -21,7 +21,8 @@
     "subscriptions": {
       "management": "aaaaaaaa-0000-0000-0000-000000000001",
       "connectivity": "aaaaaaaa-0000-0000-0000-000000000002",
-      "workloadProd": "aaaaaaaa-0000-0000-0000-000000000003"
+      "workloadProd": "aaaaaaaa-0000-0000-0000-000000000003",
+      "workloadNonProd": "aaaaaaaa-0000-0000-0000-000000000004"
     },
     "managementGroups": {
       "rootId": "mg-contoso",
@@ -78,8 +79,14 @@
     "hubSpoke": {
       "primaryHubAddressSpace": "10.0.0.0/16",
       "drHubAddressSpace": "10.10.0.0/16",
-      "primarySpokeAddressSpace": "10.1.0.0/16",
+      "primarySpokeAddressSpace": "10.2.0.0/16",
       "drSpokeAddressSpace": "10.11.0.0/16",
+      "nonProdSpokeAddressSpaces": {
+        "dev": {
+          "primary": "10.3.0.0/16",
+          "dr": "10.12.0.0/16"
+        }
+      },
       "availabilityZones": [
         "1",
         "2",

@@ -30,7 +30,7 @@ output "public_network_access" {
 
 output "backend_config_hcl" {
   description = "Backend configuration for downstream Terraform modules"
-  value = <<-EOT
+  value       = <<-EOT
     resource_group_name  = "${azurerm_resource_group.state.name}"
     storage_account_name = "${azurerm_storage_account.state.name}"
     container_name       = "<LAYER_SPECIFIC_CONTAINER>"
@@ -40,7 +40,7 @@ output "backend_config_hcl" {
 
 output "next_steps" {
   description = "Next steps after bootstrap"
-  value = <<-EOT
+  value       = <<-EOT
     ✅ Bootstrap complete! State storage is ${var.allow_public_access_during_setup ? "⚠️  PUBLICLY ACCESSIBLE" : "🔒 SECURED"}
     
     Security Status:

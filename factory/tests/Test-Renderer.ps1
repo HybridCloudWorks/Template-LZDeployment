@@ -147,13 +147,13 @@ ok 'G16 blocks unknown name token'  ((Test-LzRenderGuards -Config $c -FactoryVer
 $c = Clone $cfg; $c.governance.policyAsCodeEngines = @('sentinel'); $c.backend.type = 'azurerm'
 ok 'G19 blocks Sentinel w/o HCP'    ((Test-LzRenderGuards -Config $c -FactoryVersion $fv).Violations.Id -contains 'G19')
 
-# A layer with no Terraform must be refused, not emitted as a directory holding
-# only backend.tf — which initialises cleanly and plans zero resources, and so
-# reads as "nothing to do" rather than "not implemented".
 $gNonprod = Test-LzRenderGuards -Config $cfgNonprod -FactoryVersion $fv
-ok 'G21 blocks unimplemented layer' ($gNonprod.Violations.Id -contains 'G21')
-ok 'G21 names the missing layer'    ((($gNonprod.Violations | Where-Object { $_.Id -eq 'G21' }).Message) -match 'workloads-nonprod')
-ok 'G21 refuses the render'         (throws { Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/nonprod-config.json" -OutputDirectory (Join-Path $PSScriptRoot '.out/g21') -Quiet })
+ok 'non-prod layer is implemented'  ($gNonprod.Violations.Id -notcontains 'G21')
+ok 'valid non-prod config renders'  ($gNonprod.CanRender) (($gNonprod.Violations | ForEach-Object { $_.Id + ':' + $_.Message }) -join ' | ')
+
+$c = Clone $cfgNonprod
+$c.connectivity.hubSpoke.nonProdSpokeAddressSpaces.dev.primary = ''
+ok 'G22 blocks missing non-prod CIDR' ((Test-LzRenderGuards -Config $c -FactoryVersion $fv).Violations.Id -contains 'G22')
 
 Write-Host "`n== 11. Schema drift detection ==" -ForegroundColor Cyan
 $d = Test-LzSchemaDrift -SchemaPath "$repo/factory/schema/lz-config.schema.json" `
@@ -183,8 +183,8 @@ ok 'bool false'        ((ConvertTo-LzBoolLiteral $false) -eq 'false')
 ok 'bool from null'    ((ConvertTo-LzBoolLiteral $null) -eq 'false')
 
 Write-Host "`n== 14. CIDR overlap (renderer copy) ==" -ForegroundColor Cyan
-ok 'overlap detected'  (Test-LzRendererCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.0.1.0/24')
-ok 'disjoint'          (-not (Test-LzRendererCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.1.0.0/16'))
+ok 'overlap detected'  (Test-LzRendererCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.0.2.0/24')
+ok 'disjoint'          (-not (Test-LzRendererCidrOverlap -CidrA '10.0.0.0/16' -CidrB '10.2.0.0/16'))
 ok 'malformed safe'    (-not (Test-LzRendererCidrOverlap -CidrA 'nope' -CidrB '10.0.0.0/16'))
 
 Write-Host "`n== 15. End-to-end render ==" -ForegroundColor Cyan
@@ -216,6 +216,15 @@ $wf = Get-Content (Join-Path $out '.github/workflows/terraform-plan.yml') -Raw
 ok 'workflow GHA exprs preserved'  ($wf -match '\$\{\{ matrix\.layer \}\}')
 ok 'workflow permissions locked'   ($wf -match 'permissions: \{\}')
 
+$nonprodOut = Join-Path $PSScriptRoot '.out/render-nonprod-out'
+if (Test-Path $nonprodOut) { Remove-Item $nonprodOut -Recurse -Force }
+$nonprodResult = Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/nonprod-config.json" -OutputDirectory $nonprodOut -Quiet
+ok 'non-prod layer emitted'        ($nonprodResult.Layers -contains 'workloads-nonprod')
+ok 'non-prod main rendered'        (Test-Path (Join-Path $nonprodOut 'terraform/live/workloads-nonprod/main.tf'))
+$nonprodTfvars = Get-Content (Join-Path $nonprodOut 'terraform/live/workloads-nonprod/terraform.auto.tfvars') -Raw
+ok 'dev primary CIDR rendered'     ($nonprodTfvars -match '10\.3\.0\.0/16')
+ok 'dev DR CIDR rendered'          ($nonprodTfvars -match '10\.12\.0\.0/16')
+
 # Refuses to overwrite without -Force.
 ok 'refuses non-empty output'      (throws { Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/sample-config.json" -OutputDirectory $out -Quiet })
 ok 'overwrites with -Force'        (-not (throws { Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/sample-config.json" -OutputDirectory $out -Force -Quiet }))
@@ -228,6 +237,57 @@ $badOut = Join-Path $PSScriptRoot '.out/render-bad-out'
 if (Test-Path $badOut) { Remove-Item $badOut -Recurse -Force }
 ok 'blocked config throws'         (throws { Invoke-LzRender -ConfigPath $badCfgPath -OutputDirectory $badOut -Quiet })
 ok 'nothing written when blocked'  (-not (Test-Path (Join-Path $badOut 'README.md')))
+
+Write-Host "`n== 17. Stage 7 generated workflow corpus ==" -ForegroundColor Cyan
+$workflowRoot = Join-Path $out '.github/workflows'
+$expectedWorkflows = @(
+    'terraform-plan.yml',
+    'terraform-fmt-validate.yml',
+    'terraform-apply.yml',
+    'action-pinning-policy.yml',
+    'security-scan.yml',
+    'terraform-policy-checks.yml',
+    'azure-auth-test.yml'
+)
+foreach ($name in $expectedWorkflows) {
+    ok "workflow emitted: $name" (Test-Path (Join-Path $workflowRoot $name))
+}
+
+$workflowText = @{}
+foreach ($name in $expectedWorkflows) {
+    $workflowText[$name] = Get-Content (Join-Path $workflowRoot $name) -Raw
+    ok "$name has locked root permissions" ($workflowText[$name] -match '(?m)^permissions: \{\}$')
+    ok "$name excludes pull_request_target" ($workflowText[$name] -notmatch 'pull_request_target')
+    ok "$name has no unresolved factory tokens" ($workflowText[$name] -notmatch '(?<!\$)\{\{')
+}
+
+$externalUses = [regex]::Matches(
+    (($workflowText.Values -join "`n")),
+    '(?m)^\s*uses:\s*(?!\./|docker://)([^@\s]+)@([^\s#]+)'
+)
+ok 'all external actions use full SHA pins' (
+    @($externalUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' }).Count -eq 0
+)
+
+ok 'forks receive credential-free validation' (
+    $workflowText['terraform-fmt-validate.yml'] -match 'pull_request' -and
+    $workflowText['terraform-fmt-validate.yml'] -notmatch 'id-token:\s*write'
+)
+ok 'cloud plan skips forked pull requests' (
+    $workflowText['terraform-plan.yml'] -match 'head\.repo\.full_name == github\.repository'
+)
+ok 'apply binds protected environment' (
+    $workflowText['terraform-apply.yml'] -match '(?m)^\s*environment:\s*\$\{\{ inputs\.environment \}\}'
+)
+ok 'apply uses apply identity variable' (
+    $workflowText['terraform-apply.yml'] -match 'AZURE_APPLY_CLIENT_ID'
+)
+ok 'apply does not contain plan identity' (
+    $workflowText['terraform-apply.yml'] -notmatch 'AZURE_PLAN_CLIENT_ID'
+)
+ok 'apply refuses destructive plan' (
+    $workflowText['terraform-apply.yml'] -match 'Refuse destructive apply'
+)
 
 Write-Host "`n$script:pass passed, $script:fail failed`n" -ForegroundColor $(if($script:fail){'Red'}else{'Green'})
 exit $(if ($script:fail) { 1 } else { 0 })

@@ -41,7 +41,7 @@ resource "random_string" "suffix" {
 resource "azurerm_resource_group" "state" {
   name     = "rg-tfstate-${var.primary_region_code}-prod-01"
   location = var.primary_region
-  tags     = merge(var.default_tags, {
+  tags = merge(var.default_tags, {
     purpose = "Terraform State Backend"
   })
 }
@@ -54,13 +54,13 @@ resource "azurerm_storage_account" "state" {
   account_tier             = "Standard"
   account_replication_type = "RAGZRS"
   account_kind             = "StorageV2"
-  
-  min_tls_version           = "TLS1_2"
+
+  min_tls_version            = "TLS1_2"
   https_traffic_only_enabled = true
-  
+
   # Security - CRITICAL: Public access disabled by default (Finding 1.2 - CVSS 8.2)
   public_network_access_enabled = var.allow_public_access_during_setup
-  
+
   # Lifecycle precondition: Warn if public access enabled without private endpoint
   lifecycle {
     precondition {
@@ -79,20 +79,20 @@ resource "azurerm_storage_account" "state" {
       EOT
     }
   }
-  
+
   blob_properties {
-    versioning_enabled = true
+    versioning_enabled  = true
     change_feed_enabled = true
-    
+
     delete_retention_policy {
       days = 30
     }
-    
+
     container_delete_retention_policy {
       days = 30
     }
   }
-  
+
   tags = merge(var.default_tags, {
     purpose = "Terraform State Storage"
   })
@@ -103,7 +103,7 @@ resource "azurerm_private_dns_zone" "blob" {
   count               = var.enable_private_endpoint ? 1 : 0
   name                = "privatelink.blob.core.windows.net"
   resource_group_name = azurerm_resource_group.state.name
-  
+
   tags = var.default_tags
 }
 
@@ -115,7 +115,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
   private_dns_zone_name = azurerm_private_dns_zone.blob[0].name
   virtual_network_id    = var.management_vnet_id
   registration_enabled  = false
-  
+
   tags = var.default_tags
 }
 
@@ -126,19 +126,19 @@ resource "azurerm_private_endpoint" "state_blob" {
   resource_group_name = azurerm_resource_group.state.name
   location            = azurerm_resource_group.state.location
   subnet_id           = var.management_subnet_id
-  
+
   private_service_connection {
     name                           = "psc-tfstate-blob"
     private_connection_resource_id = azurerm_storage_account.state.id
     is_manual_connection           = false
     subresource_names              = ["blob"]
   }
-  
+
   private_dns_zone_group {
     name                 = "default"
     private_dns_zone_ids = [azurerm_private_dns_zone.blob[0].id]
   }
-  
+
   tags = merge(var.default_tags, {
     purpose = "Private connectivity to Terraform state storage"
   })
@@ -156,7 +156,7 @@ resource "azurerm_storage_container" "state_containers" {
     "workloads-nonprod",
     "sandbox-isolation"
   ])
-  
+
   name                  = each.key
   storage_account_id    = azurerm_storage_account.state.id
   container_access_type = "private"
@@ -169,7 +169,7 @@ resource "azurerm_log_analytics_workspace" "state" {
   location            = azurerm_resource_group.state.location
   sku                 = "PerGB2018"
   retention_in_days   = 30
-  
+
   tags = var.default_tags
 }
 
@@ -178,17 +178,17 @@ resource "azurerm_monitor_diagnostic_setting" "state" {
   name                       = "diag-state-storage"
   target_resource_id         = azurerm_storage_account.state.id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.state.id
-  
+
   enabled_log {
     category = "StorageRead"
   }
-  
+
   enabled_log {
     category = "StorageWrite"
   }
-  
+
   enabled_log {
     category = "StorageDelete"
   }
-  
+
 }

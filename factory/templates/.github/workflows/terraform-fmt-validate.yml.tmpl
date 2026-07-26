@@ -1,0 +1,50 @@
+# GENERATED FILE — Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}
+name: Terraform Format and Validate
+
+on:
+  pull_request:
+    branches: [{{FACTORY-RAW:computed.defaultBranch}}]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-fmt-validate.yml'
+  push:
+    branches: [{{FACTORY-RAW:computed.defaultBranch}}]
+    paths:
+      - 'terraform/**'
+
+permissions: {}
+
+concurrency:
+  group: terraform-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate (${{ matrix.layer }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        layer:
+#{{FOREACH lyr IN computed.layers}}
+          - {{FACTORY-RAW:lyr}}
+#{{ENDFOREACH}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: '{{FACTORY-RAW:computed.terraformVersion}}'
+      - name: Format check
+        working-directory: terraform/live/${{ matrix.layer }}
+        run: terraform fmt -check -recursive
+      - name: Initialize without backend
+        working-directory: terraform/live/${{ matrix.layer }}
+        run: terraform init -backend=false -input=false
+      - name: Validate
+        working-directory: terraform/live/${{ matrix.layer }}
+        run: terraform validate -no-color

@@ -1,0 +1,35 @@
+# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
+# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+
+#{{IF environments.application contains 'dev'}}
+output "dev_primary_spoke_vnet_id" {
+  value = module.spoke_dev_primary.spoke_vnet_id
+}
+#{{IF computed.hasDrRegion}}
+output "dev_dr_spoke_vnet_id" {
+  value = module.spoke_dev_dr.spoke_vnet_id
+}
+#{{ENDIF}}
+#{{ENDIF}}
+
+#{{IF environments.application contains 'test'}}
+output "test_primary_spoke_vnet_id" {
+  value = module.spoke_test_primary.spoke_vnet_id
+}
+#{{IF computed.hasDrRegion}}
+output "test_dr_spoke_vnet_id" {
+  value = module.spoke_test_dr.spoke_vnet_id
+}
+#{{ENDIF}}
+#{{ENDIF}}
+
+#{{IF environments.application contains 'uat'}}
+output "uat_primary_spoke_vnet_id" {
+  value = module.spoke_uat_primary.spoke_vnet_id
+}
+#{{IF computed.hasDrRegion}}
+output "uat_dr_spoke_vnet_id" {
+  value = module.spoke_uat_dr.spoke_vnet_id
+}
+#{{ENDIF}}
+#{{ENDIF}}

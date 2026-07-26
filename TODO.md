@@ -8,7 +8,7 @@
 > Items below remain valid only where they are also confirmed by those documents
 > or by a fresh code review.
 
-**Last Updated**: July 1, 2026
+**Last Updated**: July 25, 2026
 **Status**: 🟡 IN PROGRESS
 **Completed work**: [CHANGELOG.md](CHANGELOG.md)
 **External tracking**: [GitHub Issues](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues)
@@ -27,6 +27,15 @@ This repo **is** the landing zone deployment — it is not a template that spins
 
 ## 🔴 CI/CD & OIDC Reliability (Blocking)
 
+- [ ] **Verify the live Entra `pull_request` federated credential** — run the
+  repository bootstrap/remediation against the live application registration,
+  confirm the exact repo-scoped subject by API read-back, and prove token
+  exchange from a pull request. Requires an authenticated Entra operator
+  session and is not performed by PR #35.
+- [ ] **Enable and verify required `main` status checks** — after PR #35 emits
+  stable check names and they pass, configure branch protection/rulesets and
+  confirm the required contexts plus enforcement by GitHub API read-back.
+  Requires repository administration access and is not performed by PR #35.
 - [ ] **Verify the pipeline actually runs green** — confirm `010-terraform-init.yml`, `020-rbac-validation.yml`, `terraform-plan.yml`, and `terraform-apply.yml` all complete successfully on a real PR/push, now that the OIDC federated-credential gap and SHA-pinning are fixed. As of 2026-07-01 there is no recorded successful run of any of these.
 - [ ] **Investigate 0-second workflow failures** — some historical runs of `010-terraform-init.yml` / `020-rbac-validation.yml` fail in 0 seconds, suggesting a trigger/syntax issue independent of the OIDC fix. Confirm once a run is attempted post-fix.
 - [ ] **Migrate backend from `azurerm` to Terraform Cloud** — tracked as [GitHub Issue #11](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues/11), not here (blocked on interactive TFC org/workspace/token setup).

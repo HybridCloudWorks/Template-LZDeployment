@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "1.0.0",
-  "factoryVersion": "0.1.0",
+  "schemaVersion": "2.0.0",
+  "factoryVersion": "0.2.0",
   "generatedAt": "2026-07-25T00:00:00.000Z",
   "organization": { "companyName": "Contoso Health Group", "companyShortName": "contoso", "businessUnit": "Platform", "outputDirectoryName": "contoso" },
   "azure": {
@@ -18,7 +18,7 @@
   "deploymentStrategy": { "mode": "greenfield" },
   "environments": { "platform": ["bootstrap","connectivity","management"], "application": ["prod"], "promotionPath": ["prod"], "approvals": {} },
   "connectivity": { "model": "hub-spoke",
-    "hubSpoke": { "primaryHubAddressSpace": "10.0.0.0/16", "drHubAddressSpace": "10.10.0.0/16", "primarySpokeAddressSpace": "10.1.0.0/16", "drSpokeAddressSpace": "10.11.0.0/16", "availabilityZones": ["1","2","3"] },
+    "hubSpoke": { "primaryHubAddressSpace": "10.0.0.0/16", "drHubAddressSpace": "10.10.0.0/16", "primarySpokeAddressSpace": "10.2.0.0/16", "drSpokeAddressSpace": "10.11.0.0/16", "availabilityZones": ["1","2","3"] },
     "firewall": { "type": "azfw", "azfwTier": "Standard", "threatIntelligenceMode": "Deny" },
     "expressRoute": { "enabled": false }, "vpn": { "enabled": false }, "bastion": { "enabled": true, "sku": "Standard" },
     "privateDns": { "enabled": true, "centralizedInHub": true, "zones": [] }, "privateEndpoints": { "enabled": true, "denyPublicNetworkAccessPolicy": true } },

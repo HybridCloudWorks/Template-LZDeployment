@@ -1,0 +1,78 @@
+# GENERATED FILE — Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}
+name: Terraform Apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected GitHub environment
+        required: true
+        type: environment
+      layer:
+        description: Layer to apply (must be one of the rendered layers)
+        required: true
+        type: choice
+        options:
+#{{FOREACH lyr IN computed.layers}}
+          - {{FACTORY-RAW:lyr}}
+#{{ENDFOREACH}}
+
+permissions: {}
+
+concurrency:
+  group: terraform-apply-${{ inputs.environment }}-${{ inputs.layer }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply ${{ inputs.layer }} to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: {{FACTORY-RAW:computed.defaultBranch}}
+      - name: Reject unknown layer
+        env:
+          REQUESTED_LAYER: ${{ inputs.layer }}
+          ALLOWED_LAYERS: '{{FACTORY-RAW:computed.layersCsv}}'
+        run: |
+          case ",$ALLOWED_LAYERS," in
+            *",$REQUESTED_LAYER,"*) ;;
+            *) echo "::error::Unknown or unrendered layer: $REQUESTED_LAYER"; exit 1 ;;
+          esac
+      - name: Azure login (environment apply identity)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ vars.AZURE_APPLY_CLIENT_ID }}
+          tenant-id: {{FACTORY-RAW:azure.tenantId}}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: '{{FACTORY-RAW:computed.terraformVersion}}'
+#{{IF computed.backendIsHcp}}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+#{{ENDIF}}
+      - name: Initialize
+        working-directory: terraform/live/${{ inputs.layer }}
+        run: terraform init -input=false
+      - name: Create reviewed plan
+        working-directory: terraform/live/${{ inputs.layer }}
+        run: terraform plan -input=false -no-color -out=tfplan
+      - name: Refuse destructive apply
+        working-directory: terraform/live/${{ inputs.layer }}
+        run: |
+          terraform show -json tfplan > plan.json
+          destroys=$(jq '[.resource_changes[]? | select(.change.actions[]? == "delete")] | length' plan.json)
+          if [ "$destroys" -gt 0 ]; then
+            echo "::error::Apply contains $destroys destructive operation(s). Use a separately reviewed break-glass process."
+            exit 1
+          fi
+      - name: Apply reviewed plan
+        working-directory: terraform/live/${{ inputs.layer }}
+        run: terraform apply -input=false -auto-approve tfplan

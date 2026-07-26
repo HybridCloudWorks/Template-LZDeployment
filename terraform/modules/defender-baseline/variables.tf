@@ -6,7 +6,7 @@ variable "subscriptions" {
   type = map(object({
     id   = string
     name = string
-    tier = string  # Standard or Free
+    tier = string # Standard or Free
   }))
 }
 

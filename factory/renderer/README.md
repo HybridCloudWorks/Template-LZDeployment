@@ -148,6 +148,7 @@ only in the UI is a suggestion, not a guarantee.
 | G19 | Sentinel policy engine without the HCP backend |
 | G20 | Internal visibility without Enterprise Cloud |
 | G21 | An active layer has no implemented Terraform corpus |
+| G22 | A selected non-production environment is missing its required spoke CIDR |
 
 G10 and G14 are advisory warnings (missing sandbox subscription, prod without
 reviewers) and do not block.
@@ -203,6 +204,7 @@ Values derived once, centrally, so no template can invent its own:
 | Path | Notes |
 |---|---|
 | `computed.layers` | Active layers. Drives per-layer rendering and the workflow matrix. |
+| `computed.layersCsv` | Shell-safe allowlist used to reject an unknown apply layer. |
 | `computed.allEnvironments` | Platform + application environments |
 | `computed.repositorySlug` | `owner/repo` |
 | `computed.oidcSubjectPullRequest` | Plan-identity subject |
@@ -272,19 +274,24 @@ PATH.
 ## Status
 
 Stage 5 delivered the **engine**; stage 6 promoted the real Terraform into
-`factory/templates/`. The corpus now emits five live layers — `global`,
-`platform-connectivity`, `platform-management`, `workloads-prod`, `sandbox` —
-plus `terraform/modules/**` and `terraform/scripts/` verbatim. Both a
+`factory/templates/`. The corpus now emits six live layers — `global`,
+`platform-connectivity`, `platform-management`, `workloads-nonprod`,
+`workloads-prod`, `sandbox` — plus `terraform/modules/**` and
+`terraform/scripts/` verbatim. Both a
 dual-region HCP configuration and a single-region azurerm configuration render
 to trees that pass `terraform fmt -check -recursive` and `terraform validate`.
 
-Two layers `Get-LzActiveLayers` can select — `platform-identity` and
-`workloads-nonprod` — have no Terraform anywhere in the repo, so there is
-nothing to promote. Guard **G21** refuses to render a configuration that selects
-one, reading the implemented-layer list from `factory-version.json`. Before that
+`platform-identity` has no Terraform anywhere in the repo, so there is nothing
+to promote. Guard **G21** refuses to render a configuration that selects it,
+reading the implemented-layer list from `factory-version.json`. Before that
 guard, such a layer was emitted as a directory holding only `backend.tf`: it
 initialised cleanly and planned zero resources, which reads as "nothing to do"
 rather than "not implemented". `variable-map.json` keeps both in
-`$pendingLayers` so the gap stays visible.
+`$pendingLayers` so the gap stays visible. Guard **G22** requires primary and,
+for dual-region deployments, DR spoke CIDRs for every selected non-production
+environment.
 
-Stage 7 promotes `.github/workflows/` the same way.
+Stage 7 emits plan, protected-environment apply, credential-free format/validate,
+action pinning, security, policy, and OIDC verification workflows. Forked PRs
+run validation without cloud credentials; the plan job is limited to branches in
+the generated repository.

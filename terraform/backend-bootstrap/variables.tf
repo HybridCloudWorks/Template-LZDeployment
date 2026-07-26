@@ -7,7 +7,7 @@ variable "org_prefix" {
   description = "Organization prefix for resource naming (e.g., 'hcw')"
   type        = string
   default     = "hcw"
-  
+
   validation {
     condition     = can(regex("^[a-z]{2,4}$", var.org_prefix))
     error_message = "Organization prefix must be 2-4 lowercase letters."
@@ -29,7 +29,7 @@ variable "primary_region_code" {
 variable "allow_public_access_during_setup" {
   description = "Allow public network access during initial setup (disable after private endpoint configured)"
   type        = bool
-  default     = false  # SECURITY: Changed to false per Phase 1 remediation (Finding 1.2)
+  default     = false # SECURITY: Changed to false per Phase 1 remediation (Finding 1.2)
 }
 
 variable "management_vnet_id" {

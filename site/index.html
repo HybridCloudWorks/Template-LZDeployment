@@ -434,11 +434,35 @@
           </div>
           <div class="field">
             <label for="cn_spokePrimary">Primary spoke address space</label>
-            <input id="cn_spokePrimary" data-path="connectivity.hubSpoke.primarySpokeAddressSpace" type="text" spellcheck="false" placeholder="10.1.0.0/16">
+            <input id="cn_spokePrimary" data-path="connectivity.hubSpoke.primarySpokeAddressSpace" type="text" spellcheck="false" placeholder="10.2.0.0/16">
           </div>
           <div class="field">
             <label for="cn_spokeDr">DR spoke address space</label>
             <input id="cn_spokeDr" data-path="connectivity.hubSpoke.drSpokeAddressSpace" type="text" spellcheck="false" placeholder="10.11.0.0/16">
+          </div>
+          <div class="field">
+            <label for="cn_devPrimary">Dev primary spoke</label>
+            <input id="cn_devPrimary" data-path="connectivity.hubSpoke.nonProdSpokeAddressSpaces.dev.primary" type="text" spellcheck="false" placeholder="10.3.0.0/16">
+          </div>
+          <div class="field">
+            <label for="cn_devDr">Dev DR spoke</label>
+            <input id="cn_devDr" data-path="connectivity.hubSpoke.nonProdSpokeAddressSpaces.dev.dr" type="text" spellcheck="false" placeholder="10.12.0.0/16">
+          </div>
+          <div class="field">
+            <label for="cn_testPrimary">Test primary spoke</label>
+            <input id="cn_testPrimary" data-path="connectivity.hubSpoke.nonProdSpokeAddressSpaces.test.primary" type="text" spellcheck="false" placeholder="10.4.0.0/16">
+          </div>
+          <div class="field">
+            <label for="cn_testDr">Test DR spoke</label>
+            <input id="cn_testDr" data-path="connectivity.hubSpoke.nonProdSpokeAddressSpaces.test.dr" type="text" spellcheck="false" placeholder="10.13.0.0/16">
+          </div>
+          <div class="field">
+            <label for="cn_uatPrimary">UAT primary spoke</label>
+            <input id="cn_uatPrimary" data-path="connectivity.hubSpoke.nonProdSpokeAddressSpaces.uat.primary" type="text" spellcheck="false" placeholder="10.5.0.0/16">
+          </div>
+          <div class="field">
+            <label for="cn_uatDr">UAT DR spoke</label>
+            <input id="cn_uatDr" data-path="connectivity.hubSpoke.nonProdSpokeAddressSpaces.uat.dr" type="text" spellcheck="false" placeholder="10.14.0.0/16">
           </div>
         </div>
         <p class="hint">These four must not overlap each other or any on-premises range. The wizard checks for overlap between them; it cannot know your on-premises addressing.</p>

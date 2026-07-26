@@ -8,11 +8,11 @@ resource "azurerm_policy_definition" "require_tags" {
   mode         = "All"
   display_name = "Require mandatory tags"
   description  = "Enforces required tags: owner, application, environment, cost_center"
-  
+
   metadata = jsonencode({
     category = "Tags"
   })
-  
+
   policy_rule = jsonencode({
     if = {
       anyOf = [
@@ -56,7 +56,7 @@ resource "azurerm_management_group_policy_assignment" "allowed_locations" {
   policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c"
   display_name         = "Allowed locations"
   description          = "Restricts deployment to approved regions"
-  
+
   parameters = jsonencode({
     listOfAllowedLocations = {
       value = var.allowed_locations
@@ -80,11 +80,11 @@ resource "azurerm_policy_definition" "sandbox_environment_tag" {
   mode         = "All"
   display_name = "Enforce environment=sandbox in Sandbox subscription"
   description  = "Denies resources in Sandbox MG that don't have environment=sandbox"
-  
+
   metadata = jsonencode({
     category = "Tags"
   })
-  
+
   policy_rule = jsonencode({
     if = {
       not = {
@@ -112,11 +112,11 @@ resource "azurerm_policy_definition" "sandbox_expiry_tag" {
   mode         = "All"
   display_name = "Require expiry_date tag in Sandbox"
   description  = "Requires expiry_date tag on all Sandbox resources"
-  
+
   metadata = jsonencode({
     category = "Tags"
   })
-  
+
   policy_rule = jsonencode({
     if = {
       field  = "tags['expiry_date']"
@@ -142,14 +142,14 @@ resource "azurerm_policy_definition" "deny_sandbox_peering" {
   mode         = "All"
   display_name = "Deny VNet peering in Sandbox"
   description  = "Prevents VNet peering to maintain Sandbox air-gap"
-  
+
   metadata = jsonencode({
     category = "Network"
   })
-  
+
   policy_rule = jsonencode({
     if = {
-      field = "type"
+      field  = "type"
       equals = "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"
     }
     then = {
