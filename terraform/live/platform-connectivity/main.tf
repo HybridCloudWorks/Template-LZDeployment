@@ -9,7 +9,7 @@ terraform {
       version = "~> 4.2"
     }
   }
-  
+
   backend "azurerm" {
     # Configuration provided via backend.hcl
   }
@@ -29,39 +29,39 @@ locals {
 # Primary hub (South Central US)
 module "hub_primary" {
   source = "../../modules/hub-network"
-  
-  region                    = var.primary_region
-  region_code               = var.primary_region_code
-  environment               = "prod"
-  hub_address_space         = var.primary_hub_address_space
-  firewall_type             = var.firewall_type
-  azfw_tier                 = var.azfw_tier
-  nva_trust_ip_placeholder  = var.primary_nva_trust_ip
+
+  region                     = var.primary_region
+  region_code                = var.primary_region_code
+  environment                = "prod"
+  hub_address_space          = var.primary_hub_address_space
+  firewall_type              = var.firewall_type
+  azfw_tier                  = var.azfw_tier
+  nva_trust_ip_placeholder   = var.primary_nva_trust_ip
   deploy_bastion_placeholder = var.deploy_bastion
-  deploy_dns_placeholder    = var.deploy_dns
-  management_ip_ranges      = var.management_ip_ranges
-  availability_zones        = var.primary_availability_zones
+  deploy_dns_placeholder     = var.deploy_dns
+  management_ip_ranges       = var.management_ip_ranges
+  availability_zones         = var.primary_availability_zones
   log_analytics_workspace_id = var.log_analytics_workspace_id
-  tags                      = local.common_tags
+  tags                       = local.common_tags
 }
 
 # DR hub (North Central US)
 module "hub_dr" {
   source = "../../modules/hub-network"
-  
-  region                    = var.dr_region
-  region_code               = var.dr_region_code
-  environment               = "prod"
-  hub_address_space         = var.dr_hub_address_space
-  firewall_type             = var.firewall_type
-  azfw_tier                 = var.azfw_tier
-  nva_trust_ip_placeholder  = var.dr_nva_trust_ip
+
+  region                     = var.dr_region
+  region_code                = var.dr_region_code
+  environment                = "prod"
+  hub_address_space          = var.dr_hub_address_space
+  firewall_type              = var.firewall_type
+  azfw_tier                  = var.azfw_tier
+  nva_trust_ip_placeholder   = var.dr_nva_trust_ip
   deploy_bastion_placeholder = var.deploy_bastion
-  deploy_dns_placeholder    = var.deploy_dns
-  management_ip_ranges      = var.management_ip_ranges
-  availability_zones        = var.dr_availability_zones
+  deploy_dns_placeholder     = var.deploy_dns
+  management_ip_ranges       = var.management_ip_ranges
+  availability_zones         = var.dr_availability_zones
   log_analytics_workspace_id = var.log_analytics_workspace_id
-  tags                      = local.common_tags
+  tags                       = local.common_tags
 }
 
 # Global VNet peering between hubs
