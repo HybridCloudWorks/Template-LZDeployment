@@ -5,7 +5,9 @@
 This repository is the Landing Zone Factory. It renders a self-contained landing
 zone repository from `lz-config.json`, discovers existing tenant state, and uses
 the Stage 9 broker to reconcile external prerequisites before the Stage 10
-scaffold builder publishes the generated repository.
+scaffold builder publishes the generated repository. Brownfield configurations
+use the Stage 11 generator to create reviewable import artifacts without
+executing Terraform import.
 
 **How it works**:
 
@@ -16,9 +18,12 @@ scaffold builder publishes the generated repository.
    `USER-CHECKLIST.md`.
 4. `bootstrap-broker.ps1` / `.sh` plans by default and idempotently reconciles
    Entra, RBAC, GitHub, and backend prerequisites only in apply mode.
-5. `scaffold-copy.ps1` / `.sh` verifies the exact renderer inventory, plans by
-   default, and creates/commits/pushes the generated repository only in apply
-   mode.
+5. `brownfield-import.ps1` / `.sh` classifies discovered resources and, only
+   for explicit Adopt decisions, registers import blocks/review commands before
+   scaffolding.
+6. `scaffold-copy.ps1` / `.sh` verifies the exact augmented renderer inventory,
+   plans by default, and creates/commits/pushes the generated repository only in
+   apply mode.
 
 > **Status**: The CI/CD pipeline has known reliability issues currently being fixed — see [TODO.md](TODO.md) before relying on it for a real deployment.
 
@@ -71,6 +76,8 @@ HCW-Demo-LZDeployment/
 ├── bootstrap-broker.sh           # Cross-platform launcher
 ├── scaffold-copy.ps1             # Stage 10 plan-first scaffold builder
 ├── scaffold-copy.sh              # Cross-platform launcher
+├── brownfield-import.ps1         # Stage 11 brownfield import generator
+├── brownfield-import.sh          # Cross-platform launcher
 ├── USER-CHECKLIST.md             # Operator authentication, publication, and verification
 ├── TODO.md                       # Current phase plan
 ├── CHANGELOG.md                  # Completed work history
@@ -121,6 +128,23 @@ pwsh ./scaffold-copy.ps1
 The builder fails closed on missing, extra, duplicate, absolute, or traversal
 manifest paths. A non-empty target requires explicit force and is retained as a
 timestamped sibling backup.
+
+### Brownfield adoption
+
+```powershell
+# Generate the classification template and plan
+$env:LZ_BROWNFIELD_CLASSIFICATIONS = './brownfield-classifications.json'
+$env:LZ_IMPORT_EVIDENCE = './brownfield-evidence'
+pwsh ./brownfield-import.ps1
+
+# Write approved review artifacts into the rendered tree
+$env:LZ_IMPORT_APPLY = 'true'
+pwsh ./brownfield-import.ps1
+```
+
+Only explicit Adopt entries with exact Terraform addresses and active layers
+produce artifacts. Ignore emits nothing; Replace and Require-Approval remain
+operator gates. The generator never executes Terraform import.
 
 ### After Scaffold
 
