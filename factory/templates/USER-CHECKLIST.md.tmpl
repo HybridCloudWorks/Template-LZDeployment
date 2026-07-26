@@ -3,7 +3,7 @@
 GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
 rendered {{FACTORY-RAW:computed.generatedAt}}.
 
-Stage 9–11 code is non-interactive. Complete these operator-owned activities
+Stage 9–12 code is non-interactive. Complete these operator-owned activities
 without editing broker or scaffold source; provide values through
 `lz-config.json` and the environment variables below.
 
@@ -42,6 +42,18 @@ without editing broker or scaffold source; provide values through
 - [ ] Confirm the operator can create the backend resources and data-plane
   container using Entra authentication.
 #{{ENDIF}}
+
+## Factory CI
+
+- [ ] Confirm the source factory's `Factory CI / Factory CI` check passed for
+  the factory version stamped into this repository.
+- [ ] Preserve the matching `factory-ci-report.json` as factory release
+  provenance.
+- [ ] Treat any skipped Terraform/static-analysis check as incomplete evidence,
+  not a successful release gate.
+- [ ] Confirm the generated repository's own required checks remain enabled;
+  Factory CI validates the factory corpus and does not replace customer
+  plan/apply protections.
 
 ## Apply
 
