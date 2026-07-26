@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/saulpatinojr/HCW-Plan_LZDeployment/factory/release/release-attestation.schema.json",
+  "title": "Landing Zone Factory release evidence attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "repository",
+    "factoryVersion",
+    "issuedAt",
+    "reviewer",
+    "approvalReference",
+    "factoryCiReportSha256",
+    "dogfoodReportSha256",
+    "dogfoodReadBackVerified",
+    "oidcTokenExchangeVerifiedLive",
+    "allEmittedModulesImplemented",
+    "branchProtectionVerified"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "repository": { "const": "saulpatinojr/HCW-Plan_LZDeployment" },
+    "factoryVersion": { "type": "string", "pattern": "^0\\.9\\.0$" },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "reviewer": { "type": "string", "minLength": 3 },
+    "approvalReference": { "type": "string", "minLength": 3 },
+    "factoryCiReportSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "dogfoodReportSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "dogfoodReadBackVerified": { "type": "boolean" },
+    "oidcTokenExchangeVerifiedLive": { "type": "boolean" },
+    "allEmittedModulesImplemented": { "type": "boolean" },
+    "branchProtectionVerified": { "type": "boolean" },
+    "notes": { "type": "string" }
+  }
+}

@@ -21,7 +21,7 @@ ok 'workflow is credential-free' ($workflow -notmatch 'id-token:\s*write|azure/l
 ok 'workflow permissions are read-only' ($workflow -match 'permissions:\s*\r?\n\s*contents:\s*read')
 ok 'workflow actions are SHA pinned' ($workflow -notmatch 'uses:\s*[^\s]+@(v\d+|main|master|latest)')
 ok 'runner includes all test suites' (
-    @('Test-Discovery','Test-Renderer','Test-Bootstrap','Test-Scaffold','Test-Import','Test-CI','Test-Dogfood') |
+    @('Test-Discovery','Test-Renderer','Test-Bootstrap','Test-Scaffold','Test-Import','Test-CI','Test-Dogfood','Test-Release') |
         ForEach-Object { $runner -match $_ } | Where-Object { -not $_ } | Measure-Object |
         Select-Object -ExpandProperty Count | ForEach-Object { $_ -eq 0 }
 )

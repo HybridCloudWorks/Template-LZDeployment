@@ -18,6 +18,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$factoryContract = Get-Content (Join-Path $repo 'factory-version.json') -Raw |
+    ConvertFrom-Json -Depth 20
 $failFastRequested = $FailFast -or $env:LZ_FACTORY_CI_FAIL_FAST -eq 'true'
 $skipTerraformRequested = $SkipTerraform -or $env:LZ_FACTORY_CI_SKIP_TERRAFORM -eq 'true'
 $skipStaticRequested = $SkipStatic -or $env:LZ_FACTORY_CI_SKIP_STATIC -eq 'true'
@@ -97,7 +99,8 @@ try {
         'Test-Scaffold.ps1',
         'Test-Import.ps1',
         'Test-CI.ps1',
-        'Test-Dogfood.ps1'
+        'Test-Dogfood.ps1',
+        'Test-Release.ps1'
     )) {
         Invoke-LzFactoryCheck $suite pwsh @('-NoLogo', '-NoProfile', '-File', "factory/tests/$suite") -Category 'tests' | Out-Null
     }
@@ -165,6 +168,7 @@ finally {
     $failed = @($results | Where-Object status -eq 'failed')
     $report = [ordered]@{
         schemaVersion = '1.0.0'
+        factoryVersion = "$($factoryContract.factoryVersion)"
         generatedAt = (Get-Date).ToUniversalTime().ToString('o')
         startedAt = $started.ToUniversalTime().ToString('o')
         durationSeconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 3)

@@ -1,6 +1,6 @@
 # Azure Landing Zone Factory — Architecture & Risk Register
 
-**Status**: Design accepted / Stages 1–13 implemented; live dogfood evidence pending
+**Status**: Design accepted / Stages 1–14 implemented; live release evidence pending
 **Date**: 2026-07-24
 **Scope**: Convert this repository from a single-tenant ALZ deployment into a reusable
 Landing Zone Factory that emits unlimited, independent ALZ repositories across tenants,
@@ -301,6 +301,8 @@ Dependency-ordered; each stage is independently reviewable.
 11. `docs/**` — factory-level docs (identity matrix, operating model, governance, security, threat model, observability, finops, state management, upgrade guide, DR, phase model)
 12. Factory CI — schema↔variables drift check, site-no-network check, shellcheck/PSScriptAnalyzer
 13. Dogfood instance — regenerate `generated-output/hcw/` and prove green
+14. Release evidence attestation — hash-bind Factory CI, dogfood, and read-back
+    evidence; compute a review-only promotion proposal
 
 ---
 

@@ -5,6 +5,22 @@
 
 ---
 
+## Stage 14 release evidence attestation — prepared (2026-07-26)
+
+- Added a manual credential-free workflow that downloads exact Factory CI and
+  full dogfood apply artifacts by workflow run ID.
+- Added a hash-pinned independent read-back attestation schema with reviewer
+  and approval provenance.
+- Added evidence completeness, freshness, repository/version binding, full
+  apply eligibility, and branch-protection/read-back checks.
+- Added computation of all five release gates, a machine-readable readiness
+  report, and a review-only gate proposal.
+- Added root/generated operator activities and static release coverage.
+- Advanced factory/LZ versions to 0.9.0 and manifest to 1.9.0; schema remains
+  2.0.0. Existing release-gate values remain unchanged.
+- No PowerShell test, schema validation, workflow, artifact download, cloud
+  login, Terraform operation, or release mutation was executed.
+
 ## Stage 13 HCW dogfood instance — prepared (2026-07-26)
 
 - Added a manual SHA-pinned render/plan/apply workflow for the HCW dogfood

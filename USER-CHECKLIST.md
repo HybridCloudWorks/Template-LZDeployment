@@ -1,4 +1,4 @@
-# Stage 9–13 User Checklist
+# Stage 9–14 User Checklist
 
 The Stage 9 broker is implemented and merged as code only. No live Azure,
 Entra, GitHub administration, or HCP Terraform mutation was executed while
@@ -15,6 +15,9 @@ the local validation corpus in this environment.
 
 The Stage 13 HCW dogfood workflow and runner were implemented without executing
 a render, Terraform plan/apply, Azure login, OIDC exchange, or state operation.
+
+The Stage 14 release-readiness workflow and evaluator were implemented without
+downloading or validating live evidence in this environment.
 
 ## Required variables and authentication
 
@@ -225,3 +228,39 @@ a render, Terraform plan/apply, Azure login, OIDC exchange, or state operation.
   after every rendered layer applies green and the read-back evidence is
   accepted. Do not infer this gate from code completion, render-only output,
   skipped layers, or plan success.
+
+## Stage 14 release evidence variables
+
+- [ ] Set repository variable `LZ_RELEASE_MAX_EVIDENCE_AGE_HOURS`; default 168
+  requires Factory CI, dogfood, and attestation evidence from the last seven
+  days.
+- [ ] Build `LZ_RELEASE_ATTESTATION_JSON` against
+  `factory/release/release-attestation.schema.json`.
+- [ ] Include the exact lowercase SHA-256 values of `factory-ci-report.json`
+  and `dogfood-report.json`, the reviewer, approval reference, repository,
+  factory version, issuance time, and every required read-back boolean.
+- [ ] For local execution, set `LZ_RELEASE_FACTORY_CI_REPORT`,
+  `LZ_RELEASE_DOGFOOD_REPORT`, `LZ_RELEASE_ATTESTATION_PATH`,
+  `LZ_RELEASE_EVIDENCE`, and `LZ_RELEASE_EXPECTED_REPOSITORY`.
+- [ ] Use `LZ_RELEASE_ALLOW_INCOMPLETE=true` only to generate diagnostic
+  evidence. An incomplete report is never promotion approval.
+
+## Stage 14 attest and promote
+
+- [ ] Select a successful, unskipped Factory CI run for factory v0.9.0 and
+  record its workflow run ID.
+- [ ] Select a successful Stage 13 `Apply` run with layer `all`,
+  `externalMutation=true`, and `releaseGateEligible=true`; record its run ID.
+- [ ] Independently verify the complete dogfood deployment, live OIDC token
+  exchange, active emitted modules, branch protection, and evidence ownership.
+- [ ] Compute both report SHA-256 values before approving the attestation.
+- [ ] Run `Release Readiness` with the two exact run IDs and review the retained
+  `release-readiness-report.json` and `release-gates.proposed.json`.
+- [ ] Require every R01–R10 finding, every proposed release gate, and
+  `readyForPromotion` to pass. Skips, stale evidence, partial-layer applies,
+  hash mismatches, or missing approvals fail closed.
+- [ ] Open a separate pull request for any `factory-version.json` gate change.
+  The Stage 14 evaluator never edits the release contract, creates a release,
+  or declares v1.0.0.
+- [ ] Require independent approval of the release-gate PR and preserve all
+  source artifacts, hashes, attestation, and promotion reports.

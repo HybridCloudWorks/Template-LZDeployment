@@ -9,6 +9,8 @@ scaffold builder publishes the generated repository. Brownfield configurations
 use the Stage 11 generator to create reviewable import artifacts without
 executing Terraform import. Stage 12 provides the credential-free Factory CI
 gate, and Stage 13 provides the protected HCW dogfood render/plan/apply path.
+Stage 14 aggregates retained evidence and computes a review-only release
+promotion proposal.
 
 **How it works**:
 
@@ -30,11 +32,14 @@ gate, and Stage 13 provides the protected HCW dogfood render/plan/apply path.
 8. `.github/workflows/dogfood-instance.yml` regenerates the HCW instance from
    repository variables and runs an explicit render, read-only plan, or
    protected apply with retained evidence.
+9. `.github/workflows/release-readiness.yml` hash-binds Factory CI, full
+   dogfood apply, and independent read-back evidence to a five-gate promotion
+   proposal without changing the release contract.
 
-> **Status**: Stages 1–13 are implemented. Live Factory CI enablement and the
-> Stage 13 dogfood plan/apply/read-back remain operator activities. The
-> `dogfoodInstanceAppliesGreen` release gate remains false until that evidence
-> is reviewed. See [TODO.md](TODO.md) and [USER-CHECKLIST.md](USER-CHECKLIST.md).
+> **Status**: Stages 1–14 are implemented. Live Factory CI, dogfood
+> plan/apply/read-back, evidence attestation, and any release-gate PR remain
+> operator activities. All gates remain evidence-driven. See
+> [TODO.md](TODO.md) and [USER-CHECKLIST.md](USER-CHECKLIST.md).
 
 ---
 
@@ -89,8 +94,11 @@ HCW-Demo-LZDeployment/
 ├── brownfield-import.sh          # Cross-platform launcher
 ├── factory/ci/                   # Stage 12 CI runner and source policies
 ├── factory/dogfood/              # Stage 13 dogfood orchestration and evidence
+├── factory/release/              # Stage 14 attestation and promotion planning
 ├── dogfood-instance.ps1          # Stage 13 PowerShell entry point
 ├── dogfood-instance.sh           # Stage 13 strict Bash launcher
+├── release-readiness.ps1         # Stage 14 PowerShell entry point
+├── release-readiness.sh          # Stage 14 strict Bash launcher
 ├── USER-CHECKLIST.md             # Operator authentication, publication, and verification
 ├── TODO.md                       # Current phase plan
 ├── CHANGELOG.md                  # Completed work history
