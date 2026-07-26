@@ -1,0 +1,73 @@
+name: Factory CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/factory-ci.yml'
+      - 'factory/**'
+      - 'site/**'
+      - '*.ps1'
+      - '*.sh'
+      - 'factory-version.json'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/factory-ci.yml'
+      - 'factory/**'
+      - 'site/**'
+      - '*.ps1'
+      - '*.sh'
+      - 'factory-version.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factory-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  factory-ci:
+    name: Factory CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      LZ_FACTORY_CI_OUTPUT: ${{ vars.LZ_FACTORY_CI_OUTPUT || 'factory-ci-output' }}
+      LZ_FACTORY_CI_FAIL_FAST: ${{ vars.LZ_FACTORY_CI_FAIL_FAST || 'false' }}
+      LZ_FACTORY_CI_SKIP_TERRAFORM: ${{ vars.LZ_FACTORY_CI_SKIP_TERRAFORM || 'false' }}
+      LZ_FACTORY_CI_SKIP_STATIC: ${{ vars.LZ_FACTORY_CI_SKIP_STATIC || 'false' }}
+      LZ_FACTORY_CI_TERRAFORM_ROOTS: ${{ vars.LZ_FACTORY_CI_TERRAFORM_ROOTS || 'factory/templates/terraform' }}
+      LZ_PSSCRIPTANALYZER_VERSION: ${{ vars.LZ_PSSCRIPTANALYZER_VERSION || '1.24.0' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: '1.9.8'
+          terraform_wrapper: false
+
+      - name: Install pinned PowerShell analyzer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module PSScriptAnalyzer `
+            -RequiredVersion $env:LZ_PSSCRIPTANALYZER_VERSION `
+            -Scope CurrentUser -Force -AllowClobber
+
+      - name: Run Factory CI
+        shell: pwsh
+        run: |
+          ./factory/ci/Invoke-FactoryCI.ps1
+
+      - name: Upload Factory CI evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: factory-ci-${{ github.run_id }}
+          path: ${{ env.LZ_FACTORY_CI_OUTPUT }}
+          if-no-files-found: error
+          retention-days: 30
