@@ -51,6 +51,10 @@ generated-output/
 /lz-config.json
 /discovery-inventory.json
 /bootstrap-output/
+/rendered-output/
+/scaffold-output/
+/scaffold-evidence/
+*.lz-backup-*/
 
 # Landing Zone Factory test output. Regenerated on every run.
 factory/tests/.out/
