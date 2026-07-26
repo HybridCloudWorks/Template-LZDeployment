@@ -3,7 +3,7 @@
 GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
 rendered {{FACTORY-RAW:computed.generatedAt}}.
 
-Stage 9–13 code is non-interactive. Complete these operator-owned activities
+Stage 9–14 code is non-interactive. Complete these operator-owned activities
 without editing broker or scaffold source; provide values through
 `lz-config.json` and the environment variables below.
 
@@ -57,6 +57,20 @@ without editing broker or scaffold source; provide values through
   `dogfood-report.json` plus independent Azure/state/OIDC/GitHub read-back.
 - [ ] Do not mark `dogfoodInstanceAppliesGreen` from code completion, skipped
   execution, render-only output, or plan success.
+
+## Release evidence provenance
+
+- [ ] Preserve the successful, unskipped Factory CI report and successful full
+  dogfood apply report for the exact factory version stamped here.
+- [ ] Independently review Azure, state, OIDC, active modules, and branch
+  protection; bind the approval to both report SHA-256 values using
+  `release-attestation.schema.json`.
+- [ ] Set `LZ_RELEASE_MAX_EVIDENCE_AGE_HOURS` and
+  `LZ_RELEASE_ATTESTATION_JSON`, then run the source factory's manual Release
+  Readiness workflow with the exact Factory CI and dogfood run IDs.
+- [ ] Treat `LZ_RELEASE_ALLOW_INCOMPLETE=true` as diagnostic only.
+- [ ] Change release gates only through a separate reviewed PR after
+  `readyForPromotion=true`; the evaluator never promotes automatically.
 
 ## Factory CI
 
