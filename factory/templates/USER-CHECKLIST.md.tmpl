@@ -3,7 +3,7 @@
 GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
 rendered {{FACTORY-RAW:computed.generatedAt}}.
 
-Stage 9–10 code is non-interactive. Complete these operator-owned activities
+Stage 9–11 code is non-interactive. Complete these operator-owned activities
 without editing broker or scaffold source; provide values through
 `lz-config.json` and the environment variables below.
 
@@ -113,3 +113,30 @@ without editing broker or scaffold source; provide values through
 - [ ] Read back the remote default branch, compare the commit and managed files
   with `scaffold-audit.json`, and approve the first generated-repository PR
   checks before any Terraform apply.
+
+#{{IF deploymentStrategy.mode == 'brownfield'}}
+## Brownfield classification and import generation
+
+- [ ] Export `LZ_DISCOVERY_PATH` with a fresh, conclusive, read-only inventory.
+- [ ] Export `LZ_BROWNFIELD_CLASSIFICATIONS` with the reviewed classification
+  file and `LZ_IMPORT_EVIDENCE` with a protected evidence directory.
+- [ ] Run `pwsh ./brownfield-import.ps1` without `-Apply` and review the
+  generated classification template, plan, and audit.
+- [ ] Review the configured default classification; it is Ignore when omitted.
+  Adopt still requires an explicit exact Terraform address and active layer.
+- [ ] Classify each candidate as Adopt, Ignore, Replace, or Require-Approval.
+- [ ] Provide `approvalReference` for every Replace or Require-Approval entry;
+  neither generates mutation.
+- [ ] Use `LZ_IMPORT_ALLOW_STALE=true` only under a documented owner exception
+  because classifications are pinned to the discovery SHA-256.
+- [ ] Set `LZ_IMPORT_APPLY=true` only after approval. Stage 11 writes import
+  review artifacts and updates `render-manifest.json`; it never executes
+  Terraform import.
+- [ ] Review every generated address/ID/layer pair and preserve the discovery,
+  classification, plan, audit, and renderer manifest as evidence.
+- [ ] Back up state, run a speculative plan, and prove zero unintended destroy
+  or replace actions before executing any generated command.
+- [ ] Execute generated commands only in an authenticated change-controlled
+  operator session. Destructive exceptions require `approved-destroy` plus the
+  recorded approval.
+#{{ENDIF}}

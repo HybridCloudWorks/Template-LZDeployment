@@ -311,7 +311,7 @@ foreach ($name in $expectedDocs) {
         ok "$name has no unresolved factory tokens" ($docText[$name] -notmatch '\{\{FACTORY')
         ok "$name identifies generated provenance" (
             $docText[$name] -match 'GENERATED FILE' -and
-            $docText[$name] -match '0\.5\.0'
+            $docText[$name] -match '0\.6\.0'
         )
     }
 }
@@ -381,6 +381,23 @@ ok 'scaffold emits plan and audit evidence' (
 ok 'generated checklist carries scaffold activities' (
     $checklist -match 'LZ_SCAFFOLD_APPLY' -and
     $checklist -match 'LZ_SCAFFOLD_FORCE'
+)
+
+Write-Host "`n== 21. Stage 11 brownfield import integration ==" -ForegroundColor Cyan
+$importEntry = Get-Content (Join-Path $repo 'brownfield-import.ps1') -Raw
+$importShell = Get-Content (Join-Path $repo 'brownfield-import.sh') -Raw
+$importModule = Get-Content (Join-Path $repo 'factory/import/LZFactory.Import.psm1') -Raw
+$importSchema = Get-Content (Join-Path $repo 'factory/import/brownfield-classifications.schema.json') -Raw
+ok 'import entry defaults to plan-only' ($importEntry -match 'LZ_IMPORT_APPLY')
+ok 'import shell is strict' ($importShell -match 'set -euo pipefail')
+ok 'classification schema pins discovery inventory' ($importSchema -match 'inventorySha256')
+ok 'inconclusive discovery fails closed' ($importModule -match 'Inaccessible inventory cannot be classified as empty')
+ok 'import generator never executes Terraform' (
+    $importModule -match 'executesTerraformImport = \$false' -and
+    $importModule -notmatch '& terraform'
+)
+ok 'factory checklist carries Stage 11 activities' (
+    (Get-Content (Join-Path $repo 'USER-CHECKLIST.md') -Raw) -match 'LZ_IMPORT_ALLOW_STALE'
 )
 
 Write-Host "`n$script:pass passed, $script:fail failed`n" -ForegroundColor $(if($script:fail){'Red'}else{'Green'})

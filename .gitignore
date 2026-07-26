@@ -54,6 +54,8 @@ generated-output/
 /rendered-output/
 /scaffold-output/
 /scaffold-evidence/
+/brownfield-classifications.json
+/brownfield-evidence/
 *.lz-backup-*/
 
 # Landing Zone Factory test output. Regenerated on every run.

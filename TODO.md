@@ -2,9 +2,9 @@
 
 > **Factory transition notice (2026-07-25):** This file is the legacy deployment
 > backlog. It is not the source of truth for the Landing Zone Factory build.
-> Stages 1–10 and current sequencing are recorded in [HANDOFF.md](HANDOFF.md);
-> Stage 10 completion evidence is in
-> [docs/factory/STAGE-10-READINESS.md](docs/factory/STAGE-10-READINESS.md).
+> Stages 1–11 and current sequencing are recorded in [HANDOFF.md](HANDOFF.md);
+> Stage 11 completion evidence is in
+> [docs/factory/STAGE-11-READINESS.md](docs/factory/STAGE-11-READINESS.md).
 > Items below remain valid only where they are also confirmed by those documents
 > or by a fresh code review.
 
@@ -34,8 +34,9 @@ This repo **is** the landing zone deployment — it is not a template that spins
 
 1. **`bootstrap-broker.ps1` / `.sh`** — the Stage 9 non-interactive entry point. It consumes config/discovery artifacts, plans by default, and reconciles Entra, RBAC, GitHub, and backend prerequisites in apply mode. Operator activities are in [USER-CHECKLIST.md](USER-CHECKLIST.md).
 2. **`scaffold-copy.ps1` / `.sh`** — the Stage 10 plan-first scaffold entry point. It verifies the exact renderer inventory and publishes the generated working tree only under explicit apply controls.
-3. **Numbered GitHub Actions workflows** (`.github/workflows/010-*.yml`, `020-*.yml`, ...) pick up from there — init, RBAC validation, plan, apply — and work together with the Terraform code under `terraform/` to actually deliver the landing zone.
-4. **`frontend/`** is a separate, optional static HTML/JS page (no backend) where a user picks deployment options and it generates a `.tfvars` file, fed into the same Terraform/workflow pipeline.
+3. **`brownfield-import.ps1` / `.sh`** — the Stage 11 plan-first classification/import artifact generator. It never runs Terraform import.
+4. **Numbered GitHub Actions workflows** (`.github/workflows/010-*.yml`, `020-*.yml`, ...) pick up from there — init, RBAC validation, plan, apply — and work together with the Terraform code under `terraform/` to actually deliver the landing zone.
+5. **`frontend/`** is a separate, optional static HTML/JS page (no backend) where a user picks deployment options and it generates a `.tfvars` file, fed into the same Terraform/workflow pipeline.
 
 ---
 
