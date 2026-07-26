@@ -2,9 +2,9 @@
 
 > **Factory transition notice (2026-07-25):** This file is the legacy deployment
 > backlog. It is not the source of truth for the Landing Zone Factory build.
-> Stages 1–12 and current sequencing are recorded in [HANDOFF.md](HANDOFF.md);
-> Stage 12 completion evidence is in
-> [docs/factory/STAGE-12-READINESS.md](docs/factory/STAGE-12-READINESS.md).
+> Stages 1–13 and current sequencing are recorded in [HANDOFF.md](HANDOFF.md);
+> Stage 13 completion evidence is in
+> [docs/factory/STAGE-13-READINESS.md](docs/factory/STAGE-13-READINESS.md).
 > Items below remain valid only where they are also confirmed by those documents
 > or by a fresh code review.
 
@@ -41,6 +41,12 @@ This repo **is** the landing zone deployment — it is not a template that spins
 ---
 
 ## 🔴 CI/CD & OIDC Reliability (Blocking)
+
+- [ ] **Execute and accept the Stage 13 dogfood instance** — populate the
+  variables in `USER-CHECKLIST.md`, run render and read-only plans, apply each
+  layer through its protected environment, preserve `dogfood-report.json`, and
+  independently read back Azure, state, OIDC, and GitHub controls. Only then
+  set `dogfoodInstanceAppliesGreen=true` in a reviewed PR.
 
 - [ ] **Verify the live Entra `pull_request` federated credential** — run the
   repository bootstrap/remediation against the live application registration,
