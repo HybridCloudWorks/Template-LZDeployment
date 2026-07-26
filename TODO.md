@@ -15,6 +15,19 @@
 
 ---
 
+## 🔴 Repository Consolidation Carryover
+
+PR #35 was squash-merged into `main` on 2026-07-26 as commit
+`8bb10ae6435a9f80ad639f4d7092767e1d255713`. At consolidation time there were
+no other open pull requests, and the local checkout was clean on `main`.
+
+- [ ] **Delete merged remote branch `agent/stage-7-workflow-corpus`** — the
+  approved GitHub connector can merge pull requests and update files, but does
+  not expose branch-ref deletion. Delete the branch from merged PR #35 or the
+  repository branches page, then verify it no longer resolves.
+
+---
+
 ## 📋 What This Repo Is
 
 This repo **is** the landing zone deployment — it is not a template that spins up a separate customer repo.
@@ -32,10 +45,10 @@ This repo **is** the landing zone deployment — it is not a template that spins
   confirm the exact repo-scoped subject by API read-back, and prove token
   exchange from a pull request. Requires an authenticated Entra operator
   session and is not performed by PR #35.
-- [ ] **Enable and verify required `main` status checks** — after PR #35 emits
-  stable check names and they pass, configure branch protection/rulesets and
+- [ ] **Enable and verify required `main` status checks** — configure branch
+  protection/rulesets using the stable Stage 7 check names and
   confirm the required contexts plus enforcement by GitHub API read-back.
-  Requires repository administration access and is not performed by PR #35.
+  Requires repository administration access.
 - [ ] **Verify the pipeline actually runs green** — confirm `010-terraform-init.yml`, `020-rbac-validation.yml`, `terraform-plan.yml`, and `terraform-apply.yml` all complete successfully on a real PR/push, now that the OIDC federated-credential gap and SHA-pinning are fixed. As of 2026-07-01 there is no recorded successful run of any of these.
 - [ ] **Investigate 0-second workflow failures** — some historical runs of `010-terraform-init.yml` / `020-rbac-validation.yml` fail in 0 seconds, suggesting a trigger/syntax issue independent of the OIDC fix. Confirm once a run is attempted post-fix.
 - [ ] **Migrate backend from `azurerm` to Terraform Cloud** — tracked as [GitHub Issue #11](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues/11), not here (blocked on interactive TFC org/workspace/token setup).
