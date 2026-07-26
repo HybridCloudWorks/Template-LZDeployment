@@ -1,0 +1,188 @@
+# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
+# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.2"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+  subscription_id = var.workload_nonprod_subscription_id
+}
+
+#{{IF connectivity.model != 'none'}}
+data "terraform_remote_state" "connectivity" {
+#{{IF computed.backendIsHcp}}
+  backend = "remote"
+  config = {
+    organization = {{FACTORY:backend.hcpTerraform.organization}}
+    workspaces = {
+      name = "{{FACTORY-RAW:computed.workspacePrefix}}-platform-connectivity"
+    }
+  }
+#{{ELSE}}
+  backend = "azurerm"
+  config = {
+    resource_group_name  = var.state_resource_group_name
+    storage_account_name = var.state_storage_account_name
+    container_name       = var.state_container_name
+    key                  = "platform-connectivity.tfstate"
+  }
+#{{ENDIF}}
+}
+#{{ENDIF}}
+
+locals {
+#{{IF connectivity.model != 'none'}}
+  primary_hub = data.terraform_remote_state.connectivity.outputs.primary_hub_details
+#{{IF computed.hasDrRegion}}
+  dr_hub = data.terraform_remote_state.connectivity.outputs.dr_hub_details
+#{{ENDIF}}
+#{{ENDIF}}
+}
+
+#{{IF environments.application contains 'dev'}}
+module "spoke_dev_primary" {
+  source                      = "../../modules/spoke-network"
+  spoke_name                  = "dev-app"
+  region                      = var.primary_region
+  region_code                 = var.primary_region_code
+  environment                 = "dev"
+  spoke_address_space         = var.dev_primary_spoke_address_space
+#{{IF connectivity.model != 'none'}}
+  enable_hub_peering          = true
+  hub_vnet_id                 = local.primary_hub.vnet_id
+  hub_vnet_name               = local.primary_hub.vnet_name
+  hub_resource_group_name     = local.primary_hub.resource_group_name
+  enable_forced_tunneling     = true
+  firewall_private_ip         = local.primary_hub.firewall_private_ip
+#{{ELSE}}
+  enable_hub_peering          = false
+  enable_forced_tunneling     = false
+#{{ENDIF}}
+  use_remote_gateways         = false
+  tags                        = merge(var.default_tags, { environment = "dev", layer = "workload-nonprod" })
+}
+#{{IF computed.hasDrRegion}}
+module "spoke_dev_dr" {
+  source                      = "../../modules/spoke-network"
+  spoke_name                  = "dev-app"
+  region                      = var.dr_region
+  region_code                 = var.dr_region_code
+  environment                 = "dev"
+  spoke_address_space         = var.dev_dr_spoke_address_space
+#{{IF connectivity.model != 'none'}}
+  enable_hub_peering          = true
+  hub_vnet_id                 = local.dr_hub.vnet_id
+  hub_vnet_name               = local.dr_hub.vnet_name
+  hub_resource_group_name     = local.dr_hub.resource_group_name
+  enable_forced_tunneling     = true
+  firewall_private_ip         = local.dr_hub.firewall_private_ip
+#{{ELSE}}
+  enable_hub_peering          = false
+  enable_forced_tunneling     = false
+#{{ENDIF}}
+  use_remote_gateways         = false
+  tags                        = merge(var.default_tags, { environment = "dev", layer = "workload-nonprod" })
+}
+#{{ENDIF}}
+#{{ENDIF}}
+
+#{{IF environments.application contains 'test'}}
+module "spoke_test_primary" {
+  source                      = "../../modules/spoke-network"
+  spoke_name                  = "test-app"
+  region                      = var.primary_region
+  region_code                 = var.primary_region_code
+  environment                 = "test"
+  spoke_address_space         = var.test_primary_spoke_address_space
+#{{IF connectivity.model != 'none'}}
+  enable_hub_peering          = true
+  hub_vnet_id                 = local.primary_hub.vnet_id
+  hub_vnet_name               = local.primary_hub.vnet_name
+  hub_resource_group_name     = local.primary_hub.resource_group_name
+  enable_forced_tunneling     = true
+  firewall_private_ip         = local.primary_hub.firewall_private_ip
+#{{ELSE}}
+  enable_hub_peering          = false
+  enable_forced_tunneling     = false
+#{{ENDIF}}
+  use_remote_gateways         = false
+  tags                        = merge(var.default_tags, { environment = "test", layer = "workload-nonprod" })
+}
+#{{IF computed.hasDrRegion}}
+module "spoke_test_dr" {
+  source                      = "../../modules/spoke-network"
+  spoke_name                  = "test-app"
+  region                      = var.dr_region
+  region_code                 = var.dr_region_code
+  environment                 = "test"
+  spoke_address_space         = var.test_dr_spoke_address_space
+#{{IF connectivity.model != 'none'}}
+  enable_hub_peering          = true
+  hub_vnet_id                 = local.dr_hub.vnet_id
+  hub_vnet_name               = local.dr_hub.vnet_name
+  hub_resource_group_name     = local.dr_hub.resource_group_name
+  enable_forced_tunneling     = true
+  firewall_private_ip         = local.dr_hub.firewall_private_ip
+#{{ELSE}}
+  enable_hub_peering          = false
+  enable_forced_tunneling     = false
+#{{ENDIF}}
+  use_remote_gateways         = false
+  tags                        = merge(var.default_tags, { environment = "test", layer = "workload-nonprod" })
+}
+#{{ENDIF}}
+#{{ENDIF}}
+
+#{{IF environments.application contains 'uat'}}
+module "spoke_uat_primary" {
+  source                      = "../../modules/spoke-network"
+  spoke_name                  = "uat-app"
+  region                      = var.primary_region
+  region_code                 = var.primary_region_code
+  environment                 = "uat"
+  spoke_address_space         = var.uat_primary_spoke_address_space
+#{{IF connectivity.model != 'none'}}
+  enable_hub_peering          = true
+  hub_vnet_id                 = local.primary_hub.vnet_id
+  hub_vnet_name               = local.primary_hub.vnet_name
+  hub_resource_group_name     = local.primary_hub.resource_group_name
+  enable_forced_tunneling     = true
+  firewall_private_ip         = local.primary_hub.firewall_private_ip
+#{{ELSE}}
+  enable_hub_peering          = false
+  enable_forced_tunneling     = false
+#{{ENDIF}}
+  use_remote_gateways         = false
+  tags                        = merge(var.default_tags, { environment = "uat", layer = "workload-nonprod" })
+}
+#{{IF computed.hasDrRegion}}
+module "spoke_uat_dr" {
+  source                      = "../../modules/spoke-network"
+  spoke_name                  = "uat-app"
+  region                      = var.dr_region
+  region_code                 = var.dr_region_code
+  environment                 = "uat"
+  spoke_address_space         = var.uat_dr_spoke_address_space
+#{{IF connectivity.model != 'none'}}
+  enable_hub_peering          = true
+  hub_vnet_id                 = local.dr_hub.vnet_id
+  hub_vnet_name               = local.dr_hub.vnet_name
+  hub_resource_group_name     = local.dr_hub.resource_group_name
+  enable_forced_tunneling     = true
+  firewall_private_ip         = local.dr_hub.firewall_private_ip
+#{{ELSE}}
+  enable_hub_peering          = false
+  enable_forced_tunneling     = false
+#{{ENDIF}}
+  use_remote_gateways         = false
+  tags                        = merge(var.default_tags, { environment = "uat", layer = "workload-nonprod" })
+}
+#{{ENDIF}}
+#{{ENDIF}}
