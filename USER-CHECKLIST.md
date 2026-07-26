@@ -1,8 +1,11 @@
-# Stage 9 User Checklist
+# Stage 9–10 User Checklist
 
 The Stage 9 broker is implemented and merged as code only. No live Azure,
 Entra, GitHub administration, or HCP Terraform mutation was executed while
 building it.
+
+The Stage 10 scaffold builder is also implemented as code only. No customer
+repository was created, overwritten, committed, or pushed while building it.
 
 ## Required variables and authentication
 
@@ -56,3 +59,46 @@ building it.
 - `TFE_TOKEN`.
 - Client secrets.
 - Storage account keys.
+
+## Stage 10 scaffold variables
+
+- [ ] Export `LZ_RENDERED_PATH` with the reviewed renderer output directory.
+- [ ] Export `LZ_SCAFFOLD_TARGET` with the separate local target working-tree
+  path.
+- [ ] Export `LZ_SCAFFOLD_EVIDENCE` to a protected evidence directory outside
+  the target tree.
+- [ ] Set `LZ_SCAFFOLD_CREATE_REPOSITORY=false` when the repository must
+  already exist.
+- [ ] Set `LZ_SCAFFOLD_PUSH=false` when the operator wants a local commit but
+  no remote publication.
+- [ ] Optionally set `LZ_SCAFFOLD_REMOTE_URL` and
+  `LZ_SCAFFOLD_COMMIT_MESSAGE`; otherwise the config-derived HTTPS URL and
+  versioned commit message are used. Set `LZ_SCAFFOLD_BRANCH` to override the
+  update PR branch.
+
+## Stage 10 review and publication
+
+- [ ] Run `pwsh ./scaffold-copy.ps1` without `-Apply`; it is plan-only by
+  default.
+- [ ] Review `scaffold-plan.json`, including repository slug, visibility,
+  branch, manifest SHA-256, exact file inventory, and remote URL.
+- [ ] Confirm the rendered tree contains exactly the files declared by
+  `render-manifest.json`, with no untracked additions.
+- [ ] Confirm `LZ_SCAFFOLD_TARGET` is disposable or backed up. A non-empty
+  target is refused unless `LZ_SCAFFOLD_FORCE=true`; forced replacement retains
+  a timestamped sibling backup and records it in `scaffold-audit.json`.
+- [ ] When the remote repository already exists, use a clean clone with its
+  configured default branch checked out as `LZ_SCAFFOLD_TARGET`; updates are
+  pushed to `LZ_SCAFFOLD_BRANCH` and opened as a draft PR.
+- [ ] Authenticate GitHub CLI with permission to create the configured private
+  or internal repository and push its default branch.
+- [ ] Set `LZ_SCAFFOLD_APPLY=true` and run `./scaffold-copy.sh`, or run
+  `pwsh ./scaffold-copy.ps1 -Apply`.
+- [ ] Preserve `scaffold-plan.json`, `scaffold-audit.json`, and any
+  `*.lz-backup-*` directory until the generated repository is accepted.
+- [ ] Read back the remote default branch and compare every managed file and
+  commit SHA with `scaffold-audit.json`.
+- [ ] For an existing repository, review, mark ready, and merge the draft
+  scaffold PR using the repository's protected-branch requirements.
+- [ ] Open and approve the generated repository's first pull request checks
+  before any landing-zone apply.
