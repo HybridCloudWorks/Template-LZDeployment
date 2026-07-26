@@ -304,3 +304,9 @@ from the same validated configuration as Terraform and workflows.
 Stage 9 adds the always-emitted `USER-CHECKLIST.md`, which carries every
 operator-owned authentication, secret injection, approval, and live read-back
 activity without blocking code generation.
+
+Stage 10 adds the root `scaffold-copy.ps1` / `.sh` publication boundary. It
+consumes `render-manifest.json`, verifies the output tree exactly, emits
+SHA-256 plan/audit evidence, and refuses filesystem or GitHub mutation unless
+apply is explicit. The generated checklist includes target approval, force,
+authentication, backup retention, and remote read-back activities.
