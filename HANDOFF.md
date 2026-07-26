@@ -1,6 +1,6 @@
 # Landing Zone Factory — Session Handoff
 
-**Last updated:** 2026-07-25 · **Factory version:** 0.2.0 · **Config schema:** 1.0.0
+**Last updated:** 2026-07-25 · **Factory version:** 0.2.0 · **Config schema:** 2.0.0
 **Progress:** Stages 1–6 complete. Stage 7 implementation is prepared for review.
 **First action:** review the Stage 7 implementation and remaining fix items in
 [`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md), then
@@ -76,38 +76,20 @@ The identity decision in §5 is the constraint that governs it: a
 and an apply job may only ever be reached through `environment:<name>`. No
 subject uses a wildcard, and the tests assert that.
 
-### 1.3 The one decision stage 6 surfaced and did not make
+### 1.3 Non-production workloads — resolved
 
-**The wizard offers non-prod application environments that the Terraform corpus
-cannot build.** `Get-LzActiveLayers` selects `workloads-nonprod` whenever `dev`,
-`test`, or `uat` is chosen, and `platform-identity` whenever an identity
-subscription is supplied — but neither layer exists under `terraform/live/`, so
-there is nothing to promote.
-
-Before stage 6 this produced a layer directory containing only `backend.tf`:
-`terraform init` succeeded, `terraform plan` reported no changes, and the
-operator would reasonably read that as "this layer has nothing to do" rather
-than "this layer does not exist". **Guard G21 now refuses the render instead.**
-
-Resolving it properly needs a schema change, which is why it was not done
-silently: the corpus has `connectivity.hubSpoke.primarySpokeAddressSpace` and
-`drSpokeAddressSpace` and nothing else, so there is no address space to give a
-non-prod spoke. The options are:
-
-- add per-environment spoke CIDRs to the schema (a `configSchemaVersion` bump)
-  and author `workloads-nonprod` against them; or
-- remove non-prod application environments from the wizard.
-
-`factory/tests/fixtures/nonprod-config.json` exercises the refusal.
+Schema 2.0.0 adds primary and DR spoke CIDRs for each of `dev`, `test`, and
+`uat`. The wizard exposes those values, guard G22 requires a selected
+environment's CIDRs and the shared `workloadNonProd` subscription, and the
+`workloads-nonprod` template emits only the selected environments. G21 remains
+the general protection against any active layer absent from the corpus.
 
 ### 1.4 Known work queued behind stage 7
 
 | Priority | Item | Why |
 |---|---|---|
-| High | Decide the non-prod workload layer question | See §1.3 — most real configurations hit it |
-| High | `terraform fmt -recursive terraform/` | 26 files fail the repo's own fmt gate — see §6.1 |
 | High | Add federated credential for `pull_request` subject | Unblocks all CI — see §6.2 |
-| Medium | Wire the 208 tests into a CI workflow | They only run locally today |
+| Medium | Wire the 247 tests into a CI workflow | They only run locally today |
 | Medium | Backport the stage-6 fixes to `terraform/live/` | The corpus and the live tree have diverged — see §6.3 |
 | Low | Mark the GitGuardian incident a false positive | Dashboard-only action; the finding is a public test vector — see §6.5 |
 | Later | Stages 8–13 | See §7 |
@@ -262,7 +244,7 @@ per landing zone) and `log_analytics_workspace_id` (owned by
 
 ---
 
-## 4. Tests — 208, all green
+## 4. Tests — 247, all green
 
 **These were rescued into the repo by [#31](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/31)**
 and reached `main` through #28. They previously existed only in a session-scoped
@@ -292,23 +274,22 @@ any working directory. Generated output goes to `factory/tests/.out/`
 | **HCP Terraform is the default backend** | Validated: legacy free plan ended 2026-03-31; current cap is 500 managed resources; paid tiers bill on *peak hourly* count from $0.10/resource/month. `azurerm` is fully supported as the alternative. |
 | **Release gates start `false`** | This pipeline has no recorded successful run. A factory multiplies the blast radius of an unproven path. `dogfoodInstanceAppliesGreen` and `oidcTokenExchangeVerifiedLive` are deliberate v1.0.0 blockers. |
 | **Scaffold modules block rendering** | `sentinel-siem` and `keyvault-cmk` declare zero resources; `virtual-wan` doesn't exist. Emitting them would silently deploy nothing. Status is read from `factory-version.json`, so implementing a module lifts its guard automatically. |
-| **Renderer re-validates independently of the wizard** | A validation that exists only in the UI is a suggestion, not a guarantee. 21 guards (G01–G21). |
+| **Renderer re-validates independently of the wizard** | A validation that exists only in the UI is a suggestion, not a guarantee. 22 guards (G01–G22). |
 
 ---
 
 ## 6. Open problems
 
-### 6.1 26 Terraform files fail the repo's own fmt gate — pre-existing
+### 6.1 Legacy Terraform formatting — resolved in PR #35
 
 `.github/workflows/terraform-plan.yml:150` runs `terraform fmt -check -recursive`.
-It fails today on every PR touching Terraform, and plausibly contributes to the
-"no recorded successful run" in `TODO.md`.
+The 26 pre-existing failures were normalized with Terraform 1.9.8:
 
 ```bash
 terraform fmt -recursive terraform/
 ```
 
-Left unfixed because it touches 26 files unrelated to the factory work.
+`terraform fmt -check -recursive terraform/` now exits zero.
 
 ### 6.2 CI is red on all PRs — pre-existing, prevents trustworthy validation
 
@@ -394,7 +375,7 @@ Stage 7 readiness and acceptance criteria are maintained in
 | 9 | **Bootstrap broker** — creates Entra apps, federated credentials, GitHub environments, secrets. Consumes `discovery-inventory.json`. The first stage that *writes* anything. |
 | 10 | **Scaffold builder** — moves a rendered tree into a real repository |
 | 11 | Brownfield import generation |
-| 12 | Factory CI — run the 208 tests, drift check, and `terraform validate` over the raw corpus |
+| 12 | Factory CI — run the 247 tests, drift check, and `terraform validate` over the raw corpus |
 | 13 | Dogfood instance — regenerate this repo from the factory and prove it applies green |
 
 Stages 1–6 wrote **nothing** outside the repo. Stage 9 is the first that mutates
@@ -472,9 +453,6 @@ also absent: `az extension add --name resource-graph`.
 A static repository review was completed on 2026-07-25 before preparing Stage 7.
 It covered the Stage 1–6 design and implementation, the three test suites, the
 renderer manifest and existing workflow proof, all ten live workflows, and the
-repo-local orchestration files. The review corrected stale pre-factory routing
-and documentation claims but did not re-run the executable test suite because
-the review environment had connector access without a local checkout or `gh`.
-The last executable verification remains the 208-test and representative-render
-baseline recorded in §4 and §3.5.
-
+repo-local orchestration files. After the Stage 7 fixes, all 247 tests were
+re-run locally and representative rendered trees plus the legacy Terraform tree
+passed `terraform fmt -check -recursive`.
