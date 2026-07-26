@@ -311,7 +311,7 @@ foreach ($name in $expectedDocs) {
         ok "$name has no unresolved factory tokens" ($docText[$name] -notmatch '\{\{FACTORY')
         ok "$name identifies generated provenance" (
             $docText[$name] -match 'GENERATED FILE' -and
-            $docText[$name] -match '0\.4\.0'
+            $docText[$name] -match '0\.5\.0'
         )
     }
 }
@@ -364,6 +364,23 @@ ok 'plan workflow selects per-layer client IDs' (
 )
 ok 'plan workflow selects per-layer subscriptions' (
     $workflowText['terraform-plan.yml'] -match 'fromJSON\(vars\.AZURE_SUBSCRIPTION_IDS\)\[matrix\.layer\]'
+)
+
+Write-Host "`n== 20. Stage 10 scaffold integration ==" -ForegroundColor Cyan
+$scaffoldEntry = Get-Content (Join-Path $repo 'scaffold-copy.ps1') -Raw
+$scaffoldShell = Get-Content (Join-Path $repo 'scaffold-copy.sh') -Raw
+$scaffoldModule = Get-Content (Join-Path $repo 'factory/scaffold/LZFactory.Scaffold.psm1') -Raw
+ok 'scaffold entry is emitted at factory root' (Test-Path (Join-Path $repo 'scaffold-copy.ps1'))
+ok 'scaffold defaults to plan-only' ($scaffoldEntry -match 'LZ_SCAFFOLD_APPLY')
+ok 'scaffold shell is strict' ($scaffoldShell -match 'set -euo pipefail')
+ok 'scaffold verifies exact manifest inventory' ($scaffoldModule -match 'Rendered inventory mismatch')
+ok 'scaffold emits plan and audit evidence' (
+    $scaffoldModule -match 'scaffold-plan\.json' -and
+    $scaffoldModule -match 'scaffold-audit\.json'
+)
+ok 'generated checklist carries scaffold activities' (
+    $checklist -match 'LZ_SCAFFOLD_APPLY' -and
+    $checklist -match 'LZ_SCAFFOLD_FORCE'
 )
 
 Write-Host "`n$script:pass passed, $script:fail failed`n" -ForegroundColor $(if($script:fail){'Red'}else{'Green'})

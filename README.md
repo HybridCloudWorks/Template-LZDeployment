@@ -4,7 +4,8 @@
 
 This repository is the Landing Zone Factory. It renders a self-contained landing
 zone repository from `lz-config.json`, discovers existing tenant state, and uses
-the Stage 9 broker to reconcile external prerequisites before Terraform runs.
+the Stage 9 broker to reconcile external prerequisites before the Stage 10
+scaffold builder publishes the generated repository.
 
 **How it works**:
 
@@ -15,6 +16,9 @@ the Stage 9 broker to reconcile external prerequisites before Terraform runs.
    `USER-CHECKLIST.md`.
 4. `bootstrap-broker.ps1` / `.sh` plans by default and idempotently reconciles
    Entra, RBAC, GitHub, and backend prerequisites only in apply mode.
+5. `scaffold-copy.ps1` / `.sh` verifies the exact renderer inventory, plans by
+   default, and creates/commits/pushes the generated repository only in apply
+   mode.
 
 > **Status**: The CI/CD pipeline has known reliability issues currently being fixed — see [TODO.md](TODO.md) before relying on it for a real deployment.
 
@@ -65,7 +69,9 @@ HCW-Demo-LZDeployment/
 │   └── action-pinning-policy.yml    # Enforces SHA-pinned actions
 ├── bootstrap-broker.ps1          # Stage 9 non-interactive broker
 ├── bootstrap-broker.sh           # Cross-platform launcher
-├── USER-CHECKLIST.md             # Operator-owned authentication and live verification
+├── scaffold-copy.ps1             # Stage 10 plan-first scaffold builder
+├── scaffold-copy.sh              # Cross-platform launcher
+├── USER-CHECKLIST.md             # Operator authentication, publication, and verification
 ├── TODO.md                       # Current phase plan
 ├── CHANGELOG.md                  # Completed work history
 └── README.md                     # This file
@@ -99,9 +105,26 @@ The broker is non-interactive and idempotent. Tenant-specific inputs come from
 the config/discovery contracts and environment variables documented in
 [USER-CHECKLIST.md](USER-CHECKLIST.md).
 
-### After Bootstrap
+### Scaffold
 
-Once the bootstrap PR is merged, the numbered workflows take over:
+```powershell
+# Plan only
+$env:LZ_RENDERED_PATH = './generated-output/contoso/repo'
+$env:LZ_SCAFFOLD_TARGET = './customer-repos/contoso'
+pwsh ./scaffold-copy.ps1
+
+# Apply after reviewing scaffold-plan.json
+$env:LZ_SCAFFOLD_APPLY = 'true'
+pwsh ./scaffold-copy.ps1
+```
+
+The builder fails closed on missing, extra, duplicate, absolute, or traversal
+manifest paths. A non-empty target requires explicit force and is retained as a
+timestamped sibling backup.
+
+### After Scaffold
+
+Once the generated repository is published, the numbered workflows take over:
 
 - `010-terraform-init.yml` initializes Terraform and validates the workload setup
 - `020-rbac-validation.yml` audits service principal RBAC (also runs weekly)
