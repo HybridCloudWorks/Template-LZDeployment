@@ -9,7 +9,7 @@ terraform {
       version = "~> 4.2"
     }
   }
-  
+
   backend "azurerm" {}
 }
 
@@ -27,25 +27,25 @@ locals {
 # Primary region backup baseline
 module "backup_primary" {
   source = "../../modules/backup-baseline"
-  
-  region                   = var.primary_region
-  region_code              = var.primary_region_code
-  environment              = "prod"
-  storage_redundancy       = "GeoRedundant"
-  backup_vault_redundancy  = "GeoRedundant"
-  tags                     = local.common_tags
+
+  region                  = var.primary_region
+  region_code             = var.primary_region_code
+  environment             = "prod"
+  storage_redundancy      = "GeoRedundant"
+  backup_vault_redundancy = "GeoRedundant"
+  tags                    = local.common_tags
 }
 
 # DR region backup baseline
 module "backup_dr" {
   source = "../../modules/backup-baseline"
-  
-  region                   = var.dr_region
-  region_code              = var.dr_region_code
-  environment              = "prod"
-  storage_redundancy       = "GeoRedundant"
-  backup_vault_redundancy  = "GeoRedundant"
-  tags                     = local.common_tags
+
+  region                  = var.dr_region
+  region_code             = var.dr_region_code
+  environment             = "prod"
+  storage_redundancy      = "GeoRedundant"
+  backup_vault_redundancy = "GeoRedundant"
+  tags                    = local.common_tags
 }
 
 # Azure Automation Account for sandbox cleanup
@@ -61,7 +61,7 @@ resource "azurerm_automation_account" "main" {
   location            = azurerm_resource_group.automation.location
   sku_name            = "Basic"
   tags                = local.common_tags
-  
+
   identity {
     type = "SystemAssigned"
   }
@@ -77,9 +77,9 @@ resource "azurerm_automation_runbook" "sandbox_cleanup" {
   log_verbose             = true
   log_progress            = true
   description             = "Deletes sandbox resources with expiry_date older than 30 days"
-  
+
   content = file("${path.module}/../../scripts/Cleanup-ExpiredSandboxResources.ps1")
-  
+
   tags = local.common_tags
 }
 
@@ -100,7 +100,7 @@ resource "azurerm_automation_job_schedule" "sandbox_cleanup" {
   automation_account_name = azurerm_automation_account.main.name
   runbook_name            = azurerm_automation_runbook.sandbox_cleanup.name
   schedule_name           = azurerm_automation_schedule.sandbox_cleanup_daily.name
-  
+
   parameters = {
     sandbox_subscription_id = var.sandbox_subscription_id
     dry_run                 = "false"
