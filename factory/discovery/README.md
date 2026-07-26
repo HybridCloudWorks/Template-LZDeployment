@@ -192,6 +192,6 @@ held in memory only. Graph tokens are acquired per-session and never persisted.
 
 ## Status
 
-Factory stage 4 of 13. The bootstrap broker (stage 9) that consumes
-`discovery-inventory.json` is not yet implemented; this engine is already useful
+Factory stage 4 of 13. The Stage 9 bootstrap broker consumes
+`discovery-inventory.json`; this engine is also useful
 standalone as a pre-flight assessment.

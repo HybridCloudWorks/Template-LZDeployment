@@ -46,6 +46,12 @@ terraform.rc
 # subscription identifiers, and is regenerated from the wizard on demand.
 generated-output/
 
+# Stage 9 broker inputs/evidence. These contain tenant, subscription, identity,
+# repository, and backend identifiers and are operator-local artifacts.
+/lz-config.json
+/discovery-inventory.json
+/bootstrap-output/
+
 # Landing Zone Factory test output. Regenerated on every run.
 factory/tests/.out/
 

@@ -311,7 +311,7 @@ foreach ($name in $expectedDocs) {
         ok "$name has no unresolved factory tokens" ($docText[$name] -notmatch '\{\{FACTORY')
         ok "$name identifies generated provenance" (
             $docText[$name] -match 'GENERATED FILE' -and
-            $docText[$name] -match '0\.3\.0'
+            $docText[$name] -match '0\.4\.0'
         )
     }
 }
@@ -347,6 +347,23 @@ ok 'upgrade guide renders schema contract' (
 ok 'phase model renders active layers' (
     $docText['phase-model.md'] -match 'platform-connectivity' -and
     $docText['phase-model.md'] -match 'workloads-prod'
+)
+
+Write-Host "`n== 19. Stage 9 bootstrap integration ==" -ForegroundColor Cyan
+$checklistPath = Join-Path $out 'USER-CHECKLIST.md'
+ok 'user checklist emitted' (Test-Path $checklistPath)
+if (Test-Path $checklistPath) {
+    $checklist = Get-Content $checklistPath -Raw
+    ok 'user checklist has no unresolved factory tokens' ($checklist -notmatch '\{\{FACTORY')
+    ok 'user checklist documents plan-only default' ($checklist -match 'plan-only by default')
+    ok 'user checklist documents secure TFE token' ($checklist -match 'TFE_TOKEN')
+    ok 'user checklist requires live PR token exchange' ($checklist -match 'pull_request.*token exchange')
+}
+ok 'plan workflow selects per-layer client IDs' (
+    $workflowText['terraform-plan.yml'] -match 'fromJSON\(vars\.AZURE_PLAN_CLIENT_IDS\)\[matrix\.layer\]'
+)
+ok 'plan workflow selects per-layer subscriptions' (
+    $workflowText['terraform-plan.yml'] -match 'fromJSON\(vars\.AZURE_SUBSCRIPTION_IDS\)\[matrix\.layer\]'
 )
 
 Write-Host "`n$script:pass passed, $script:fail failed`n" -ForegroundColor $(if($script:fail){'Red'}else{'Green'})

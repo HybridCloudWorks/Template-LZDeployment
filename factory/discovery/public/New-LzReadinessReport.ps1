@@ -223,7 +223,7 @@ function New-LzReadinessReport {
     & $add 'pwsh ./bootstrap-broker.ps1 -ConfigPath <path-to>/lz-config.json'
     & $add '```'
     & $add ''
-    & $add '> The bootstrap broker is not yet implemented — it is stage 9 of the factory build. This report is produced by stage 4 (the discovery engine) and is already usable on its own as a pre-flight assessment.'
+    & $add '> The Stage 9 bootstrap broker is implemented at `bootstrap-broker.ps1` / `.sh`. It plans by default and mutates only when `-Apply` or `LZ_BOOTSTRAP_APPLY=true` is supplied.'
     & $add ''
 
     $dir = Split-Path -Parent $Path

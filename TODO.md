@@ -2,9 +2,9 @@
 
 > **Factory transition notice (2026-07-25):** This file is the legacy deployment
 > backlog. It is not the source of truth for the Landing Zone Factory build.
-> Stages 1–8 and current sequencing are recorded in [HANDOFF.md](HANDOFF.md);
-> Stage 8 completion evidence is in
-> [docs/factory/STAGE-8-READINESS.md](docs/factory/STAGE-8-READINESS.md).
+> Stages 1–9 and current sequencing are recorded in [HANDOFF.md](HANDOFF.md);
+> Stage 9 completion evidence is in
+> [docs/factory/STAGE-9-READINESS.md](docs/factory/STAGE-9-READINESS.md).
 > Items below remain valid only where they are also confirmed by those documents
 > or by a fresh code review.
 
@@ -32,7 +32,7 @@ no other open pull requests, and the local checkout was clean on `main`.
 
 This repo **is** the landing zone deployment — it is not a template that spins up a separate customer repo.
 
-1. **`scripts/Start-LandingZoneBootstrap.ps1`** — the single local entry point. Validates CLI tools, authenticates to Azure/GitHub/Terraform Cloud, creates the OIDC service principal(s) and federated credentials, sets GitHub secrets/variables/environments, and configures the Terraform Cloud workspace.
+1. **`bootstrap-broker.ps1` / `.sh`** — the Stage 9 non-interactive entry point. It consumes config/discovery artifacts, plans by default, and reconciles Entra, RBAC, GitHub, and backend prerequisites in apply mode. Operator activities are in [USER-CHECKLIST.md](USER-CHECKLIST.md).
 2. **Numbered GitHub Actions workflows** (`.github/workflows/010-*.yml`, `020-*.yml`, ...) pick up from there — init, RBAC validation, plan, apply — and work together with the Terraform code under `terraform/` to actually deliver the landing zone.
 3. **`frontend/`** is a separate, optional static HTML/JS page (no backend) where a user picks deployment options and it generates a `.tfvars` file, fed into the same Terraform/workflow pipeline.
 

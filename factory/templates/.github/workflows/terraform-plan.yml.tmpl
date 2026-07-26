@@ -54,9 +54,9 @@ jobs:
       - name: Azure login (plan identity, read-only)
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
         with:
-          client-id: ${{ vars.AZURE_PLAN_CLIENT_ID }}
+          client-id: ${{ fromJSON(vars.AZURE_PLAN_CLIENT_IDS)[matrix.layer] }}
           tenant-id: {{FACTORY-RAW:azure.tenantId}}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          subscription-id: ${{ fromJSON(vars.AZURE_SUBSCRIPTION_IDS)[matrix.layer] }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2

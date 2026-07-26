@@ -44,7 +44,11 @@ convention reviewers have to remember to enforce.
 |---|---|---|---|
 #{{FOREACH env IN computed.allEnvironments}}
 | {{FACTORY-RAW:env}} | `sp-{{FACTORY-RAW:organization.companyShortName}}-{{FACTORY-RAW:env}}-plan` | `repo:{{FACTORY-RAW:computed.repositorySlug}}:pull_request` | Reader |
+#{{IF env == 'bootstrap'}}
+| {{FACTORY-RAW:env}} | `sp-{{FACTORY-RAW:organization.companyShortName}}-{{FACTORY-RAW:env}}-apply` | `repo:{{FACTORY-RAW:computed.repositorySlug}}:environment:{{FACTORY-RAW:env}}` | Management Group Contributor + Resource Policy Contributor |
+#{{ELSE}}
 | {{FACTORY-RAW:env}} | `sp-{{FACTORY-RAW:organization.companyShortName}}-{{FACTORY-RAW:env}}-apply` | `repo:{{FACTORY-RAW:computed.repositorySlug}}:environment:{{FACTORY-RAW:env}}` | Contributor |
+#{{ENDIF}}
 #{{ENDFOREACH}}
 
 > No subject uses a wildcard. A subject such as `repo:owner/repo:*` would let any

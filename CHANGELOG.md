@@ -5,6 +5,21 @@
 
 ---
 
+## Stage 9 bootstrap broker — prepared (2026-07-26)
+
+- Added non-interactive `bootstrap-broker.ps1` and strict Bash launcher.
+- Added idempotent Entra app/SP/federated-credential, Azure RBAC, GitHub
+  environment/variable/secret/protection, HCP workspace, and Azure Storage
+  backend reconciliation.
+- Added per-layer plan identity and subscription maps to the generated plan
+  workflow.
+- Added plan/audit evidence and factory/generated `USER-CHECKLIST.md` files.
+- Added static broker and renderer coverage without executing it, per owner
+  direction.
+- Advanced factory and landing-zone versions to 0.4.0 and manifest to 1.4.0;
+  schema remains 2.0.0.
+- No live broker apply or external-system validation was performed.
+
 ## Stage 8 documentation corpus — prepared (2026-07-26)
 
 - Added nine generated operational documents: operating model, governance,

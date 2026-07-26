@@ -1,4 +1,4 @@
-# Renderer — Stages 5–8
+# Renderer — Stages 5–9
 
 Turns a validated `lz-config.json` plus the template corpus into a rendered
 landing zone repository.
@@ -300,3 +300,7 @@ Stage 8 emits nine self-documenting operational artifacts under `docs/`:
 operating model, governance, threat model, observability, FinOps, state
 management, disaster recovery, upgrade guide, and phase model. They are rendered
 from the same validated configuration as Terraform and workflows.
+
+Stage 9 adds the always-emitted `USER-CHECKLIST.md`, which carries every
+operator-owned authentication, secret injection, approval, and live read-back
+activity without blocking code generation.
