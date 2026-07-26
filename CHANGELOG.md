@@ -1,9 +1,23 @@
 # CHANGELOG - Completed Work
 
 **Purpose**: Historical record of all completed tasks and deliverables  
-**Last Updated**: July 1, 2026
+**Last Updated**: July 26, 2026
 
 ---
+
+## Stage 8 documentation corpus — prepared (2026-07-26)
+
+- Added nine generated operational documents: operating model, governance,
+  threat model, observability, FinOps, state management, disaster recovery,
+  upgrade guide, and phase model.
+- Registered the corpus in renderer manifest version 1.3.0.
+- Added renderer assertions for document inventory, provenance, complete token
+  resolution, and configuration-specific content.
+- Advanced the factory and emitted landing-zone pre-release to 0.3.0 while
+  retaining config schema 2.0.0.
+- Full local baseline: 48 wizard, 60 discovery, and 175 renderer tests.
+- Did not run Stage 9 bootstrap or mutate Azure, Entra, Terraform backends, or
+  repository administration.
 
 ## Stage 7 workflow corpus — prepared (2026-07-25)
 
