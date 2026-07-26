@@ -1,10 +1,10 @@
 # Landing Zone Factory — Session Handoff
 
-**Last updated:** 2026-07-25 · **Factory version:** 0.2.0 · **Config schema:** 2.0.0
-**Progress:** Stages 1–6 complete. Stage 7 implementation is prepared for review.
-**First action:** review the Stage 7 implementation and remaining fix items in
-[`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md), then
-start Stage 7 (§1.2). Everything through Stage 6 is merged to `main`.
+**Last updated:** 2026-07-26 · **Factory version:** 0.3.0 · **Config schema:** 2.0.0
+**Progress:** Stages 1–7 complete. Stage 8 implementation is prepared for review.
+**First action:** review the Stage 8 implementation and acceptance record in
+[`docs/factory/STAGE-8-READINESS.md`](docs/factory/STAGE-8-READINESS.md).
+Everything through Stage 7 is merged to `main`.
 
 You are continuing a multi-session build. This document is the single source of
 truth for where the work stopped. Read the *Next steps* section first, then
@@ -16,7 +16,7 @@ truth for where the work stopped. Read the *Next steps* section first, then
 
 ### 1.1 Everything is merged — how `main` got here
 
-**Nothing is pending. Stages 1–6, the test suite, this document, and the
+**Nothing is pending from Stages 1–7. The test suite, this document, and the
 capability-routing layer are all on `main`.** No open PRs.
 
 | PR | Outcome |
@@ -59,22 +59,15 @@ generalises:
   directory fails with `fatal: not a git repository`. Either `cd` first or pass
   `--repo saulpatinojr/HCW-Plan_LZDeployment`.
 
-### 1.2 Then: Stage 7 — promote `.github/workflows/` into the corpus
+### 1.2 Stage 8 — self-documenting operations corpus
 
-Stage 6 is done (see §3.5). It already includes one deliberately minimal proof
-template, `factory/templates/.github/workflows/terraform-plan.yml.tmpl`, plus its
-manifest entry and renderer assertions. Stage 7 expands that proof into the
-agreed generated-repository workflow corpus; it is not a first empty promotion.
-
-The reviewed entry criteria, decisions, implementation order, and definition of
-done are in
-[`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md). Treat
-that document as the Stage 7 execution contract.
-
-The identity decision in §5 is the constraint that governs it: a
-`pull_request`-triggered job may only ever assume the Reader `*-plan` identity,
-and an apply job may only ever be reached through `environment:<name>`. No
-subject uses a wildcard, and the tests assert that.
+Stage 8 emits nine configuration-derived documents: operating model,
+governance, threat model, observability, FinOps, state management, disaster
+recovery, upgrade guidance, and the end-to-end phase model. The renderer
+manifest treats these as always-emitted product artifacts, and the test suite
+asserts their inventory, provenance, token resolution, and configuration-specific
+content. See
+[`docs/factory/STAGE-8-READINESS.md`](docs/factory/STAGE-8-READINESS.md).
 
 ### 1.3 Non-production workloads — resolved
 
@@ -84,15 +77,15 @@ environment's CIDRs and the shared `workloadNonProd` subscription, and the
 `workloads-nonprod` template emits only the selected environments. G21 remains
 the general protection against any active layer absent from the corpus.
 
-### 1.4 Known work queued behind stage 7
+### 1.4 Known work queued behind stage 8
 
 | Priority | Item | Why |
 |---|---|---|
 | High | Add federated credential for `pull_request` subject | Unblocks all CI — see §6.2 |
-| Medium | Wire the 247 tests into a CI workflow | They only run locally today |
+| Medium | Wire the 283 tests into a CI workflow | They only run locally today |
 | Medium | Backport the stage-6 fixes to `terraform/live/` | The corpus and the live tree have diverged — see §6.3 |
 | Low | Mark the GitGuardian incident a false positive | Dashboard-only action; the finding is a public test vector — see §6.5 |
-| Later | Stages 8–13 | See §7 |
+| Later | Stages 9–13 | See §7 |
 
 ---
 
@@ -202,7 +195,7 @@ Key invariants — **do not break these**:
 
 ### 3.5 Stage 6 — the real Terraform corpus
 
-`factory/templates/terraform/` now carries five live layers and the whole module
+`factory/templates/terraform/` now carries six live layers and the whole module
 corpus, so a generated repository is deployable rather than illustrative.
 
 | Layer | Emitted when | Form |
@@ -210,6 +203,7 @@ corpus, so a generated repository is deployable rather than illustrative.
 | `global` | always | `main.tf`/`outputs.tf` copied; tfvars rendered |
 | `platform-connectivity` | `connectivity.model != 'none'` | rendered — DR hub and hub-to-hub peering are conditional |
 | `platform-management` | always | rendered — backup and sandbox-cleanup sections are independently conditional |
+| `workloads-nonprod` | dev, test, or UAT selected | rendered — selected primary/DR spokes share the non-production subscription |
 | `workloads-prod` | `prod` selected | rendered — the connectivity remote-state read takes the azurerm or HCP form |
 | `sandbox` | sandbox environment **and** sandbox subscription | copied; tfvars rendered |
 
@@ -244,7 +238,7 @@ per landing zone) and `log_analytics_workspace_id` (owned by
 
 ---
 
-## 4. Tests — 247, all green
+## 4. Tests — 283, all green
 
 **These were rescued into the repo by [#31](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/31)**
 and reached `main` through #28. They previously existed only in a session-scoped
@@ -362,7 +356,7 @@ rather than resolving its finding.
 
 ---
 
-## 7. Remaining stages (7–13)
+## 7. Remaining stages (9–13)
 
 Stage 7 readiness and acceptance criteria are maintained in
 [`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md).
@@ -370,15 +364,15 @@ Stage 7 readiness and acceptance criteria are maintained in
 | Stage | Deliverable |
 |---|---|
 | 6 | Done — `terraform/` promoted into the template corpus (see §3.5) |
-| 7 | **Next.** Promote `.github/workflows/` into the corpus |
-| 8 | Documentation templates: operating model, governance, threat model, observability, FinOps, state management, DR, upgrade guide, phase model |
+| 7 | Done — generated workflow corpus |
+| 8 | Done — generated documentation corpus |
 | 9 | **Bootstrap broker** — creates Entra apps, federated credentials, GitHub environments, secrets. Consumes `discovery-inventory.json`. The first stage that *writes* anything. |
 | 10 | **Scaffold builder** — moves a rendered tree into a real repository |
 | 11 | Brownfield import generation |
-| 12 | Factory CI — run the 247 tests, drift check, and `terraform validate` over the raw corpus |
+| 12 | Factory CI — run the 283 tests, drift check, and `terraform validate` over the raw corpus |
 | 13 | Dogfood instance — regenerate this repo from the factory and prove it applies green |
 
-Stages 1–6 wrote **nothing** outside the repo. Stage 9 is the first that mutates
+Stages 1–8 wrote **nothing** outside the repo. Stage 9 is the first that mutates
 a tenant; treat that boundary carefully.
 
 ---
@@ -453,6 +447,6 @@ also absent: `az extension add --name resource-graph`.
 A static repository review was completed on 2026-07-25 before preparing Stage 7.
 It covered the Stage 1–6 design and implementation, the three test suites, the
 renderer manifest and existing workflow proof, all ten live workflows, and the
-repo-local orchestration files. After the Stage 7 fixes, all 247 tests were
-re-run locally and representative rendered trees plus the legacy Terraform tree
-passed `terraform fmt -check -recursive`.
+repo-local orchestration files. After the Stage 8 implementation, all 283 tests
+were re-run locally. Representative rendered trees plus the legacy Terraform
+tree pass `terraform fmt -check -recursive`.
