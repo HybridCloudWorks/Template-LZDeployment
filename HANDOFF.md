@@ -1,11 +1,12 @@
 # Landing Zone Factory — Session Handoff
 
-**Last updated:** 2026-07-26 · **Factory version:** 0.8.0 · **Config schema:** 2.0.0
-**Progress:** Stages 1–13 implemented; live dogfood evidence remains operator-owned.
-**First action:** review the Stage 13 HCW dogfood corpus and completion record in
-[`docs/factory/STAGE-13-READINESS.md`](docs/factory/STAGE-13-READINESS.md).
-Everything through Stage 13 is intended to be merged to `main` through the
-Stage 13 implementation PR.
+**Last updated:** 2026-07-26 · **Factory version:** 0.9.0 · **Config schema:** 2.0.0
+**Progress:** Stages 1–14 implemented; live release evidence remains operator-owned.
+**First action:** review the Stage 14 release-attestation corpus and completion
+record in
+[`docs/factory/STAGE-14-READINESS.md`](docs/factory/STAGE-14-READINESS.md).
+Everything through Stage 14 is intended to be merged to `main` through the
+Stage 14 implementation PR.
 
 You are continuing a multi-session build. This document is the single source of
 truth for where the work stopped. Read the *Next steps* section first, then
@@ -17,7 +18,7 @@ truth for where the work stopped. Read the *Next steps* section first, then
 
 ### 1.1 Everything is merged — how `main` got here
 
-**Nothing is pending in code from Stages 1–13 after the Stage 13 PR merges.**
+**Nothing is pending in code from Stages 1–14 after the Stage 14 PR merges.**
 Runtime operator activities remain in `USER-CHECKLIST.md`.
 
 | PR | Outcome |
@@ -121,7 +122,21 @@ applies green and independent read-back evidence is accepted. See
 [`docs/factory/STAGE-13-READINESS.md`](docs/factory/STAGE-13-READINESS.md) and
 `USER-CHECKLIST.md`.
 
-### 1.7 Non-production workloads — resolved
+### 1.7 Stage 14 — release evidence attestation
+
+Stage 14 consumes retained Factory CI and complete dogfood apply reports plus a
+hash-pinned independent read-back attestation. It enforces evidence freshness,
+repository/version binding, full-apply eligibility, and approval provenance,
+then computes all five release gates into `release-readiness-report.json` and
+`release-gates.proposed.json`.
+
+The workflow has read-only repository/artifact permissions and no cloud
+credentials. It cannot edit `factory-version.json`, promote a release, or
+declare v1.0.0. Any gate update requires a separate reviewed PR. Local runtime
+validation was skipped by owner direction; see
+[`docs/factory/STAGE-14-READINESS.md`](docs/factory/STAGE-14-READINESS.md).
+
+### 1.8 Non-production workloads — resolved
 
 Schema 2.0.0 adds primary and DR spoke CIDRs for each of `dev`, `test`, and
 `uat`. The wizard exposes those values, guard G22 requires a selected
@@ -129,13 +144,14 @@ environment's CIDRs and the shared `workloadNonProd` subscription, and the
 `workloads-nonprod` template emits only the selected environments. G21 remains
 the general protection against any active layer absent from the corpus.
 
-### 1.8 Runtime work after Stage 13
+### 1.9 Runtime work after Stage 14
 
 | Priority | Item | Why |
 |---|---|---|
 | High | Add federated credential for `pull_request` subject | Unblocks all CI — see §6.2 |
 | Medium | Execute the new Stage 9 broker tests in a provisioned toolchain | Authenticated external services were intentionally unavailable/skipped |
 | High | Execute and accept Stage 13 dogfood | Run render/plan/apply with protected identities and preserve independent read-back evidence |
+| High | Run Stage 14 release attestation | Bind exact successful reports to approved read-back evidence and review the five-gate proposal |
 | Low | Mark the GitGuardian incident a false positive | Dashboard-only action; the finding is a public test vector — see §6.5 |
 | Medium | Execute the new Stage 10 scaffold tests in a provisioned toolchain | Git/PowerShell/GitHub runtime validation was intentionally skipped |
 | Medium | Execute the new Stage 11 import tests in a provisioned toolchain | PowerShell/Terraform runtime validation was intentionally skipped |
@@ -425,6 +441,7 @@ Stage 7 readiness and acceptance criteria are maintained in
 | 11 | Done — brownfield classification and deterministic import generation |
 | 12 | Done — credential-free Factory CI, complete contracts, policies, analyzers, Terraform checks, and evidence |
 | 13 | Done in code — variable-driven HCW dogfood render/plan/protected-apply path and evidence; live green proof remains in `USER-CHECKLIST.md` |
+| 14 | Done in code — credential-free evidence attestation and review-only release-gate proposal; live inputs remain in `USER-CHECKLIST.md` |
 
 Stage 9 is the first code path authorized to mutate a tenant, Stage 10 is the
 first generated-repository publication path, and Stage 11 emits reviewable
@@ -432,6 +449,7 @@ adoption artifacts without executing state operations. Stage 12 validates
 source without cloud credentials. Stage 13 supplies the real dogfood mutation
 path but was not executed during implementation. Live acceptance and release
 gate changes require the evidence and approvals in `USER-CHECKLIST.md`.
+Stage 14 evaluates that retained evidence without performing external mutation.
 
 ---
 
