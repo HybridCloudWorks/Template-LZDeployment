@@ -24,11 +24,11 @@ plus two representative rendered trees formatted and validated.
 | Stage | Deliverable | Evidence reviewed | Entry state for Stage 7 |
 |---|---|---|---|
 | 1 | Factory architecture and risk register | `docs/factory/FACTORY-DESIGN.md` | Accepted; status text corrected from “build pending” |
-| 2 | Schema and version contract | `factory/schema/lz-config.schema.json`, `factory-version.json` | Schema 1.0.0; factory 0.1.0 |
+| 2 | Schema and version contract | `factory/schema/lz-config.schema.json`, `factory-version.json` | Schema 2.0.0; factory 0.2.0 |
 | 3 | Offline config plane | `site/`, wizard tests | Emits the factory config contract; zero-network invariant remains |
 | 4 | Read-only discovery | discovery module, README, 60-test suite | Five-state probe model and BR2 behavior present |
-| 5 | Renderer | renderer module, manifest, README, guards, 100-test suite | Fail-closed token engine; G01–G21 implemented |
-| 6 | Terraform corpus | manifest and promoted layer/module corpus | Five implemented layers; G21 blocks missing layers |
+| 5 | Renderer | renderer module, manifest, README, guards, test suite | Fail-closed token engine; G01–G22 implemented |
+| 6 | Terraform corpus | manifest and promoted layer/module corpus | Six implemented layers; G21 blocks the remaining missing layer |
 
 The existing `factory/templates/.github/workflows/terraform-plan.yml.tmpl` is a
 Stage 6 proof of renderer behavior and identity separation. Stage 7 expands the
@@ -67,10 +67,10 @@ risk register.
 
 These choices were approved by the repository owner on 2026-07-25.
 
-The non-production workload/schema decision in `HANDOFF.md` §1.3 is independent
-of workflow promotion. Stage 7 may proceed for the five implemented layers, but
-the matrix must be derived from `computed.layers` so a later schema/layer change
-does not require workflow surgery.
+The non-production workload/schema decision in `HANDOFF.md` §1.3 is resolved:
+schema 2.0.0 carries per-environment spoke CIDRs and the renderer emits the
+`workloads-nonprod` layer. The workflow matrix remains derived from
+`computed.layers`.
 
 ## 5. Implementation sequence
 
@@ -87,14 +87,14 @@ does not require workflow surgery.
 8. Extend renderer tests for emitted file inventory, permissions, triggers,
    subjects, action pins, backend branches, and residual tokens.
 9. Render at least dual-region HCP and single-region `azurerm` fixtures.
-10. Validate generated YAML and run the full 208-test baseline.
+10. Validate generated YAML and run the full 247-test baseline.
 
 ## 6. Definition of done
 
 Stage 7 is complete only when:
 
 - The manifest emits the agreed workflow set and no undeclared workflow files.
-- All 208 existing tests pass and new Stage 7 tests pass.
+- All 247 tests pass.
 - Both representative configurations render without unresolved factory tokens.
 - A static check proves `permissions: {}`, full-SHA action pins, no wildcard
   subjects, no `pull_request_target`, and environment binding on every apply job.
@@ -111,12 +111,11 @@ Stage 7 is complete only when:
 
 - The live Entra registration still lacks the `pull_request` federated
   credential recorded in `HANDOFF.md` §6.2.
-- Live Terraform formatting debt and live/corpus divergence remain separate
-  reviewable work.
+- Live Terraform formatting debt is resolved in this PR; semantic live/corpus
+  divergence remains a separately reviewable concern.
 - GitHub required status checks are not enabled, so a successful merge is not
   proof that validation passed.
-- The non-prod workload layer still requires the schema/product decision in
-  `HANDOFF.md` §1.3.
+- The non-prod workload layer and schema decision are implemented in this PR.
 
 
 ## 8. Fix items carried by the Stage 7 PR
@@ -133,11 +132,8 @@ as explicit fix items in the Stage 7 PR:
       token exchange by API read-back. The repository already creates the
       credential; the live tenant mutation remains an operator action and is not
       executed by this PR.
-- [ ] Decide and implement one non-prod resolution: add per-environment workload
-      CIDRs plus `workloads-nonprod`, or remove dev/test/uat from the wizard.
-      No product-scope choice is made implicitly.
-- [ ] Format the 26 pre-existing files under the legacy `terraform/` tree in an
-      environment with a checkout and Terraform installed.
+- [x] Add per-environment workload CIDRs and implement `workloads-nonprod`.
+- [x] Format the 26 pre-existing files under the legacy `terraform/` tree.
 - [ ] Configure required status checks on `main` after the emitted check names
       are stable, then verify branch-protection API read-back.
 
