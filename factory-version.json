@@ -6,7 +6,7 @@
   "releasedAt": "2026-07-24",
 
   "contracts": {
-    "configSchemaVersion": "1.0.0",
+    "configSchemaVersion": "2.0.0",
     "$comment": "Must match the const value of schemaVersion in factory/schema/lz-config.schema.json. The renderer refuses any config whose schemaVersion it does not implement."
   },
 
@@ -14,12 +14,13 @@
     "version": "0.2.0",
     "$comment": "Version of the emitted landing-zone content (templates + workflows + docs). Tracked separately from factoryVersion so tooling-only changes do not force customer-repo upgrades.",
     "architecture": "caf-enterprise-scale",
-    "$layersComment": "Layers the template corpus can actually emit. Guard G21 reads this list and REFUSES to render a configuration selecting anything absent from it, so promoting a new layer lifts its guard by being declared here. platform-identity and workloads-nonprod are deliberately absent: Get-LzActiveLayers can select both, but no Terraform exists for either.",
+    "$layersComment": "Layers the template corpus can actually emit. Guard G21 reads this list and refuses to render a configuration selecting anything absent from it. workloads-nonprod is implemented; platform-identity remains deliberately absent because no Terraform exists for it.",
     "layers": [
       "global",
       "platform-connectivity",
       "platform-management",
       "workloads-prod",
+      "workloads-nonprod",
       "sandbox"
     ]
   },
