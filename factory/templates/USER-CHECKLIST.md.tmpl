@@ -1,0 +1,82 @@
+# User Checklist — {{FACTORY-RAW:organization.companyName}} Bootstrap
+
+GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
+rendered {{FACTORY-RAW:computed.generatedAt}}.
+
+Stage 9 code is non-interactive. Complete these operator-owned activities
+without editing broker source; provide values through `lz-config.json` and the
+environment variables below.
+
+## Before broker apply
+
+- [ ] Review `tenant-readiness-report.md` and resolve every blocking discovery
+  finding, or document an approved exception before using
+  `LZ_BOOTSTRAP_ALLOW_NOT_READY=true`.
+- [ ] Authenticate Azure CLI to tenant
+  `{{FACTORY-RAW:azure.tenantId}}` with permission to manage app registrations,
+  service principals, federated credentials, subscription RBAC, and the selected
+  backend.
+- [ ] Authenticate GitHub CLI to
+  `{{FACTORY-RAW:computed.repositorySlug}}` with repository administration,
+  Actions variable, environment, and branch-protection access.
+- [ ] Confirm the default branch is
+  `{{FACTORY-RAW:computed.defaultBranch}}`.
+- [ ] Review the exact plan:
+  `pwsh ./bootstrap-broker.ps1` (plan-only by default).
+- [ ] Confirm every planned identity is repo-scoped and no OIDC subject contains
+  a wildcard.
+
+#{{IF computed.backendIsHcp}}
+## HCP Terraform
+
+- [ ] Export `TFE_TOKEN` from a secure secret source. Do not put it in
+  `lz-config.json`, shell history, generated output, or Terraform variables.
+- [ ] Confirm HCP organization
+  `{{FACTORY-RAW:backend.hcpTerraform.organization}}` and workspace prefix
+  `{{FACTORY-RAW:backend.hcpTerraform.workspacePrefix}}`.
+#{{ELSE}}
+## Azure Storage backend
+
+- [ ] Confirm the backend subscription, resource group, storage account, and
+  container names are approved and globally unique where required.
+- [ ] Confirm the operator can create the backend resources and data-plane
+  container using Entra authentication.
+#{{ENDIF}}
+
+## Apply
+
+- [ ] Set `LZ_CONFIG_PATH` to the exported `lz-config.json`.
+- [ ] Set `LZ_DISCOVERY_PATH` to `discovery-inventory.json`.
+- [ ] Set `LZ_BOOTSTRAP_OUTPUT` to a protected local output directory.
+- [ ] Set `LZ_BOOTSTRAP_APPLY=true`.
+- [ ] Run `./bootstrap-broker.sh` or
+  `pwsh ./bootstrap-broker.ps1 -Apply`.
+- [ ] Preserve `bootstrap-plan.json` and `bootstrap-audit.json` as change
+  evidence; neither file contains access tokens.
+
+## Required live verification
+
+- [ ] Read back every Entra application, service principal, RBAC assignment,
+  issuer, audience, and exact subject.
+- [ ] Run the generated Azure OIDC verification workflow and confirm a real
+  `pull_request` token exchange succeeds with the read-only plan identity.
+- [ ] Confirm apply identities can be assumed only through their matching
+  `environment:<name>` subject.
+- [ ] Confirm GitHub environments and variables exist for:
+#{{FOREACH env IN computed.allEnvironments}}
+  - [ ] `{{FACTORY-RAW:env}}`
+#{{ENDFOREACH}}
+- [ ] Confirm `{{FACTORY-RAW:computed.defaultBranch}}` protection requires
+  the comma-separated checks in `LZ_REQUIRED_STATUS_CHECKS` (defaults to
+  `qlty check`), linear history, pull-request review, and blocks force pushes
+  and deletion.
+- [ ] Confirm backend workspaces/storage and state-lock behavior.
+- [ ] Review `bootstrap-audit.json`; resolve every
+  `pendingUserActivities` entry.
+
+## Values never stored in configuration
+
+- Azure user/device login tokens.
+- GitHub user/device login tokens.
+- `TFE_TOKEN`.
+- Any client secret or storage access key.
