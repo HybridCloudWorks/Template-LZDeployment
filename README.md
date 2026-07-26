@@ -8,7 +8,7 @@ the Stage 9 broker to reconcile external prerequisites before the Stage 10
 scaffold builder publishes the generated repository. Brownfield configurations
 use the Stage 11 generator to create reviewable import artifacts without
 executing Terraform import. Stage 12 provides the credential-free Factory CI
-gate for the complete source corpus.
+gate, and Stage 13 provides the protected HCW dogfood render/plan/apply path.
 
 **How it works**:
 
@@ -27,10 +27,14 @@ gate for the complete source corpus.
    apply mode.
 7. `.github/workflows/factory-ci.yml` runs every factory contract, policy,
    analyzer, and Terraform corpus check and uploads machine-readable evidence.
+8. `.github/workflows/dogfood-instance.yml` regenerates the HCW instance from
+   repository variables and runs an explicit render, read-only plan, or
+   protected apply with retained evidence.
 
-> **Status**: Stage 12 Factory CI is implemented but still requires its first
-> provisioned run and branch-protection read-back. See [TODO.md](TODO.md) and
-> [USER-CHECKLIST.md](USER-CHECKLIST.md) before relying on it for release.
+> **Status**: Stages 1–13 are implemented. Live Factory CI enablement and the
+> Stage 13 dogfood plan/apply/read-back remain operator activities. The
+> `dogfoodInstanceAppliesGreen` release gate remains false until that evidence
+> is reviewed. See [TODO.md](TODO.md) and [USER-CHECKLIST.md](USER-CHECKLIST.md).
 
 ---
 
@@ -84,6 +88,9 @@ HCW-Demo-LZDeployment/
 ├── brownfield-import.ps1         # Stage 11 brownfield import generator
 ├── brownfield-import.sh          # Cross-platform launcher
 ├── factory/ci/                   # Stage 12 CI runner and source policies
+├── factory/dogfood/              # Stage 13 dogfood orchestration and evidence
+├── dogfood-instance.ps1          # Stage 13 PowerShell entry point
+├── dogfood-instance.sh           # Stage 13 strict Bash launcher
 ├── USER-CHECKLIST.md             # Operator authentication, publication, and verification
 ├── TODO.md                       # Current phase plan
 ├── CHANGELOG.md                  # Completed work history

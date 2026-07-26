@@ -1,6 +1,6 @@
 # Azure Landing Zone Factory — Architecture & Risk Register
 
-**Status**: Design accepted / Stages 1–12 implemented; Stage 13 next
+**Status**: Design accepted / Stages 1–13 implemented; live dogfood evidence pending
 **Date**: 2026-07-24
 **Scope**: Convert this repository from a single-tenant ALZ deployment into a reusable
 Landing Zone Factory that emits unlimited, independent ALZ repositories across tenants,

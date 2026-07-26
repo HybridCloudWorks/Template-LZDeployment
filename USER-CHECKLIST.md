@@ -1,4 +1,4 @@
-# Stage 9–12 User Checklist
+# Stage 9–13 User Checklist
 
 The Stage 9 broker is implemented and merged as code only. No live Azure,
 Entra, GitHub administration, or HCP Terraform mutation was executed while
@@ -12,6 +12,9 @@ Terraform, import commands, plans, or state operations.
 
 The Stage 12 Factory CI workflow and runner were implemented without executing
 the local validation corpus in this environment.
+
+The Stage 13 HCW dogfood workflow and runner were implemented without executing
+a render, Terraform plan/apply, Azure login, OIDC exchange, or state operation.
 
 ## Required variables and authentication
 
@@ -184,3 +187,41 @@ the local validation corpus in this environment.
   incomplete/skipped run.
 - [ ] Read back branch protection/rulesets through the GitHub API and prove a
   pull request cannot merge when `Factory CI / Factory CI` fails.
+
+## Stage 13 dogfood variables
+
+- [ ] Store the complete approved HCW `lz-config.json` as repository variable
+  `LZ_DOGFOOD_CONFIG_JSON`; confirm it targets
+  `saulpatinojr/HCW-Plan_LZDeployment` and contains no token or client secret.
+- [ ] Set repository variables `LZ_DOGFOOD_TENANT_ID`,
+  `LZ_DOGFOOD_SUBSCRIPTION_ID`, and `LZ_DOGFOOD_PLAN_CLIENT_ID`.
+- [ ] Set `LZ_DOGFOOD_TERRAFORM_VERSION`; default `1.9.8` must remain within
+  the factory toolchain contract.
+- [ ] Configure `AZURE_APPLY_CLIENT_ID` only on each protected apply
+  environment. Keep the plan identity read-only and the apply identity bound
+  only to its exact `environment:<name>` OIDC subject.
+- [ ] For HCP Terraform only, configure `TF_API_TOKEN` as an environment secret
+  from a secure source. Never store it in configuration or repository variables.
+- [ ] For local operator execution, set `LZ_DOGFOOD_CONFIG_PATH`,
+  `LZ_DOGFOOD_OUTPUT`, `LZ_DOGFOOD_EVIDENCE`, `LZ_DOGFOOD_MODE`,
+  `LZ_DOGFOOD_LAYER`, and `LZ_DOGFOOD_REPOSITORY`.
+
+## Stage 13 execute and verify
+
+- [ ] Run `Dogfood Instance` in `Render` mode and review the generated manifest.
+- [ ] Run every rendered layer in `Plan` mode with the read-only identity.
+  Confirm all plans succeed and contain no unintended delete or replace.
+- [ ] Review the exact apply identity, subscription routing, backend, protected
+  environment reviewers, and rendered configuration before approval.
+- [ ] Run each layer in dependency order through `Apply`. The workflow asserts
+  `LZ_DOGFOOD_APPLY=true`, consumes its saved plan, and rejects deletes.
+- [ ] Preserve every `dogfood-<run-id>-*` artifact and review
+  `dogfood-report.json`, per-layer init/plan/show/apply logs, configuration
+  SHA-256, and `releaseGateEligible`.
+- [ ] Independently read back Azure resources, Terraform state/workspaces,
+  federated credentials, exact OIDC subjects, GitHub environment protections,
+  and required status checks.
+- [ ] Set `dogfoodInstanceAppliesGreen=true` only in a separately reviewed PR
+  after every rendered layer applies green and the read-back evidence is
+  accepted. Do not infer this gate from code completion, render-only output,
+  skipped layers, or plan success.

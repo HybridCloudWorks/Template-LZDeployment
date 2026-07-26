@@ -5,6 +5,22 @@
 
 ---
 
+## Stage 13 HCW dogfood instance — prepared (2026-07-26)
+
+- Added a manual SHA-pinned render/plan/apply workflow for the HCW dogfood
+  instance.
+- Added variable-driven dogfood orchestration that regenerates from the factory
+  into ephemeral output and verifies the configured repository target.
+- Separated the read-only plan identity from the protected-environment apply
+  identity and required an explicit second apply authorization.
+- Added saved-plan application, destructive-change refusal, per-layer logs, and
+  `dogfood-report.json` evidence.
+- Added root/generated operator activities and static dogfood coverage.
+- Advanced factory/LZ versions to 0.8.0 and manifest to 1.8.0; schema remains
+  2.0.0. The live dogfood release gate remains false pending reviewed evidence.
+- No render, Terraform, Azure, OIDC, state, or runtime validation command was
+  executed.
+
 ## Stage 12 Factory CI — prepared (2026-07-26)
 
 - Added a credential-free, SHA-pinned Factory CI workflow for pull requests,

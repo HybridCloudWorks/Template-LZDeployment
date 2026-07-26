@@ -3,7 +3,7 @@
 GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
 rendered {{FACTORY-RAW:computed.generatedAt}}.
 
-Stage 9–12 code is non-interactive. Complete these operator-owned activities
+Stage 9–13 code is non-interactive. Complete these operator-owned activities
 without editing broker or scaffold source; provide values through
 `lz-config.json` and the environment variables below.
 
@@ -42,6 +42,21 @@ without editing broker or scaffold source; provide values through
 - [ ] Confirm the operator can create the backend resources and data-plane
   container using Entra authentication.
 #{{ENDIF}}
+
+## HCW dogfood provenance
+
+- [ ] If this repository is the HCW dogfood instance, store its approved
+  configuration in `LZ_DOGFOOD_CONFIG_JSON` and set
+  `LZ_DOGFOOD_TENANT_ID`, `LZ_DOGFOOD_SUBSCRIPTION_ID`,
+  `LZ_DOGFOOD_PLAN_CLIENT_ID`, and `LZ_DOGFOOD_TERRAFORM_VERSION`.
+- [ ] Keep `AZURE_APPLY_CLIENT_ID` and any required `TF_API_TOKEN` scoped to
+  protected apply environments.
+- [ ] Run render and read-only plan before apply; review the configuration hash,
+  every layer log, and destructive-change result.
+- [ ] Approve apply only through the exact protected environment and preserve
+  `dogfood-report.json` plus independent Azure/state/OIDC/GitHub read-back.
+- [ ] Do not mark `dogfoodInstanceAppliesGreen` from code completion, skipped
+  execution, render-only output, or plan success.
 
 ## Factory CI
 

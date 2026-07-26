@@ -57,6 +57,9 @@ generated-output/
 /brownfield-classifications.json
 /brownfield-evidence/
 /factory-ci-output/
+/dogfood-config.json
+/dogfood-output/
+/dogfood-evidence/
 *.lz-backup-*/
 
 # Landing Zone Factory test output. Regenerated on every run.
