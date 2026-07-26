@@ -1,10 +1,10 @@
 # Landing Zone Factory — Session Handoff
 
-**Last updated:** 2026-07-26 · **Factory version:** 0.3.0 · **Config schema:** 2.0.0
-**Progress:** Stages 1–7 complete. Stage 8 implementation is prepared for review.
-**First action:** review the Stage 8 implementation and acceptance record in
-[`docs/factory/STAGE-8-READINESS.md`](docs/factory/STAGE-8-READINESS.md).
-Everything through Stage 7 is merged to `main`.
+**Last updated:** 2026-07-26 · **Factory version:** 0.4.0 · **Config schema:** 2.0.0
+**Progress:** Stages 1–8 complete. Stage 9 implementation is prepared for review.
+**First action:** review the Stage 9 broker and completion record in
+[`docs/factory/STAGE-9-READINESS.md`](docs/factory/STAGE-9-READINESS.md).
+Everything through Stage 8 is merged to `main`.
 
 You are continuing a multi-session build. This document is the single source of
 truth for where the work stopped. Read the *Next steps* section first, then
@@ -16,7 +16,7 @@ truth for where the work stopped. Read the *Next steps* section first, then
 
 ### 1.1 Everything is merged — how `main` got here
 
-**Nothing is pending from Stages 1–7. The test suite, this document, and the
+**Nothing is pending from Stages 1–8. The test suite, this document, and the
 capability-routing layer are all on `main`.** No open PRs.
 
 | PR | Outcome |
@@ -59,15 +59,14 @@ generalises:
   directory fails with `fatal: not a git repository`. Either `cd` first or pass
   `--repo saulpatinojr/HCW-Plan_LZDeployment`.
 
-### 1.2 Stage 8 — self-documenting operations corpus
+### 1.2 Stage 9 — bootstrap broker
 
-Stage 8 emits nine configuration-derived documents: operating model,
-governance, threat model, observability, FinOps, state management, disaster
-recovery, upgrade guidance, and the end-to-end phase model. The renderer
-manifest treats these as always-emitted product artifacts, and the test suite
-asserts their inventory, provenance, token resolution, and configuration-specific
-content. See
-[`docs/factory/STAGE-8-READINESS.md`](docs/factory/STAGE-8-READINESS.md).
+Stage 9 adds the non-interactive bootstrap broker and the first authorized
+external-write boundary. It plans by default, consumes config plus discovery,
+reconciles Entra/RBAC/GitHub/backend prerequisites only in apply mode, and emits
+plan/audit evidence. User-owned authentication and live verification are in
+`USER-CHECKLIST.md`. Executable validation was skipped by owner direction; see
+[`docs/factory/STAGE-9-READINESS.md`](docs/factory/STAGE-9-READINESS.md).
 
 ### 1.3 Non-production workloads — resolved
 
@@ -77,15 +76,15 @@ environment's CIDRs and the shared `workloadNonProd` subscription, and the
 `workloads-nonprod` template emits only the selected environments. G21 remains
 the general protection against any active layer absent from the corpus.
 
-### 1.4 Known work queued behind stage 8
+### 1.4 Known work queued behind stage 9
 
 | Priority | Item | Why |
 |---|---|---|
 | High | Add federated credential for `pull_request` subject | Unblocks all CI — see §6.2 |
-| Medium | Wire the 283 tests into a CI workflow | They only run locally today |
+| Medium | Execute the new Stage 9 broker tests in a provisioned toolchain | Authenticated external services were intentionally unavailable/skipped |
 | Medium | Backport the stage-6 fixes to `terraform/live/` | The corpus and the live tree have diverged — see §6.3 |
 | Low | Mark the GitGuardian incident a false positive | Dashboard-only action; the finding is a public test vector — see §6.5 |
-| Later | Stages 9–13 | See §7 |
+| Later | Stages 10–13 | See §7 |
 
 ---
 
@@ -356,7 +355,7 @@ rather than resolving its finding.
 
 ---
 
-## 7. Remaining stages (9–13)
+## 7. Remaining stages (10–13)
 
 Stage 7 readiness and acceptance criteria are maintained in
 [`docs/factory/STAGE-7-READINESS.md`](docs/factory/STAGE-7-READINESS.md).
@@ -366,14 +365,14 @@ Stage 7 readiness and acceptance criteria are maintained in
 | 6 | Done — `terraform/` promoted into the template corpus (see §3.5) |
 | 7 | Done — generated workflow corpus |
 | 8 | Done — generated documentation corpus |
-| 9 | **Bootstrap broker** — creates Entra apps, federated credentials, GitHub environments, secrets. Consumes `discovery-inventory.json`. The first stage that *writes* anything. |
+| 9 | Done — non-interactive bootstrap broker, evidence, and user checklists |
 | 10 | **Scaffold builder** — moves a rendered tree into a real repository |
 | 11 | Brownfield import generation |
 | 12 | Factory CI — run the 283 tests, drift check, and `terraform validate` over the raw corpus |
 | 13 | Dogfood instance — regenerate this repo from the factory and prove it applies green |
 
-Stages 1–8 wrote **nothing** outside the repo. Stage 9 is the first that mutates
-a tenant; treat that boundary carefully.
+Stage 9 is the first code path authorized to mutate a tenant, but no live broker
+apply was executed during implementation.
 
 ---
 
