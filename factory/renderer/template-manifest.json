@@ -1,10 +1,10 @@
 {
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||.",
 
-  "manifestVersion": "1.3.0",
+  "manifestVersion": "1.4.0",
   "targetSchemaVersion": "2.0.0",
 
-  "$statusComment": "Stages 6–8 promoted the Terraform, workflow, and self-documenting operations corpus. Six live layers, seven workflows, the identity matrix, and nine Stage 8 operating documents are emitted. platform-identity has no source under terraform/live and remains blocked by guard G21; guard G22 validates selected non-production workload CIDRs.",
+  "$statusComment": "Stages 6–9 promoted the Terraform, workflow, documentation, and bootstrap-operator corpus. Six live layers, seven workflows, ten generated operational documents, and the Stage 9 user checklist are emitted. platform-identity has no source under terraform/live and remains blocked by guard G21; guard G22 validates selected non-production workload CIDRs.",
 
   "files": [
     {
@@ -13,6 +13,13 @@
       "mode": "render",
       "when": "always",
       "description": "Landing zone repository README, self-documenting from the configuration."
+    },
+    {
+      "source": "USER-CHECKLIST.md.tmpl",
+      "destination": "USER-CHECKLIST.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Non-blocking operator activities, secure runtime variables, and required live verification for the Stage 9 broker."
     },
 
     {
