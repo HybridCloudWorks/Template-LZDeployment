@@ -1,0 +1,74 @@
+# Threat Model — {{FACTORY-RAW:organization.companyName}} Landing Zone
+
+GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
+rendered {{FACTORY-RAW:computed.generatedAt}}.
+
+## Scope and assets
+
+Protected assets include tenant configuration, management groups, subscriptions,
+Terraform state, workflow definitions, federated identities, policy
+assignments, diagnostic data, network boundaries, and production workloads.
+
+## Trust boundaries
+
+1. Contributor workstation → GitHub pull request.
+2. GitHub Actions → Entra workload identity federation.
+#{{IF computed.backendIsHcp}}
+3. GitHub Actions → HCP Terraform.
+4. HCP Terraform → Azure dynamic provider credentials.
+#{{ELSE}}
+3. GitHub Actions → Azure Storage state backend using Entra ID.
+#{{ENDIF}}
+5. Platform subscriptions → workload subscriptions.
+6. Hub network → spokes and private endpoints.
+7. Azure control plane → diagnostic destinations.
+
+## Principal threats and controls
+
+| Threat | Preventive controls | Detective/recovery controls |
+|---|---|---|
+| Untrusted PR obtains write token | Separate plan/apply apps; exact OIDC subjects; no `pull_request_target` | OIDC verification workflow; Entra sign-in logs |
+| Workflow supply-chain compromise | Full-SHA action pins; locked root permissions | Action-pinning and security checks |
+| Unauthorized production apply | Protected environment; approval chain; trusted default-branch checkout | Workflow audit trail and activity logs |
+| Terraform state disclosure or corruption | Isolated layer state; Entra auth; least privilege | State versioning, locking, recovery procedure |
+| Out-of-band Azure changes | IaC-only operating model and policy | Scheduled drift detection and Azure Activity Log |
+| Network data exfiltration | Hub-spoke boundaries, firewall, private endpoints, public-access policy | NSG flow logs, diagnostics, threat intelligence |
+| Privilege persistence | PIM-eligible model and separate identities | Access reviews, role-assignment inventory |
+| Destructive change | Plan inspection and destructive-apply refusal | Backup, state recovery, DR runbook |
+
+## Identity invariants
+
+- Plan subject: `{{FACTORY-RAW:computed.oidcSubjectPullRequest}}`.
+- Apply subjects are environment-bound; wildcard subjects are forbidden.
+- Plan identity is read-only.
+- Apply identity is unavailable to pull-request jobs.
+- Bootstrap operator access is interactive and MFA-protected.
+
+See [identity-trust-matrix.md](identity-trust-matrix.md) for the generated
+subject inventory.
+
+## Network posture
+
+Connectivity model: **{{FACTORY-RAW:connectivity.model}}**.
+Firewall: **{{FACTORY-RAW:connectivity.firewall.type}}** with threat
+intelligence mode **{{FACTORY-RAW:connectivity.firewall.threatIntelligenceMode}}**.
+Private endpoints enabled:
+{{FACTORY-BOOL:connectivity.privateEndpoints.enabled}}.
+Public-network-access deny policy:
+{{FACTORY-BOOL:connectivity.privateEndpoints.denyPublicNetworkAccessPolicy}}.
+
+## Residual risks
+
+- Live identity federation and branch-protection settings are external state and
+  require API read-back after bootstrap.
+- Scaffold-only modules remain blocked by renderer guards.
+- Audit-mode policy does not prevent a violation.
+- A single-region configuration cannot meet regional-failure recovery targets.
+- Empty contact or approval lists weaken operational response.
+
+## Review triggers
+
+Review this model after identity, backend, connectivity, policy, workflow,
+subscription, data-classification, or regulatory changes, and after every
+material security incident.
+
