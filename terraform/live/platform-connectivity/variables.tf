@@ -42,7 +42,7 @@ variable "dr_hub_address_space" {
 variable "firewall_type" {
   description = "Firewall type: azfw, palo, or fortinet"
   type        = string
-  
+
   validation {
     condition     = contains(["azfw", "palo", "fortinet"], var.firewall_type)
     error_message = "Firewall type must be one of: azfw, palo, fortinet."
