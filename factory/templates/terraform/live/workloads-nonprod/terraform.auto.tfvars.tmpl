@@ -1,0 +1,35 @@
+workload_nonprod_subscription_id = {{FACTORY:azure.subscriptions.workloadNonProd}}
+
+#{{IF computed.backendIsAzurerm}}
+state_resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
+state_storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
+state_container_name       = {{FACTORY:backend.azurerm.containerName}}
+#{{ENDIF}}
+
+primary_region      = {{FACTORY:azure.primaryRegion}}
+primary_region_code = {{FACTORY:azure.primaryRegionCode}}
+#{{IF computed.hasDrRegion}}
+dr_region      = {{FACTORY:azure.drRegion}}
+dr_region_code = {{FACTORY:azure.drRegionCode}}
+#{{ENDIF}}
+
+#{{IF environments.application contains 'dev'}}
+dev_primary_spoke_address_space = {{FACTORY:connectivity.hubSpoke.nonProdSpokeAddressSpaces.dev.primary}}
+#{{IF computed.hasDrRegion}}
+dev_dr_spoke_address_space = {{FACTORY:connectivity.hubSpoke.nonProdSpokeAddressSpaces.dev.dr}}
+#{{ENDIF}}
+#{{ENDIF}}
+#{{IF environments.application contains 'test'}}
+test_primary_spoke_address_space = {{FACTORY:connectivity.hubSpoke.nonProdSpokeAddressSpaces.test.primary}}
+#{{IF computed.hasDrRegion}}
+test_dr_spoke_address_space = {{FACTORY:connectivity.hubSpoke.nonProdSpokeAddressSpaces.test.dr}}
+#{{ENDIF}}
+#{{ENDIF}}
+#{{IF environments.application contains 'uat'}}
+uat_primary_spoke_address_space = {{FACTORY:connectivity.hubSpoke.nonProdSpokeAddressSpaces.uat.primary}}
+#{{IF computed.hasDrRegion}}
+uat_dr_spoke_address_space = {{FACTORY:connectivity.hubSpoke.nonProdSpokeAddressSpaces.uat.dr}}
+#{{ENDIF}}
+#{{ENDIF}}
+
+default_tags = {{FACTORY-MAP:naming.defaultTags}}
