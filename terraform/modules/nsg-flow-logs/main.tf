@@ -7,21 +7,21 @@ resource "azurerm_storage_account" "flow_logs" {
   resource_group_name      = var.resource_group_name
   location                 = var.location
   account_tier             = "Standard"
-  account_replication_type = "RAGZRS"  # Geo-redundant for compliance
+  account_replication_type = "RAGZRS" # Geo-redundant for compliance
   min_tls_version          = "TLS1_2"
-  
+
   # Security settings
   allow_nested_items_to_be_public = false
   public_network_access_enabled   = false
-  
+
   # Blob properties
   blob_properties {
     versioning_enabled = true
-    
+
     delete_retention_policy {
       days = var.flow_log_retention_days
     }
-    
+
     container_delete_retention_policy {
       days = var.flow_log_retention_days
     }
@@ -30,7 +30,7 @@ resource "azurerm_storage_account" "flow_logs" {
   network_rules {
     default_action = "Deny"
     bypass         = ["AzureServices", "Logging", "Metrics"]
-    
+
     # Allow access from management subnet
     virtual_network_subnet_ids = var.allowed_subnet_ids
   }
@@ -80,10 +80,10 @@ resource "azurerm_network_watcher_flow_log" "nsg_flow_logs" {
   name                 = "fl-${each.key}-${var.environment}"
   network_watcher_name = data.azurerm_network_watcher.main.name
   resource_group_name  = data.azurerm_network_watcher.main.resource_group_name
-  target_resource_id     = each.value
+  target_resource_id   = each.value
   storage_account_id   = azurerm_storage_account.flow_logs.id
   enabled              = true
-  version              = 2  # Version 2 provides more detailed flow information
+  version              = 2 # Version 2 provides more detailed flow information
 
   retention_policy {
     enabled = true
@@ -134,11 +134,11 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "high_traffic_alert" {
   location            = var.location
   description         = "Alert when network traffic exceeds threshold"
   enabled             = true
-  
+
   evaluation_frequency = "PT5M"
   window_duration      = "PT5M"
   scopes               = [var.log_analytics_workspace_resource_id]
-  severity             = 2  # Warning
+  severity             = 2 # Warning
 
   criteria {
     query                   = <<-QUERY
@@ -173,11 +173,11 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "denied_traffic_alert"
   location            = var.location
   description         = "Alert when denied traffic exceeds threshold (potential attack)"
   enabled             = true
-  
+
   evaluation_frequency = "PT5M"
   window_duration      = "PT15M"
   scopes               = [var.log_analytics_workspace_resource_id]
-  severity             = 1  # Error
+  severity             = 1 # Error
 
   criteria {
     query                   = <<-QUERY
