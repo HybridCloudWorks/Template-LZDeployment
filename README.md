@@ -7,7 +7,8 @@ zone repository from `lz-config.json`, discovers existing tenant state, and uses
 the Stage 9 broker to reconcile external prerequisites before the Stage 10
 scaffold builder publishes the generated repository. Brownfield configurations
 use the Stage 11 generator to create reviewable import artifacts without
-executing Terraform import.
+executing Terraform import. Stage 12 provides the credential-free Factory CI
+gate for the complete source corpus.
 
 **How it works**:
 
@@ -24,8 +25,12 @@ executing Terraform import.
 6. `scaffold-copy.ps1` / `.sh` verifies the exact augmented renderer inventory,
    plans by default, and creates/commits/pushes the generated repository only in
    apply mode.
+7. `.github/workflows/factory-ci.yml` runs every factory contract, policy,
+   analyzer, and Terraform corpus check and uploads machine-readable evidence.
 
-> **Status**: The CI/CD pipeline has known reliability issues currently being fixed — see [TODO.md](TODO.md) before relying on it for a real deployment.
+> **Status**: Stage 12 Factory CI is implemented but still requires its first
+> provisioned run and branch-protection read-back. See [TODO.md](TODO.md) and
+> [USER-CHECKLIST.md](USER-CHECKLIST.md) before relying on it for release.
 
 ---
 
@@ -78,6 +83,7 @@ HCW-Demo-LZDeployment/
 ├── scaffold-copy.sh              # Cross-platform launcher
 ├── brownfield-import.ps1         # Stage 11 brownfield import generator
 ├── brownfield-import.sh          # Cross-platform launcher
+├── factory/ci/                   # Stage 12 CI runner and source policies
 ├── USER-CHECKLIST.md             # Operator authentication, publication, and verification
 ├── TODO.md                       # Current phase plan
 ├── CHANGELOG.md                  # Completed work history
@@ -145,6 +151,20 @@ pwsh ./brownfield-import.ps1
 Only explicit Adopt entries with exact Terraform addresses and active layers
 produce artifacts. Ignore emits nothing; Replace and Require-Approval remain
 operator gates. The generator never executes Terraform import.
+
+### Factory CI
+
+Factory CI runs automatically for relevant pull requests and protected-branch
+pushes. It can also run on a provisioned workstation:
+
+```powershell
+$env:LZ_FACTORY_CI_OUTPUT = './factory-ci-output'
+pwsh ./factory/ci/Invoke-FactoryCI.ps1
+```
+
+The stable GitHub context is `Factory CI / Factory CI`. The runner uses no
+cloud credentials, initializes Terraform with backends disabled, and writes
+`factory-ci-report.json` plus per-check logs.
 
 ### After Scaffold
 
