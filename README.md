@@ -2,13 +2,19 @@
 
 ## Overview
 
-This repository **is** the landing zone deployment — it is not a template that spins up a separate customer repository. Running the bootstrap script and merging the resulting workflows deploys Azure infrastructure directly from this repo, in place.
+This repository is the Landing Zone Factory. It renders a self-contained landing
+zone repository from `lz-config.json`, discovers existing tenant state, and uses
+the Stage 9 broker to reconcile external prerequisites before Terraform runs.
 
 **How it works**:
 
-1. **`scripts/Start-LandingZoneBootstrap.ps1`** — the single local entry point. Validates required CLI tools (`az`, `gh`, `git`, `terraform`), authenticates to Azure/GitHub/Terraform Cloud, creates the OIDC service principal(s) and federated credentials, sets GitHub secrets/variables/environments, and configures the Terraform Cloud workspace.
-2. **Numbered GitHub Actions workflows** (`.github/workflows/010-*.yml`, `020-*.yml`, ...) plus `terraform-plan.yml`/`terraform-apply.yml` pick up from there and, together with the Terraform code under `terraform/`, actually deliver the landing zone.
-3. **`frontend/`** is a separate, optional static HTML/JS page (no backend, no build step) where a user can visually pick deployment options and generate a `.tfvars` file, which then feeds into the same Terraform/workflow pipeline.
+1. `site/` exports the versioned `lz-config.json` contract.
+2. `factory/discovery/` produces a read-only readiness report and
+   `discovery-inventory.json`.
+3. `factory/renderer/` emits Terraform, workflows, documentation, and
+   `USER-CHECKLIST.md`.
+4. `bootstrap-broker.ps1` / `.sh` plans by default and idempotently reconciles
+   Entra, RBAC, GitHub, and backend prerequisites only in apply mode.
 
 > **Status**: The CI/CD pipeline has known reliability issues currently being fixed — see [TODO.md](TODO.md) before relying on it for a real deployment.
 
@@ -19,7 +25,7 @@ This repository **is** the landing zone deployment — it is not a template that
 ```
 HCW-Demo-LZDeployment/
 ├── scripts/
-│   ├── Start-LandingZoneBootstrap.ps1              # Primary entry point — run this first
+│   ├── Start-LandingZoneBootstrap.ps1    # Legacy single-repo bootstrap; retained for compatibility
 │   ├── Configure-DeploymentOptions.ps1    # Interactively enable optional modules
 │   ├── Validate-ALZDeployment.ps1
 │   ├── Verify-CostAccuracy.ps1
@@ -57,6 +63,9 @@ HCW-Demo-LZDeployment/
 │   ├── terraform-apply.yml          # Merge-based deployment
 │   ├── secrets-scan.yml             # TruffleHog + Gitleaks + tfsec
 │   └── action-pinning-policy.yml    # Enforces SHA-pinned actions
+├── bootstrap-broker.ps1          # Stage 9 non-interactive broker
+├── bootstrap-broker.sh           # Cross-platform launcher
+├── USER-CHECKLIST.md             # Operator-owned authentication and live verification
 ├── TODO.md                       # Current phase plan
 ├── CHANGELOG.md                  # Completed work history
 └── README.md                     # This file
@@ -77,22 +86,18 @@ HCW-Demo-LZDeployment/
 ### Bootstrap
 
 ```powershell
-.\scripts\Start-LandingZoneBootstrap.ps1
+# Plan only
+pwsh ./bootstrap-broker.ps1 -ConfigPath ./lz-config.json `
+  -DiscoveryPath ./discovery-inventory.json
+
+# Apply after reviewing bootstrap-plan.json
+$env:LZ_BOOTSTRAP_APPLY = 'true'
+pwsh ./bootstrap-broker.ps1
 ```
 
-This is idempotent — safe to re-run. It walks through, in order:
-
-1. CLI tool validation
-2. Azure / GitHub / Terraform Cloud authentication
-3. Deployment configuration (org prefix, environments, region, repo name)
-4. Azure OIDC service principal + federated credential creation
-5. GitHub secrets/variables configuration
-6. GitHub environment creation
-7. Terraform Cloud workspace configuration
-8. Bootstrap report generation (written to `.reports/bootstrap/`)
-9. Optional PR creation with the generated bootstrap artifacts
-
-State is tracked in `.lz-bootloader-state.json` so a failed run can be fixed and re-run without repeating completed steps.
+The broker is non-interactive and idempotent. Tenant-specific inputs come from
+the config/discovery contracts and environment variables documented in
+[USER-CHECKLIST.md](USER-CHECKLIST.md).
 
 ### After Bootstrap
 
