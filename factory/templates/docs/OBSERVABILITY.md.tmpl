@@ -1,0 +1,68 @@
+# Observability — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
+rendered {{FACTORY-RAW:computed.generatedAt}}.
+
+## Configuration
+
+| Capability | Value |
+|---|---|
+| Log Analytics SKU | {{FACTORY-RAW:observability.logAnalytics.sku}} |
+| Retention | {{FACTORY-NUM:observability.logAnalytics.retentionDays}} days |
+| Daily quota | {{FACTORY-NUM:observability.logAnalytics.dailyQuotaGb}} GB (`-1` means unlimited) |
+| Diagnostic settings | {{FACTORY-BOOL:observability.diagnosticSettings.enabled}} |
+| Activity Log | {{FACTORY-BOOL:observability.diagnosticSettings.sendActivityLog}} |
+| Archive to storage | {{FACTORY-BOOL:observability.diagnosticSettings.sendToStorage}} |
+| Stream to Event Hub | {{FACTORY-BOOL:observability.diagnosticSettings.sendToEventHub}} |
+| Platform health alerts | {{FACTORY-BOOL:observability.alerting.enablePlatformHealthAlerts}} |
+| Drift alerts | {{FACTORY-BOOL:observability.alerting.enableDriftAlerts}} |
+
+## Required signals
+
+- Azure Activity Log and resource health.
+- Entra workload-identity sign-ins and authentication failures.
+- Policy compliance and exemption expiry.
+- Terraform plan/apply outcomes by layer.
+- State lock, version, and backend failures.
+- Firewall, NSG flow, private endpoint, and DNS health.
+- Backup job, restore-point, and vault immutability status.
+- Budget, forecast, and anomalous-cost events.
+
+## Alert routing
+
+Action-group recipients are sourced from
+`observability.alerting.actionGroupEmails`. Empty recipients must be resolved
+before production. Alerts must identify severity, affected layer and
+subscription, runbook, owning team, correlation identifier, and escalation
+path.
+
+## Drift detection
+
+| Setting | Value |
+|---|---|
+| Enabled | {{FACTORY-BOOL:observability.driftDetection.enabled}} |
+| Schedule | `{{FACTORY-RAW:observability.driftDetection.schedule}}` |
+| Fail on drift | {{FACTORY-BOOL:observability.driftDetection.failOnDrift}} |
+| Open issue | {{FACTORY-BOOL:observability.driftDetection.openIssueOnDrift}} |
+
+Drift jobs are read-only. A finding opens a tracked remediation path; it must
+never silently apply or import resources.
+
+## SLO guidance
+
+Measure workflow availability, apply success rate, mean time to detect drift,
+mean time to restore state, policy-compliance percentage, diagnostic coverage,
+backup success, and alert delivery. Set workload-specific objectives outside
+this platform baseline.
+
+## Validation
+
+After bootstrap and each material change:
+
+1. generate a test platform-health alert;
+2. verify Activity Log ingestion and retention;
+3. verify Entra sign-in diagnostics;
+4. confirm each active layer appears in workflow telemetry;
+5. run drift detection against a clean deployment;
+6. validate alert ownership and escalation.
+
