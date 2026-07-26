@@ -1,0 +1,62 @@
+# Factory Upgrade Guide — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Current factory v{{FACTORY-RAW:computed.factoryVersion}},
+schema {{FACTORY-RAW:computed.schemaVersion}}, rendered
+{{FACTORY-RAW:computed.generatedAt}}.
+
+## Principle
+
+Generated files are replaced by the renderer. Do not hand-edit them. Place
+organization-specific additions in documented extension points or upstream the
+change to the factory.
+
+## Upgrade prerequisites
+
+- Clean default branch and no unreviewed generated-file drift.
+- Backup of every active Terraform state.
+- Current `lz-config.json` validated against the target schema.
+- Release notes and compatibility contract reviewed.
+- Representative render and plan completed before production.
+- Rollback owner and maintenance window assigned.
+
+## Procedure
+
+1. Record current factory version, schema, rendered manifest, and state
+   versions.
+2. Create an upgrade branch from `{{FACTORY-RAW:computed.defaultBranch}}`.
+3. Migrate `lz-config.json` one supported version at a time.
+4. Render to an empty directory.
+5. Compare `render-manifest.json` and the full generated tree.
+6. Run format, validation, security, policy, and renderer tests.
+7. Plan every active layer independently in dependency order.
+8. Review destructive or replacement actions explicitly.
+9. Merge through normal protection and apply behind environment gates.
+10. Verify platform health, drift, policy compliance, and state versions.
+
+## Compatibility
+
+Only declared N-1 upgrades are supported. Skipping versions is prohibited unless
+the release explicitly declares a tested path. Schema changes and backend
+migrations require separate reviewable steps.
+
+## Rollback
+
+Before any apply, rollback is a branch revert and re-render. After apply,
+rollback depends on the provider operation: revert configuration when safe,
+restore state only for state corruption, and restore data/services through their
+own recovery procedures. Never assume a Git revert reverses an Azure mutation.
+
+## Generated-file drift
+
+If a generated file differs from a clean render:
+
+1. classify the change as intentional extension or unmanaged drift;
+2. move intentional behavior into the factory/config contract;
+3. remove unmanaged edits by re-rendering;
+4. rerun all checks.
+
+## Post-upgrade evidence
+
+Retain the config migration, manifest diff, test results, layer plans, approvals,
+apply runs, state versions, and operational verification.
+
