@@ -1,4 +1,4 @@
-# Stage 9–11 User Checklist
+# Stage 9–12 User Checklist
 
 The Stage 9 broker is implemented and merged as code only. No live Azure,
 Entra, GitHub administration, or HCP Terraform mutation was executed while
@@ -9,6 +9,9 @@ repository was created, overwritten, committed, or pushed while building it.
 
 The Stage 11 brownfield generator was implemented without running discovery,
 Terraform, import commands, plans, or state operations.
+
+The Stage 12 Factory CI workflow and runner were implemented without executing
+the local validation corpus in this environment.
 
 ## Required variables and authentication
 
@@ -148,3 +151,36 @@ Terraform, import commands, plans, or state operations.
   repository's `approved-destroy` control and the recorded owner approval.
 - [ ] Execute generated import commands only in an authenticated,
   change-controlled operator session; the factory never executes them.
+
+## Stage 12 Factory CI variables
+
+- [ ] Review repository variable `LZ_FACTORY_CI_OUTPUT`; the default evidence
+  directory is `factory-ci-output`.
+- [ ] Review `LZ_FACTORY_CI_FAIL_FAST`; default `false` records all failures
+  before returning a failing status.
+- [ ] Keep `LZ_FACTORY_CI_SKIP_TERRAFORM=false` and
+  `LZ_FACTORY_CI_SKIP_STATIC=false` on protected branches. Temporary skips
+  require a documented owner-approved exception.
+- [ ] Review `LZ_FACTORY_CI_TERRAFORM_ROOTS`; default is
+  `factory/templates/terraform`. Multiple roots are comma-separated.
+- [ ] Review pinned `LZ_PSSCRIPTANALYZER_VERSION`; default is `1.24.0`.
+
+## Stage 12 enable and verify
+
+- [ ] Ensure GitHub Actions is enabled and allowed to use the SHA-pinned actions
+  in `.github/workflows/factory-ci.yml`.
+- [ ] Add the exact `Factory CI / Factory CI` context to required `main` status
+  checks after its first successful run, retaining `qlty check`.
+- [ ] Confirm the workflow has only `contents: read` permission and receives no
+  Azure, GitHub administration, HCP, backend, or customer credentials.
+- [ ] Review the uploaded `factory-ci-<run-id>` artifact and
+  `factory-ci-report.json`; preserve it as release evidence.
+- [ ] Confirm Wizard, Discovery, Renderer, Bootstrap, Scaffold, Import, and CI
+  suites are represented in the report.
+- [ ] Confirm schema-variable drift, site no-network, action pinning,
+  ShellCheck, PSScriptAnalyzer, Terraform format, init-without-backend, and
+  validate checks are represented.
+- [ ] Resolve every failed check. Do not mark release gates true from an
+  incomplete/skipped run.
+- [ ] Read back branch protection/rulesets through the GitHub API and prove a
+  pull request cannot merge when `Factory CI / Factory CI` fails.
