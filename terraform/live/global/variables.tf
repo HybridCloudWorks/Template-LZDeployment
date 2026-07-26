@@ -1,7 +1,7 @@
 variable "org_prefix" {
   description = "Organization prefix for naming (2-4 lowercase letters)"
   type        = string
-  
+
   validation {
     condition     = can(regex("^[a-z]{2,4}$", var.org_prefix))
     error_message = "Organization prefix must be 2-4 lowercase letters."
