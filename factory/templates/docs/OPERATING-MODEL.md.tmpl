@@ -1,0 +1,82 @@
+# Operating Model — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Rendered by Landing Zone Factory
+v{{FACTORY-RAW:computed.factoryVersion}} on {{FACTORY-RAW:computed.generatedAt}}.
+
+## Purpose
+
+This document defines ownership, decision rights, service boundaries, and the
+minimum operational cadence for the {{FACTORY-RAW:organization.businessUnit}}
+landing zone. The selected model is
+**{{FACTORY-RAW:operations.operatingModel}}**.
+
+## Accountabilities
+
+| Capability | Accountable owner | Responsibilities |
+|---|---|---|
+| Platform engineering | {{FACTORY-RAW:operations.platformTeam.name}} | Landing-zone code, shared services, upgrades, platform incidents |
+| Application teams | Workload owners | Workload resources, application SLOs, remediation within delegated scopes |
+| Security | Security operations | Policy exceptions, threat response, privileged-access review |
+| Finance | {{FACTORY-RAW:finops.businessOwner.name}} | Budget ownership, allocation disputes, optimization decisions |
+| Change approval | Configured approval chain | Production/environment approvals and emergency change review |
+
+## Repository decision rights
+
+- `{{FACTORY-RAW:computed.defaultBranch}}` is the authoritative desired state.
+- Pull requests are the only normal change path.
+- Required approvals: {{FACTORY-NUM:github.branchProtection.requiredApprovals}}.
+- Code-owner review required:
+  {{FACTORY-BOOL:github.branchProtection.requireCodeOwnerReview}}.
+- Stale approvals dismissed:
+  {{FACTORY-BOOL:github.branchProtection.dismissStaleReviews}}.
+- Administrators enforced:
+  {{FACTORY-BOOL:github.branchProtection.enforceAdmins}}.
+- Apply jobs bind to protected GitHub environments and use a distinct write
+  identity. Pull requests use read-only plan identities.
+
+## Service boundaries
+
+The platform team owns these generated layers:
+
+#{{FOREACH layer IN computed.layers}}
+- `terraform/live/{{FACTORY-RAW:layer}}`
+#{{ENDFOREACH}}
+
+Each layer has isolated state and is planned/applied independently. Application
+teams must not bypass module interfaces or edit state directly.
+
+## Operating cadence
+
+| Frequency | Activity | Evidence |
+|---|---|---|
+| Every pull request | Format, validate, policy, security, and plan checks | GitHub check run |
+| Every approved apply | Layer-by-layer apply and post-apply verification | Workflow run and state version |
+| Weekly | Drift detection (`{{FACTORY-RAW:observability.driftDetection.schedule}}`) | Drift issue or clean run |
+| Monthly | Cost, privileged access, policy compliance, backup health | Review record |
+| Quarterly | Restore exercise, break-glass test, architecture review | Exercise report |
+| Annually | Threat model and disaster-recovery plan review | Signed review |
+
+## Incident and escalation model
+
+1. Stabilize the affected layer; do not make concurrent state changes.
+2. Preserve workflow, activity-log, and Terraform evidence.
+3. Notify {{FACTORY-RAW:operations.platformTeam.name}} and the accountable
+   workload/security owner.
+4. Use break-glass access only when normal federated access cannot restore
+   service.
+5. Reconcile emergency changes back through a pull request before closure.
+
+Contacts and approval chains are sourced from `lz-config.json`. Empty contact
+lists are an onboarding blocker that operators must resolve before production.
+
+## Related documents
+
+- [Governance](governance.md)
+- [Threat model](threat-model.md)
+- [Observability](observability.md)
+- [FinOps](finops.md)
+- [State management](state-management.md)
+- [Disaster recovery](disaster-recovery.md)
+- [Upgrade guide](upgrade-guide.md)
+- [Phase model](phase-model.md)
+
