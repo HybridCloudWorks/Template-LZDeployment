@@ -1,0 +1,69 @@
+# Terraform State Management — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
+rendered {{FACTORY-RAW:computed.generatedAt}}.
+
+## Backend
+
+Backend type: **{{FACTORY-RAW:backend.type}}**.
+
+#{{IF computed.backendIsHcp}}
+| Setting | Value |
+|---|---|
+| HCP organization | {{FACTORY-RAW:backend.hcpTerraform.organization}} |
+| Workspace prefix | `{{FACTORY-RAW:backend.hcpTerraform.workspacePrefix}}` |
+| Execution mode | {{FACTORY-RAW:backend.hcpTerraform.executionMode}} |
+| Dynamic Azure credentials | {{FACTORY-BOOL:backend.hcpTerraform.useDynamicProviderCredentials}} |
+
+Each active layer maps to an isolated HCP Terraform workspace.
+#{{ELSE}}
+State uses Azure Storage with Entra authentication. Shared keys and embedded
+backend credentials are prohibited.
+#{{ENDIF}}
+
+## Isolation model
+
+#{{FOREACH layer IN computed.layers}}
+- `{{FACTORY-RAW:layer}}`: independent state and lock domain
+#{{ENDFOREACH}}
+
+Layers are never merged. Cross-layer dependencies use declared outputs and
+read-only remote-state contracts.
+
+## Access rules
+
+- Plan identities may read state but cannot change Azure resources.
+- Apply identities receive only the scope required for their layer.
+- Human backend access is exceptional, MFA-protected, logged, and time-bound.
+- Secrets must never be passed as Terraform outputs or committed variables.
+- Direct state editing is prohibited outside an approved recovery procedure.
+
+## Change procedure
+
+1. Confirm no concurrent run holds the state lock.
+2. Review the plan for the specific layer.
+3. Obtain the protected-environment approval.
+4. Apply once; do not retry blindly after partial failure.
+5. Verify state version, outputs, and Azure control-plane result.
+6. Preserve the run URL and resulting state version.
+
+## Recovery
+
+For state failure or accidental mutation:
+
+1. freeze applies for the affected layer;
+2. preserve the current state and logs;
+3. identify the last known-good state version;
+4. compare Azure reality, desired configuration, and state;
+5. restore or import only through an approved recovery plan;
+6. run a refresh-only plan, then a normal plan;
+7. document cause and prevention.
+
+Never delete a lock or roll back state while an apply may still be running.
+
+## Migration and upgrades
+
+Backend migration requires a dedicated pull request, verified backups, a
+maintenance window, one layer at a time, and a tested rollback. See
+[upgrade-guide.md](upgrade-guide.md).
+
