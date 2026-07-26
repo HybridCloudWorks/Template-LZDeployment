@@ -41,8 +41,8 @@ output "private_endpoint_ip" {
 output "estimated_monthly_cost_usd" {
   description = "Estimated monthly cost in USD"
   value = {
-    storage       = length(var.nsg_ids) * var.flow_log_retention_days * 0.15
+    storage           = length(var.nsg_ids) * var.flow_log_retention_days * 0.15
     traffic_analytics = var.enable_traffic_analytics ? 100 : 0
-    total         = length(var.nsg_ids) * var.flow_log_retention_days * 0.15 + (var.enable_traffic_analytics ? 100 : 0)
+    total             = length(var.nsg_ids) * var.flow_log_retention_days * 0.15 + (var.enable_traffic_analytics ? 100 : 0)
   }
 }
