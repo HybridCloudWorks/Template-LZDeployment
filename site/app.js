@@ -24,7 +24,7 @@ const SCHEMA_VERSION = '2.0.0';
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
  * so the value is mirrored here and a factory CI check asserts the two match. */
-const FACTORY_VERSION = '0.6.0';
+const FACTORY_VERSION = '0.7.0';
 
 const DRAFT_KEY = 'alz-factory-draft-v1';
 
@@ -1808,7 +1808,7 @@ function nextStepsMarkdown(cfg) {
     '',
     '## Before you trust this in production',
     '',
-    'As of factory v0.6.0 the release gates in `factory-version.json` are not all met — in particular the',
+    'As of factory v0.7.0 the release gates in `factory-version.json` are not all met — in particular the',
     'pipeline has no recorded successful end-to-end run. Treat the first deployment as a verification',
     'exercise, not a production cutover.',
     ''
