@@ -192,6 +192,8 @@ held in memory only. Graph tokens are acquired per-session and never persisted.
 
 ## Status
 
-Factory stage 4 of 13. The Stage 9 bootstrap broker consumes
-`discovery-inventory.json`; this engine is also useful
-standalone as a pre-flight assessment.
+Factory stage 4 of 13. The Stage 9 bootstrap broker and Stage 11 brownfield
+generator consume `discovery-inventory.json`; the latter requires every
+supported Azure probe to be conclusive and pins classifications to the
+inventory SHA-256. This engine is also useful standalone as a pre-flight
+assessment.
