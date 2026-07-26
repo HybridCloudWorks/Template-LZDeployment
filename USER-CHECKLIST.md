@@ -1,4 +1,4 @@
-# Stage 9–10 User Checklist
+# Stage 9–11 User Checklist
 
 The Stage 9 broker is implemented and merged as code only. No live Azure,
 Entra, GitHub administration, or HCP Terraform mutation was executed while
@@ -6,6 +6,9 @@ building it.
 
 The Stage 10 scaffold builder is also implemented as code only. No customer
 repository was created, overwritten, committed, or pushed while building it.
+
+The Stage 11 brownfield generator was implemented without running discovery,
+Terraform, import commands, plans, or state operations.
 
 ## Required variables and authentication
 
@@ -102,3 +105,46 @@ repository was created, overwritten, committed, or pushed while building it.
   scaffold PR using the repository's protected-branch requirements.
 - [ ] Open and approve the generated repository's first pull request checks
   before any landing-zone apply.
+
+## Stage 11 brownfield variables
+
+- [ ] Confirm `deploymentStrategy.mode` is `brownfield`.
+- [ ] Export `LZ_DISCOVERY_PATH` with a fresh, conclusive, read-only
+  `discovery-inventory.json`.
+- [ ] Export `LZ_BROWNFIELD_CLASSIFICATIONS` with the operator-reviewed
+  classification file.
+- [ ] Export `LZ_RENDERED_PATH` with the renderer output that Stage 11 may
+  augment and Stage 10 will subsequently scaffold.
+- [ ] Export `LZ_IMPORT_EVIDENCE` to a protected evidence directory.
+- [ ] Use `LZ_IMPORT_ALLOW_STALE=true` only with a documented owner-approved
+  exception; the inventory SHA-256 pin is enforced by default.
+
+## Stage 11 classify and generate
+
+- [ ] Run `pwsh ./brownfield-import.ps1` without `-Apply`; it is plan-only and
+  emits `brownfield-classifications.generated.json`,
+  `brownfield-import-plan.json`, and `brownfield-import-audit.json`.
+- [ ] Classify every resource as Adopt, Ignore, Replace, or Require-Approval.
+  Missing entries inherit the configured default, which should remain Ignore.
+- [ ] For every Adopt entry, provide and independently review the exact
+  Terraform resource address and active layer. The generator never guesses an
+  address.
+- [ ] For every Replace or Require-Approval entry, provide an accountable
+  `approvalReference`. Neither classification emits an import or deletion.
+- [ ] Confirm all supported Azure probes are conclusive; Forbidden,
+  Unavailable, and Error results must not be treated as empty.
+- [ ] Review `brownfield-import-plan.json` and confirm
+  `executesTerraformImport=false`.
+- [ ] Set `LZ_IMPORT_APPLY=true`, then run `./brownfield-import.sh` or
+  `pwsh ./brownfield-import.ps1 -Apply`. Apply only writes review artifacts and
+  updates `render-manifest.json`; it does not touch Terraform state.
+- [ ] Preserve the classification, plan, audit, discovery inventory, and
+  updated renderer manifest as change evidence.
+- [ ] Review every generated `imports.generated.tf` and
+  `scripts/import-*.generated.sh` line against the approved resource ID,
+  address, layer, and current state backup.
+- [ ] Run a speculative plan and require zero unintended destroy/replace
+  actions before approving adoption. Any destructive exception requires the
+  repository's `approved-destroy` control and the recorded owner approval.
+- [ ] Execute generated import commands only in an authenticated,
+  change-controlled operator session; the factory never executes them.
