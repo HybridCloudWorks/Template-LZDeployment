@@ -310,3 +310,9 @@ consumes `render-manifest.json`, verifies the output tree exactly, emits
 SHA-256 plan/audit evidence, and refuses filesystem or GitHub mutation unless
 apply is explicit. The generated checklist includes target approval, force,
 authentication, backup retention, and remote read-back activities.
+
+Stage 11 runs after rendering and before scaffolding for brownfield
+configurations. It generates only explicitly adopted import blocks/review
+commands, registers them in `render-manifest.json`, and removes obsolete
+Stage 11 artifacts on rerun. Stage 10 therefore continues to verify the exact
+managed inventory.
