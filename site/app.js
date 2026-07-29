@@ -1844,7 +1844,12 @@ function loadDraft() {
 /** Merge a loaded config over the defaults so a config from an older factory
  *  version does not lose keys added since. */
 function mergeDefaults(target, source) {
+  const blockedKeys = new Set(['__proto__', 'prototype', 'constructor']);
+
   for (const [k, v] of Object.entries(source || {})) {
+    // Never copy prototype-related keys from untrusted persisted/imported data.
+    if (blockedKeys.has(k)) continue;
+
     if (v && typeof v === 'object' && !Array.isArray(v) && target[k] && typeof target[k] === 'object' && !Array.isArray(target[k])) {
       mergeDefaults(target[k], v);
     } else if (v !== undefined) {
