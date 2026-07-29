@@ -7,4 +7,3 @@ name: HCW-Plan_LZDeployment
 paths-ignore:
   - .claude/**
   - docs/**
-  - site/**
