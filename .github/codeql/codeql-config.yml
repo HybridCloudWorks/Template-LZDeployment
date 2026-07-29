@@ -1,0 +1,10 @@
+# CodeQL configuration
+#
+# The repository contains a Go example under .claude/skills, but it is not a
+# Go module and is not shipped or built by this project. Exclude the Claude
+# skill corpus so CodeQL does not select Go and fail during autobuild.
+name: HCW-Plan_LZDeployment
+paths-ignore:
+  - .claude/**
+  - docs/**
+  - site/**
