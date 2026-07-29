@@ -1850,7 +1850,7 @@ function mergeDefaults(target, source) {
     // Never copy prototype-related keys from untrusted persisted/imported data.
     if (blockedKeys.has(k)) continue;
 
-    if (v && typeof v === 'object' && !Array.isArray(v) && target[k] && typeof target[k] === 'object' && !Array.isArray(target[k])) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && Object.prototype.hasOwnProperty.call(target, k) && target[k] && typeof target[k] === 'object' && !Array.isArray(target[k])) {
       mergeDefaults(target[k], v);
     } else if (v !== undefined) {
       target[k] = v;
