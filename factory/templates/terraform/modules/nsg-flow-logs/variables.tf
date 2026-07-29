@@ -61,7 +61,7 @@ variable "traffic_analytics_interval" {
   description = "Traffic Analytics processing interval in minutes (10 or 60)"
   type        = number
   default     = 60
-  
+
   validation {
     condition     = contains([10, 60], var.traffic_analytics_interval)
     error_message = "Traffic Analytics interval must be 10 or 60 minutes."
