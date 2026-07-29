@@ -29,7 +29,7 @@ resource "azurerm_policy_definition" "enforce_storage_tls_12" {
               exists = false
             },
             {
-              field    = "Microsoft.Storage/storageAccounts/minimumTlsVersion"
+              field     = "Microsoft.Storage/storageAccounts/minimumTlsVersion"
               notEquals = "TLS1_2"
             }
           ]
@@ -71,7 +71,7 @@ resource "azurerm_policy_definition" "enforce_appservice_tls_12" {
     if = {
       allOf = [
         {
-          field = "type"
+          field  = "type"
           equals = "Microsoft.Web/sites"
         },
         {
@@ -81,7 +81,7 @@ resource "azurerm_policy_definition" "enforce_appservice_tls_12" {
               exists = false
             },
             {
-              field    = "Microsoft.Web/sites/siteConfig.minTlsVersion"
+              field     = "Microsoft.Web/sites/siteConfig.minTlsVersion"
               notEquals = "1.2"
             }
           ]
@@ -123,12 +123,12 @@ resource "azurerm_policy_definition" "enforce_functionapp_tls_12" {
     if = {
       allOf = [
         {
-          field = "type"
+          field  = "type"
           equals = "Microsoft.Web/sites"
         },
         {
-          field  = "kind"
-          like   = "functionapp*"
+          field = "kind"
+          like  = "functionapp*"
         },
         {
           anyOf = [
@@ -137,7 +137,7 @@ resource "azurerm_policy_definition" "enforce_functionapp_tls_12" {
               exists = false
             },
             {
-              field    = "Microsoft.Web/sites/siteConfig.minTlsVersion"
+              field     = "Microsoft.Web/sites/siteConfig.minTlsVersion"
               notEquals = "1.2"
             }
           ]
@@ -189,8 +189,8 @@ resource "azurerm_policy_definition" "enforce_mysql_tls_12" {
               exists = false
             },
             {
-              field      = "Microsoft.DBforMySQL/servers/minimalTlsVersion"
-              notEquals  = "TLS1_2"
+              field     = "Microsoft.DBforMySQL/servers/minimalTlsVersion"
+              notEquals = "TLS1_2"
             }
           ]
         }
@@ -241,8 +241,8 @@ resource "azurerm_policy_definition" "enforce_postgresql_tls_12" {
               exists = false
             },
             {
-              field      = "Microsoft.DBforPostgreSQL/servers/minimalTlsVersion"
-              notEquals  = "TLS1_2"
+              field     = "Microsoft.DBforPostgreSQL/servers/minimalTlsVersion"
+              notEquals = "TLS1_2"
             }
           ]
         }
@@ -351,10 +351,10 @@ output "tls_policy_assignment_id" {
 output "policy_definitions" {
   description = "Map of all TLS 1.2 policy definitions"
   value = {
-    storage_tls_12    = azurerm_policy_definition.enforce_storage_tls_12.id
-    appservice_tls_12 = azurerm_policy_definition.enforce_appservice_tls_12.id
+    storage_tls_12     = azurerm_policy_definition.enforce_storage_tls_12.id
+    appservice_tls_12  = azurerm_policy_definition.enforce_appservice_tls_12.id
     functionapp_tls_12 = azurerm_policy_definition.enforce_functionapp_tls_12.id
-    mysql_tls_12      = azurerm_policy_definition.enforce_mysql_tls_12.id
-    postgresql_tls_12 = azurerm_policy_definition.enforce_postgresql_tls_12.id
+    mysql_tls_12       = azurerm_policy_definition.enforce_mysql_tls_12.id
+    postgresql_tls_12  = azurerm_policy_definition.enforce_postgresql_tls_12.id
   }
 }
