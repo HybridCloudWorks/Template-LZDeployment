@@ -311,7 +311,7 @@ foreach ($name in $expectedDocs) {
         ok "$name has no unresolved factory tokens" ($docText[$name] -notmatch '\{\{FACTORY')
         ok "$name identifies generated provenance" (
             $docText[$name] -match 'GENERATED FILE' -and
-            $docText[$name] -match '0\.7\.0'
+            $docText[$name] -match [regex]::Escape($fv.factoryVersion)
         )
     }
 }
@@ -393,7 +393,7 @@ ok 'import shell is strict' ($importShell -match 'set -euo pipefail')
 ok 'classification schema pins discovery inventory' ($importSchema -match 'inventorySha256')
 ok 'inconclusive discovery fails closed' ($importModule -match 'Inaccessible inventory cannot be classified as empty')
 ok 'import generator never executes Terraform' (
-    $importModule -match 'executesTerraformImport = \$false' -and
+    $importModule -match 'executesTerraformImport\s*=\s*\$false' -and
     $importModule -notmatch '& terraform'
 )
 ok 'factory checklist carries Stage 11 activities' (
