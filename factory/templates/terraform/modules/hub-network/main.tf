@@ -8,7 +8,7 @@ locals {
     palo     = { main = null, mgmt = "/28", trust = "/26", untrust = "/26" }
     fortinet = { main = null, mgmt = "/28", trust = "/26", untrust = "/26" }
   }
-  
+
   fw_config = local.fw_subnet_sizes[var.firewall_type]
 }
 
@@ -88,7 +88,7 @@ resource "azurerm_subnet" "dns_inbound" {
   resource_group_name  = azurerm_resource_group.hub.name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [cidrsubnet(var.hub_address_space, 4, 5)]
-  
+
   delegation {
     name = "Microsoft.Network.dnsResolvers"
     service_delegation {
@@ -105,7 +105,7 @@ resource "azurerm_subnet" "dns_outbound" {
   resource_group_name  = azurerm_resource_group.hub.name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [cidrsubnet(var.hub_address_space, 4, 6)]
-  
+
   delegation {
     name = "Microsoft.Network.dnsResolvers"
     service_delegation {
@@ -122,7 +122,7 @@ resource "azurerm_network_security_group" "fw_mgmt" {
   resource_group_name = azurerm_resource_group.hub.name
   location            = azurerm_resource_group.hub.location
   tags                = var.tags
-  
+
   security_rule {
     name                       = "Allow-HTTPS-Inbound"
     priority                   = 100
@@ -148,7 +148,7 @@ resource "azurerm_network_security_group" "gateway" {
   resource_group_name = azurerm_resource_group.hub.name
   location            = azurerm_resource_group.hub.location
   tags                = var.tags
-  
+
   security_rule {
     name                       = "Allow-GatewayManager"
     priority                   = 100
@@ -189,7 +189,7 @@ resource "azurerm_firewall" "hub" {
   sku_tier            = var.azfw_tier
   zones               = var.availability_zones
   tags                = var.tags
-  
+
   ip_configuration {
     name                 = "ipconfig1"
     subnet_id            = azurerm_subnet.azfw[0].id
@@ -211,7 +211,7 @@ resource "azurerm_route_table" "to_firewall" {
   resource_group_name = azurerm_resource_group.hub.name
   location            = azurerm_resource_group.hub.location
   tags                = var.tags
-  
+
   route {
     name                   = "default-via-firewall"
     address_prefix         = "0.0.0.0/0"
@@ -236,19 +236,19 @@ resource "azurerm_monitor_diagnostic_setting" "azfw" {
   name                       = "diag-azfw"
   target_resource_id         = azurerm_firewall.hub[0].id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.hub.id
-  
+
   enabled_log {
     category = "AzureFirewallApplicationRule"
   }
-  
+
   enabled_log {
     category = "AzureFirewallNetworkRule"
   }
-  
+
   enabled_log {
     category = "AzureFirewallDnsProxy"
   }
-  
+
   enabled_metric {
     category = "AllMetrics"
   }

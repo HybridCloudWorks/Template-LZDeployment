@@ -161,11 +161,11 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "threat_intel_alert" {
   location            = azurerm_resource_group.hub.location
   description         = "Alert when Azure Firewall blocks threats via Threat Intelligence"
   enabled             = true
-  
+
   evaluation_frequency = "PT5M"
   window_duration      = "PT5M"
   scopes               = [var.log_analytics_workspace_id]
-  severity             = 2  # Warning
+  severity             = 2 # Warning
 
   criteria {
     query                   = <<-QUERY

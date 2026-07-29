@@ -3,14 +3,14 @@
 output "defender_plans_enabled" {
   description = "List of enabled Defender plans"
   value = {
-    servers         = var.enable_defender_for_servers
-    app_services    = var.enable_defender_for_app_services
-    storage         = var.enable_defender_for_storage
-    sql             = var.enable_defender_for_sql
-    containers      = var.enable_defender_for_containers
-    key_vault       = var.enable_defender_for_key_vault
+    servers          = var.enable_defender_for_servers
+    app_services     = var.enable_defender_for_app_services
+    storage          = var.enable_defender_for_storage
+    sql              = var.enable_defender_for_sql
+    containers       = var.enable_defender_for_containers
+    key_vault        = var.enable_defender_for_key_vault
     resource_manager = var.enable_defender_for_resource_manager
-    dns             = var.enable_defender_for_dns
+    dns              = var.enable_defender_for_dns
   }
 }
 
@@ -32,20 +32,20 @@ output "subscriptions_protected" {
 output "estimated_monthly_cost" {
   description = "Estimated monthly cost for enabled Defender plans (USD)"
   value = sum([
-    var.enable_defender_for_servers ? 15 * length(var.subscriptions) : 0,  # $15/server/month (estimated)
-    var.enable_defender_for_app_services ? 15 * length(var.subscriptions) : 0,  # $15/app/month
-    var.enable_defender_for_storage ? 10 * length(var.subscriptions) : 0,  # $10/storage account/month
-    var.enable_defender_for_sql ? 15 * length(var.subscriptions) : 0,  # $15/SQL server/month
-    var.enable_defender_for_containers ? 7 * length(var.subscriptions) : 0,  # $7/vCore/month for AKS
-    var.enable_defender_for_key_vault ? 0.02 * length(var.subscriptions) : 0,  # $0.02/10k operations
-    var.enable_defender_for_resource_manager ? 0.10 * length(var.subscriptions) : 0,  # $0.10/10k operations
-    var.enable_defender_for_dns ? 0.70 * length(var.subscriptions) : 0,  # $0.70/million queries
+    var.enable_defender_for_servers ? 15 * length(var.subscriptions) : 0,            # $15/server/month (estimated)
+    var.enable_defender_for_app_services ? 15 * length(var.subscriptions) : 0,       # $15/app/month
+    var.enable_defender_for_storage ? 10 * length(var.subscriptions) : 0,            # $10/storage account/month
+    var.enable_defender_for_sql ? 15 * length(var.subscriptions) : 0,                # $15/SQL server/month
+    var.enable_defender_for_containers ? 7 * length(var.subscriptions) : 0,          # $7/vCore/month for AKS
+    var.enable_defender_for_key_vault ? 0.02 * length(var.subscriptions) : 0,        # $0.02/10k operations
+    var.enable_defender_for_resource_manager ? 0.10 * length(var.subscriptions) : 0, # $0.10/10k operations
+    var.enable_defender_for_dns ? 0.70 * length(var.subscriptions) : 0,              # $0.70/million queries
   ])
 }
 
 output "next_steps" {
   description = "Post-deployment actions"
-  value = <<-EOT
+  value       = <<-EOT
     ✅ Microsoft Defender for Cloud enabled successfully!
     
     Next Steps:

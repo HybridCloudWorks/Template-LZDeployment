@@ -22,7 +22,7 @@ variable "hub_address_space" {
 variable "firewall_type" {
   description = "Firewall type: azfw, palo, or fortinet"
   type        = string
-  
+
   validation {
     condition     = contains(["azfw", "palo", "fortinet"], var.firewall_type)
     error_message = "Firewall type must be one of: azfw, palo, fortinet."
@@ -33,7 +33,7 @@ variable "azfw_tier" {
   description = "Azure Firewall tier (Standard or Premium)"
   type        = string
   default     = "Standard"
-  
+
   validation {
     condition     = contains(["Standard", "Premium"], var.azfw_tier)
     error_message = "Azure Firewall tier must be Standard or Premium."
@@ -87,7 +87,7 @@ variable "firewall_threat_intel_mode" {
   description = "Threat Intelligence mode: Off, Alert, or Deny"
   type        = string
   default     = "Alert"
-  
+
   validation {
     condition     = contains(["Off", "Alert", "Deny"], var.firewall_threat_intel_mode)
     error_message = "Threat Intelligence mode must be: Off, Alert, or Deny."
@@ -116,7 +116,7 @@ variable "firewall_idps_mode" {
   description = "IDPS mode for Premium SKU: Off, Alert, or Deny"
   type        = string
   default     = "Alert"
-  
+
   validation {
     condition     = contains(["Off", "Alert", "Deny"], var.firewall_idps_mode)
     error_message = "IDPS mode must be: Off, Alert, or Deny."
@@ -127,7 +127,7 @@ variable "firewall_idps_signature_overrides" {
   description = "IDPS signature overrides for custom threat handling"
   type = list(object({
     id    = string
-    state = string  # Alert, Deny, or Off
+    state = string # Alert, Deny, or Off
   }))
   default = []
 }
