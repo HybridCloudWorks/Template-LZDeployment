@@ -26,7 +26,7 @@ ok 'inconclusive inventory fails closed' ($module -match 'Inaccessible inventory
 ok 'default adopt cannot silently import' ($module -match 'Default Adopt is not sufficient')
 ok 'replace generates no mutation' ($module -match 'no mutation was generated')
 ok 'terraform import is never executed' (
-    $module -match 'executesTerraformImport = \\$false' -and
+    $module -match 'executesTerraformImport\s*=\s*\$false' -and
     $module -notmatch '& terraform|Invoke-LzImportCommand'
 )
 ok 'classification schema pins inventory hash' ($schema -match 'inventorySha256')
