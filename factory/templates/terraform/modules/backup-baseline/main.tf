@@ -14,9 +14,9 @@ resource "azurerm_recovery_services_vault" "main" {
   resource_group_name = azurerm_resource_group.backup.name
   location            = azurerm_resource_group.backup.location
   sku                 = "Standard"
-  
+
   storage_mode_type = var.storage_redundancy
-  
+
   tags = var.tags
 }
 
@@ -27,7 +27,7 @@ resource "azurerm_data_protection_backup_vault" "main" {
   location            = azurerm_resource_group.backup.location
   datastore_type      = "VaultStore"
   redundancy          = var.backup_vault_redundancy
-  
+
   tags = var.tags
 }
 
@@ -38,7 +38,7 @@ resource "azurerm_log_analytics_workspace" "backup" {
   location            = azurerm_resource_group.backup.location
   sku                 = "PerGB2018"
   retention_in_days   = 30
-  
+
   tags = var.tags
 }
 
@@ -47,31 +47,31 @@ resource "azurerm_monitor_diagnostic_setting" "rsv" {
   name                       = "diag-rsv"
   target_resource_id         = azurerm_recovery_services_vault.main.id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.backup.id
-  
+
   enabled_log {
     category = "AzureBackupReport"
   }
-  
+
   enabled_log {
     category = "CoreAzureBackup"
   }
-  
+
   enabled_log {
     category = "AddonAzureBackupJobs"
   }
-  
+
   enabled_log {
     category = "AddonAzureBackupAlerts"
   }
-  
+
   enabled_log {
     category = "AddonAzureBackupPolicy"
   }
-  
+
   enabled_log {
     category = "AddonAzureBackupStorage"
   }
-  
+
   enabled_metric {
     category = "Health"
   }
