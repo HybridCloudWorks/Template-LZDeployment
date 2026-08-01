@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Azure Landing Zone Cost Optimization Runbook
 .DESCRIPTION
@@ -18,7 +18,6 @@ $ErrorActionPreference = "Continue"
 # Get variables
 $subscriptionId = Get-AutomationVariable -Name "SubscriptionId" -ErrorAction Stop
 $resourceGroupName = Get-AutomationVariable -Name "ResourceGroupName" -ErrorAction Stop
-$orgPrefix = Get-AutomationVariable -Name "OrgPrefix" -ErrorAction Stop
 
 # Authenticate
 Connect-AzAccount -Identity -Subscription $subscriptionId | Out-Null
@@ -66,7 +65,7 @@ try {
     foreach ($vm in $vms) {
         $powerState = ($vm.Statuses | Where-Object { $_.Code -like "PowerState/*" }).Code
         if ($powerState -eq "PowerState/deallocated") {
-            $vmSize = (Get-AzVMSize -Location $vm.Location | Where-Object { $_.Name -eq $vm.HardwareProfile.VmSize }).NumberOfCores * 50
+            $vmSize = (Get-AzVMSize -ResourceGroupName $resourceGroupName -VMName $vm.Name | Where-Object { $_.Name -eq $vm.HardwareProfile.VmSize }).NumberOfCores * 50
             $recommendations += @{
                 Type        = "Deallocated VM"
                 Resource    = $vm.Name
@@ -90,9 +89,8 @@ Write-Output "🔍 Scanning for oversized resources..."
 try {
     $vms = Get-AzVM -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     foreach ($vm in $vms) {
-        # Check CPU utilization (simplified - would need Monitor data in real scenario)
-        $cpuThreshold = 20  # % utilization
-
+        # Check CPU utilization (simplified - would need Monitor data in real
+        # scenario; intended rightsizing threshold is ~20% CPU utilization).
         # In production, query Application Insights or Monitor for actual metrics
         # For now, flag for review
         $recommendations += @{

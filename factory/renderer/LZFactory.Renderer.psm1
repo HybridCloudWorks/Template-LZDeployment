@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 <#
     LZFactory.Renderer — template rendering engine for the Azure Landing Zone
     Factory.

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Azure Landing Zone Compliance Remediation Runbook
 .DESCRIPTION
@@ -21,8 +21,6 @@ $ErrorActionPreference = "Continue"
 
 # Get variables
 $subscriptionId = Get-AutomationVariable -Name "SubscriptionId" -ErrorAction Stop
-$resourceGroupName = Get-AutomationVariable -Name "ResourceGroupName" -ErrorAction Stop
-$orgPrefix = Get-AutomationVariable -Name "OrgPrefix" -ErrorAction Stop
 
 # Authenticate
 Connect-AzAccount -Identity -Subscription $subscriptionId | Out-Null
@@ -108,11 +106,8 @@ policyresources
                     $tags = $resource.Tags
                     if (-not $tags) { $tags = @{} }
 
-                    $defaultTags = @{
-                        "environment"     = "production"
-                        "managed-by"      = "alz-automation"
-                        "cost-center"     = "alz"
-                    }
+                    # Single source of truth: the remediable-violations table above.
+                    $defaultTags = $remediableViolations["tagging-required"].defaultTags
 
                     $updated = $false
                     foreach ($tagKey in $defaultTags.Keys) {

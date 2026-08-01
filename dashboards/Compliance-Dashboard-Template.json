@@ -143,4 +143,18 @@
               "size": 2,
               "title": "Recent Policy Activity",
               "timeContext": {
-                "durationMs": 604800000\n              },\n              \"queryType\": 0,\n              \"resourceType\": \"microsoft.operationalinsights/workspaces\",\n              \"visualization\": \"table\"\n            },\n            \"name\": \"AuditLog\"\n          }\n        ]\n      },\n      \"name\": \"ComplianceDashboardGroup\"\n    }\n  ],\n  \"$schema\": \"https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json\"\n}
+                "durationMs": 604800000
+              },
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "table"
+            },
+            "name": "AuditLog"
+          }
+        ]
+      },
+      "name": "ComplianceDashboardGroup"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

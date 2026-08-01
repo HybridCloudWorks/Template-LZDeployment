@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Post-task capability usage report for this repository.
 
@@ -83,6 +83,9 @@ if ($stdin.Trim()) {
         if (-not $SessionId)      { $SessionId      = $hookInput.session_id }
     } catch {
         # Malformed payload: fall through to the parameter values, if any.
+        # Stop hooks must never emit unexpected output; Write-Debug is silent
+        # unless -Debug/$DebugPreference is set, so this never reaches stdout.
+        Write-Debug "agent-report: malformed hook payload on stdin ($($_.Exception.Message))"
     }
 }
 
