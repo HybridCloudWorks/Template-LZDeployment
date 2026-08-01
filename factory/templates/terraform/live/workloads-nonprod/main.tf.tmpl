@@ -16,6 +16,16 @@ provider "azurerm" {
 }
 
 #{{IF connectivity.model != 'none'}}
+# The hub side of each VNet peering must be created in the connectivity
+# subscription that owns the hub VNet, not in the workload subscription.
+provider "azurerm" {
+  alias           = "hub"
+  subscription_id = var.connectivity_subscription_id
+  features {}
+}
+#{{ENDIF}}
+
+#{{IF connectivity.model != 'none'}}
 data "terraform_remote_state" "connectivity" {
 #{{IF computed.backendIsHcp}}
   backend = "remote"
@@ -32,6 +42,9 @@ data "terraform_remote_state" "connectivity" {
     storage_account_name = var.state_storage_account_name
     container_name       = var.state_container_name
     key                  = "platform-connectivity.tfstate"
+    # The state storage account disables shared keys; without AAD auth this
+    # read fails with a 403 at init. Must match backend.tf's auth mode.
+    use_azuread_auth = {{FACTORY-BOOL:backend.azurerm.useAzureAdAuth}}
   }
 #{{ENDIF}}
 }
@@ -49,6 +62,19 @@ locals {
 #{{IF environments.application contains 'dev'}}
 module "spoke_dev_primary" {
   source                      = "../../modules/spoke-network"
+#{{IF connectivity.model != 'none'}}
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm.hub
+  }
+#{{ELSE}}
+  # No hub exists, so the module's azurerm.hub alias is satisfied with the
+  # spoke's own provider; no hub-side peering resources are created.
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm
+  }
+#{{ENDIF}}
   spoke_name                  = "dev-app"
   region                      = var.primary_region
   region_code                 = var.primary_region_code
@@ -71,6 +97,19 @@ module "spoke_dev_primary" {
 #{{IF computed.hasDrRegion}}
 module "spoke_dev_dr" {
   source                      = "../../modules/spoke-network"
+#{{IF connectivity.model != 'none'}}
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm.hub
+  }
+#{{ELSE}}
+  # No hub exists, so the module's azurerm.hub alias is satisfied with the
+  # spoke's own provider; no hub-side peering resources are created.
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm
+  }
+#{{ENDIF}}
   spoke_name                  = "dev-app"
   region                      = var.dr_region
   region_code                 = var.dr_region_code
@@ -96,6 +135,19 @@ module "spoke_dev_dr" {
 #{{IF environments.application contains 'test'}}
 module "spoke_test_primary" {
   source                      = "../../modules/spoke-network"
+#{{IF connectivity.model != 'none'}}
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm.hub
+  }
+#{{ELSE}}
+  # No hub exists, so the module's azurerm.hub alias is satisfied with the
+  # spoke's own provider; no hub-side peering resources are created.
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm
+  }
+#{{ENDIF}}
   spoke_name                  = "test-app"
   region                      = var.primary_region
   region_code                 = var.primary_region_code
@@ -118,6 +170,19 @@ module "spoke_test_primary" {
 #{{IF computed.hasDrRegion}}
 module "spoke_test_dr" {
   source                      = "../../modules/spoke-network"
+#{{IF connectivity.model != 'none'}}
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm.hub
+  }
+#{{ELSE}}
+  # No hub exists, so the module's azurerm.hub alias is satisfied with the
+  # spoke's own provider; no hub-side peering resources are created.
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm
+  }
+#{{ENDIF}}
   spoke_name                  = "test-app"
   region                      = var.dr_region
   region_code                 = var.dr_region_code
@@ -143,6 +208,19 @@ module "spoke_test_dr" {
 #{{IF environments.application contains 'uat'}}
 module "spoke_uat_primary" {
   source                      = "../../modules/spoke-network"
+#{{IF connectivity.model != 'none'}}
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm.hub
+  }
+#{{ELSE}}
+  # No hub exists, so the module's azurerm.hub alias is satisfied with the
+  # spoke's own provider; no hub-side peering resources are created.
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm
+  }
+#{{ENDIF}}
   spoke_name                  = "uat-app"
   region                      = var.primary_region
   region_code                 = var.primary_region_code
@@ -165,6 +243,19 @@ module "spoke_uat_primary" {
 #{{IF computed.hasDrRegion}}
 module "spoke_uat_dr" {
   source                      = "../../modules/spoke-network"
+#{{IF connectivity.model != 'none'}}
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm.hub
+  }
+#{{ELSE}}
+  # No hub exists, so the module's azurerm.hub alias is satisfied with the
+  # spoke's own provider; no hub-side peering resources are created.
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm
+  }
+#{{ENDIF}}
   spoke_name                  = "uat-app"
   region                      = var.dr_region
   region_code                 = var.dr_region_code

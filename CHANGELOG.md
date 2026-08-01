@@ -5,6 +5,112 @@
 
 ---
 
+## PROD-TODO implementation — production-motion tooling and corpus fixes (2026-08-01)
+
+Implements the in-repo portion of the [PROD-TODO.md](PROD-TODO.md) backlog.
+Live operator executions (federated credentials for **both** SPs, per-fork
+branch-protection enablement, Stage 13/14, pipeline-green verification) remain
+open and are annotated there.
+
+**Terraform / corpus** (199 renderer tests green, `terraform validate` on all
+touched stacks, schema drift InSync):
+
+- `factory/templates/terraform/modules/spoke-network/` brought to byte parity
+  with `terraform/modules/spoke-network/` — the template now carries
+  `configuration_aliases = [azurerm.hub]`, resolving the contract #5
+  divergence. Template callers
+  (`factory/templates/terraform/live/workloads-{prod,nonprod}/main.tf.tmpl`)
+  pass `providers` maps with a conditional `azurerm.hub` provider; new
+  optional `connectivity_subscription_id` variable, mapped in
+  `factory/renderer/variable-map.json`.
+- Corpus remote-state reads gained the `use_azuread_auth` token (contract #3).
+  Live vs corpus state-container layouts verified as deliberately different
+  and both internally consistent.
+- `terraform/live/sandbox/variables.tf` location regex fixed `^[a-z]+$` →
+  `^[a-z0-9]+$` (numbered regions such as `eastus2` were rejected).
+- New `scripts/New-BackendConfig.ps1`: plan-first (`-Apply`) generator of the
+  four per-layer `terraform/live/*/backend.hcl` files from backend-bootstrap
+  outputs (new `layer_state_containers` output), a wizard `backend.hcl`, or
+  `lz-config.json`; always enforces `use_azuread_auth = true`.
+
+**Wizard (`site/`)** (48 tests pass, no-network policy pass):
+
+- Generated NEXT-STEPS.md rewritten to the real interfaces (discovery →
+  broker plan/`-Apply` → render → scaffold plan/`-Apply`); the fictional
+  `-Phase`/`--rollback`/`-DryRun`/`-AutoPush` flags are gone.
+- New "Download all as bundle (.zip)": offline store-only zip of all 8
+  artifacts plus a SHA-256 `checksums.txt` manifest; individual downloads
+  kept.
+- Generated CONFIGURATION.md documents the operator loop-back
+  (`management_ip_ranges` → apply platform-management → paste
+  `log_analytics_workspace_id` → re-plan connectivity); contract #4
+  placeholders untouched.
+- Module status corrected: `defender-baseline` is "available, not
+  auto-deployed" — the prior claim that the renderer wires it in was false.
+
+**CI / fork tooling**:
+
+- New `scripts/Initialize-ClientFork.ps1`: plan-first fork/private-copy init —
+  Actions enablement, branch protection with required checks (`Factory CI`,
+  `Enforce Immutable Action Refs`, `TruffleHog Secret Scan`,
+  `Gitleaks Secret Detection`, `Terraform Security Scan`; `-RequiredChecks`
+  overrides), required approvals ≥ 1, secret-scanning read-back, full API
+  read-back verification; `-CreatePrivateCopy` mirrors to a private repo (see
+  [docs/decisions/0001-private-copy-over-public-fork.md](docs/decisions/0001-private-copy-over-public-fork.md)).
+- Corrected the check-name claim: GitHub records the Factory CI context as
+  `Factory CI` (job-level name), not `Factory CI / Factory CI`.
+- New `scripts/Add-PlanFederatedCredential.ps1`: plan-first AADSTS700213
+  remediation for the plan SP's `pull_request` subject, with a contract-#2
+  guard and API read-back. Not yet executed live. Run logs additionally prove
+  the Contributor SP's `ref:refs/heads/main` subject is missing live (run
+  30721161313) — the credential gap covers both SPs (PROD-TODO Phase 2).
+- 0-second workflow failures closed as investigated: root cause was a YAML
+  block-scalar bug fixed by PR #13 (commit `516cf44`, 2026-07-01); failures
+  since are the missing live OIDC credential (~10–40 s).
+- New `.github/workflows/deploy-pages.yml`: SHA-pinned GitHub Pages deploy of
+  `site/` (manual prerequisite: Pages source set to "GitHub Actions").
+
+**Legacy bootstrap** (`scripts/Start-LandingZoneBootstrap.ps1`; parse clean,
+PSScriptAnalyzer identical to baseline):
+
+- New parameters: `-Repository <owner>/<name>` (org-fork targeting),
+  `-ConfigPath <lz-config.json>` (seeds org prefix, region, repo, backend,
+  TFC org/workspace, environments, sandbox subscription),
+  `-Backend azurerm|hcp-terraform` (azurerm skips the TFC phases),
+  `-EnvironmentReviewers` (default operator now emits a SELF-APPROVAL
+  warning), `-SkipSandboxRbac`.
+- Environment-selection bug fixed (choice 1 now yields dev only); region,
+  repo name, and TFC workspace are no longer hardcoded; sandbox enabled
+  without `-SandboxSubscriptionId` is a terminating error unless
+  `-SkipSandboxRbac`.
+
+**Factory tooling** (Test-Bootstrap 10/10; all 13 Factory CI checks pass —
+shellcheck runs on the CI runner only):
+
+- Broker default required check changed `qlty check` → `repository-scan`
+  (`Set-LzBranchProtection`) — the only corpus-shipped check that reports on
+  every PR; `LZ_REQUIRED_STATUS_CHECKS` still overrides. Both
+  USER-CHECKLIST copies updated.
+- New exported `Test-LzFirstApplyPreflight` in the broker plus a pre-flight
+  step in the generated connectivity plan workflow: loud early checks for
+  unset/wildcard `management_ip_ranges`, `log_analytics_workspace_id`
+  placeholder states, and a missing sandbox subscription; findings persisted
+  in `bootstrap-audit.json` (`preflight` array).
+- New `scripts/Invoke-CustomerEngagement.ps1`: single plan-first wrapper,
+  `-Phase discovery|broker|render|scaffold|all`; `-Apply` propagates to
+  broker and scaffold only; stops on first failure.
+- New `scripts/Dispose-Engagement.ps1` plus runbook
+  [docs/runbooks/engagement-disposal.md](docs/runbooks/engagement-disposal.md):
+  plan-first archive-then-delete disposal with SHA-256 verification,
+  MUST-NOT-DELETE banner, gated fork-residue cleanup, and
+  `disposal-plan.json`/`disposal-audit.json` evidence.
+
+**Docs**: new [docs/runbooks/engagement-lifecycle.md](docs/runbooks/engagement-lifecycle.md)
+(upgrade channels, engagement provenance, workstation isolation) and the
+Phase 1 decision record above; PROD-TODO.md reconciled item by item;
+contracts #3 and #5 updated in
+[.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md).
+
 ## Documentation restructure — wiki migration, HANDOFF.md retired (2026-08-01)
 
 - Migrated the contents of `docs/` (build docs, factory design and stage

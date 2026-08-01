@@ -1,0 +1,64 @@
+name: Deploy Wizard to GitHub Pages
+
+# Hosts the site/ configuration wizard on GitHub Pages so operators do not
+# have to open site/index.html from disk (PROD-TODO Phase 3, "Wizard is not
+# hosted"). The wizard is fully static and makes no network calls (enforced
+# by factory/ci/Test-SiteNoNetwork.ps1), so Pages hosting adds no data-egress
+# surface.
+#
+# NOTE: the repository must have Pages enabled with build type
+# "GitHub Actions" (Settings > Pages > Source: GitHub Actions) before the
+# first run; actions/configure-pages fails otherwise. Enablement is a
+# repo-admin setting and is deliberately NOT automated here to keep this
+# workflow's token permissions minimal.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Only one Pages deployment at a time; do not cancel an in-flight production
+# deployment in favor of a newer one.
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Pages Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
+
+      - name: Upload wizard artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: site/
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Pages OIDC deployment needs exactly these two scopes, on this job only.
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128  # v5.0.0

@@ -7,6 +7,12 @@
 
 workload_prod_subscription_id = {{FACTORY:azure.subscriptions.workloadProd}}
 
+#{{IF connectivity.model != 'none'}}
+# The hub side of each spoke peering is created in the connectivity
+# subscription through the azurerm.hub provider alias.
+connectivity_subscription_id = {{FACTORY:azure.subscriptions.connectivity}}
+#{{ENDIF}}
+
 #{{IF computed.backendIsAzurerm}}
 # The connectivity layer's outputs are read through its state. Under the
 # azurerm backend that read is addressed by storage account; under HCP

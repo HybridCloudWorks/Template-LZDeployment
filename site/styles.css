@@ -585,6 +585,16 @@ select {
 
 /* ── Export ───────────────────────────────────────────────────────── */
 
+.export-bundle {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.export-bundle .hint { margin-top: 0.5rem; }
+
 .export-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));

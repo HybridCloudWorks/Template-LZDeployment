@@ -31,7 +31,9 @@ downloading or validating live evidence in this environment.
   environments, variables/secrets, and branch-protection permissions.
 - [ ] For HCP Terraform, export `TFE_TOKEN` from a secure secret source.
 - [ ] Optionally export `LZ_REQUIRED_STATUS_CHECKS` as a comma-separated list;
-  the default is `qlty check`.
+  the default is `repository-scan` — the generated corpus's Security Scan
+  check, the only generated check that reports on every pull request with no
+  path filter.
 
 ## Review before mutation
 
@@ -175,8 +177,10 @@ downloading or validating live evidence in this environment.
 
 - [ ] Ensure GitHub Actions is enabled and allowed to use the SHA-pinned actions
   in `.github/workflows/factory-ci.yml`.
-- [ ] Add the exact `Factory CI / Factory CI` context to required `main` status
-  checks after its first successful run, retaining `qlty check`.
+- [ ] Add the exact `Factory CI` context (GitHub records the job-level check
+  name, not `Factory CI / Factory CI`) to required `main` status checks after
+  its first successful run. `scripts/Initialize-ClientFork.ps1` scripts this
+  configuration and its API read-back.
 - [ ] Confirm the workflow has only `contents: read` permission and receives no
   Azure, GitHub administration, HCP, backend, or customer credentials.
 - [ ] Review the uploaded `factory-ci-<run-id>` artifact and
@@ -189,7 +193,7 @@ downloading or validating live evidence in this environment.
 - [ ] Resolve every failed check. Do not mark release gates true from an
   incomplete/skipped run.
 - [ ] Read back branch protection/rulesets through the GitHub API and prove a
-  pull request cannot merge when `Factory CI / Factory CI` fails.
+  pull request cannot merge when `Factory CI` fails.
 
 ## Stage 13 dogfood variables
 

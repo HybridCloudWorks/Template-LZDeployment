@@ -35,6 +35,15 @@
 
 .EXAMPLE
     .\scripts\Start-LandingZoneBootstrap.ps1 -SkipToolValidation -SkipAzureSetup
+
+.EXAMPLE
+    # Customer engagement: org-owned fork, wizard-exported config, team-gated
+    # environments. backend.type in lz-config.json decides whether the TFC
+    # phases run (azurerm skips them and sets TERRAFORM_CLOUD_ENABLED=false).
+    .\scripts\Start-LandingZoneBootstrap.ps1 `
+        -Repository contoso-org/contoso-lz `
+        -ConfigPath .\lz-config.json `
+        -EnvironmentReviewers 'contoso-org/platform-approvers', 'jane-doe'
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -44,11 +53,51 @@ param(
     [string]$ReportDirectory = ".reports/bootstrap",
     [string]$StateFile = ".lz-bootloader-state.json",
 
-    # Sandbox subscription ID. When supplied, the deploying SP (main-prod) is
+    # Target GitHub repository as <owner>/<name>. Secrets, variables,
+    # environments, and every OIDC federated-credential subject
+    # (repo:<owner>/<name>:...) are scoped to this repository. When omitted,
+    # the script derives owner/name from the clone's origin remote
+    # (gh repo view); the authenticated user's login is used only as a last
+    # resort — which is WRONG for org-owned forks and warned about loudly.
+    [ValidatePattern('^$|^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}/[A-Za-z0-9._-]{1,100}$')]
+    [string]$Repository = '',
+
+    # Path to a wizard-exported lz-config.json (contract:
+    # factory/schema/lz-config.schema.json). Seeds org prefix, region/region
+    # code, repository owner/name, backend type, TFC organization/workspace,
+    # environments, and the sandbox subscription — so no per-customer value is
+    # hardcoded. Values already in the state file are kept (idempotent re-run);
+    # anything the config does not provide is prompted for interactively.
+    [string]$ConfigPath = '',
+
+    # Explicit state-backend override: 'hcp-terraform' (HCP Terraform / TFC)
+    # or 'azurerm' (Azure Storage, AAD-auth). Outranks the lz-config.json
+    # backend.type. With 'azurerm' the TFC auth phase (2.3) and the TFC
+    # org/workspace/TF_API_TOKEN phase (7) are skipped and
+    # TERRAFORM_CLOUD_ENABLED is set to 'false'.
+    [ValidateSet('', 'hcp-terraform', 'azurerm')]
+    [string]$Backend = '',
+
+    # Required reviewers for the dev/prod/hub GitHub environments: user logins
+    # and/or 'org/team' slugs. Default (empty) falls back to the bootstrapping
+    # operator — SELF-APPROVAL in a single-owner repo, warned about loudly and
+    # unacceptable for customer engagements.
+    [string[]]$EnvironmentReviewers = @(),
+
+    # Sandbox subscription ID. When supplied, the deploying main-layer SP
+    # (main-prod, or main-dev for Dev-only deployments) is
     # granted Role Based Access Control Administrator scoped to this
     # subscription so platform-management can write the sandbox-cleanup
     # Contributor assignment. Without it, that apply fails AuthorizationFailed.
-    [string]$SandboxSubscriptionId = ''
+    # When -ConfigPath is used, azure.subscriptions.sandbox from lz-config.json
+    # fills this in automatically if the parameter is omitted.
+    [string]$SandboxSubscriptionId = '',
+
+    # Deliberately proceed without the sandbox RBAC grant even though the
+    # deployment config enables the sandbox subscription. Without this switch,
+    # sandbox-enabled + missing -SandboxSubscriptionId is a terminating error
+    # (the alternative is a guaranteed AuthorizationFailed at apply time).
+    [switch]$SkipSandboxRbac
 )
 
 Set-StrictMode -Version Latest
@@ -377,6 +426,192 @@ function Confirm-Auth-TerraformCloud {
 # ║                    CONFIGURATION GATHERING                              ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
+function Import-LzConfig {
+    <#
+        Seeds the bootloader state from a wizard-exported lz-config.json
+        (contract: factory/schema/lz-config.schema.json). Existing state keys
+        win so re-runs stay idempotent; anything the config omits falls back
+        to the interactive prompts in Gather-DeploymentConfig.
+    #>
+    param(
+        [string]$Path,
+        [hashtable]$State
+    )
+
+    Write-Section "0" "Configuration Import (lz-config.json)"
+
+    if (-not (Test-Path $Path)) {
+        throw "-ConfigPath not found: $Path"
+    }
+
+    Write-Step "Reading $Path"
+    $config = Get-Content -Path $Path -Raw | ConvertFrom-Json -AsHashtable
+
+    if ($config.ContainsKey('schemaVersion') -and $config['schemaVersion'] -ne '2.0.0') {
+        Write-Warn "lz-config schemaVersion is '$($config['schemaVersion'])' (this script implements 2.0.0) — seeded values may be incomplete"
+    }
+
+    # organization.companyShortName → org_prefix
+    if (-not $State.ContainsKey('org_prefix') -and
+        $config.ContainsKey('organization') -and $config['organization'].ContainsKey('companyShortName')) {
+        $State['org_prefix'] = $config['organization']['companyShortName']
+        Write-OK "Org prefix (from config): $($State['org_prefix'])"
+    }
+
+    # azure.primaryRegion / azure.primaryRegionCode → region / region_code
+    if (-not $State.ContainsKey('region') -and $config.ContainsKey('azure')) {
+        $az = $config['azure']
+        if ($az.ContainsKey('primaryRegion') -and $az.ContainsKey('primaryRegionCode')) {
+            $State['region'] = $az['primaryRegion']
+            $State['region_code'] = $az['primaryRegionCode']
+            Write-OK "Region (from config): $($State['region']) ($($State['region_code']))"
+        }
+    }
+
+    # github.ownerName / github.repositoryName — used by Resolve-TargetRepository
+    # when neither -Repository nor the clone's origin remote resolves.
+    if ($config.ContainsKey('github')) {
+        $gh = $config['github']
+        if ($gh.ContainsKey('ownerName') -and $gh.ContainsKey('repositoryName')) {
+            $State['config_github_owner'] = $gh['ownerName']
+            $State['config_repo_name'] = $gh['repositoryName']
+        }
+    }
+
+    # backend.type → backend_type; hcpTerraform block → TFC org + workspace
+    if (-not $State.ContainsKey('backend_type') -and
+        $config.ContainsKey('backend') -and $config['backend'].ContainsKey('type')) {
+        $backendCfg = $config['backend']
+        $State['backend_type'] = $backendCfg['type']
+        Write-OK "State backend (from config): $($State['backend_type'])"
+
+        if ($State['backend_type'] -eq 'hcp-terraform' -and $backendCfg.ContainsKey('hcpTerraform')) {
+            $hcp = $backendCfg['hcpTerraform']
+            if (-not $State.ContainsKey('tfc_organization') -and $hcp.ContainsKey('organization')) {
+                $State['tfc_organization'] = $hcp['organization']
+                Write-OK "TFC organization (from config): $($State['tfc_organization'])"
+            }
+            if (-not $State.ContainsKey('tfc_workspace')) {
+                # Schema convention: workspaces are {workspacePrefix}-{layer};
+                # this legacy script manages the single 'landing-zone' layer.
+                $wsPrefix = if ($hcp.ContainsKey('workspacePrefix') -and
+                    -not [string]::IsNullOrWhiteSpace($hcp['workspacePrefix'])) {
+                    $hcp['workspacePrefix']
+                } elseif ($State.ContainsKey('org_prefix')) {
+                    $State['org_prefix']
+                } else {
+                    ''
+                }
+                $State['tfc_workspace'] = if ($wsPrefix) { "$wsPrefix-landing-zone" } else { 'landing-zone' }
+                Write-OK "TFC workspace (from config): $($State['tfc_workspace'])"
+            }
+        }
+    }
+
+    # environments.application → environments (only dev/prod are layers this
+    # legacy script knows how to bootstrap; other application environments are
+    # owned by the factory renderer).
+    if (-not $State.ContainsKey('environments') -and
+        $config.ContainsKey('environments') -and $config['environments'].ContainsKey('application')) {
+        $known = @($config['environments']['application'] | Where-Object { $_ -in @('dev', 'prod') })
+        if ($known.Count -gt 0) {
+            $State['environments'] = $known
+            Write-OK "Environments (from config): $($State['environments'] -join ', ')"
+        }
+    }
+
+    # azure.subscriptions.sandbox → sandbox_enabled + sandbox_subscription_id
+    if (-not $State.ContainsKey('sandbox_enabled') -and
+        $config.ContainsKey('azure') -and $config['azure'].ContainsKey('subscriptions')) {
+        $subs = $config['azure']['subscriptions']
+        if ($subs.ContainsKey('sandbox') -and -not [string]::IsNullOrWhiteSpace($subs['sandbox'])) {
+            $State['sandbox_enabled'] = $true
+            $State['sandbox_subscription_id'] = $subs['sandbox']
+            Write-OK "Sandbox subscription (from config): $($State['sandbox_subscription_id'])"
+        } else {
+            $State['sandbox_enabled'] = $false
+            Write-OK "Sandbox subscription (from config): not provisioned"
+        }
+    }
+
+    $State['config_path'] = $Path
+    Save-BootloaderState $State
+    Write-OK "Configuration import complete"
+}
+
+function Resolve-TargetRepository {
+    <#
+        Resolves the GitHub repository (owner + name) that receives secrets,
+        variables, environments, and OIDC federated-credential subjects.
+
+        Precedence:
+          1. -Repository <owner>/<name> parameter (always wins, updates state)
+          2. owner/name already in the state file (idempotent re-run)
+          3. the clone's origin remote via `gh repo view` — correct for
+             org-owned forks
+          4. github.ownerName/repositoryName from -ConfigPath, if supplied
+          5. LAST RESORT: the authenticated user's login — wrong for org-owned
+             forks, so this path warns loudly. Repo name falls through to the
+             interactive prompt in Gather-DeploymentConfig.
+    #>
+    param(
+        [string]$RepositoryParameter,
+        [hashtable]$State,
+        [string]$FallbackOwner
+    )
+
+    Write-Step "Resolving target repository (owner/name)"
+
+    if (-not [string]::IsNullOrWhiteSpace($RepositoryParameter)) {
+        $owner, $name = $RepositoryParameter.Split('/', 2)
+        $State['github_owner'] = $owner
+        $State['repo_name'] = $name
+        $State['repo_source'] = 'parameter'
+        Save-BootloaderState $State
+        Write-OK "Target repository (from -Repository): $owner/$name"
+        return
+    }
+
+    if ($State.ContainsKey('github_owner') -and $State.ContainsKey('repo_name')) {
+        Write-OK "Target repository (from state): $($State['github_owner'])/$($State['repo_name'])"
+        return
+    }
+
+    Push-Location $REPO_ROOT
+    try {
+        $originJson = gh repo view --json owner,name 2>$null
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace("$originJson")) {
+            $origin = "$originJson" | ConvertFrom-Json
+            $State['github_owner'] = $origin.owner.login
+            $State['repo_name'] = $origin.name
+            $State['repo_source'] = 'origin-remote'
+            Save-BootloaderState $State
+            Write-OK "Target repository (from origin remote): $($State['github_owner'])/$($State['repo_name'])"
+            return
+        }
+    } finally {
+        Pop-Location
+    }
+
+    if ($State.ContainsKey('config_github_owner') -and $State.ContainsKey('config_repo_name')) {
+        $State['github_owner'] = $State['config_github_owner']
+        $State['repo_name'] = $State['config_repo_name']
+        $State['repo_source'] = 'lz-config'
+        Save-BootloaderState $State
+        Write-OK "Target repository (from lz-config.json): $($State['github_owner'])/$($State['repo_name'])"
+        return
+    }
+
+    Write-Critical "Could not resolve the target repository from -Repository, the clone's origin remote, or -ConfigPath."
+    Write-Warn "Falling back to the authenticated user's login '$FallbackOwner' as the repository owner."
+    Write-Warn "This is WRONG if the client fork lives in a GitHub ORGANIZATION: secrets, environments,"
+    Write-Warn "and every OIDC federated-credential subject would target $FallbackOwner/<repo> instead of"
+    Write-Warn "<org>/<repo>. Re-run with -Repository <owner>/<name> if that is the case."
+    $State['github_owner'] = $FallbackOwner
+    $State['repo_source'] = 'user-login-fallback'
+    Save-BootloaderState $State
+}
+
 function Gather-DeploymentConfig {
     param([hashtable]$State)
 
@@ -391,7 +626,8 @@ function Gather-DeploymentConfig {
     }
     Write-OK "Org prefix: $($State['org_prefix'])"
 
-    # Environment (dev/prod or both)
+    # Environment (dev/prod or both) — each menu choice maps to exactly what
+    # it says; anything unrecognized falls back to full layering.
     if (-not $State.ContainsKey('environments')) {
         Write-Host ""
         Write-Host "  Which environments will you deploy to?" -ForegroundColor Cyan
@@ -400,25 +636,61 @@ function Gather-DeploymentConfig {
         Write-Host "  [3] Both Dev and Prod (full layering)"
         $env_choice = Read-Host "  Select [1-3]"
 
-        $envs = @('dev', 'prod')
-        $State['environments'] = if ($env_choice -eq '2') { @('prod') } else { $envs }
+        $State['environments'] = switch ($env_choice) {
+            '1' { @('dev') }
+            '2' { @('prod') }
+            default { @('dev', 'prod') }
+        }
     }
     Write-OK "Environments: $($State['environments'] -join ', ')"
 
-    # Region
+    # Region (seeded by -ConfigPath when supplied; old values remain the
+    # interactive defaults only)
     if (-not $State.ContainsKey('region')) {
-        $State['region'] = 'eastus'
-        $State['region_code'] = 'eus'
+        $region = Read-Host "  Azure region (default: eastus)"
+        if ([string]::IsNullOrEmpty($region)) { $region = 'eastus' }
+        $State['region'] = $region.ToLower()
+
+        $defaultCode = if ($State['region'] -eq 'eastus') { 'eus' } else { '' }
+        $codePrompt = if ($defaultCode) { "  Region code for resource names (default: $defaultCode)" } else { "  Region code for resource names (e.g., eus2, scus)" }
+        $region_code = Read-Host $codePrompt
+        if ([string]::IsNullOrEmpty($region_code)) { $region_code = $defaultCode }
+        if ([string]::IsNullOrEmpty($region_code)) {
+            throw "A region code is required when the region is not eastus (used in resource names)"
+        }
+        $State['region_code'] = $region_code.ToLower()
     }
     Write-OK "Region: $($State['region']) ($($State['region_code']))"
 
-    # Repository name
+    # Repository name (normally resolved by Resolve-TargetRepository; this
+    # prompt is reached only on the user-login fallback path)
     if (-not $State.ContainsKey('repo_name')) {
         $repo_name = Read-Host "  GitHub repository name (default: HCW-Demo-LZDeployment)"
         if ([string]::IsNullOrEmpty($repo_name)) { $repo_name = 'HCW-Demo-LZDeployment' }
         $State['repo_name'] = $repo_name
     }
     Write-OK "Repository: $($State['repo_name'])"
+
+    # State backend (seeded by -Backend or -ConfigPath; HCP Terraform remains
+    # the recorded default backend decision)
+    if (-not $State.ContainsKey('backend_type')) {
+        Write-Host ""
+        Write-Host "  Which Terraform state backend does this deployment use?" -ForegroundColor Cyan
+        Write-Host "  [1] HCP Terraform / Terraform Cloud (default)"
+        Write-Host "  [2] Azure Storage (azurerm, AAD-auth)"
+        $backend_choice = Read-Host "  Select [1-2]"
+
+        $State['backend_type'] = if ($backend_choice -eq '2') { 'azurerm' } else { 'hcp-terraform' }
+    }
+    Write-OK "State backend: $($State['backend_type'])"
+
+    # Sandbox subscription (seeded by -ConfigPath when supplied). Enabling it
+    # requires -SandboxSubscriptionId — enforced in Main before OIDC setup.
+    if (-not $State.ContainsKey('sandbox_enabled')) {
+        $sandbox_choice = Read-Host "  Enable the sandbox subscription (sandbox-cleanup automation)? [y/N]"
+        $State['sandbox_enabled'] = ($sandbox_choice -eq 'y')
+    }
+    Write-OK "Sandbox subscription: $(if ($State['sandbox_enabled']) { 'enabled' } else { 'disabled' })"
 
     Save-BootloaderState $State
 }
@@ -572,7 +844,8 @@ function Setup-Azure-OIDC {
         [string]$TenantId,
         [string]$GithubOwner,
         [string]$RepoName,
-        [string]$SandboxSubscriptionId = ''
+        [string]$SandboxSubscriptionId = '',
+        [switch]$SandboxRbacSkipRequested
     )
 
     Write-Section "4" "Azure OIDC Service Principals & Federated Credentials"
@@ -661,13 +934,17 @@ function Setup-Azure-OIDC {
     # platform-management writes a Contributor assignment into the sandbox
     # subscription (sandbox-cleanup automation), which needs
     # Microsoft.Authorization/roleAssignments/write there. Grant the deploying
-    # SP (main-prod, published as AZURE_CLIENT_ID) RBAC Administrator scoped to
+    # main-layer SP (published as AZURE_CLIENT_ID) RBAC Administrator scoped to
     # the sandbox subscription only — never Owner/UAA, and never in the
-    # management subscription.
+    # management subscription. The key is per selected environment: prefer
+    # main-prod, fall back to main-dev (Dev-only deployments no longer create
+    # a main-prod SP) — the SAME resolution Set-GitHubSecrets uses, so the
+    # grant lands on the identity the workflows actually authenticate as.
     if (-not [string]::IsNullOrWhiteSpace($SandboxSubscriptionId)) {
-        Write-Step "Granting sandbox-subscription RBAC Administrator to main-prod SP"
-        $mainObjId = az ad sp show --id $sps['main-prod'].appId --query id -o tsv 2>$null
-        Assert-LastExitCode "az ad sp show --id $($sps['main-prod'].appId)"
+        $mainSpKey = if ($sps.ContainsKey('main-prod')) { 'main-prod' } else { 'main-dev' }
+        Write-Step "Granting sandbox-subscription RBAC Administrator to $mainSpKey SP"
+        $mainObjId = az ad sp show --id $sps[$mainSpKey].appId --query id -o tsv 2>$null
+        Assert-LastExitCode "az ad sp show --id $($sps[$mainSpKey].appId)"
 
         $existingSandboxGrant = az role assignment list `
             --assignee-object-id $mainObjId `
@@ -688,6 +965,8 @@ function Setup-Azure-OIDC {
         } else {
             Write-OK "Sandbox RBAC Administrator grant already present"
         }
+    } elseif ($SandboxRbacSkipRequested) {
+        Write-Warn "Sandbox RBAC grant deliberately skipped (-SkipSandboxRbac): platform-management's sandbox-cleanup role assignment will fail (AuthorizationFailed) until the deploying SP is granted RBAC Administrator in the sandbox subscription"
     } else {
         Write-Warn "No -SandboxSubscriptionId supplied: platform-management's sandbox-cleanup role assignment will fail (AuthorizationFailed) until the deploying SP is granted RBAC Administrator in the sandbox subscription"
     }
@@ -715,9 +994,12 @@ function Set-GitHubSecrets {
 
     $repo = "$GithubOwner/$RepoName"
 
-    # Repo-level secrets (used by main branch jobs)
-    $mainSp = $ServicePrincipals['main-prod']
-    Write-Step "Setting repo-level secrets (used by main branch)..."
+    # Repo-level secrets (used by main branch jobs). The main-layer SP is
+    # keyed per selected environment: prefer main-prod, fall back to main-dev
+    # (Dev-only deployments no longer create a main-prod SP).
+    $mainSpKey = if ($ServicePrincipals.ContainsKey('main-prod')) { 'main-prod' } else { 'main-dev' }
+    $mainSp = $ServicePrincipals[$mainSpKey]
+    Write-Step "Setting repo-level secrets (used by main branch; deploying SP: $mainSpKey)..."
 
     foreach ($secret in @(
         @{ Name = 'AZURE_TENANT_ID';       Value = $State['tenant_id'] },
@@ -756,15 +1038,18 @@ function Set-GitHubSecrets {
         Write-OK "Set env secret: AZURE_CLIENT_ID (env:$env)"
     }
 
-    # GitHub Variables
+    # GitHub Variables. TERRAFORM_CLOUD_ENABLED follows the backend choice:
+    # 'true' only for hcp-terraform; azurerm state lives in Azure Storage.
     Write-Step "Setting GitHub variables..."
+
+    $tfcEnabled = if ($State.ContainsKey('backend_type') -and $State['backend_type'] -eq 'azurerm') { 'false' } else { 'true' }
 
     $variables = @{
         'AZURE_REGION'            = $State['region']
         'AZURE_REGION_CODE'       = $State['region_code']
         'ORG_PREFIX'              = $State['org_prefix']
         'TF_VERSION'              = '1.9'
-        'TERRAFORM_CLOUD_ENABLED' = 'true'
+        'TERRAFORM_CLOUD_ENABLED' = $tfcEnabled
     }
 
     foreach ($var in $variables.GetEnumerator()) {
@@ -786,7 +1071,8 @@ function Setup-GitHub-Environments {
     param(
         [string]$GithubOwner,
         [string]$RepoName,
-        [hashtable]$State
+        [hashtable]$State,
+        [string[]]$EnvironmentReviewers = @()
     )
 
     Write-Section "6" "GitHub Environments"
@@ -794,22 +1080,46 @@ function Setup-GitHub-Environments {
     $repo = "$GithubOwner/$RepoName"
 
     # Protection payload sent with every environment PUT:
-    #  - reviewers: the bootstrapping operator, resolved at runtime. A single
-    #    reviewer means self-approval in a single-owner repo — replace with a
-    #    Team object (@{ type = 'Team'; id = <numeric-team-id> }) once one
-    #    exists, but an explicit human gate always beats an empty one.
+    #  - reviewers: from -EnvironmentReviewers (user logins and/or 'org/team'
+    #    slugs). Default remains the bootstrapping operator, resolved at
+    #    runtime — but a single operator-reviewer means SELF-APPROVAL in a
+    #    single-owner repo, so that path warns loudly. An explicit human gate
+    #    still always beats an empty one.
     #  - deployment_branch_policy: restrict deployments to protected branches.
-    Write-Step "Resolving bootstrap operator for environment approval gate"
-    $reviewerId = [int](gh api user --jq '.id')
-    Assert-LastExitCode "gh api user (resolve reviewer id)"
-    $reviewerLogin = gh api user --jq '.login'
-    Assert-LastExitCode "gh api user (resolve reviewer login)"
-    Write-OK "Environment reviewer: $reviewerLogin ($reviewerId)"
+    $reviewers = @()
+    $reviewerLogin = ''
+    if ($EnvironmentReviewers.Count -gt 0) {
+        Write-Step "Resolving -EnvironmentReviewers for environment approval gate"
+        foreach ($entry in $EnvironmentReviewers) {
+            if ($entry -match '^([^/]+)/(.+)$') {
+                $org = $Matches[1]
+                $teamSlug = $Matches[2]
+                $teamId = [int](gh api "orgs/$org/teams/$teamSlug" --jq '.id')
+                Assert-LastExitCode "gh api orgs/$org/teams/$teamSlug (resolve reviewer team id)"
+                $reviewers += @{ type = 'Team'; id = $teamId }
+                Write-OK "Environment reviewer (team): $entry ($teamId)"
+            } else {
+                $userId = [int](gh api "users/$entry" --jq '.id')
+                Assert-LastExitCode "gh api users/$entry (resolve reviewer user id)"
+                $reviewers += @{ type = 'User'; id = $userId }
+                Write-OK "Environment reviewer (user): $entry ($userId)"
+            }
+        }
+    } else {
+        Write-Step "Resolving bootstrap operator for environment approval gate"
+        $reviewerId = [int](gh api user --jq '.id')
+        Assert-LastExitCode "gh api user (resolve reviewer id)"
+        $reviewerLogin = gh api user --jq '.login'
+        Assert-LastExitCode "gh api user (resolve reviewer login)"
+        $reviewers = @(@{ type = 'User'; id = $reviewerId })
+        Write-Critical "Environment reviewer defaults to the bootstrapping operator ($reviewerLogin) — this is SELF-APPROVAL."
+        Write-Warn "The operator who triggers a deployment can approve their own prod/hub gate."
+        Write-Warn "Replace this before any customer engagement: re-run with"
+        Write-Warn "-EnvironmentReviewers <login>[,<login>...] and/or <org>/<team-slug> entries."
+    }
 
     $protectionPayload = @{
-        reviewers                = @(
-            @{ type = 'User'; id = $reviewerId }
-        )
+        reviewers                = $reviewers
         deployment_branch_policy = @{
             protected_branches     = $true
             custom_branch_policies = $false
@@ -831,7 +1141,11 @@ function Setup-GitHub-Environments {
     $protectionPayload | gh api -X PUT "repos/$repo/environments/hub" --input - 2>$null | Out-Null
     Assert-LastExitCode "gh api PUT repos/$repo/environments/hub"
     Write-Info "Note: 'hub' environment requires manual approval for prod deployments"
-    Write-Info "      (gated on $reviewerLogin; swap in a Team reviewer when one exists)"
+    if ($reviewerLogin) {
+        Write-Info "      (gated on $reviewerLogin — self-approval; pass -EnvironmentReviewers to fix)"
+    } else {
+        Write-Info "      (gated on the reviewers passed via -EnvironmentReviewers)"
+    }
     Write-OK "Environment exists: hub"
 
     Write-OK "GitHub environments configured"
@@ -850,9 +1164,16 @@ function Setup-TerraformCloud {
 
     Write-Section "7" "Terraform Cloud Configuration"
 
+    # Honor the backend decision: azurerm state lives in Azure Storage
+    # (AAD-auth) — no TFC organization, workspace, or TF_API_TOKEN is needed.
+    if ($State.ContainsKey('backend_type') -and $State['backend_type'] -eq 'azurerm') {
+        Write-OK "Skipped: azurerm backend selected — state is in Azure Storage, no TFC org/workspace/TF_API_TOKEN required"
+        return
+    }
+
     $repo = "$GithubOwner/$RepoName"
 
-    # Prompt for TFC organization
+    # Prompt for TFC organization (seeded by -ConfigPath when supplied)
     if (-not $State.ContainsKey('tfc_organization')) {
         $tfc_org = Read-Host "  Terraform Cloud organization name (e.g., my-company)"
         if ([string]::IsNullOrEmpty($tfc_org)) {
@@ -863,7 +1184,15 @@ function Setup-TerraformCloud {
     }
 
     $tfc_org = $State['tfc_organization']
-    $workspace = "landing-zone"  # Standard name
+
+    # Workspace name (seeded by -ConfigPath; the old hardcoded 'landing-zone'
+    # remains the interactive default only)
+    if (-not $State.ContainsKey('tfc_workspace')) {
+        $workspace_input = Read-Host "  Terraform Cloud workspace name (default: landing-zone)"
+        if ([string]::IsNullOrEmpty($workspace_input)) { $workspace_input = 'landing-zone' }
+        $State['tfc_workspace'] = $workspace_input
+    }
+    $workspace = $State['tfc_workspace']
 
     Write-Step "TFC Organization: $tfc_org"
     Write-Step "TFC Workspace: $workspace"
@@ -928,6 +1257,38 @@ function Generate-BootstrapReport {
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $reportPath = Join-Path $ReportDir "$timestamp-bootstrap-report.md"
 
+    # Precompute dynamic sections: the SP inventory follows the selected
+    # environments (dev-only no longer implies *-prod keys), and the backend
+    # section follows the backend_type decision.
+    $spRows = ''
+    if ($State.ContainsKey('azure_sps') -and $State['azure_sps'].Count -gt 0) {
+        foreach ($spKey in ($State['azure_sps'].Keys | Sort-Object)) {
+            $spNote = if ($spKey -eq 'plan') { 'plan (Reader-only, pull_request)' } else { $spKey }
+            $spRows += "| $spNote | $($State['azure_sps'][$spKey]['appId']) | ✓ Created |`n"
+        }
+    } else {
+        $spRows = "| (none — Azure OIDC setup was skipped) | — | — |`n"
+    }
+    $spRows = $spRows.TrimEnd("`n")
+
+    $backendSection = if ($State.ContainsKey('backend_type') -and $State['backend_type'] -eq 'azurerm') {
+        @"
+| Setting | Value |
+|---------|-------|
+| Backend | azurerm (Azure Storage, AAD-auth) |
+| TERRAFORM_CLOUD_ENABLED | false |
+"@
+    } else {
+        @"
+| Setting | Value |
+|---------|-------|
+| Backend | hcp-terraform |
+| Organization | $($State['tfc_organization'] ?? 'Not configured') |
+| Workspace | $($State['tfc_workspace'] ?? 'landing-zone') |
+| API Token | Stored in GitHub secret: TF_API_TOKEN |
+"@
+    }
+
     $report = @"
 # Landing Zone Phase 0 Bootstrap Report
 
@@ -941,39 +1302,33 @@ function Generate-BootstrapReport {
 | Organization Prefix | $($State['org_prefix']) |
 | Environments | $($State['environments'] -join ', ') |
 | Region | $($State['region']) ($($State['region_code'])) |
-| Repository | $($State['repo_name']) |
+| Repository | $($State['github_owner'])/$($State['repo_name']) |
+| State Backend | $($State['backend_type'] ?? 'hcp-terraform') |
 | Azure Tenant | $($State['tenant_id']) |
 | Azure Subscription | $($State['subscription_id']) |
 
 ## OIDC Service Principals
 
-| Layer | Environment | App ID | Status |
-|-------|-------------|--------|--------|
-| main | prod | $($State['azure_sps']['main-prod'].appId) | ✓ Created |
-| plan | ci (Reader-only, pull_request) | $($State['azure_sps']['plan'].appId) | ✓ Created |
-| dev | $($State['environments'] -join ', ') | $($State['azure_sps']['dev-prod'].appId) | ✓ Created |
-| prod | $($State['environments'] -join ', ') | $($State['azure_sps']['prod-prod'].appId) | ✓ Created |
+| Identity (layer-environment) | App ID | Status |
+|------------------------------|--------|--------|
+$spRows
 
 ## GitHub Configuration
 
 - ✓ Repository Secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 - ✓ GitHub Variables: Org prefix, region, TF version, etc.
-- ✓ Environments: dev, prod, hub
+- ✓ Environments: $($State['environments'] -join ', '), hub
 - ✓ Federated Credentials: OIDC tokens scoped per layer/environment
 
-## Terraform Cloud
+## State Backend
 
-| Setting | Value |
-|---------|-------|
-| Organization | $($State['tfc_organization'] ?? 'Not configured') |
-| Workspace | landing-zone |
-| API Token | Stored in GitHub secret: TF_API_TOKEN |
+$backendSection
 
 ## Next Steps (Workflow 010)
 
 1. ✓ Phase 0 (THIS SCRIPT): Local bootstrap complete
 2. ⏭ Phase 0.1 (WORKFLOW 010): Run on next PR/commit
-   - Initialize Terraform with TFC backend
+   - Initialize Terraform with the configured state backend
    - Create workload resource groups
    - Validate OIDC connectivity
    - First terraform plan
@@ -1050,7 +1405,7 @@ function Create-BootstrapPR {
 - Configured federated credentials (GitHub Actions OIDC)
 - Set GitHub secrets and variables
 - Configured GitHub environments
-- Set up Terraform Cloud integration
+- Configured the Terraform state backend
 
 This enables automated infrastructure deployments via GitHub Actions.
 Run workflow 010 after merging to initialize Terraform." 2>&1 | Out-Null
@@ -1066,7 +1421,7 @@ Run workflow 010 after merging to initialize Terraform." 2>&1 | Out-Null
 This PR completes Phase 0 bootstrap for the landing zone:
 - OIDC service principals created
 - GitHub OIDC federated credentials configured
-- Terraform Cloud integration enabled
+- Terraform state backend configured
 
 ✅ Ready to merge to main
 ⏭ After merge, run workflow 010 to deploy" `
@@ -1093,6 +1448,19 @@ function Main {
     $state = Get-BootloaderState
 
     try {
+        # Phase 0: optional lz-config.json import — first, so seeded values
+        # shape the later prompts and phase selection
+        if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
+            Import-LzConfig -Path $ConfigPath -State $state
+            Mark-StepComplete $state "config-imported"
+        }
+
+        # An explicit -Backend outranks the config and any prior answer
+        if (-not [string]::IsNullOrWhiteSpace($Backend)) {
+            $state['backend_type'] = $Backend
+            Save-BootloaderState $state
+        }
+
         # Phase 1: Tool validation
         if (-not $SkipToolValidation) {
             Test-Cli-Prerequisites
@@ -1114,12 +1482,44 @@ function Main {
         Save-BootloaderState $state
         Mark-StepComplete $state "github-auth"
 
-        Confirm-Auth-TerraformCloud
-        Mark-StepComplete $state "tfc-auth"
+        # Target repository (owner/name): -Repository param, else the clone's
+        # origin remote — NOT the operator's login, which is wrong for
+        # org-owned forks. Everything downstream (secrets, environments, OIDC
+        # subjects, PR) uses this resolution.
+        Resolve-TargetRepository -RepositoryParameter $Repository -State $state -FallbackOwner $ghUser
 
-        # Phase 3: Configuration
+        # Phase 3: Configuration (fills anything -ConfigPath did not seed;
+        # also prompts for repo name on the owner-fallback path above)
         Gather-DeploymentConfig $state
         Mark-StepComplete $state "config-gathered"
+
+        $repoOwner = $state['github_owner']
+        $repoName = $state['repo_name']
+
+        # Phase 2.3 (runs after Phase 3 by design): the TFC auth check only
+        # applies when the hcp-terraform backend is selected
+        if ($state['backend_type'] -eq 'hcp-terraform') {
+            Confirm-Auth-TerraformCloud
+            Mark-StepComplete $state "tfc-auth"
+        } else {
+            Write-Info "Skipping Terraform Cloud auth check (backend: $($state['backend_type']))"
+        }
+
+        # Sandbox RBAC enforcement: sandbox enabled + no subscription ID is a
+        # guaranteed AuthorizationFailed at apply time — stop here instead,
+        # unless the operator deliberately opted out with -SkipSandboxRbac.
+        $effectiveSandboxSubscriptionId = $SandboxSubscriptionId
+        if ([string]::IsNullOrWhiteSpace($effectiveSandboxSubscriptionId) -and $state.ContainsKey('sandbox_subscription_id')) {
+            $effectiveSandboxSubscriptionId = $state['sandbox_subscription_id']
+        }
+        if ($state['sandbox_enabled'] -and -not $SkipSandboxRbac -and
+            [string]::IsNullOrWhiteSpace($effectiveSandboxSubscriptionId)) {
+            Write-Fail "Sandbox subscription is enabled, but no sandbox subscription ID is available."
+            throw ("The deployment config enables the sandbox subscription, but -SandboxSubscriptionId was not supplied " +
+                "and lz-config.json did not provide azure.subscriptions.sandbox. Without the RBAC grant, " +
+                "platform-management's sandbox-cleanup role assignment fails AuthorizationFailed at apply. " +
+                "Re-run with -SandboxSubscriptionId <guid>, or pass -SkipSandboxRbac to proceed deliberately without the grant.")
+        }
 
         # Phase 4: Azure OIDC setup
         if (-not $SkipAzureSetup) {
@@ -1127,9 +1527,10 @@ function Main {
                 -State $state `
                 -SubscriptionId $state['subscription_id'] `
                 -TenantId $state['tenant_id'] `
-                -GithubOwner $ghUser `
-                -RepoName $state['repo_name'] `
-                -SandboxSubscriptionId $SandboxSubscriptionId
+                -GithubOwner $repoOwner `
+                -RepoName $repoName `
+                -SandboxSubscriptionId $(if ($SkipSandboxRbac) { '' } else { $effectiveSandboxSubscriptionId }) `
+                -SandboxRbacSkipRequested:$SkipSandboxRbac
 
             if ($sps.Count -gt 0) {
                 Mark-StepComplete $state "azure-oidc-setup"
@@ -1142,8 +1543,8 @@ function Main {
         if ($state.ContainsKey('azure_sps') -and $state['azure_sps'].Count -gt 0) {
             Set-GitHubSecrets `
                 -State $state `
-                -GithubOwner $ghUser `
-                -RepoName $state['repo_name'] `
+                -GithubOwner $repoOwner `
+                -RepoName $repoName `
                 -ServicePrincipals $state['azure_sps']
 
             Mark-StepComplete $state "github-secrets"
@@ -1151,17 +1552,18 @@ function Main {
 
         # Phase 6: GitHub environments
         Setup-GitHub-Environments `
-            -GithubOwner $ghUser `
-            -RepoName $state['repo_name'] `
-            -State $state
+            -GithubOwner $repoOwner `
+            -RepoName $repoName `
+            -State $state `
+            -EnvironmentReviewers $EnvironmentReviewers
 
         Mark-StepComplete $state "github-environments"
 
-        # Phase 7: Terraform Cloud
+        # Phase 7: Terraform Cloud (skips itself when backend_type=azurerm)
         Setup-TerraformCloud `
             -State $state `
-            -GithubOwner $ghUser `
-            -RepoName $state['repo_name']
+            -GithubOwner $repoOwner `
+            -RepoName $repoName
 
         Mark-StepComplete $state "tfc-setup"
 
@@ -1170,7 +1572,7 @@ function Main {
         Mark-StepComplete $state "report-generated"
 
         # Phase 9: PR
-        Create-BootstrapPR -GithubOwner $ghUser -RepoName $state['repo_name']
+        Create-BootstrapPR -GithubOwner $repoOwner -RepoName $repoName
 
         # Summary
         Write-Section "COMPLETE" "Phase 0 Bootstrap Summary"
@@ -1182,7 +1584,11 @@ function Main {
         Write-OK "✓ Federated credentials configured"
         Write-OK "✓ GitHub secrets set"
         Write-OK "✓ GitHub environments created"
-        Write-OK "✓ Terraform Cloud configured"
+        if ($state['backend_type'] -eq 'azurerm') {
+            Write-OK "✓ State backend: azurerm (Terraform Cloud phases skipped)"
+        } else {
+            Write-OK "✓ Terraform Cloud configured"
+        }
         Write-OK "✓ Bootstrap report generated"
 
         Write-Host ""

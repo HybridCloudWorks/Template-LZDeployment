@@ -283,6 +283,40 @@ function Set-LzGitHubEnvironment {
 }
 
 function Set-LzBranchProtection {
+    <#
+    .SYNOPSIS
+        Reconcile branch protection on the generated repository's default branch.
+    .DESCRIPTION
+        Requires status checks, pull-request review, and linear history, and
+        blocks force pushes and deletions, per the config's github.branchProtection
+        block.
+
+        Default required status check: 'repository-scan' — the Security Scan job
+        the generated corpus ships in .github/workflows/security-scan.yml. It is
+        the only generated check that triggers on every pull request with no
+        path filter, so it always reports and a merge can never wait forever on
+        a check that will not run. The other generated checks are deliberately
+        NOT defaulted:
+
+          - 'policy' (terraform-policy-checks.yml) and 'pinning'
+            (action-pinning-policy.yml) are path-filtered; requiring them would
+            hang docs-only pull requests on "Expected" checks that never report
+            — the same failure mode as the old 'qlty check' default, which
+            assumed a third-party integration a fresh customer repository does
+            not have.
+          - 'Plan (<layer>)' (terraform-plan.yml) and 'Validate (<layer>)'
+            (terraform-fmt-validate.yml) are layer-matrix jobs whose check-run
+            names vary per configuration, and are also path-filtered.
+    .NOTES
+        Override the default with the LZ_REQUIRED_STATUS_CHECKS environment
+        variable: a comma-separated list of check-run names, e.g.
+
+            LZ_REQUIRED_STATUS_CHECKS = 'repository-scan,policy,pinning'
+
+        Each context must exactly match the check-run name GitHub reports: the
+        job's `name:` when set, otherwise the job id. Only add path-filtered or
+        matrix checks if every pull request in the engagement will trigger them.
+    #>
     param([object]$Config)
     $bp = Get-LzConfigValue $Config.github 'branchProtection'
     if (-not $bp -or -not (Get-LzConfigValue $bp 'enabled' $true)) {
@@ -292,7 +326,7 @@ function Set-LzBranchProtection {
     $branch = Get-LzConfigValue $Config.github 'defaultBranch' 'main'
     $requiredChecks = if ($env:LZ_REQUIRED_STATUS_CHECKS) {
         @($env:LZ_REQUIRED_STATUS_CHECKS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-    } else { @('qlty check') }
+    } else { @('repository-scan') }
     $body = [ordered]@{
         required_status_checks = @{
             strict = $true
@@ -405,6 +439,121 @@ function Get-LzLayerEnvironment {
     }
 }
 
+function Test-LzFirstApplyPreflight {
+    <#
+    .SYNOPSIS
+        Pre-flight the three known first-apply traps and return findings.
+    .DESCRIPTION
+        These traps otherwise surface as raw Terraform/Azure errors long after
+        the broker has finished:
+
+        PF-A: management_ip_ranges in the connectivity tfvars is still the
+              commented wizard placeholder. It must be operator-supplied before
+              the first platform-connectivity plan; left alone the layer falls
+              back to the wide-open '*' default.
+        PF-B: log_analytics_workspace_id loop-back. The value is owned by the
+              platform-management layer and can only be filled in AFTER that
+              layer applies; an uncommented value still carrying the '<...>'
+              placeholder text will fail the plan.
+        PF-C: sandbox RBAC. A sandbox layer with no dedicated
+              azure.subscriptions.sandbox falls back to the management
+              subscription, so no role assignment lands on the real sandbox
+              subscription and the first sandbox apply fails AuthorizationFailed.
+
+        The commented placeholders themselves are deliberate (contract #4 in
+        .claude/CROSS-DOMAIN-CONTRACTS.md): the wizard never collects operator
+        network ranges, and the workspace ID crosses layer state. This function
+        detects and explains; it never edits and never blocks the broker.
+    .PARAMETER Config
+        Parsed lz-config.json object.
+    .PARAMETER ConfigPath
+        Path the config was loaded from; the wizard-exported
+        connectivity.auto.tfvars is looked for beside it.
+    .PARAMETER Layers
+        Active layers from the renderer's derivation (New-LzBootstrapPlan).
+    .NOTES
+        The connectivity tfvars is searched for, in order: the
+        LZ_CONNECTIVITY_TFVARS environment variable, connectivity.auto.tfvars
+        beside the config file, then the rendered staging tree
+        (LZ_RENDERED_PATH, default ./rendered-output).
+    #>
+    param(
+        [Parameter(Mandatory)][object]$Config,
+        [Parameter(Mandatory)][string]$ConfigPath,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Layers
+    )
+    $findings = @()
+
+    if ($Layers -contains 'platform-connectivity') {
+        $configDirectory = Split-Path -Parent (Resolve-Path $ConfigPath)
+        $renderedRoot = if ($env:LZ_RENDERED_PATH) { $env:LZ_RENDERED_PATH } else { './rendered-output' }
+        $candidates = @(
+            $env:LZ_CONNECTIVITY_TFVARS
+            (Join-Path $configDirectory 'connectivity.auto.tfvars')
+            (Join-Path $renderedRoot 'terraform/live/platform-connectivity/connectivity.auto.tfvars')
+        ) | Where-Object { $_ }
+        $tfvarsPath = $candidates | Where-Object { Test-Path $_ -PathType Leaf } | Select-Object -First 1
+
+        if (-not $tfvarsPath) {
+            $findings += [pscustomobject]@{
+                id = 'PF-A0'
+                severity = 'WARN'
+                message = "Connectivity tfvars not found; management_ip_ranges cannot be pre-flighted. Searched: $($candidates -join '; ')."
+                remediation = 'Place the wizard-exported connectivity.auto.tfvars beside lz-config.json (or set LZ_CONNECTIVITY_TFVARS), then re-run the broker.'
+            }
+        }
+        else {
+            $tfvars = Get-Content $tfvarsPath -Raw
+            if ($tfvars -notmatch '(?m)^\s*management_ip_ranges\s*=') {
+                $findings += [pscustomobject]@{
+                    id = 'PF-A1'
+                    severity = 'WARN'
+                    message = "management_ip_ranges is still the commented placeholder in $tfvarsPath. The first platform-connectivity plan will otherwise use the wide-open '*' default."
+                    remediation = "Uncomment and set operator CIDR ranges, e.g. management_ip_ranges = [`"203.0.113.0/24`"]. '*' and '0.0.0.0/0' are rejected. The commented placeholder is deliberate (contract #4); fill it, do not restructure it."
+                }
+            }
+            elseif ($tfvars -match '(?m)^\s*management_ip_ranges\s*=\s*(\[\s*)?"(\*|0\.0\.0\.0/0)"') {
+                $findings += [pscustomobject]@{
+                    id = 'PF-A2'
+                    severity = 'WARN'
+                    message = "management_ip_ranges in $tfvarsPath is set to a wildcard, exposing firewall management interfaces to every source address."
+                    remediation = 'Replace the wildcard with the operator CIDR ranges before the first connectivity apply.'
+                }
+            }
+            if ($tfvars -match '(?m)^\s*log_analytics_workspace_id\s*=\s*"?<') {
+                $findings += [pscustomobject]@{
+                    id = 'PF-B1'
+                    severity = 'WARN'
+                    message = "log_analytics_workspace_id in $tfvarsPath is uncommented but still carries the '<...>' placeholder text; the connectivity plan will fail on it."
+                    remediation = 'Re-comment the line until platform-management has applied, then paste that layer''s log_analytics_workspace_id output.'
+                }
+            }
+            elseif ($tfvars -notmatch '(?m)^\s*log_analytics_workspace_id\s*=') {
+                $findings += [pscustomobject]@{
+                    id = 'PF-B2'
+                    severity = 'INFO'
+                    message = 'log_analytics_workspace_id is not set in the connectivity tfvars; hub firewall diagnostics and threat-intel alerts will not be created.'
+                    remediation = 'Expected before first apply: the value only exists AFTER the platform-management layer applies. Loop back then and set it from that layer''s output.'
+                }
+            }
+        }
+    }
+
+    if ($Layers -contains 'sandbox') {
+        $sandboxSubscription = Get-LzConfigValue $Config.azure.subscriptions 'sandbox'
+        if (-not $sandboxSubscription) {
+            $findings += [pscustomobject]@{
+                id = 'PF-C1'
+                severity = 'WARN'
+                message = 'The sandbox layer is active but azure.subscriptions.sandbox is not set; sandbox identities fall back to the management subscription, so no RBAC lands on the real sandbox subscription and the first sandbox apply fails AuthorizationFailed.'
+                remediation = 'Set azure.subscriptions.sandbox in lz-config.json (re-export from the wizard) or grant the sandbox apply identity Contributor on the sandbox subscription manually, then re-run the idempotent broker.'
+            }
+        }
+    }
+
+    return @($findings)
+}
+
 function Invoke-LzBootstrap {
     [CmdletBinding()]
     param(
@@ -428,12 +577,25 @@ function Invoke-LzBootstrap {
     $planPath = Join-Path $OutputDirectory 'bootstrap-plan.json'
     $plan | ConvertTo-Json -Depth 30 | Set-Content $planPath -Encoding utf8
 
+    # First-apply pre-flight: loud and early, but advisory. These are operator
+    # traps in OTHER stages (connectivity tfvars, sandbox RBAC); failing the
+    # broker on them would block the reconciliation that is this stage's job.
+    $preflight = @(Test-LzFirstApplyPreflight -Config $config -ConfigPath $ConfigPath -Layers $plan.layers)
+    if ($preflight.Count -eq 0) {
+        Write-LzBrokerEvent OK 'First-apply pre-flight: no findings.'
+    }
+    foreach ($finding in $preflight) {
+        Write-LzBrokerEvent $finding.severity ('{0}: {1}' -f $finding.id, $finding.message)
+        if ($finding.remediation) { Write-LzBrokerEvent INFO ('    -> ' + $finding.remediation) }
+    }
+
     $audit = [ordered]@{
         schemaVersion = '1.0.0'
         startedAt = (Get-Date).ToUniversalTime().ToString('o')
         mode = $plan.mode
         repository = $plan.repository
         discoveryFailCount = $failCount
+        preflight = @($preflight)
         identities = @()
         environments = @()
         backend = @{ type = $config.backend.type; status = 'planned' }
@@ -514,4 +676,4 @@ function Invoke-LzBootstrap {
     return [pscustomobject]@{ PlanPath = $planPath; AuditPath = $auditPath; Applied = [bool]$Apply }
 }
 
-Export-ModuleMember -Function Invoke-LzBootstrap, New-LzBootstrapPlan
+Export-ModuleMember -Function Invoke-LzBootstrap, New-LzBootstrapPlan, Test-LzFirstApplyPreflight

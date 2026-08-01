@@ -62,9 +62,20 @@ The state storage account sets `shared_access_key_enabled = false`. Consequently
 
 Spans: `terraform/backend-bootstrap/`, all `terraform/live/*/backend.hcl`,
 the remote state config in `terraform/live/workloads-prod/main.tf`, the
-`backendHcl` generator in `site/app.js`, and the RBAC grants in the bootstrap
-script. A new root stack, a new remote-state read, or a change to the wizard's
-backend output must carry the flag or authentication fails at init.
+corpus remote-state reads in
+`factory/templates/terraform/live/workloads-{prod,nonprod}/main.tf.tmpl`
+(carry the flag as a rendered token since 2026-08-01), the `backendHcl`
+generator in `site/app.js`, `scripts/New-BackendConfig.ps1` (generates the
+per-layer `backend.hcl` files and always enforces `use_azuread_auth = true`,
+overriding any source that requests key auth), and the RBAC grants in the
+bootstrap script. A new root stack, a new remote-state read, or a change to
+the wizard's backend output must carry the flag or authentication fails at
+init.
+
+Note: the live and corpus state-container layouts are deliberately different —
+live uses one container per layer with key `terraform.tfstate`; the corpus
+uses a shared container with per-layer keys (`<layer>.tfstate`). Both are
+internally consistent; do not "reconcile" them by editing one side.
 
 ## 4. Deliberately unmapped variables
 
@@ -85,10 +96,14 @@ is the contract.
 connectivity subscription. Every caller must pass a `providers` map — see
 `terraform/live/workloads-prod/main.tf` for the reference call.
 
-**Known divergence**: the factory template copy
-(`factory/templates/terraform/modules/spoke-network/`) does **not** yet carry the
-alias. Until it does, a regeneration from the factory would drop the alias —
-reconcile before Stage 13.
+Divergence reconciled 2026-08-01: the factory template copy
+(`factory/templates/terraform/modules/spoke-network/`) is at byte parity with
+the live module and carries the alias. The template callers
+(`factory/templates/terraform/live/workloads-{prod,nonprod}/main.tf.tmpl`)
+pass `providers` maps — a dedicated `azurerm.hub` provider fed by
+`connectivity_subscription_id` when a hub exists, aliased to the workload
+provider when it does not. The rule stands: any new caller of this module, in
+either tree, must pass a `providers` map or `terraform validate` fails.
 
 ## 6. Lock-file policy
 

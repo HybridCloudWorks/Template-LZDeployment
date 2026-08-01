@@ -51,6 +51,53 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      # First-apply pre-flight. management_ip_ranges is a deliberate commented
+      # operator placeholder (the wizard never collects operator network
+      # ranges — contract #4, .claude/CROSS-DOMAIN-CONTRACTS.md). Left unfilled
+      # it surfaces later as a wide-open '*' default or a raw Terraform error;
+      # this step fails fast, before login and init, with an explanation.
+      - name: Pre-flight connectivity operator inputs
+        if: matrix.layer == 'platform-connectivity'
+        working-directory: terraform/live/${{ matrix.layer }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          set_in=""
+          for f in *.tfvars; do
+            if grep -Eq '^[[:space:]]*management_ip_ranges[[:space:]]*=' "$f"; then
+              set_in="$f"
+            fi
+          done
+          if [ -z "$set_in" ]; then
+            echo "::error::management_ip_ranges is not set in terraform/live/platform-connectivity/*.tfvars."
+            echo "The wizard deliberately exports it as a commented placeholder in connectivity.auto.tfvars;"
+            echo "it must be filled by the operator BEFORE the first connectivity plan. Uncomment the line"
+            echo "and supply your management source ranges, for example:"
+            echo '  management_ip_ranges = ["203.0.113.0/24"]'
+            echo "Wildcards ('*', '0.0.0.0/0') are rejected: they expose firewall management interfaces"
+            echo "to every source address. Do not delete the placeholder comment block - fill it in."
+            exit 1
+          fi
+          if grep -Eq '^[[:space:]]*management_ip_ranges[[:space:]]*=[[:space:]]*(\[[[:space:]]*)?"(\*|0\.0\.0\.0/0)"' "$set_in"; then
+            echo "::error::management_ip_ranges in $set_in is a wildcard ('*' or '0.0.0.0/0')."
+            echo "That exposes firewall management interfaces to every source address. Replace it with"
+            echo "the operator's real management CIDR ranges before planning this layer."
+            exit 1
+          fi
+          echo "management_ip_ranges is set in $set_in."
+          if grep -Eq '^[[:space:]]*log_analytics_workspace_id[[:space:]]*=[[:space:]]*"?<' "$set_in"; then
+            echo "::error::log_analytics_workspace_id in $set_in still contains the '<...>' placeholder text."
+            echo "This value is owned by the platform-management layer and can only be filled AFTER that"
+            echo "layer applies. Re-comment the line for now, apply platform-management, then paste its"
+            echo "log_analytics_workspace_id output here."
+            exit 1
+          fi
+          if ! grep -Eq '^[[:space:]]*log_analytics_workspace_id[[:space:]]*=' *.tfvars; then
+            echo "::warning::log_analytics_workspace_id is not set; hub firewall diagnostics and"
+            echo "::warning::threat-intel alerts will not be created. Expected before the first apply -"
+            echo "::warning::loop back and set it from the platform-management output once that layer applies."
+          fi
+
       - name: Azure login (plan identity, read-only)
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
         with:

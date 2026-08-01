@@ -74,7 +74,7 @@ without editing broker or scaffold source; provide values through
 
 ## Factory CI
 
-- [ ] Confirm the source factory's `Factory CI / Factory CI` check passed for
+- [ ] Confirm the source factory's `Factory CI` check passed for
   the factory version stamped into this repository.
 - [ ] Preserve the matching `factory-ci-report.json` as factory release
   provenance.
@@ -109,7 +109,8 @@ without editing broker or scaffold source; provide values through
 #{{ENDFOREACH}}
 - [ ] Confirm `{{FACTORY-RAW:computed.defaultBranch}}` protection requires
   the comma-separated checks in `LZ_REQUIRED_STATUS_CHECKS` (defaults to
-  `qlty check`), linear history, pull-request review, and blocks force pushes
+  `repository-scan`, the generated Security Scan check that reports on every
+  pull request), linear history, pull-request review, and blocks force pushes
   and deletion.
 - [ ] Confirm backend workspaces/storage and state-lock behavior.
 - [ ] Review `bootstrap-audit.json`; resolve every

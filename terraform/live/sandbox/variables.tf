@@ -18,14 +18,18 @@ variable "resource_group_name" {
 }
 
 variable "location" {
+  # Bound must match the azureRegion definition in the schema (^[a-z0-9]+$)
+  # and the factory-corpus copy of this layer. The previous ^[a-z]+$ rejected
+  # every numbered region — eastus2, westus3 — so a perfectly valid wizard
+  # selection failed only at plan time.
   description = "Azure region for the sandbox resource group"
   type        = string
   default     = "eastus"
   nullable    = false
 
   validation {
-    condition     = can(regex("^[a-z]+$", var.location))
-    error_message = "Location must be a valid Azure region name"
+    condition     = can(regex("^[a-z0-9]+$", var.location))
+    error_message = "Location must be a valid Azure region short name, e.g. southcentralus or eastus2."
   }
 }
 

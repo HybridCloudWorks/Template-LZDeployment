@@ -48,6 +48,11 @@ promotion proposal.
 ```
 HCW-Demo-LZDeployment/
 ├── scripts/
+│   ├── Initialize-ClientFork.ps1          # Plan-first fork/private-copy init (Actions, protection, read-back)
+│   ├── Invoke-CustomerEngagement.ps1      # Plan-first wrapper: discovery → broker → render → scaffold
+│   ├── New-BackendConfig.ps1              # Plan-first per-layer backend.hcl generator (AAD auth enforced)
+│   ├── Add-PlanFederatedCredential.ps1    # Plan-first AADSTS700213 remediation for the plan SP
+│   ├── Dispose-Engagement.ps1             # Plan-first engagement disposal (archive, then delete)
 │   ├── Start-LandingZoneBootstrap.ps1    # Legacy single-repo bootstrap; retained for compatibility
 │   ├── Configure-DeploymentOptions.ps1    # Interactively enable optional modules
 │   ├── Validate-ALZDeployment.ps1
@@ -85,6 +90,7 @@ HCW-Demo-LZDeployment/
 │   ├── terraform-plan.yml           # PR-based plan and validation
 │   ├── terraform-apply.yml          # Merge-based deployment
 │   ├── secrets-scan.yml             # TruffleHog + Gitleaks + tfsec
+│   ├── deploy-pages.yml             # GitHub Pages deploy of site/ (Pages source must be "GitHub Actions")
 │   └── action-pinning-policy.yml    # Enforces SHA-pinned actions
 ├── bootstrap-broker.ps1          # Stage 9 non-interactive broker
 ├── bootstrap-broker.sh           # Cross-platform launcher
@@ -177,7 +183,8 @@ $env:LZ_FACTORY_CI_OUTPUT = './factory-ci-output'
 pwsh ./factory/ci/Invoke-FactoryCI.ps1
 ```
 
-The stable GitHub context is `Factory CI / Factory CI`. The runner uses no
+The stable GitHub context is `Factory CI` (GitHub records the job-level check
+name). The runner uses no
 cloud credentials, initializes Terraform with backends disabled, and writes
 `factory-ci-report.json` plus per-check logs.
 
@@ -221,9 +228,9 @@ Policy baseline module enforces mandatory tagging, allowed locations, NSG requir
 
 ## Current Known Issues
 
-See [TODO.md](TODO.md) for the full, current list. Highlights as of 2026-07-01:
+See [TODO.md](TODO.md) and [PROD-TODO.md](PROD-TODO.md) for the full, current lists. Highlights as of 2026-08-01:
 
-- CI/CD pipeline has no recorded successful run yet — root cause (a missing OIDC federated credential for `pull_request`-triggered runs) has been fixed in code; live verification is pending
+- CI/CD pipeline has no recorded successful run yet — the code fix landed, but the live Entra federated credentials are missing for **both** service principals (the plan SP's `pull_request` subject and the Contributor SP's `ref:refs/heads/main` subject). Remediation tooling for the plan SP exists (`scripts/Add-PlanFederatedCredential.ps1`, not yet executed live); see PROD-TODO Phase 2
 - Backend is currently `azurerm` native storage everywhere except the bootloader and workflow `010`, which assume Terraform Cloud — migration tracked as [GitHub Issue #11](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues/11)
 - 6 of 11 Terraform modules are missing a `README.md`
 - Two modules (`keyvault-cmk`, `sentinel-siem`) are scaffold-only stubs with no real resources yet
@@ -250,6 +257,7 @@ See [TODO.md](TODO.md) for the full, current list. Highlights as of 2026-07-01:
 - **[TODO.md](TODO.md)** — the open backlog (legacy deployment debt plus factory runtime work)
 - **[CHANGELOG.md](CHANGELOG.md)** — completed work history, with verification notes and the archived `HANDOFF.md` decisions
 - **[USER-CHECKLIST.md](USER-CHECKLIST.md)** — operator authentication, publication, and verification activities
+- **[docs/runbooks/](docs/runbooks/)** — engagement disposal and lifecycle-hygiene runbooks; **[docs/decisions/](docs/decisions/)** — decision records (private copy over public fork)
 - **[.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)** — load-bearing cross-file contracts (stays in-repo; agents read it from disk)
 - **[terraform/modules/\*/README.md](terraform/modules/)** — per-module usage docs (where they exist — see Known Issues)
 
