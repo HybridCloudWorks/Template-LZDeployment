@@ -48,6 +48,20 @@ resource "azurerm_network_security_group" "app" {
   location            = azurerm_resource_group.spoke.location
   tags                = var.tags
 
+  # Azure Load Balancer health probes must be allowed above the deny-all
+  # floor, or every probed backend in this subnet is marked unhealthy.
+  security_rule {
+    name                       = "AllowAzureLoadBalancerInbound"
+    priority                   = 4095
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "AzureLoadBalancer"
+    destination_address_prefix = "*"
+  }
+
   # Default deny all inbound
   security_rule {
     name                       = "DenyAllInbound"
@@ -59,6 +73,25 @@ resource "azurerm_network_security_group" "app" {
     destination_port_range     = "*"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
+  }
+
+  # Caller-supplied rules; priorities must stay below 4095 so the deny-all
+  # floor and the load-balancer allowance keep their positions.
+  dynamic "security_rule" {
+    for_each = { for rule in var.additional_security_rules : rule.name => rule }
+    content {
+      name                         = security_rule.value.name
+      priority                     = security_rule.value.priority
+      direction                    = security_rule.value.direction
+      access                       = security_rule.value.access
+      protocol                     = security_rule.value.protocol
+      source_port_range            = security_rule.value.source_port_range
+      destination_port_range       = security_rule.value.destination_port_range
+      source_address_prefix        = security_rule.value.source_address_prefix
+      source_address_prefixes      = security_rule.value.source_address_prefixes
+      destination_address_prefix   = security_rule.value.destination_address_prefix
+      destination_address_prefixes = security_rule.value.destination_address_prefixes
+    }
   }
 }
 
@@ -75,6 +108,18 @@ resource "azurerm_network_security_group" "data" {
   tags                = var.tags
 
   security_rule {
+    name                       = "AllowAzureLoadBalancerInbound"
+    priority                   = 4095
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "AzureLoadBalancer"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
     name                       = "DenyAllInbound"
     priority                   = 4096
     direction                  = "Inbound"
@@ -84,6 +129,23 @@ resource "azurerm_network_security_group" "data" {
     destination_port_range     = "*"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
+  }
+
+  dynamic "security_rule" {
+    for_each = { for rule in var.additional_security_rules : rule.name => rule }
+    content {
+      name                         = security_rule.value.name
+      priority                     = security_rule.value.priority
+      direction                    = security_rule.value.direction
+      access                       = security_rule.value.access
+      protocol                     = security_rule.value.protocol
+      source_port_range            = security_rule.value.source_port_range
+      destination_port_range       = security_rule.value.destination_port_range
+      source_address_prefix        = security_rule.value.source_address_prefix
+      source_address_prefixes      = security_rule.value.source_address_prefixes
+      destination_address_prefix   = security_rule.value.destination_address_prefix
+      destination_address_prefixes = security_rule.value.destination_address_prefixes
+    }
   }
 }
 
@@ -164,8 +226,11 @@ resource "azurerm_virtual_network_peering" "spoke_to_hub" {
   use_remote_gateways          = var.use_remote_gateways
 }
 
-# VNet peering: hub to spoke
+# VNet peering: hub to spoke. Created in the connectivity subscription via
+# the aliased provider; the default provider targets the spoke subscription
+# and cannot see the hub VNet.
 resource "azurerm_virtual_network_peering" "hub_to_spoke" {
+  provider                     = azurerm.hub
   count                        = var.enable_hub_peering ? 1 : 0
   name                         = "peer-hub-to-${var.spoke_name}-${var.region_code}"
   resource_group_name          = var.hub_resource_group_name

@@ -627,6 +627,10 @@
         <label class="check"><input type="checkbox" data-path="security.defender.enabled"> Enable Defender for Cloud</label>
       </div>
       <div data-visible-when="security.defender.enabled=true">
+        <div class="callout callout-block">
+          <h4>Available, not auto-deployed: the <code>defender-baseline</code> module</h4>
+          <p>The module is implemented, but no <code>terraform/live</code> layer calls it and the renderer does not wire it in. Enabling this records the intent and lists it as an unmet dependency in <code>CONFIGURATION.md</code>; actually deploying Defender is a deliberate follow-up step in the generated repository, not something the first apply does for you.</p>
+        </div>
         <div class="field">
           <label>Plans</label>
           <div class="checks inline" id="defenderPlans"></div>
@@ -990,7 +994,12 @@
       <div id="validationHost"></div>
 
       <h3 class="sub">Export</h3>
-      <p class="note">Each file downloads to your browser&rsquo;s download folder. Move them to <code id="outPathHint">generated-output/&lt;company&gt;/</code>, then run the bootstrap broker.</p>
+      <p class="note">Each file downloads to your browser&rsquo;s download folder. Move them to <code id="outPathHint">generated-output/&lt;company&gt;/</code> in the factory clone, then follow <code>NEXT-STEPS.md</code>: discovery &rarr; bootstrap &rarr; render &rarr; scaffold.</p>
+
+      <div class="export-bundle">
+        <button type="button" id="btnBundle" class="btn btn-primary" disabled>Download all as bundle (.zip)</button>
+        <p class="hint">One zip (stored, not compressed &mdash; built entirely in this page) containing all eight artifacts inside the <code>generated-output</code> folder shown above, plus a <code>checksums.txt</code> SHA-256 manifest so you can verify the files landed intact. The individual downloads below stay available.</p>
+      </div>
 
       <div class="export-grid" id="exportGrid"></div>
 

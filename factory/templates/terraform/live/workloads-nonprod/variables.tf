@@ -3,6 +3,16 @@ variable "workload_nonprod_subscription_id" {
   type        = string
 }
 
+variable "connectivity_subscription_id" {
+  # Feeds the azurerm.hub provider alias: the hub side of each VNet peering is
+  # created in the connectivity subscription that owns the hub VNet. Empty when
+  # the landing zone has no platform hub — the template then aliases azurerm.hub
+  # to the workload provider and creates no peering.
+  description = "Connectivity subscription ID that owns the hub VNet (hub-and-spoke landing zones only)"
+  type        = string
+  default     = ""
+}
+
 variable "state_resource_group_name" {
   description = "Terraform state resource group name (azurerm backend only)"
   type        = string

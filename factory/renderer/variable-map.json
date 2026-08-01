@@ -67,6 +67,7 @@
       "$comment": "The three state_* variables feed the azurerm form of the connectivity remote-state read. Under HCP Terraform that read is addressed by organization and workspace and these are unused, which is why none of them is required.",
       "variables": {
         "workload_prod_subscription_id": "azure.subscriptions.workloadProd",
+        "connectivity_subscription_id": "azure.subscriptions.connectivity",
         "state_resource_group_name": "backend.azurerm.resourceGroupName",
         "state_storage_account_name": "backend.azurerm.storageAccountName",
         "state_container_name": "backend.azurerm.containerName",
@@ -84,6 +85,7 @@
       "variablesFile": "terraform/live/workloads-nonprod/variables.tf",
       "variables": {
         "workload_nonprod_subscription_id": "azure.subscriptions.workloadNonProd",
+        "connectivity_subscription_id": "azure.subscriptions.connectivity",
         "state_resource_group_name": "backend.azurerm.resourceGroupName",
         "state_storage_account_name": "backend.azurerm.storageAccountName",
         "state_container_name": "backend.azurerm.containerName",

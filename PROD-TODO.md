@@ -40,32 +40,50 @@ SHA-pinned and travel with the fork.
 
 **Missing / manual**
 
-- [ ] **[HARDENING] Decide and document the fork mechanic and visibility.** A
+- [x] **[HARDENING] Decide and document the fork mechanic and visibility.** A
   GitHub fork of a public repository is always public, and the legacy bootstrap
   (`scripts/Start-LandingZoneBootstrap.ps1`, phase 9 `Create-BootstrapPR`)
   commits `.lz-bootloader-state.json` — tenant ID, subscription ID, SP app IDs
   — into the repo (`010-terraform-init.yml` even triggers on that path). Prefer
   a **private copy** per client (template repository, `gh repo create
-  --private` + push, or repo import) over a literal public fork. Record the
-  decision in the wiki guidebook.
-- [ ] **[HARDENING] Per-fork enablement checklist.** Forks do not inherit:
+  --private` + push, or repo import) over a literal public fork.
+  *(Done 2026-08-01: decision recorded in
+  [docs/decisions/0001-private-copy-over-public-fork.md](docs/decisions/0001-private-copy-over-public-fork.md);
+  `scripts/Initialize-ClientFork.ps1 -CreatePrivateCopy` implements the
+  private-copy mechanic.)*
+- [x] **[HARDENING] Per-fork enablement checklist.** Forks do not inherit:
   Actions enablement (workflows are disabled on forks until enabled), branch
   protection/rulesets, secrets/variables, environments, or third-party
   integrations (qlty, GitGuardian). The wiki guidebook now lists these; script
   the fork-init (`gh` API) so it is not tribal knowledge.
+  *(Done 2026-08-01: `scripts/Initialize-ClientFork.ps1` — plan-first; enables
+  Actions, configures branch protection with required checks and ≥1 required
+  approval, reads back secret-scanning state, and verifies every setting via
+  GitHub API read-back.)*
 - [ ] **[BLOCKER] Enable and verify required `main` status checks** *(moved
   from TODO.md)* — `main` currently has **no** `required_status_checks`;
   Terraform Plan/Apply, secrets-scan, and action-pinning exist in the repo
   while being advisory in GitHub settings, so a green merge proves nothing. Run
   Factory CI at least once, then configure branch protection/rulesets using the
-  stable check names (including `Factory CI / Factory CI`) and confirm required
-  contexts plus enforcement by GitHub API read-back. Requires repository
-  administration. Must be repeated on every client fork (protection does not
-  inherit) — fold into the fork-init script above.
+  stable check names and confirm required contexts plus enforcement by GitHub
+  API read-back. Requires repository administration. Must be repeated on every
+  client fork (protection does not inherit) — fold into the fork-init script
+  above. *(Corrected 2026-08-01: GitHub records the Factory CI check context
+  as `Factory CI` — the job-level name — not `Factory CI / Factory CI` as this
+  item previously claimed. Tooling shipped (this PR):
+  `scripts/Initialize-ClientFork.ps1` wires the default required checks
+  `Factory CI`, `Enforce Immutable Action Refs`, `TruffleHog Secret Scan`,
+  `Gitleaks Secret Detection`, `Terraform Security Scan`; caveat — the first
+  two are path-filtered and can wait forever on non-matching PRs, the three
+  secrets-scan checks always report; `-RequiredChecks` overrides. Operator
+  execution pending.)*
 - [ ] **[HARDENING] Verify GitHub repo settings not checkable from a local
   clone** *(moved from TODO.md)* — secret scanning enabled, required PR
   approval count (currently 0 — branch protection exists but does not require
-  human review). Same read-back applies to each client fork.
+  human review). Same read-back applies to each client fork. *(2026-08-01:
+  Tooling shipped (this PR): `scripts/Initialize-ClientFork.ps1` performs the
+  full API read-back including secret-scanning state and required approvals —
+  operator execution pending.)*
 
 **CRUD per engagement**
 - Created: the client fork (client-owned; retained as the client's factory
@@ -98,52 +116,71 @@ SHA-pinned and travel with the fork.
   emits `tenant-readiness-report.md` + `discovery-inventory.json`) and
   `bootstrap-broker.ps1` / `.sh` (non-interactive, plan-first, `-Apply`-gated;
   reconciles Entra, RBAC, GitHub, and backend prerequisites for the
-  **generated** repo; default required check `qlty check`, override with
-  `LZ_REQUIRED_STATUS_CHECKS`).
+  **generated** repo; default required check `repository-scan` since
+  2026-08-01, override with `LZ_REQUIRED_STATUS_CHECKS`).
 
 **Missing / manual**
 
-- [ ] **[BLOCKER] Add the live Entra `pull_request` federated credential, then
-  verify it** *(moved from TODO.md; re-confirmed 2026-08-01 on merged PR #53:
-  `RBAC Audit & Validation` and `RBAC Compliance Checks` fail in ~10 s)* — every
-  PR fails Azure login with `AADSTS700213: No matching federated identity
-  record found for presented assertion subject
+- [ ] **[BLOCKER] Add the live Entra federated credentials — BOTH service
+  principals — then verify them** *(moved from TODO.md; re-confirmed 2026-08-01
+  on merged PR #53: `RBAC Audit & Validation` and `RBAC Compliance Checks`
+  fail in ~10 s)* — every PR fails Azure login with `AADSTS700213: No matching
+  federated identity record found for presented assertion subject
   'repo:saulpatinojr/HCW-Plan_LZDeployment:pull_request'`. The code fix landed
   (`terraform-plan.yml` authenticates as `AZURE_PLAN_CLIENT_ID`); the live
-  Entra app registration was never updated. Fix (needs Application
-  Administrator):
+  Entra app registration was never updated. **Widened 2026-08-01**: run logs
+  prove the gap covers both SPs, not just the plan SP — run 30721161313 shows
+  `AADSTS700213` for the **Contributor SP's `ref:refs/heads/main` subject**
+  too, so push-triggered runs on `main` fail the same way. Fix (needs
+  Application Administrator):
 
   ```bash
   az ad app federated-credential create --id <APP_ID> --parameters '{"name":"pr-plan","issuer":"https://token.actions.githubusercontent.com","subject":"repo:saulpatinojr/HCW-Plan_LZDeployment:pull_request","audiences":["api://AzureADTokenExchange"]}'
   ```
 
-  Then run the bootstrap/remediation against the live app registration,
-  confirm the exact repo-scoped subject by API read-back, and prove token
-  exchange from a real pull request. The same failure will occur **per
-  customer** if the plan SP's credential is skipped — the bootstrap creates it
-  (`Setup-Azure-OIDC`), so the per-customer fix is "do not skip phase 4".
+  Then run the bootstrap/remediation against the live app registrations,
+  confirm the exact repo-scoped subjects by API read-back, and prove token
+  exchange from a real pull request and a real push to `main`. The same
+  failure will occur **per customer** if the SPs' credentials are skipped —
+  the bootstrap creates them (`Setup-Azure-OIDC`), so the per-customer fix is
+  "do not skip phase 4". *(2026-08-01: Tooling shipped (this PR):
+  `scripts/Add-PlanFederatedCredential.ps1` — plan-first remediation for the
+  plan SP's `pull_request` subject, idempotent, with a contract-#2 guard that
+  refuses Contributor/Owner apps and API read-back after apply. NOT yet
+  executed live; the Contributor SP's `ref:refs/heads/main` subject still
+  needs its own remediation. Operator execution pending.)*
 - [ ] **[BLOCKER] Supply `-SandboxSubscriptionId` at bootstrap (or grant
   manually).** Without it, platform-management's sandbox-cleanup Contributor
-  assignment fails `AuthorizationFailed` at apply (the script warns:
-  `scripts/Start-LandingZoneBootstrap.ps1:693`). Blocks any engagement whose
-  config enables the sandbox subscription.
-- [ ] **[HARDENING] Repo targeting breaks for org-owned forks.**
-  `Start-LandingZoneBootstrap.ps1` resolves `$GithubOwner` from `gh api user`
-  (`Confirm-Auth-GitHub`, used at `Main` ~line 1133), so secrets, environments,
-  and every OIDC subject point at `<operator-login>/<repo>` — wrong whenever
-  the client fork lives in an organization. Add a `-Repository <owner>/<name>`
-  parameter (or derive from `gh repo view` on the clone's origin).
-- [ ] **[HARDENING] Environment-selection bug**: choice `[1] Dev only` still
-  yields `@('dev','prod')` (`Gather-DeploymentConfig`,
-  `scripts/Start-LandingZoneBootstrap.ps1:404-405` — only choice `2` narrows).
-- [ ] **[HARDENING] Per-customer inputs are hardcoded**: region fixed to
+  assignment fails `AuthorizationFailed` at apply. Blocks any engagement whose
+  config enables the sandbox subscription. *(Hardened 2026-08-01: sandbox
+  enabled without `-SandboxSubscriptionId` is now a terminating error in the
+  script unless `-SkipSandboxRbac` is passed, and `-ConfigPath` seeds the
+  value from `azure.subscriptions.sandbox` in `lz-config.json`. Supplying the
+  real subscription ID per engagement remains operator work.)*
+- [x] **[HARDENING] Repo targeting breaks for org-owned forks.**
+  `Start-LandingZoneBootstrap.ps1` resolved `$GithubOwner` from `gh api user`,
+  so secrets, environments, and every OIDC subject pointed at
+  `<operator-login>/<repo>` — wrong whenever the client fork lives in an
+  organization. *(Fixed 2026-08-01: new `-Repository <owner>/<name>`
+  parameter; falls back to `gh repo view` on the clone's origin, then the
+  config, then the operator login with a loud warning.)*
+- [x] **[HARDENING] Environment-selection bug**: choice `[1] Dev only` yielded
+  `@('dev','prod')` (`Gather-DeploymentConfig` — only choice `2` narrowed).
+  *(Fixed 2026-08-01: each menu choice now maps to exactly its environments;
+  choice 1 yields dev only.)*
+- [x] **[HARDENING] Per-customer inputs are hardcoded**: region fixed to
   `eastus`/`eus` (no prompt), repo name defaults to `HCW-Demo-LZDeployment`,
   `TERRAFORM_CLOUD_ENABLED` always `'true'`, TFC workspace hardcoded
-  `landing-zone`. All must come from the wizard config or prompts.
-- [ ] **[HARDENING] Reviewer gate is the bootstrapping operator** — in a
-  single-owner repo that is self-approval. Replace with a client Team reviewer
-  once one exists (the script comment at `Setup-GitHub-Environments` says the
-  same). *(Operator-seeded item.)*
+  `landing-zone`. *(Fixed 2026-08-01: region, repo name, and TFC workspace are
+  prompted or seeded from `-ConfigPath <lz-config.json>`; the new
+  `-Backend azurerm|hcp-terraform` parameter skips the TFC phases and sets
+  `TERRAFORM_CLOUD_ENABLED=false` for azurerm.)*
+- [x] **[HARDENING] Reviewer gate is the bootstrapping operator** — in a
+  single-owner repo that is self-approval. *(Fixed 2026-08-01: new
+  `-EnvironmentReviewers` parameter accepts user logins and `org/team` slugs;
+  the default (operator) now emits a loud SELF-APPROVAL warning. Supplying a
+  real client reviewer per engagement remains operator input.)*
+  *(Operator-seeded item.)*
 - [ ] **[HARDENING] Execute the Stage 9 broker, Stage 10 scaffold, and Stage 11
   import test suites in a provisioned toolchain** *(moved from TODO.md)* —
   authenticated external services and required binaries were intentionally
@@ -156,7 +193,12 @@ SHA-pinned and travel with the fork.
   recorded default backend decision (CHANGELOG), the wizard exports either
   backend, `terraform/live/*/backend.hcl` is azurerm, and the legacy bootstrap
   assumes TFC. Pick the backend per customer at wizard time and make the legacy
-  script honor it.
+  script honor it. *(2026-08-01: Tooling shipped (this PR): the legacy script
+  now honors the wizard's `backend.type` via `-ConfigPath` and accepts an
+  explicit `-Backend azurerm|hcp-terraform` override; azurerm skips the TFC
+  auth and org/workspace phases and sets `TERRAFORM_CLOUD_ENABLED=false`. The
+  Issue #11 migration of this repo's own backend remains open — operator
+  execution pending.)*
 
 **CRUD per engagement**
 - Created (client tenant): 4 app registrations + service principals, 8+
@@ -187,31 +229,39 @@ for required `management_ip_ranges` and recommended
 
 **Missing / manual**
 
-- [ ] **[HARDENING] The wizard's NEXT-STEPS.md teaches an interface that does
-  not exist.** `site/app.js` (`nextStepsMarkdown`, ~lines 1790–1850) tells the
-  operator to run `bootstrap-broker.ps1 -ConfigPath … -Phase discovery`
-  (no `-Phase` parameter exists; discovery is
-  `factory/discovery/Invoke-Discovery.ps1`), mentions `--rollback` (does not
-  exist), and `scaffold-copy.ps1 -DryRun` / `-AutoPush` (real interface:
-  plan-by-default, `-Apply`, `-Force`, `LZ_SCAFFOLD_*` variables). The operator
-  hits an error at every hand-off. Fix the generator to emit the real
-  interface (owner: `frontend-experience-designer`; cross-check
-  `bootstrap-broker.ps1:11-16`, `scaffold-copy.ps1:12-20`).
-- [ ] **[HARDENING] Variable placement is manual.** Downloads land in the
+- [x] **[HARDENING] The wizard's NEXT-STEPS.md teaches an interface that does
+  not exist.** `site/app.js` (`nextStepsMarkdown`) told the operator to run
+  `bootstrap-broker.ps1 -ConfigPath … -Phase discovery` (no `-Phase` parameter
+  exists; discovery is `factory/discovery/Invoke-Discovery.ps1`), mentioned
+  `--rollback` (does not exist), and `scaffold-copy.ps1 -DryRun` / `-AutoPush`
+  (real interface: plan-by-default, `-Apply`, `-Force`, `LZ_SCAFFOLD_*`
+  variables). *(Fixed 2026-08-01: the generated NEXT-STEPS.md now emits the
+  real interfaces — discovery → broker plan/`-Apply` → render → scaffold
+  plan/`-Apply`; the fictional flags are gone. 48 wizard tests pass.)*
+- [x] **[HARDENING] Variable placement is manual.** Downloads land in the
   browser's download directory; the operator must create
-  `generated-output/<customer>/` and move all 8 files by hand (NEXT-STEPS step
-  1). Provide a single bundle download and/or a `Place-Artifacts` helper with a
-  hash check so "saved, stored, and copied into the locations the Terraform
-  files use" is one verifiable step.
+  `generated-output/<customer>/` and move all 8 files by hand. *(Fixed
+  2026-08-01: new "Download all as bundle (.zip)" — an offline, store-only zip
+  containing all 8 artifacts under the customer's output directory plus a
+  SHA-256 `checksums.txt` manifest for verifying placement; individual
+  downloads kept.)*
 - [ ] **[HARDENING] Wizard is not hosted** — requires opening
   `site/index.html` from disk. Host per fork (GitHub Pages) or document the
   local-open flow as the supported path. (The separate legacy `frontend/`
   generator has the same gap; that one stays tracked in TODO.md.)
-- [ ] **[HARDENING] Document the placeholder loop-back.** `management_ip_ranges`
+  *(2026-08-01: Tooling shipped (this PR):
+  `.github/workflows/deploy-pages.yml` — SHA-pinned GitHub Pages deploy of
+  `site/` on pushes to `main` touching `site/**`. One manual prerequisite
+  remains: repo Settings → Pages → source "GitHub Actions". Operator
+  execution pending.)*
+- [x] **[HARDENING] Document the placeholder loop-back.** `management_ip_ranges`
   must be filled before the first connectivity plan;
   `log_analytics_workspace_id` can only be filled **after** platform-management
   applies. The wiki guidebook now walks this; keep it in the generated
-  CONFIGURATION.md too.
+  CONFIGURATION.md too. *(Done 2026-08-01: the generated CONFIGURATION.md now
+  documents the loop-back — fill `management_ip_ranges` → apply
+  platform-management → paste `log_analytics_workspace_id` → re-plan
+  connectivity. The contract-#4 commented placeholders are untouched.)*
 
 **CRUD per engagement**
 - Created: `generated-output/<customer>/` (gitignored) holding tenant and
@@ -248,34 +298,46 @@ Factory CI green (PR #53).
   `dogfood-report.json`, and independently read back Azure, state, OIDC, and
   GitHub controls. Only then set `dogfoodInstanceAppliesGreen=true` in a
   reviewed PR (`factory-version.json:70` is `false` today).
-- [ ] **[BLOCKER] Reconcile the `spoke-network` template-corpus divergence** —
-  `factory/templates/terraform/modules/spoke-network/` does not carry
+- [x] **[BLOCKER] Reconcile the `spoke-network` template-corpus divergence** —
+  `factory/templates/terraform/modules/spoke-network/` did not carry
   `configuration_aliases = [azurerm.hub]` (contract #5,
   [.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)); a
-  repo generated today drops the hub-side peering wiring that
-  `terraform/live/workloads-prod/main.tf` depends on.
-- [ ] **[HARDENING] Reconcile the remaining `terraform/live/` ↔ factory-corpus
-  divergence** *(moved from TODO.md)* — `terraform/live/sandbox/variables.tf`
-  still validates `location` with `^[a-z]+$` (corpus uses `^[a-z0-9]+$`, so the
-  live tree rejects `eastus2`-style regions); the `workloads-prod` remote-state
-  container layout should be re-verified against the corpus; the approved
-  hub-network subnet re-layout plan lands in the PR's terraform-plan run.
-  `Test-LzSchemaDrift` only compares the schema against `factory/templates/` —
-  the live tree is synced by hand until Stage 13 regenerates this repo from the
-  factory, which resolves the split permanently. *(Sandbox location-regex item
+  repo generated then would drop the hub-side peering wiring that
+  `terraform/live/workloads-prod/main.tf` depends on. *(Resolved 2026-08-01:
+  the template module is at byte parity with `terraform/modules/spoke-network/`
+  and carries the alias; the template callers
+  (`workloads-{prod,nonprod}/main.tf.tmpl`) pass `providers` maps with a
+  conditional `azurerm.hub` provider fed by the new
+  `connectivity_subscription_id` variable, mapped in
+  `factory/renderer/variable-map.json`. 199 renderer tests green; touched
+  stacks validate.)*
+- [x] **[HARDENING] Reconcile the remaining `terraform/live/` ↔ factory-corpus
+  divergence** *(moved from TODO.md)*. *(Resolved 2026-08-01:
+  `terraform/live/sandbox/variables.tf` location validation fixed `^[a-z]+$` →
+  `^[a-z0-9]+$` so `eastus2`-style regions pass; the corpus remote-state reads
+  gained `use_azuread_auth` (contract #3); the live vs corpus state-container
+  layouts were re-verified and are deliberately different — live uses
+  per-layer containers, the corpus uses a shared container with per-layer
+  keys — and both are internally consistent. `Test-LzSchemaDrift` reports
+  InSync. The live/corpus split as a whole still ends only when Stage 13
+  regenerates this repo from the factory. Sandbox location-regex item
   operator-seeded.)*
-- [ ] **[HARDENING] Broker's default required check assumes qlty.** The
-  generated repo's branch protection defaults to `qlty check`
-  (`factory/bootstrap/LZFactory.Bootstrap.psm1:293-295`) — an integration a
-  fresh customer repo does not have, so protection waits on a check that never
-  reports. Set `LZ_REQUIRED_STATUS_CHECKS` per engagement (documented in
-  USER-CHECKLIST.md) or change the default to a check the generated corpus
-  actually ships.
-- [ ] **[HARDENING] Four entry points, one motion.** Discovery → broker →
-  render → scaffold spans four commands wired by environment variables. A
-  single wrapper (`Invoke-CustomerEngagement`) with per-phase gates would
-  reduce operator error. (Nice-to-have; the wiki guidebook sequences them
-  manually today.)
+- [x] **[HARDENING] Broker's default required check assumes qlty.** The
+  generated repo's branch protection defaulted to `qlty check` — an
+  integration a fresh customer repo does not have, so protection waits on a
+  check that never reports. *(Fixed 2026-08-01: default changed to
+  `repository-scan` (`Set-LzBranchProtection`,
+  `factory/bootstrap/LZFactory.Bootstrap.psm1`) — the only corpus-shipped
+  check that reports on every PR with no path filter.
+  `LZ_REQUIRED_STATUS_CHECKS` still overrides; documented in the module's
+  comment help and USER-CHECKLIST.md.)*
+- [x] **[HARDENING] Four entry points, one motion.** Discovery → broker →
+  render → scaffold spans four commands wired by environment variables.
+  *(Done 2026-08-01: `scripts/Invoke-CustomerEngagement.ps1` — single wrapper
+  with `-Phase discovery|broker|render|scaffold|all`, plan-first; `-Apply`
+  propagates to the broker and scaffold only, the sequence stops on the first
+  failure, cross-phase inputs are validated, and per-phase evidence paths are
+  printed.)*
 
 **CRUD per engagement**
 - Created: rendered staging tree + `render-manifest.json`; the **new private
@@ -302,32 +364,51 @@ AAD-only state storage (contract #3).
 
 **Missing / manual**
 
-- [ ] **[BLOCKER] Replace the `backend.hcl` placeholders** *(operator-seeded)*
+- [x] **[BLOCKER] Replace the `backend.hcl` placeholders** *(operator-seeded)*
   — all four live stacks (`terraform/live/global|platform-connectivity|platform-management|workloads-prod/backend.hcl`)
   carry `storage_account_name = "<REPLACE_WITH_OUTPUT_FROM_BOOTSTRAP>"`;
   `terraform init` fails until the operator pastes the
-  `terraform/backend-bootstrap` output. Automate: emit per-layer `backend.hcl`
-  from the bootstrap output or the wizard's exported `backend.hcl` (which today
-  is a single file the operator must duplicate per layer, replacing `<layer>`).
+  `terraform/backend-bootstrap` output. *(Automation shipped 2026-08-01:
+  `scripts/New-BackendConfig.ps1` — plan-first (`-Apply`) generator of all
+  four per-layer `backend.hcl` files from the backend-bootstrap outputs (new
+  `layer_state_containers` output in `terraform/backend-bootstrap/outputs.tf`),
+  a wizard-exported `backend.hcl`, or `lz-config.json`; always enforces
+  `use_azuread_auth = true`. The placeholder files themselves are only
+  replaced when the operator runs it after backend-bootstrap applies.)*
 - [ ] **[BLOCKER] Verify the pipeline actually runs green end-to-end** *(moved
   from TODO.md)* — confirm `010-terraform-init.yml`, `020-rbac-validation.yml`,
   `terraform-plan.yml`, and `terraform-apply.yml` complete successfully on a
   real PR/push. As of 2026-07-01 there is no recorded successful run of any of
-  these; the PR leg stays red until the Phase 2 AADSTS item is fixed.
-- [ ] **[HARDENING] Investigate 0-second workflow failures** *(moved from
+  these; the PR leg stays red until the Phase 2 AADSTS item is fixed — which
+  now covers **both** SP subjects. *(2026-08-01: Tooling shipped (this PR):
+  `scripts/Add-PlanFederatedCredential.ps1` for the plan SP's `pull_request`
+  subject — operator execution pending, and the Contributor SP's
+  `ref:refs/heads/main` subject needs its own remediation. See Phase 2.)*
+- [x] **[HARDENING] Investigate 0-second workflow failures** *(moved from
   TODO.md)* — historical runs of `010-terraform-init.yml` /
-  `020-rbac-validation.yml` fail in 0 seconds, suggesting a trigger/syntax
-  issue independent of the OIDC fix. Confirm once a post-fix run is attempted.
-- [ ] **[HARDENING] First-apply traps need loud errors.** The three known traps
+  `020-rbac-validation.yml` failed in 0 seconds. *(Investigated and resolved
+  2026-08-01: root cause was a YAML block-scalar bug, fixed by PR #13 (commit
+  `516cf44`, 2026-07-01). Every failure since is the missing live OIDC
+  federated credential — those fail in ~10–40 s, not 0 s. No workflow change
+  was needed; the remaining redness is the Phase 2 credential item.)*
+- [x] **[HARDENING] First-apply traps need loud errors.** The three known traps
   — unset `management_ip_ranges`, the `log_analytics_workspace_id` loop-back
-  after platform-management, and the missing sandbox RBAC grant — are
-  documented (wiki guidebook) but surface as raw Terraform/Azure errors.
-  Pre-flight-check them in the plan workflow or the broker.
-- [ ] **[HARDENING] Set customer expectations on module status** —
+  after platform-management, and the missing sandbox RBAC grant — were
+  documented but surfaced as raw Terraform/Azure errors. *(Fixed 2026-08-01:
+  new exported `Test-LzFirstApplyPreflight` in the broker
+  (`factory/bootstrap/LZFactory.Bootstrap.psm1`) checks all three loudly and
+  early, persisting findings in the `preflight` array of
+  `bootstrap-audit.json`; the generated connectivity plan workflow
+  (`factory/templates/.github/workflows/terraform-plan.yml.tmpl`) gained a
+  matching pre-flight step that fails fast before login and init.)*
+- [x] **[HARDENING] Set customer expectations on module status** —
   `keyvault-cmk` and `sentinel-siem` are scaffolds (render-blocked),
   `defender-baseline` is not auto-deployed. Never describe them as live
-  capabilities in engagement collateral; keep the wizard's feature table and
-  `CONFIGURATION.md` accurate.
+  capabilities in engagement collateral. *(Fixed 2026-08-01: the wizard's
+  feature table now labels `defender-baseline` "available, not auto-deployed"
+  — the earlier claim that the renderer wires it in was false;
+  `sentinel-siem`/`keyvault-cmk` were already labeled scaffold-only. Keep the
+  wizard table and generated `CONFIGURATION.md` accurate as modules change.)*
 - [ ] **[BLOCKER] Run Stage 14 release attestation** *(moved from TODO.md)* —
   after dogfood is green: select exact successful Factory CI and full dogfood
   apply run IDs, approve the hash-pinned read-back attestation, retain the
@@ -349,44 +430,48 @@ AAD-only state storage (contract #3).
 
 ## Phase 6 — Dispose the clone
 
-**Exists today (verified)**: nothing scripted. [USER-CHECKLIST.md](USER-CHECKLIST.md)
-carries the "Never store" list (user tokens, `TFE_TOKEN`, client secrets,
-storage keys) and per-stage evidence-preservation steps; `.gitignore` keeps all
-per-customer artifacts out of the fork.
+**Exists today (updated 2026-08-01)**: `scripts/Dispose-Engagement.ps1`
+(plan-first, archive-then-delete with SHA-256 verification) and the runbook
+[docs/runbooks/engagement-disposal.md](docs/runbooks/engagement-disposal.md).
+[USER-CHECKLIST.md](USER-CHECKLIST.md) carries the "Never store" list (user
+tokens, `TFE_TOKEN`, client secrets, storage keys) and per-stage
+evidence-preservation steps; `.gitignore` keeps all per-customer artifacts out
+of the fork.
 
 **Missing / manual**
 
-- [ ] **[HARDENING] Write and script the disposal runbook** (first cut now in
-  the wiki guidebook). Order matters: **archive, then delete.**
-  1. Archive to client records / the customer repo: `lz-config.json`,
-     `bootstrap-plan.json` + `bootstrap-audit.json`, `scaffold-plan.json` +
-     `scaffold-audit.json`, discovery inventory, dogfood/release evidence,
-     `.reports/bootstrap/*`.
-  2. Delete the clone directory — removes `.lz-bootloader-state.json`
-     (tenant/subscription IDs), `generated-output/`, rendered staging,
-     `.terraform/` caches, `*.lz-backup-*`.
-  3. End sessions: `az logout` + `az account clear`, `gh auth logout`,
-     remove the TFC token (`terraform logout` / credentials file), unset
-     `TFE_TOKEN` and all `LZ_*` variables from the shell profile.
-- [ ] **[HARDENING] Fork-side residue.** The fork retains secrets
+- [x] **[HARDENING] Write and script the disposal runbook.** Order matters:
+  **archive, then delete.** *(Done 2026-08-01: runbook at
+  [docs/runbooks/engagement-disposal.md](docs/runbooks/engagement-disposal.md);
+  script `scripts/Dispose-Engagement.ps1` — plan-first, archives
+  `lz-config.json` (hard-fails if it cannot be archived and verified),
+  broker/scaffold plan+audit evidence, discovery artifacts, and
+  `.reports/**` with SHA-256 verification before any deletion; deletes clone
+  residue; ends CLI sessions; writes `disposal-plan.json` /
+  `disposal-audit.json`.)*
+- [x] **[HARDENING] Fork-side residue.** The fork retains secrets
   (`AZURE_CLIENT_ID`, `AZURE_PLAN_CLIENT_ID`, `AZURE_TENANT_ID`,
   `AZURE_SUBSCRIPTION_ID`, `TF_API_TOKEN`), variables, environments, and any
   bootstrap branch/PR (`bootstrap/phase-0-oidc-setup-*`, which committed
-  `.lz-bootloader-state.json`). If the fork is retired once the customer repo
-  takes over: delete the secrets, revoke the TFC token, archive the repo. If
-  the fork stays as the client's factory instance: document that it holds
-  tenant-scoped configuration.
-- [ ] **[HARDENING] Identity residue — decide the end-state.** Legacy-script
+  `.lz-bootloader-state.json`). *(Done 2026-08-01: `Dispose-Engagement.ps1`
+  prints the fork-residue `gh` cleanup commands and executes them only with
+  `-IncludeForkCleanup -Apply -ForkRepository`; retire-vs-retain guidance is
+  in the disposal runbook.)*
+- [x] **[HARDENING] Identity residue — decide the end-state.** Legacy-script
   SPs carry federated credentials subject-bound to the **fork**
   (`repo:<owner>/<fork>:…`); the generated repo gets its own identities from
   the broker. Two write-capable identity sets must not persist with one
-  unmonitored: either delete the fork-bound set (federated credentials, role
-  assignments, app registrations) at disposal, or re-point its subjects to the
-  customer repo and retire the broker set — pick one and put it in the runbook.
-- [ ] **[HARDENING] Say what must NOT be deleted.** The state storage account
+  unmonitored. *(Decided 2026-08-01, recorded in the disposal runbook: the
+  fork-bound legacy-script identity set is DELETED at disposal once the
+  generated repo's broker-created identities are verified working; re-pointing
+  the fork-bound subjects to the customer repo is the documented alternative
+  only when the engagement never used the broker path.)*
+- [x] **[HARDENING] Say what must NOT be deleted.** The state storage account
   and containers (or TFC workspaces), the landing-zone identities in the client
   tenant, and the customer repo survive disposal — they ARE the deliverable.
-  The runbook needs this list as prominently as the deletion list.
+  *(Done 2026-08-01: the disposal runbook carries the MUST-NOT-DELETE list as
+  prominently as the deletion list, and `Dispose-Engagement.ps1` prints it as
+  a banner on every run.)*
 
 **CRUD per engagement**
 - Deleted: local clone (+ everything inside), CLI sessions, local tokens,
@@ -398,19 +483,22 @@ per-customer artifacts out of the fork.
 
 ## Phase 7 — Repeat (factory hygiene between engagements)
 
-- [ ] **[HARDENING] Define the upgrade channels.** Client fork ← upstream:
+- [x] **[HARDENING] Define the upgrade channels.** Client fork ← upstream:
   document fork-sync (or re-fork) policy. Customer repo ← factory corpus:
   `scaffold-copy.ps1` existing-repo mode (draft PR on `LZ_SCAFFOLD_BRANCH`)
   already supports this — document it as the supported regeneration/upgrade
-  path per customer.
-- [ ] **[HARDENING] Engagement provenance.** `deployment-metadata.json` and
+  path per customer. *(Addressed by doc 2026-08-01:
+  [docs/runbooks/engagement-lifecycle.md](docs/runbooks/engagement-lifecycle.md).)*
+- [x] **[HARDENING] Engagement provenance.** `deployment-metadata.json` and
   `factory-version.json` stamp factory/schema versions per export; keep a
   CBTS-side record of customer → factory version so a corpus fix can be mapped
-  to affected engagements.
-- [ ] **[HARDENING] Cross-engagement isolation on the operator workstation.**
+  to affected engagements. *(Addressed by doc 2026-08-01:
+  [docs/runbooks/engagement-lifecycle.md](docs/runbooks/engagement-lifecycle.md).)*
+- [x] **[HARDENING] Cross-engagement isolation on the operator workstation.**
   One clone per customer, never shared `generated-output/`; run
   `az account clear` and `gh auth logout` between engagements so a session from
-  customer A cannot touch customer B's tenant.
+  customer A cannot touch customer B's tenant. *(Addressed by doc 2026-08-01:
+  [docs/runbooks/engagement-lifecycle.md](docs/runbooks/engagement-lifecycle.md).)*
 
 ---
 

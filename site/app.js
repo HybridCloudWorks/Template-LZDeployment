@@ -318,7 +318,9 @@ function toast(msg, kind = 'ok') {
 /** Trigger a file download entirely client-side. No network involved: the Blob
  *  lives in memory and the object URL is revoked immediately after the click. */
 function download(filename, content, mime = 'text/plain') {
-  const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  // Strings get an explicit charset; binary payloads (Uint8Array) must not.
+  const type = typeof content === 'string' ? mime + ';charset=utf-8' : mime;
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1420,6 +1422,123 @@ function renderExportGrid(enabled) {
 
     grid.appendChild(card);
   }
+
+  const bundleBtn = $('#btnBundle');
+  if (bundleBtn) bundleBtn.disabled = !enabled;
+}
+
+/* ---------------------------------------------------------------------
+ * Bundle download — store-only ZIP (no compression) plus a SHA-256
+ * manifest, written in plain JS so the page stays library-free and
+ * offline. One file lands in the download folder instead of eight.
+ * ------------------------------------------------------------------- */
+
+const CRC32_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC32_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+/** MS-DOS date/time pair used by the ZIP headers (2-second resolution). */
+function dosDateTime(d) {
+  const year = Math.max(1980, d.getFullYear());
+  return {
+    date: ((year - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(),
+    time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)
+  };
+}
+
+/** Build a store-only (method 0) ZIP: local file headers, central directory,
+ *  end-of-central-directory. Entries are { name, data: Uint8Array }. Flag
+ *  0x0800 marks the file names as UTF-8. */
+function buildZip(entries, when) {
+  const enc = new TextEncoder();
+  const { date, time } = dosDateTime(when || new Date());
+  const u16 = (v) => [v & 0xFF, (v >>> 8) & 0xFF];
+  const u32 = (v) => [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF];
+
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+
+  for (const e of entries) {
+    const name = enc.encode(e.name);
+    const crc = crc32(e.data);
+    const local = new Uint8Array([
+      ...u32(0x04034B50), ...u16(20), ...u16(0x0800), ...u16(0),
+      ...u16(time), ...u16(date),
+      ...u32(crc), ...u32(e.data.length), ...u32(e.data.length),
+      ...u16(name.length), ...u16(0)
+    ]);
+    chunks.push(local, name, e.data);
+    central.push({ name, crc, size: e.data.length, offset });
+    offset += local.length + name.length + e.data.length;
+  }
+
+  const cdStart = offset;
+  let cdSize = 0;
+  for (const c of central) {
+    const hdr = new Uint8Array([
+      ...u32(0x02014B50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0),
+      ...u16(time), ...u16(date),
+      ...u32(c.crc), ...u32(c.size), ...u32(c.size),
+      ...u16(c.name.length), ...u16(0), ...u16(0),
+      ...u16(0), ...u16(0), ...u32(0), ...u32(c.offset)
+    ]);
+    chunks.push(hdr, c.name);
+    cdSize += hdr.length + c.name.length;
+  }
+  chunks.push(new Uint8Array([
+    ...u32(0x06054B50), ...u16(0), ...u16(0),
+    ...u16(central.length), ...u16(central.length),
+    ...u32(cdSize), ...u32(cdStart), ...u16(0)
+  ]));
+
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let p = 0;
+  for (const c of chunks) { out.set(c, p); p += c.length; }
+  return out;
+}
+
+async function sha256Hex(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** All artifacts in one zip, under <outputDirectoryName>/, plus checksums.txt
+ *  so placement into the factory clone can be verified file by file. */
+async function downloadBundle() {
+  const cfg = buildConfig();
+  const slug = cfg.organization.outputDirectoryName;
+  const enc = new TextEncoder();
+  const files = exportArtifacts().map((a) => ({ name: a.name, data: enc.encode(a.build()) }));
+
+  const hasSubtle = typeof crypto !== 'undefined' && crypto.subtle && crypto.subtle.digest;
+  if (hasSubtle) {
+    const lines = [
+      '# SHA-256 of every artifact in this bundle. After extracting into the',
+      `# factory clone, verify placement with:`,
+      `#   pwsh: Get-FileHash generated-output/${slug}/* -Algorithm SHA256`,
+      `#   bash: (cd generated-output && sha256sum -c ${slug}/checksums.txt)`
+    ];
+    for (const f of files) lines.push(`${await sha256Hex(f.data)}  ${slug}/${f.name}`);
+    lines.push('');
+    files.push({ name: 'checksums.txt', data: enc.encode(lines.join('\n')) });
+  }
+
+  const zip = buildZip(files.map((f) => ({ name: `${slug}/${f.name}`, data: f.data })), new Date());
+  download(`${slug}-lz-artifacts.zip`, zip, 'application/zip');
+  return hasSubtle;
 }
 
 /* ---------------------------------------------------------------------
@@ -1624,7 +1743,7 @@ function unmetDependencies(cfg) {
     out.push({ feature: 'Virtual WAN', module: '(none)', status: 'missing', impact: 'No module exists. Choose hub-and-spoke or contribute the module.' });
   }
   if (cfg.security.defender.enabled) {
-    out.push({ feature: 'Defender for Cloud', module: 'defender-baseline', status: 'implemented-not-wired', impact: 'The module is implemented but no terraform/live layer currently calls it. The renderer wires it in; verify on first plan.' });
+    out.push({ feature: 'Defender for Cloud', module: 'defender-baseline', status: 'implemented-not-wired', impact: 'Available, not auto-deployed: no terraform/live layer calls this module and the renderer does not wire it in. After scaffolding, add a module call to a live layer and plan it deliberately.' });
   }
   if (cfg.github.useSelfHostedRunners) {
     out.push({ feature: 'Self-hosted runners', module: '(workflows)', status: 'unsupported', impact: 'v1 emits GitHub-hosted workflows only.' });
@@ -1735,6 +1854,25 @@ function configurationMarkdown(cfg) {
     '',
     `Hybrid: ExpressRoute ${cfg.connectivity.expressRoute.enabled ? 'yes' : 'no'}, VPN ${cfg.connectivity.vpn.enabled ? 'yes' : 'no'}, Bastion ${cfg.connectivity.bastion.enabled ? 'yes' : 'no'}.`,
     '',
+    '### Operator loop-back — the two placeholders in `connectivity.auto.tfvars`',
+    '',
+    'The exported `connectivity.auto.tfvars` deliberately carries two **commented** placeholders the',
+    'wizard never collects (see `factory/renderer/variable-map.json`). They are closed by hand, in',
+    'this order:',
+    '',
+    '1. **Fill `management_ip_ranges`** in `connectivity.auto.tfvars` before the first',
+    '   `platform-connectivity` plan. It is required — the plan fails until it is set — and',
+    '   wildcards (`*`, `0.0.0.0/0`) are rejected.',
+    '2. **Plan and apply `platform-management`**, which creates the Log Analytics workspace.',
+    '3. **Paste the `log_analytics_workspace_id` output** from that apply into',
+    '   `connectivity.auto.tfvars`, uncommenting the placeholder line.',
+    '4. **Re-plan `platform-connectivity`.** This second plan is what wires hub firewall diagnostics',
+    '   and threat-intel alerts to the workspace — left unset, they are silently not created and',
+    '   nothing else will warn about it.',
+    '',
+    'Do not add these values to `lz-config.json` or expect a wizard re-export to fill them; the',
+    'omission is a factory contract, not a gap.',
+    '',
     '## Governance',
     '',
     `Policy enforcement: **${cfg.governance.policyBaseline.enforcementMode}**.`,
@@ -1789,10 +1927,16 @@ function configurationMarkdown(cfg) {
 
 function nextStepsMarkdown(cfg) {
   const dir = `generated-output/${cfg.organization.outputDirectoryName}`;
+  const cfgPath = `./${dir}/lz-config.json`;
   return md(
     `# Next steps — ${cfg.organization.companyName}`,
     '',
     `Generated ${cfg.generatedAt} by factory v${cfg.factoryVersion}.`,
+    '',
+    'Every command below is run from the **root of the factory clone**, in order:',
+    'discovery → bootstrap (plan, then apply) → render → scaffold (plan, then apply).',
+    'The broker and the scaffold builder are plan-by-default — nothing mutates Azure or',
+    'GitHub until you pass `-Apply`.',
     '',
     '## 1. Place the exported files',
     '',
@@ -1800,6 +1944,13 @@ function nextStepsMarkdown(cfg) {
     '',
     '```',
     `${dir}/`,
+    '```',
+    '',
+    'If you used **Download all as bundle**, extract the zip inside `generated-output/` — it already',
+    `contains the \`${cfg.organization.outputDirectoryName}/\` folder — then verify placement against the bundled manifest:`,
+    '',
+    '```powershell',
+    `Get-FileHash ${dir}/* -Algorithm SHA256   # compare against ${dir}/checksums.txt`,
     '```',
     '',
     '`lz-config.json` must be there; everything else is derived from it and can be regenerated.',
@@ -1816,37 +1967,72 @@ function nextStepsMarkdown(cfg) {
     '',
     `The account you sign in with needs, at minimum: Application Administrator in Entra (to create app registrations and federated credentials), and Owner or User Access Administrator at \`${cfg.azure.managementGroups.rootId}\` (to create management groups and assign roles).`,
     '',
-    '## 3. Run discovery and the readiness check',
+    '## 3. Run discovery and the readiness check (read-only)',
     '',
-    '```bash',
-    `pwsh ./bootstrap-broker.ps1 -ConfigPath ${dir}/lz-config.json -Phase discovery`,
+    '```powershell',
+    `pwsh ./factory/discovery/Invoke-Discovery.ps1 -ConfigPath ${cfgPath}`,
     '```',
     '',
-    'This is read-only. It produces `tenant-readiness-report.md`. Resolve every **Fail** before continuing;',
-    '**Warning** entries are judgement calls with remediation guidance attached.',
+    'Nothing is created, modified, or deleted — this is safe against a production tenant. It writes',
+    `\`tenant-readiness-report.md\` and \`discovery-inventory.json\` beside the configuration file, in \`${dir}/\`.`,
+    'Resolve every **Fail** before continuing; **Warning** entries are judgement calls with remediation',
+    'guidance attached. (Optional: `-SkipDomain GitHub,Entra,Azure,Terraform` to narrow the sweep,',
+    '`-FailOnNotReady` for CI.)',
     '',
-    '## 4. Bootstrap',
+    '## 4. Bootstrap — plan first, then apply',
     '',
-    '```bash',
-    `pwsh ./bootstrap-broker.ps1 -ConfigPath ${dir}/lz-config.json`,
+    'Without `-Apply`, the broker only writes a deterministic plan/audit record under',
+    '`./bootstrap-output/` and touches nothing:',
+    '',
+    '```powershell',
+    `pwsh ./bootstrap-broker.ps1 -ConfigPath ${cfgPath} -DiscoveryPath ./${dir}/discovery-inventory.json`,
     '```',
     '',
-    'Idempotent — safe to re-run after fixing a failure. Progress is checkpointed, so a re-run resumes',
-    'rather than repeating completed steps. It creates the app registrations and federated credentials,',
-    `the private repository \`${cfg.github.ownerName}/${cfg.github.repositoryName}\`, branch protection,`,
+    'Review the plan record, then apply:',
+    '',
+    '```powershell',
+    `pwsh ./bootstrap-broker.ps1 -ConfigPath ${cfgPath} -DiscoveryPath ./${dir}/discovery-inventory.json -Apply`,
+    '```',
+    '',
+    'Idempotent — safe to re-run after fixing a failure. It creates the app registrations and federated',
+    `credentials, the private repository \`${cfg.github.ownerName}/${cfg.github.repositoryName}\`, branch protection,`,
     'environments, variables, RBAC assignments' + (cfg.backend.type === 'hcp-terraform' ? ', and the Terraform Cloud workspaces.' : ', and the state storage account.'),
     '',
-    'Pass `--rollback` to print the exact commands that reverse what it created.',
+    'For CI, the environment-variable equivalents are `LZ_CONFIG_PATH`, `LZ_DISCOVERY_PATH`,',
+    '`LZ_BOOTSTRAP_OUTPUT`, and `LZ_BOOTSTRAP_APPLY=true`. `-AllowNotReady` overrides a failed',
+    'readiness gate — use it knowingly.',
     '',
-    '## 5. Scaffold',
+    '## 5. Render the repository contents',
     '',
-    '```bash',
-    `pwsh ./scaffold-copy.ps1 -ConfigPath ${dir}/lz-config.json -DryRun`,
+    '```powershell',
+    `pwsh -Command "Import-Module ./factory/renderer/LZFactory.Renderer.psd1; Invoke-LzRender -ConfigPath ${cfgPath} -OutputDirectory ./${dir}/rendered"`,
     '```',
     '',
-    'Review the file inventory, then re-run without `-DryRun` and add `-AutoPush` when you are satisfied.',
+    'Rendering validates `lz-config.json` against the schema, then writes the full repository tree to',
+    'a staging directory — never into a git working tree. A failed render leaves nothing half-written',
+    'where a push could pick it up.',
     '',
-    '## 6. Deploy',
+    '## 6. Scaffold — plan first, then apply',
+    '',
+    'Like the broker, the scaffold builder is plan-by-default: it verifies the rendered tree and emits',
+    'plan/audit evidence under `./scaffold-evidence/` without creating or pushing anything:',
+    '',
+    '```powershell',
+    `pwsh ./scaffold-copy.ps1 -ConfigPath ${cfgPath} -RenderedDirectory ./${dir}/rendered`,
+    '```',
+    '',
+    'Review the file inventory in the evidence output, then apply:',
+    '',
+    '```powershell',
+    `pwsh ./scaffold-copy.ps1 -ConfigPath ${cfgPath} -RenderedDirectory ./${dir}/rendered -Apply`,
+    '```',
+    '',
+    'Useful switches: `-Force` (write into a non-empty target), `-SkipRepositoryCreate`, and `-SkipPush`.',
+    'Environment-variable equivalents: `LZ_SCAFFOLD_APPLY`, `LZ_SCAFFOLD_FORCE`,',
+    '`LZ_SCAFFOLD_CREATE_REPOSITORY=false`, `LZ_SCAFFOLD_PUSH=false`, `LZ_RENDERED_PATH`,',
+    '`LZ_SCAFFOLD_TARGET`, `LZ_SCAFFOLD_EVIDENCE`.',
+    '',
+    '## 7. Deploy',
     '',
     'Open a pull request in the generated repository. `terraform-plan` runs against it with the read-only',
     'plan identity. Merging triggers `terraform-apply`, which runs per layer in dependency order:',
@@ -1854,6 +2040,14 @@ function nextStepsMarkdown(cfg) {
     '```',
     'global → platform-connectivity → platform-management → workloads-prod → sandbox',
     '```',
+    '',
+    '### The two deliberate placeholders in `connectivity.auto.tfvars`',
+    '',
+    '1. Before the **first** `platform-connectivity` plan: uncomment `management_ip_ranges` and set your',
+    '   operator CIDR ranges. The plan fails until it is set; `*` and `0.0.0.0/0` are rejected.',
+    '2. After `platform-management` applies: copy its `log_analytics_workspace_id` output into',
+    '   `connectivity.auto.tfvars`, then **re-plan** `platform-connectivity` to wire firewall diagnostics',
+    '   and threat-intel alerts. `CONFIGURATION.md` walks this loop-back step by step.',
     '',
     cfg.deploymentStrategy.mode === 'brownfield'
       ? md('## Brownfield note', '',
@@ -2068,6 +2262,20 @@ function init() {
     }
     goto(steps.findIndex((s) => s.key === 'review'));
     toast('Download each artifact below.');
+  });
+  $('#btnBundle').addEventListener('click', () => {
+    const { errors } = validate();
+    if (errors.length) {
+      toast(`${errors.length} blocking issue${errors.length > 1 ? 's' : ''} must be resolved first.`, 'bad');
+      return;
+    }
+    downloadBundle().then(
+      (withChecksums) => toast(withChecksums
+        ? 'Bundle downloaded — extract into generated-output/ and verify with checksums.txt.'
+        : 'Bundle downloaded without checksums.txt — Web Crypto is unavailable in this browser.',
+        withChecksums ? 'ok' : 'warn'),
+      (e) => toast('Bundle failed: ' + e.message, 'bad')
+    );
   });
   $('#btnCopyJson').addEventListener('click', () => {
     const text = JSON.stringify(buildConfig(), null, 2);

@@ -28,6 +28,19 @@ output "public_network_access" {
   value       = var.allow_public_access_during_setup
 }
 
+output "layer_state_containers" {
+  # Consumed by scripts/New-BackendConfig.ps1 to emit each live layer's
+  # backend.hcl. Keys are the terraform/live/<layer> directory names; values
+  # must be containers the state_containers resource actually creates.
+  description = "Map of live layer name to the state container that layer's backend.hcl uses"
+  value = {
+    "global"                = azurerm_storage_container.state_containers["global-mgmt-groups"].name
+    "platform-connectivity" = azurerm_storage_container.state_containers["platform-connectivity"].name
+    "platform-management"   = azurerm_storage_container.state_containers["platform-management"].name
+    "workloads-prod"        = azurerm_storage_container.state_containers["workloads-prod"].name
+  }
+}
+
 output "backend_config_hcl" {
   description = "Backend configuration for downstream Terraform modules"
   value       = <<-EOT

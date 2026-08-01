@@ -1,5 +1,11 @@
 workload_nonprod_subscription_id = {{FACTORY:azure.subscriptions.workloadNonProd}}
 
+#{{IF connectivity.model != 'none'}}
+# The hub side of each spoke peering is created in the connectivity
+# subscription through the azurerm.hub provider alias.
+connectivity_subscription_id = {{FACTORY:azure.subscriptions.connectivity}}
+#{{ENDIF}}
+
 #{{IF computed.backendIsAzurerm}}
 state_resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
 state_storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
