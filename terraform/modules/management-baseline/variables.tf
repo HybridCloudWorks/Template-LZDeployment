@@ -26,6 +26,15 @@ variable "log_retention_days" {
   }
 }
 
+variable "alert_email_receivers" {
+  description = "Email receivers attached to the alert action group"
+  type = list(object({
+    name          = string
+    email_address = string
+  }))
+  default = []
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)

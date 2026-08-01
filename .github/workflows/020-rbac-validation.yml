@@ -34,9 +34,23 @@ env:
   TF_VERSION: 1.9
 
 jobs:
+  # pull_request runs from forks receive no repository secrets, so the Azure
+  # OIDC login path cannot work. Report the skip explicitly instead of failing.
+  fork-notice:
+    name: Fork PR Notice (audit skipped)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - name: Report skipped RBAC audit
+        run: |
+          echo "::notice::PR originates from a fork. Repository secrets are unavailable to fork-triggered runs, so the Azure RBAC audit is skipped."
+          echo "## RBAC audit skipped (fork PR, credential-free run)" >> "$GITHUB_STEP_SUMMARY"
+
   rbac-audit:
     name: RBAC Audit & Validation
     runs-on: ubuntu-latest
+    # Fork guard: only run the Azure login path when secrets are available.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     outputs:
       audit_passed: ${{ steps.audit_main.outputs.passed }}
       rbac_summary: ${{ steps.summary.outputs.result }}
@@ -46,9 +60,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Azure Login (OIDC)
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v2.1.1
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          # pull_request tokens match only the Reader-only plan SP's federated
+          # credential; every other trigger authenticates as the Contributor SP.
+          client-id: ${{ github.event_name == 'pull_request' && secrets.AZURE_PLAN_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -106,6 +122,24 @@ jobs:
           fi
 
           echo "✓ No Owner role assigned"
+          echo ""
+
+          # Audit: Check for User Access Administrator role (CRITICAL FAIL —
+          # grants an Owner-equivalent RBAC escalation path)
+          UAA_COUNT=$(az role assignment list \
+            --assignee-object-id "$SP_OBJ_ID" \
+            --scope "/subscriptions/$SUBSCRIPTION_ID" \
+            --query "[?roleDefinitionName=='User Access Administrator'] | length(@)" \
+            -o tsv)
+
+          if [ "$UAA_COUNT" -gt 0 ]; then
+            echo "❌ CRITICAL: Service principal has User Access Administrator role"
+            echo "   This is an Owner-equivalent privilege-escalation path!"
+            echo "   Replace with Role Based Access Control Administrator constrained by delegation conditions"
+            exit 1
+          fi
+
+          echo "✓ No User Access Administrator role assigned"
           echo ""
 
           # Audit: Verify Contributor role exists
@@ -185,18 +219,18 @@ jobs:
               # Audit the layered SP
               SP_OBJ_ID=$(az ad sp show --id "$SP_ID" --query id -o tsv 2>/dev/null)
 
-              # Check for Owner role
-              OWNER_COUNT=$(az role assignment list \
+              # Check for over-privileged roles (Owner or User Access Administrator)
+              PRIV_COUNT=$(az role assignment list \
                 --assignee-object-id "$SP_OBJ_ID" \
                 --scope "/subscriptions/$SUBSCRIPTION_ID" \
-                --query "[?roleDefinitionName=='Owner'] | length(@)" \
+                --query "[?roleDefinitionName=='Owner' || roleDefinitionName=='User Access Administrator'] | length(@)" \
                 -o tsv)
 
-              if [ "$OWNER_COUNT" -gt 0 ]; then
-                echo "  ❌ CRITICAL: Has Owner role (must remove)"
+              if [ "$PRIV_COUNT" -gt 0 ]; then
+                echo "  ❌ CRITICAL: Has Owner or User Access Administrator role (must remove)"
                 exit 1
               else
-                echo "  ✓ No Owner role"
+                echo "  ✓ No Owner / User Access Administrator role"
               fi
 
               # List roles for layer SP
@@ -367,16 +401,18 @@ jobs:
     name: RBAC Compliance Checks
     needs: rbac-audit
     runs-on: ubuntu-latest
-    if: always()
+    # Fork guard: this job also logs in to Azure, which needs repository secrets.
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Azure Login (OIDC)
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v2.1.1
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          # Same identity split as the rbac-audit job above.
+          client-id: ${{ github.event_name == 'pull_request' && secrets.AZURE_PLAN_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -425,11 +461,12 @@ jobs:
     name: Comment on PR
     needs: rbac-audit
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && always()
+    # Fork PRs get no audit run (and only a read-only token), so skip the comment.
+    if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Comment PR with RBAC Results
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
         with:
           script: |
             const fs = require('fs');

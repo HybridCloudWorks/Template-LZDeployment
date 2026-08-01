@@ -35,35 +35,6 @@ output "backend_config_hcl" {
     storage_account_name = "${azurerm_storage_account.state.name}"
     container_name       = "<LAYER_SPECIFIC_CONTAINER>"
     key                  = "terraform.tfstate"
-  EOT
-}
-
-output "next_steps" {
-  description = "Next steps after bootstrap"
-  value       = <<-EOT
-    ✅ Bootstrap complete! State storage is ${var.allow_public_access_during_setup ? "⚠️  PUBLICLY ACCESSIBLE" : "🔒 SECURED"}
-    
-    Security Status:
-    - Public network access: ${var.allow_public_access_during_setup ? "ENABLED (INSECURE)" : "DISABLED (SECURE)"}
-    - Private endpoint: ${var.enable_private_endpoint ? "DEPLOYED" : "NOT DEPLOYED"}
-    - TLS 1.2 minimum: ENFORCED ✅
-    - Blob versioning: ENABLED ✅
-    - Soft delete: 30 days ✅
-    
-    ${var.allow_public_access_during_setup ? "⚠️  WARNING: Public access enabled. Complete Task 1.2 remediation:" : ""}
-    ${var.allow_public_access_during_setup ? "   1. Deploy management VNet first" : ""}
-    ${var.allow_public_access_during_setup ? "   2. Re-run with private endpoint variables" : ""}
-    ${var.allow_public_access_during_setup ? "   3. Set allow_public_access_during_setup = false" : ""}
-    
-    Next Deployment Steps:
-    1. Copy backend config to your backend.hcl files:
-       ${self.backend_config_hcl}
-    
-    2. Configure GitHub OIDC with storage account access
-    
-    3. Deploy layers in order:
-       - Global: cd ../live/global && terraform init -backend-config=backend.hcl
-       - Connectivity: cd ../live/platform-connectivity
-       - Management: cd ../live/platform-management
+    use_azuread_auth     = true
   EOT
 }

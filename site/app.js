@@ -293,10 +293,18 @@ function setPath(obj, path, value) {
 const csv = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 const lines = (s) => String(s || '').split('\n').map((x) => x.trim()).filter(Boolean);
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
+/* No HTML-escaping helper exists here on purpose: every piece of dynamic text
+ * is inserted via textContent / createTextNode, never via innerHTML with user
+ * data. If a future change must interpolate user input into markup, add
+ * escaping at that point rather than weakening this policy. */
+
+/** Environment names arrive from persisted or imported data and are later used
+ *  as object keys (approvals, abbreviations), so they must be shaped like real
+ *  environment names and must never be prototype-related keys. */
+const isSafeEnvName = (e) =>
+  typeof e === 'string' &&
+  /^[a-z][a-z0-9-]{0,29}$/.test(e) &&
+  !['__proto__', 'prototype', 'constructor'].includes(e);
 
 let toastTimer = null;
 function toast(msg, kind = 'ok') {
@@ -327,6 +335,7 @@ function download(filename, content, mime = 'text/plain') {
 
 const RE = {
   guid: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+  // Must match the org_prefix validation in terraform/live/global/variables.tf.
   shortName: /^[a-z0-9]{2,10}$/,
   region: /^[a-z0-9]+$/,
   regionCode: /^[a-z]{2,5}$/,
@@ -906,9 +915,13 @@ function renderApprovals() {
   }
 
   for (const env of envs) {
-    config.environments.approvals[env] = config.environments.approvals[env] || {
-      requiredReviewers: [], waitTimerMinutes: 0, preventSelfReview: true
-    };
+    // Own-property check, not truthiness: a truthiness test would read
+    // inherited keys (e.g. "constructor") off the prototype chain.
+    if (!Object.prototype.hasOwnProperty.call(config.environments.approvals, env)) {
+      config.environments.approvals[env] = {
+        requiredReviewers: [], waitTimerMinutes: 0, preventSelfReview: true
+      };
+    }
     const a = config.environments.approvals[env];
 
     const row = document.createElement('div');
@@ -963,9 +976,13 @@ function renderEnvAbbreviations() {
   const host = $('#envAbbrevHost');
   const envs = [...config.environments.platform, ...config.environments.application];
   host.innerHTML = '';
+  const abbrevs = config.naming.environmentAbbreviations;
   for (const env of envs) {
-    if (!config.naming.environmentAbbreviations[env]) {
-      config.naming.environmentAbbreviations[env] = DEFAULT_ENV_ABBREV[env] || env.slice(0, 4);
+    // Own-property checks so inherited keys are never read or trusted.
+    if (!Object.prototype.hasOwnProperty.call(abbrevs, env) || !abbrevs[env]) {
+      abbrevs[env] = Object.prototype.hasOwnProperty.call(DEFAULT_ENV_ABBREV, env)
+        ? DEFAULT_ENV_ABBREV[env]
+        : env.slice(0, 4);
     }
     const wrap = document.createElement('div');
     wrap.className = 'rep-field';
@@ -1003,7 +1020,11 @@ function recomputePromotionPath() {
  * ------------------------------------------------------------------- */
 
 function conditionMet(expr) {
-  const [path, expected] = expr.split('=');
+  // Split on the FIRST '=' only, so an expected value containing '=' survives.
+  const i = expr.indexOf('=');
+  if (i === -1) return false;
+  const path = expr.slice(0, i);
+  const expected = expr.slice(i + 1);
   const actual = getPath(config, path.trim());
   if (expected === 'true') return actual === true;
   if (expected === 'false') return actual === false;
@@ -1029,8 +1050,12 @@ function describeCron(expr) {
   const p = expr.trim().split(/\s+/);
   if (p.length !== 5) return 'Not a valid five-field cron expression.';
   const [min, hr, dom, mon, dow] = p;
-  if (dom === '*' && mon === '*' && dow === '*') return `Runs daily at ${hr}:${min.padStart(2, '0')} UTC.`;
-  if (dom === '*' && mon === '*' && /^[0-6]$/.test(dow)) {
+  if (dom === '*' && mon === '*' && dow === '*') {
+    // A wildcard hour must not render as "*:00".
+    if (hr === '*') return min === '*' ? 'Runs every minute.' : `Runs hourly at minute ${min} UTC.`;
+    return `Runs daily at ${hr}:${min.padStart(2, '0')} UTC.`;
+  }
+  if (dom === '*' && mon === '*' && /^[0-6]$/.test(dow) && hr !== '*') {
     return `Runs weekly on ${CRON_DAYS[+dow]} at ${hr}:${min.padStart(2, '0')} UTC.`;
   }
   return 'Custom schedule.';
@@ -1087,8 +1112,14 @@ function updateHints() {
       verdict.textContent = 'close to the 500 cap';
       verdict.className = 'pill pill-warn';
     } else {
-      const monthly = ((rum - 0) * 0.10).toFixed(0);
-      verdict.textContent = `over the cap — roughly $${monthly}/mo at the $0.10 Essentials rate`;
+      /* Public HashiCorp pricing does not state whether paid (Essentials)
+       * billing exempts the first HCP_FREE_RUM_CAP resources, so show the
+       * honest range: low assumes only the overage is billed, high assumes
+       * every managed resource is billed. Range presentation approved
+       * 2026-08-01 pending vendor confirmation of the exemption. */
+      const low = (Math.max(0, rum - HCP_FREE_RUM_CAP) * 0.10).toFixed(0);
+      const high = (rum * 0.10).toFixed(0);
+      verdict.textContent = `over the cap — roughly $${low}–$${high}/mo at the $0.10 Essentials rate`;
       verdict.className = 'pill pill-bad';
     }
   }
@@ -1152,7 +1183,7 @@ function buildStepNav() {
     btn.type = 'button';
     btn.className = 'stepbtn';
     btn.dataset.index = i;
-    btn.innerHTML = `<span class="stepnum">${i + 1}</span><span class="steptitle">${s.title}</span><span class="stepdot" aria-hidden="true"></span>`;
+    btn.innerHTML = `<span class="stepnum">${i + 1}</span><span class="steptitle">${s.title}</span><span class="stepdot" aria-hidden="true"></span><span class="sr-only stepstate"></span>`;
     btn.addEventListener('click', () => goto(i));
     li.appendChild(btn);
     list.appendChild(li);
@@ -1162,7 +1193,11 @@ function buildStepNav() {
 function goto(index) {
   currentStep = Math.max(0, Math.min(steps.length - 1, index));
   steps.forEach((s, i) => s.el.classList.toggle('active', i === currentStep));
-  $$('.stepbtn').forEach((b, i) => b.classList.toggle('current', i === currentStep));
+  $$('.stepbtn').forEach((b, i) => {
+    b.classList.toggle('current', i === currentStep);
+    if (i === currentStep) b.setAttribute('aria-current', 'step');
+    else b.removeAttribute('aria-current');
+  });
   $('#btnPrev').disabled = currentStep === 0;
   $('#btnNext').disabled = currentStep === steps.length - 1;
   $('#stepIndicator').textContent = `Step ${currentStep + 1} of ${steps.length} · ${steps[currentStep].title}`;
@@ -1181,10 +1216,17 @@ function updateStepStatus() {
     const isBad = bad.has(s.key);
     btn.classList.toggle('has-error', isBad);
     btn.classList.toggle('is-done', !isBad && s.key !== 'review');
+    // The status dot is color-only; this text carries the state for screen
+    // readers and for anyone who cannot distinguish the dot colors.
+    const state = $('.stepstate', btn);
+    if (state) state.textContent = isBad ? ' — has blocking issues' : (s.key !== 'review' ? ' — complete' : '');
     if (!isBad && s.key !== 'review') done++;
   });
   const total = steps.length - 1;
-  $('#progressBar').style.width = `${Math.round((done / total) * 100)}%`;
+  const pct = Math.round((done / total) * 100);
+  const bar = $('#progressBar');
+  bar.style.width = `${pct}%`;
+  bar.setAttribute('aria-valuenow', String(pct));
   $('#progressText').textContent = `${done} of ${total} complete`;
 }
 
@@ -1451,6 +1493,17 @@ function tfvarsConnectivity(cfg) {
   if (cfg.azure.drRegion) out.push(`dr_availability_zones       = ${hclList(hs.availabilityZones || [])}`);
   out.push(`default_tags = ${hclMap(cfg.naming.defaultTags)}`);
   out.push('');
+  out.push('# REQUIRED — operator-supplied; terraform plan fails until this is set.');
+  out.push('# CIDR ranges permitted to reach firewall management interfaces. The wizard');
+  out.push('# deliberately does not collect operator network ranges (see');
+  out.push("# factory/renderer/variable-map.json); '*' and '0.0.0.0/0' are rejected.");
+  out.push('# management_ip_ranges = ["203.0.113.0/24"]');
+  out.push('');
+  out.push('# RECOMMENDED — Log Analytics workspace ID from the platform-management');
+  out.push('# layer. Left unset, hub firewall diagnostics and threat-intel alerts are');
+  out.push('# not created, and nothing else will warn about it.');
+  out.push('# log_analytics_workspace_id = "<platform-management output log_analytics_workspace_id>"');
+  out.push('');
   return tfvarsHeader(cfg, 'platform-connectivity', 'terraform/live/platform-connectivity/variables.tf') + out.join('\n');
 }
 
@@ -1496,11 +1549,14 @@ function backendHcl(cfg) {
 }
 
 function environmentDefinitions(cfg) {
+  // Own-property lookups so a hostile key in an imported config can never
+  // pull inherited values off Object.prototype into the exported artifact.
+  const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key) ? obj[key] : undefined;
   const mk = (name, plane) => ({
     name,
     plane,
-    abbreviation: cfg.naming.environmentAbbreviations[name] || name,
-    approvals: cfg.environments.approvals[name] || { requiredReviewers: [], waitTimerMinutes: 0, preventSelfReview: true },
+    abbreviation: own(cfg.naming.environmentAbbreviations, name) || name,
+    approvals: own(cfg.environments.approvals, name) || { requiredReviewers: [], waitTimerMinutes: 0, preventSelfReview: true },
     workspace: cfg.backend.type === 'hcp-terraform'
       ? `${cfg.backend.hcpTerraform.workspacePrefix}-${name}`
       : null,
@@ -1831,13 +1887,12 @@ function saveDraft(silent) {
 function loadDraft() {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return false;
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || !parsed.config) return false;
-    adoptConfig(parsed.config, parsed.defaultTagRows);
-    return true;
+    if (!parsed || typeof parsed !== 'object' || !parsed.config || typeof parsed.config !== 'object') return null;
+    return { warnings: adoptConfig(parsed.config, parsed.defaultTagRows) };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -1859,19 +1914,70 @@ function mergeDefaults(target, source) {
   return target;
 }
 
+/** Coarse JS "kind" used for import type reconciliation. */
+function kindOf(v) {
+  if (v === null || v === undefined) return 'null';
+  if (Array.isArray(v)) return 'array';
+  return typeof v;
+}
+
+/**
+ * Walk the defaults shape and restore any adopted value whose kind differs
+ * from the default's (string vs number vs array vs object vs boolean),
+ * collecting one warning per restoration. This is what guarantees validate()
+ * can never throw on .trim()/.length of a wrong-typed imported value.
+ * Defaults whose value is null carry no type information and are skipped.
+ */
+function reconcileTypes(defaults, merged, prefix, warnings) {
+  for (const k of Object.keys(defaults)) {
+    if (!Object.prototype.hasOwnProperty.call(merged, k)) continue;
+    const dKind = kindOf(defaults[k]);
+    if (dKind === 'null') continue;
+    const mKind = kindOf(merged[k]);
+    const path = prefix ? `${prefix}.${k}` : k;
+    if (dKind !== mKind) {
+      warnings.push(`${path}: expected ${dKind}, got ${mKind} — kept the default.`);
+      merged[k] = JSON.parse(JSON.stringify(defaults[k]));
+    } else if (dKind === 'object') {
+      reconcileTypes(defaults[k], merged[k], path, warnings);
+    }
+  }
+}
+
+/** Drop unsafe environment names from adopted data. Runs at every config
+ *  adoption point (file import and localStorage draft restore), because these
+ *  names are later used as object keys. */
+function sanitizeEnvironments(cfg, warnings) {
+  for (const key of ['platform', 'application']) {
+    const list = cfg.environments[key];
+    if (!Array.isArray(list)) continue;
+    const kept = list.filter(isSafeEnvName);
+    if (kept.length !== list.length) {
+      warnings.push(`environments.${key}: removed ${list.length - kept.length} invalid environment name(s).`);
+    }
+    cfg.environments[key] = kept;
+  }
+}
+
+/** Adopt an external config (imported file or restored draft). Returns an
+ *  array of human-readable warnings for values that had to be corrected. */
 function adoptConfig(loaded, tagRows) {
-  const base = defaultConfig();
-  config = mergeDefaults(base, loaded);
+  const warnings = [];
+  config = mergeDefaults(defaultConfig(), loaded);
+  // Compare against a fresh copy: mergeDefaults mutated the first one.
+  reconcileTypes(defaultConfig(), config, '', warnings);
+  sanitizeEnvironments(config, warnings);
   config.schemaVersion = SCHEMA_VERSION;
   config.factoryVersion = FACTORY_VERSION;
 
   if (Array.isArray(tagRows) && tagRows.length) {
     defaultTagRows = tagRows;
-  } else if (loaded.naming && loaded.naming.defaultTags) {
-    defaultTagRows = Object.entries(loaded.naming.defaultTags).map(([k, v]) => ({ k, v }));
+  } else if (loaded.naming && loaded.naming.defaultTags && kindOf(loaded.naming.defaultTags) === 'object') {
+    defaultTagRows = Object.entries(loaded.naming.defaultTags).map(([k, v]) => ({ k, v: String(v == null ? '' : v) }));
   }
 
   rebind();
+  return warnings;
 }
 
 function rebind() {
@@ -1898,16 +2004,20 @@ function handleFileLoad(file) {
       toast('That file is not valid JSON.', 'bad');
       return;
     }
-    if (!parsed.organization || !parsed.azure) {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !parsed.organization || !parsed.azure) {
       toast('That does not look like an lz-config.json.', 'bad');
       return;
     }
-    if (parsed.schemaVersion && parsed.schemaVersion !== SCHEMA_VERSION) {
+    const warnings = adoptConfig(parsed, null);
+    if (warnings.length) {
+      // Non-blocking: the load succeeds, corrected values fall back to defaults.
+      for (const w of warnings) console.warn('Import: ' + w);
+      toast(`Configuration loaded — ${warnings.length} value${warnings.length > 1 ? 's' : ''} had an unexpected type and kept the default (details in the browser console).`, 'warn');
+    } else if (parsed.schemaVersion && parsed.schemaVersion !== SCHEMA_VERSION) {
       toast(`Loaded a schema ${parsed.schemaVersion} config into a ${SCHEMA_VERSION} wizard — review every step.`, 'warn');
     } else {
       toast('Configuration loaded.');
     }
-    adoptConfig(parsed, null);
     goto(0);
   };
   reader.readAsText(file);
@@ -1936,6 +2046,14 @@ function init() {
   $('#btnPrev').addEventListener('click', () => goto(currentStep - 1));
   $('#btnNext').addEventListener('click', () => goto(currentStep + 1));
   $('#btnSave').addEventListener('click', () => saveDraft(false));
+  $('#btnClearDraft').addEventListener('click', () => {
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+      toast('Saved draft cleared from this browser. Editing further will autosave a new draft.');
+    } catch (e) {
+      toast('Could not clear the draft: ' + e.message, 'bad');
+    }
+  });
   $('#btnLoad').addEventListener('click', () => $('#fileLoad').click());
   $('#fileLoad').addEventListener('change', (e) => {
     if (e.target.files && e.target.files[0]) handleFileLoad(e.target.files[0]);
@@ -1975,7 +2093,14 @@ function init() {
   const restored = loadDraft();
   onChange(null);
   goto(0);
-  if (restored) toast('Restored your saved draft.');
+  if (restored) {
+    if (restored.warnings.length) {
+      for (const w of restored.warnings) console.warn('Draft restore: ' + w);
+      toast(`Restored your saved draft — ${restored.warnings.length} value${restored.warnings.length > 1 ? 's' : ''} had an unexpected type and kept the default (details in the browser console).`, 'warn');
+    } else {
+      toast('Restored your saved draft.');
+    }
+  }
 }
 
 function selectPreview() {

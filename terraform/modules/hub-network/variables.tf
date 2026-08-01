@@ -41,9 +41,10 @@ variable "azfw_tier" {
 }
 
 variable "nva_trust_ip_placeholder" {
-  description = "Placeholder IP for NVA trust interface (used until NVA deployed)"
+  description = "Placeholder IP for NVA trust interface (used until NVA deployed). Defaults to the first usable host of the trust subnet derived from hub_address_space."
   type        = string
-  default     = "10.0.1.4"
+  default     = null
+  nullable    = true
 }
 
 variable "deploy_bastion_placeholder" {
@@ -59,9 +60,15 @@ variable "deploy_dns_placeholder" {
 }
 
 variable "management_ip_ranges" {
-  description = "IP ranges allowed to access firewall management (CIDR or '*')"
-  type        = string
-  default     = "*"
+  description = "CIDR ranges allowed to reach firewall management interfaces. Must be explicit ranges; wildcard sources are rejected."
+  type        = list(string)
+
+  validation {
+    condition = length(var.management_ip_ranges) > 0 && alltrue([
+      for r in var.management_ip_ranges : !contains(["*", "0.0.0.0/0"], r)
+    ])
+    error_message = "management_ip_ranges must contain at least one CIDR and must not include '*' or '0.0.0.0/0'."
+  }
 }
 
 variable "availability_zones" {
@@ -159,8 +166,9 @@ variable "firewall_tls_certificate_key_vault_secret_id" {
 }
 
 variable "log_analytics_workspace_id" {
-  description = "Log Analytics workspace ID for diagnostics"
+  description = "Log Analytics workspace resource ID for diagnostics. Empty string disables diagnostic settings and threat-intel alerts."
   type        = string
+  default     = ""
 }
 
 variable "log_retention_days" {

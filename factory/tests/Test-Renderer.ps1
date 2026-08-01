@@ -27,11 +27,11 @@ $ctxNonprod = New-LzRenderContext -Config $cfgNonprod
 
 Write-Host "`n== 1. Render context ==" -ForegroundColor Cyan
 ok 'context has resolvable paths'      ($ctx.Keys.Count -gt 100) $ctx.Keys.Count
-ok 'config paths flattened'            ((Get-LzTokenValue -Context $ctx -Path 'organization.companyShortName') -eq 'contoso')
+ok 'config paths flattened'            ((Get-LzTokenValue -Context $ctx -Path 'organization.companyShortName') -eq 'chg')
 ok 'nested paths flattened'            ((Get-LzTokenValue -Context $ctx -Path 'azure.subscriptions.management') -eq 'aaaaaaaa-0000-0000-0000-000000000001')
 ok 'arrays addressable whole'          (@(Get-LzTokenValue -Context $ctx -Path 'azure.allowedLocations').Count -eq 2)
 ok 'arrays addressable positionally'   ((Get-LzTokenValue -Context $ctx -Path 'azure.allowedLocations[0]') -eq 'southcentralus')
-ok 'computed.orgPrefix'                ((Get-LzTokenValue -Context $ctx -Path 'computed.orgPrefix') -eq 'contoso')
+ok 'computed.orgPrefix'                ((Get-LzTokenValue -Context $ctx -Path 'computed.orgPrefix') -eq 'chg')
 ok 'computed.repositorySlug'           ((Get-LzTokenValue -Context $ctx -Path 'computed.repositorySlug') -eq 'contoso-platform/contoso_LZ_Deployment')
 ok 'computed.hasDrRegion'              ((Get-LzTokenValue -Context $ctx -Path 'computed.hasDrRegion') -eq $true)
 ok 'computed.backendIsHcp'             ((Get-LzTokenValue -Context $ctx -Path 'computed.backendIsHcp') -eq $true)
@@ -51,8 +51,8 @@ $noNet.connectivity.model = 'none'
 ok 'connectivity omitted when none'    (@(Get-LzActiveLayers -Config $noNet) -notcontains 'platform-connectivity')
 
 Write-Host "`n== 3. Token substitution ==" -ForegroundColor Cyan
-ok 'plain token quotes strings'   ((Resolve-LzTemplate -Template '{{FACTORY:organization.companyShortName}}' -Context $ctx) -eq '"contoso"')
-ok 'RAW token is unquoted'        ((Resolve-LzTemplate -Template '{{FACTORY-RAW:organization.companyShortName}}' -Context $ctx) -eq 'contoso')
+ok 'plain token quotes strings'   ((Resolve-LzTemplate -Template '{{FACTORY:organization.companyShortName}}' -Context $ctx) -eq '"chg"')
+ok 'RAW token is unquoted'        ((Resolve-LzTemplate -Template '{{FACTORY-RAW:organization.companyShortName}}' -Context $ctx) -eq 'chg')
 ok 'BOOL token'                   ((Resolve-LzTemplate -Template '{{FACTORY-BOOL:connectivity.bastion.enabled}}' -Context $ctx) -eq 'true')
 ok 'LIST token renders HCL list'  ((Resolve-LzTemplate -Template '{{FACTORY-LIST:azure.allowedLocations}}' -Context $ctx) -eq '["southcentralus", "northcentralus"]')
 ok 'NUM token unquoted'           ((Resolve-LzTemplate -Template '{{FACTORY-NUM:observability.logAnalytics.retentionDays}}' -Context $ctx) -eq '90')
@@ -74,7 +74,7 @@ ok 'bad expression throws'         (throws { Resolve-LzTemplate -Template "#{{IF
 Write-Host "`n== 5. GitHub Actions expressions survive ==" -ForegroundColor Cyan
 $gha = 'run: echo ${{ matrix.layer }} ${{ github.ref }}'
 ok 'GHA expressions untouched'     ((Resolve-LzTemplate -Template $gha -Context $ctx) -eq $gha)
-ok 'GHA + factory token together'  ((Resolve-LzTemplate -Template 'a ${{ github.ref }} {{FACTORY-RAW:organization.companyShortName}}' -Context $ctx) -eq 'a ${{ github.ref }} contoso')
+ok 'GHA + factory token together'  ((Resolve-LzTemplate -Template 'a ${{ github.ref }} {{FACTORY-RAW:organization.companyShortName}}' -Context $ctx) -eq 'a ${{ github.ref }} chg')
 
 Write-Host "`n== 6. Conditionals ==" -ForegroundColor Cyan
 $t = "a`n#{{IF computed.hasDrRegion}}`nDR`n#{{ELSE}}`nNODR`n#{{ENDIF}}`nz"
@@ -205,7 +205,7 @@ $idm = Get-Content (Join-Path $out 'docs/identity-trust-matrix.md') -Raw
 # Derived from the fixture rather than hard-coded, so changing which
 # environments the fixture selects does not require editing an unrelated count.
 $envCount = @($ctx.Tokens['computed.allEnvironments']).Count
-ok 'identity matrix per env'       (($idm | Select-String -Pattern 'sp-contoso-.*-apply' -AllMatches).Matches.Count -eq $envCount)
+ok 'identity matrix per env'       (($idm | Select-String -Pattern 'sp-chg-.*-apply' -AllMatches).Matches.Count -eq $envCount)
 # Scope to actual emitted subject rows. The document also contains prose warning
 # against wildcard subjects, which must not be mistaken for one.
 $subjectRows = @($idm -split "`n" | Where-Object { $_ -match '^\| \w+ \| `sp-' })

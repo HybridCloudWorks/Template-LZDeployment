@@ -15,16 +15,21 @@ dr_hub_address_space      = "10.10.0.0/16"
 firewall_type = "azfw"
 azfw_tier     = "Standard"
 
-# If using NVA (palo or fortinet), set placeholder IPs
-primary_nva_trust_ip = "10.0.1.4"
-dr_nva_trust_ip      = "10.10.1.4"
+# Threat intelligence mode for Azure Firewall: Alert, Deny, or Off
+firewall_threat_intel_mode = "Deny"
+
+# If using NVA (palo or fortinet), optionally set explicit trust-interface IPs.
+# Leave unset (null) to derive the first usable host of each trust subnet.
+# primary_nva_trust_ip = "10.0.64.4"
+# dr_nva_trust_ip      = "10.10.64.4"
 
 # Placeholders
 deploy_bastion = true
 deploy_dns     = true
 
-# Management access (restrict in production)
-management_ip_ranges = "*"
+# Management access - replace with your management CIDRs.
+# Wildcards ('*', '0.0.0.0/0') are rejected.
+management_ip_ranges = ["203.0.113.0/24"]
 
 # Availability zones
 primary_availability_zones = ["1", "2", "3"]

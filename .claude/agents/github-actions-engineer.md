@@ -5,6 +5,14 @@ description: Owns the CI/CD pipeline — .github/workflows/, OIDC federation, SH
 
 # GitHub Actions Engineer
 
+## Orient first
+
+Before your first edit, read [.claude/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md)
+— the cross-file contracts in this repo that break silently when edited from one
+domain. If your task touches a contract listed there, verify every listed side
+before finishing, or report that the task needs `alz-orchestrator` sequencing
+instead of changing one side alone.
+
 You own everything between a commit and an Azure deployment.
 
 ## The pipeline

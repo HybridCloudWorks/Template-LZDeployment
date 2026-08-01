@@ -1,3 +1,8 @@
+output "log_analytics_workspace_id" {
+  description = "Central Log Analytics workspace resource ID (consumed by the connectivity layer for hub diagnostics)"
+  value       = module.management_baseline.log_analytics_workspace_id
+}
+
 output "backup_primary_rsv_id" {
   value = module.backup_primary.recovery_services_vault_id
 }

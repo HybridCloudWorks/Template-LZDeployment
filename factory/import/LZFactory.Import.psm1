@@ -2,6 +2,11 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# The renderer owns layer derivation (Get-LzActiveLayers). Stage 11 consumes it
+# rather than keeping a divergent copy, so an Adopt classification is validated
+# against exactly the layers the renderer will emit.
+Import-Module (Join-Path $PSScriptRoot '../renderer/LZFactory.Renderer.psd1') -Force -ErrorAction Stop
+
 function Write-LzImportEvent {
     param([string]$Level, [string]$Message)
     $colour = switch ($Level) {
@@ -357,12 +362,8 @@ function Invoke-LzBrownfieldImport {
     $candidates = @(Get-LzBrownfieldCandidates -Discovery $discovery)
     $brownfield = Get-LzImportProperty $config.deploymentStrategy 'brownfield' ([pscustomobject]@{})
     $defaultClassification = "$(Get-LzImportProperty $brownfield 'defaultClassification' 'ignore')"
-    $layers = @('global')
-    if ($config.connectivity.model -ne 'none') { $layers += 'platform-connectivity' }
-    $layers += 'platform-management'
-    if (@($config.environments.application) -match 'dev|test|uat') { $layers += 'workloads-nonprod' }
-    if (@($config.environments.application) -contains 'prod') { $layers += 'workloads-prod' }
-    if (@($config.environments.application) -contains 'sandbox') { $layers += 'sandbox' }
+    # Single source of truth: the renderer's layer derivation (control AR3).
+    $layers = @(Get-LzActiveLayers -Config $config)
 
     New-Item -ItemType Directory -Path $EvidenceDirectory -Force | Out-Null
     $template = New-LzBrownfieldClassificationTemplate -Candidates $candidates `

@@ -55,7 +55,8 @@ function Invoke-LzRender {
 
     # ── Inputs ───────────────────────────────────────────────────────────────
     if (-not (Test-Path $ConfigPath)) { throw "Configuration not found: $ConfigPath" }
-    $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json -Depth 30
+    $configRaw = Get-Content $ConfigPath -Raw
+    $config = $configRaw | ConvertFrom-Json -Depth 30
 
     $factoryRoot = Resolve-Path (Join-Path $PSScriptRoot '../../..')
     if (-not $TemplateRoot) { $TemplateRoot = Join-Path $factoryRoot 'factory/templates' }
@@ -73,6 +74,24 @@ function Invoke-LzRender {
     Write-LzRenderInfo "Configuration : $($config.organization.companyName) (schema $($config.schemaVersion))"
     Write-LzRenderInfo "Templates     : $TemplateRoot"
     Write-LzRenderInfo "Output        : $OutputDirectory"
+
+    # ── Guard G00: schema validation ─────────────────────────────────────────
+    # The JSON Schema is the configuration contract; validating it first means
+    # the guard chain and token engine only ever see a structurally valid
+    # document. Fails closed: no schema, or an invalid document, stops the
+    # render before anything is evaluated or written.
+    Write-LzRenderSection 'Schema validation (G00)'
+    $schemaPath = Join-Path $factoryRoot 'factory/schema/lz-config.schema.json'
+    if (-not (Test-Path $schemaPath)) {
+        throw "G00: configuration schema not found: $schemaPath. Failing closed — the configuration contract cannot be verified. Nothing was written."
+    }
+    $schemaErrors = $null
+    $schemaValid = Test-Json -Json $configRaw -SchemaFile $schemaPath -ErrorAction SilentlyContinue -ErrorVariable schemaErrors
+    if (-not $schemaValid) {
+        $schemaDetail = (@($schemaErrors | ForEach-Object { $_.Exception.Message } | Select-Object -First 10) -join ' | ')
+        throw "G00: the configuration does not validate against lz-config.schema.json. Nothing was written. Details: $schemaDetail"
+    }
+    Write-LzRenderOK 'Configuration validates against lz-config.schema.json.'
 
     # ── Guards ───────────────────────────────────────────────────────────────
     Write-LzRenderSection 'Render guards'
@@ -137,6 +156,9 @@ function Invoke-LzRender {
         $mode = if ($entry.PSObject.Properties.Name -contains 'mode') { $entry.mode } else { 'render' }
         $outPath = Join-Path $OutputDirectory $destination
 
+        # A write that ShouldProcess declines (-WhatIf) is recorded as skipped,
+        # not emitted: the manifest and the OK log must only ever describe
+        # files that actually exist on disk.
         if ($PSCmdlet.ShouldProcess($destination, 'render')) {
             $dir = Split-Path -Parent $outPath
             if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
@@ -149,14 +171,17 @@ function Invoke-LzRender {
                 $rendered = Resolve-LzTemplate -Template $template -Context $context -SourceName $entry.source
                 Set-Content -Path $outPath -Value $rendered -Encoding utf8 -NoNewline:$false
             }
-        }
 
-        $emitted += [pscustomobject]@{
-            Source      = $entry.source
-            Destination = $destination
-            Mode        = $mode
+            $emitted += [pscustomobject]@{
+                Source      = $entry.source
+                Destination = $destination
+                Mode        = $mode
+            }
+            Write-LzRenderOK $destination
         }
-        Write-LzRenderOK $destination
+        else {
+            $skipped += [pscustomobject]@{ Source = $entry.source; Reason = 'write declined by ShouldProcess (WhatIf)' }
+        }
     }
 
     # ── Per-layer expansion ──────────────────────────────────────────────────
@@ -183,10 +208,13 @@ function Invoke-LzRender {
                 $template = Get-Content $sourcePath -Raw
                 $rendered = Resolve-LzTemplate -Template $template -Context $scoped -SourceName "$($entry.source) [$layer]"
                 Set-Content -Path $outPath -Value $rendered -Encoding utf8
-            }
 
-            $emitted += [pscustomobject]@{ Source = $entry.source; Destination = $destination; Mode = 'render'; Layer = $layer }
-            Write-LzRenderOK $destination
+                $emitted += [pscustomobject]@{ Source = $entry.source; Destination = $destination; Mode = 'render'; Layer = $layer }
+                Write-LzRenderOK $destination
+            }
+            else {
+                $skipped += [pscustomobject]@{ Source = "$($entry.source) [$layer]"; Reason = 'write declined by ShouldProcess (WhatIf)' }
+            }
         }
     }
 
@@ -230,13 +258,16 @@ function Invoke-LzRender {
                     $dir = Split-Path -Parent $outPath
                     if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
                     Copy-Item -Path $file.FullName -Destination $outPath -Force
+                    $emitted += [pscustomobject]@{
+                        Source      = "$($entry.source)/$relative"
+                        Destination = "$($entry.destination)/$relative"
+                        Mode        = 'copy'
+                    }
+                    $copied++
                 }
-                $emitted += [pscustomobject]@{
-                    Source      = "$($entry.source)/$relative"
-                    Destination = "$($entry.destination)/$relative"
-                    Mode        = 'copy'
+                else {
+                    $skipped += [pscustomobject]@{ Source = "$($entry.source)/$relative"; Reason = 'write declined by ShouldProcess (WhatIf)' }
                 }
-                $copied++
             }
             Write-LzRenderOK "$($entry.destination)/ ($copied file(s))"
         }

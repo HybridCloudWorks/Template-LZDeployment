@@ -159,16 +159,15 @@ $callAgents = ($agents.Values | Measure-Object -Sum).Sum; if (-not $callAgents) 
 $callSkills = ($skills.Values | Measure-Object -Sum).Sum; if (-not $callSkills) { $callSkills = 0 }
 $callTools  = ($tools.Values  | Measure-Object -Sum).Sum; if (-not $callTools)  { $callTools  = 0 }
 
+# ASCII only: this script must render identically under Windows PowerShell 5.1,
+# which misreads non-ASCII literals in BOM-less UTF-8 files.
 $report = @(
-    '--- Capability Usage Report (from session transcript) ---'
+    '--- Capability usage counts (observed from session transcript) ---'
     (Format-Section -Label 'Agents' -Map $agents)
     (Format-Section -Label 'Skills' -Map $skills)
     (Format-Section -Label 'Tools'  -Map $tools)
-    'Counts (distinct / total calls):'
-    "  - Agents: $distinctAgents / $callAgents"
-    "  - Skills: $distinctSkills / $callSkills"
-    "  - Tools:  $distinctTools / $callTools"
-    'Counts are observed tool_use records since the last report. Reasons are supplied by the assistant, not by this hook.'
+    "Totals (distinct/calls): Agents $distinctAgents/$callAgents | Skills $distinctSkills/$callSkills | Tools $distinctTools/$callTools"
+    'These are the authoritative numbers for the usage report above; reasons live in that report, counts live here.'
 ) -join "`n"
 
 (@{ systemMessage = $report } | ConvertTo-Json -Compress)

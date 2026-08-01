@@ -1,13 +1,16 @@
 # Microsoft Defender for Cloud Baseline
-# Enables Defender plans across all subscriptions for production-grade security
+# Enables Defender plans for the subscription the provider targets
+# (single-subscription module contract; instantiate once per subscription)
 
-variable "subscriptions" {
-  description = "Map of subscription IDs to enable Defender on"
-  type = map(object({
-    id   = string
-    name = string
-    tier = string # Standard or Free
-  }))
+variable "defender_tier" {
+  description = "Defender pricing tier applied to every enabled plan (Standard or Free)"
+  type        = string
+  default     = "Standard"
+
+  validation {
+    condition     = contains(["Standard", "Free"], var.defender_tier)
+    error_message = "Defender tier must be Standard or Free."
+  }
 }
 
 variable "security_contact_email" {

@@ -1,9 +1,110 @@
 # CHANGELOG - Completed Work
 
 **Purpose**: Historical record of all completed tasks and deliverables  
-**Last Updated**: July 26, 2026
+**Last Updated**: August 1, 2026
 
 ---
+
+## Documentation restructure — wiki migration, HANDOFF.md retired (2026-08-01)
+
+- Migrated the contents of `docs/` (build docs, factory design and stage
+  readiness records, webapp/static-generator docs) to the
+  [GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki).
+  Two exceptions stay in the repository because code and agents read them from
+  disk: `.claude/CROSS-DOMAIN-CONTRACTS.md` (moved from docs/ later the same day; linked by `CLAUDE.md` and all
+  `.claude/agents/*.md`) and root `USER-CHECKLIST.md` (read by the
+  Test-Scaffold/CI/Import/Dogfood/Release suites). Both are mirrored to the
+  wiki with the repo copy marked canonical.
+- Retired `HANDOFF.md`: completed work moved into this changelog (entries
+  below), open items merged into [TODO.md](TODO.md). Durable knowledge it
+  carried is archived here:
+
+**Decisions already made — do not silently revisit** (from HANDOFF §5):
+
+| Decision | Rationale |
+|---|---|
+| **Two identities per environment** — Reader `*-plan` on `pull_request`, Contributor `*-apply` on `environment:<name>` | Makes it *structurally* impossible for a PR-triggered run to hold write access. No subject uses a wildcard; tests assert this. |
+| **Layers are never merged** | Each is its own state file and gate. Shared state across layers is the most common way a landing zone becomes unrecoverable. (Control **AR3**.) |
+| **HCP Terraform is the default backend** | Legacy free plan ended 2026-03-31; current cap is 500 managed resources; paid tiers bill on *peak hourly* count from $0.10/resource/month. `azurerm` is fully supported as the alternative. |
+| **Release gates start `false`** | This pipeline has no recorded successful run. A factory multiplies the blast radius of an unproven path. `dogfoodInstanceAppliesGreen` and `oidcTokenExchangeVerifiedLive` are deliberate v1.0.0 blockers. |
+| **Scaffold modules block rendering** | `sentinel-siem` and `keyvault-cmk` declare zero resources; `virtual-wan` doesn't exist. Emitting them would silently deploy nothing. Status is read from `factory-version.json`, so implementing a module lifts its guard automatically. |
+| **Renderer re-validates independently of the wizard** | A validation that exists only in the UI is a suggestion, not a guarantee. 22 guards (G01–G22). |
+
+**Environment notes that cost real debugging time** (from HANDOFF §8 —
+Windows + PowerShell 7.6.4 + Git Bash):
+
+| Trap | Detail |
+|---|---|
+| `az.cmd` argument mangling | `&` in a URL is a `cmd` command separator; parentheses in an OData `--filter` break parsing. **Call Graph via `Invoke-RestMethod`, not `az rest`.** |
+| `Mandatory [string[]]` | Rejects an array containing *any* empty string. Use `[AllowEmptyString()]`. |
+| `-is [psobject]` | True for **every** PowerShell value. Use explicit type dispatch (`Test-LzIsComposite`). |
+| `$Var:` in a string | Parses as a scope qualifier. Use `${Var}:`. |
+| Empty pipeline | Yields `$null`, not `@()`. Wrap in `@(...)` before `.Count` under StrictMode. |
+| `-bnot` on `uint32` | Yields a signed value. CIDR maths uses `int64`. |
+| Git Bash `/tmp` | Not visible to `pwsh`. Use Windows paths when crossing shells. |
+| `git show <ref>:<path>` | MSYS path conversion breaks it. Prefix with `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'`. |
+| Console encoding | Set `[Console]::OutputEncoding = [Text.Encoding]::UTF8` or box-drawing glyphs render as `?`. |
+
+**Discovery rule worth keeping** (HANDOFF §3.3): a probe must never conflate
+"there is nothing here" with "I was not allowed to look" — five states (`Ok`,
+`Empty`, `Forbidden`, `Unavailable`, `Error`), `Conclusive` only for the first
+two, capability proven by reading effective permissions, never by attempting a
+mutation (control **BR2**).
+
+**Renderer invariants** (HANDOFF §3.4): tokens are `{{FACTORY:...}}`, never
+`${...}`; directives are comment-prefixed (`#{{IF}}`) so unrendered templates
+stay valid; GitHub Actions `${{ }}` survives via a negative lookbehind;
+fail-closed on unknown tokens/leftover placeholders/unbalanced directives;
+directives evaluate before token substitution; use `defined path` for optional
+keys. Full detail: `factory/renderer/README.md`.
+
+## Comprehensive-review remediation — live tree converged toward corpus (2026-08-01)
+
+From HANDOFF §6.3 update, 2026-08-01:
+
+- Converged `terraform/live/` to the factory corpus for the previously recorded
+  divergences: `org_prefix` now validates `^[a-z0-9]{2,10}$` in both trees,
+  `firewall_threat_intel_mode` is declared and wired in
+  `live/platform-connectivity`, and the automation schedule `start_time` in
+  `live/platform-management` is derived at plan time instead of a literal past
+  timestamp.
+- The operator approved proceeding with the hub-network subnet re-layout, which
+  forces replacement of GatewaySubnet, AzureBastionSubnet, and the DNS resolver
+  subnets and deletes the hub-local Log Analytics workspace if
+  platform-connectivity is already deployed — the authoritative plan for that
+  lands in the PR's terraform-plan run.
+- Remaining divergence is tracked in [TODO.md](TODO.md); Stage 13 (regenerating
+  this repo from the factory) resolves the split permanently.
+
+## Legacy Terraform formatting normalized — PR #35 (2026-07-26)
+
+From HANDOFF §6.1: the 26 pre-existing `terraform fmt -check -recursive`
+failures under `terraform/` were normalized with Terraform 1.9.8.
+`terraform fmt -check -recursive terraform/` exits zero. PR #35 was
+squash-merged into `main` on 2026-07-26 as commit
+`8bb10ae6435a9f80ad639f4d7092767e1d255713`.
+
+## Factory stages 1–14 landed on `main` — merge history (2026-07-26)
+
+From HANDOFF §1.1 and §4 (recorded here because the branch-protection
+mechanics generalize):
+
+| PR | Outcome |
+|---|---|
+| [#31](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/31) | Merged into `feat/lz-factory-…` — rescued the three test suites (48 wizard, 60 discovery, 100 renderer at the time) that previously existed only in a session-scoped temp directory |
+| [#28](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/28) | Squash-merged into `main` as `11f09cd` — carried everything |
+| [#30](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/30) | Closed as **superseded**, not abandoned — its commit `0040033` reached `main` inside #28 via a real merge (shared SHA), so squashing it separately would have minted a duplicate |
+| [#32](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/32) | Squash-merged as `7568bc3` — agent git/gh permissions (merged by a human; an agent cannot widen its own permissions) |
+| #33 | `d219174` — post-merge handoff correction |
+
+Branch protection on `main`: `enforce_admins: true` (direct push rejected for
+everyone; a PR is the only route), `required_linear_history: true` (so
+`gh pr merge --merge` always fails and `--rebase` fails on branches with merge
+commits — **`--squash` is the reliable option**), `allow_force_pushes: false`,
+and **no** `required_status_checks` (a merge succeeding proves nothing about
+CI — see TODO.md). When stacking branches, prefer `git merge` over
+`git cherry-pick`: a shared SHA cannot conflict with itself. `gh pr merge`
+must run inside the repository or with `--repo`.
 
 ## Stage 14 release evidence attestation — prepared (2026-07-26)
 
@@ -134,8 +235,10 @@
 - Reviewed the implemented Stage 1–6 factory contract, code paths, tests,
   Terraform corpus, live workflows, workflow proof template, and repository
   orchestration before beginning Stage 7.
-- Added `docs/factory/STAGE-7-READINESS.md` with the workflow-corpus decisions,
-  invariants, implementation sequence, and definition of done.
+- Added `docs/factory/STAGE-7-READINESS.md` (since migrated to the wiki as
+  [Factory-Stage-7-Readiness](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Factory-Stage-7-Readiness))
+  with the workflow-corpus decisions, invariants, implementation sequence, and
+  definition of done.
 - Reconciled stale handoff, design, renderer, TODO, and orchestration claims with
   the current factory state.
 - No Terraform, workflow runtime, tenant, or repository permission behavior was
@@ -396,5 +499,5 @@ See [TODO.md](TODO.md) for the current phase plan: CI/CD & OIDC reliability, Ter
 
 ---
 
-**Last Updated**: July 1, 2026
+**Last Updated**: August 1, 2026
 **Owner**: Platform Engineering

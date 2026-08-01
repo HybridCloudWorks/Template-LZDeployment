@@ -11,6 +11,10 @@
   violation. A factory CI check greps this directory for network APIs and fails the
   build if one appears (release gate: siteMakesZeroNetworkRequests).
 
+  Configuration data DOES persist locally: the wizard autosaves a draft into this
+  browser's localStorage, where it remains until the "Clear saved draft" button
+  removes it. It never leaves the machine.
+
   OUTPUT: generated-output/<company>/lz-config.json, validated against
   factory/schema/lz-config.schema.json, plus the artifacts derivable directly from it.
 -->
@@ -40,6 +44,7 @@
     <button type="button" id="btnLoad" class="btn btn-ghost">Load config</button>
     <input type="file" id="fileLoad" accept="application/json,.json" hidden>
     <button type="button" id="btnSave" class="btn btn-ghost">Save draft</button>
+    <button type="button" id="btnClearDraft" class="btn btn-ghost">Clear saved draft</button>
     <button type="button" id="btnExport" class="btn btn-primary">Export</button>
   </div>
 </header>
@@ -50,7 +55,7 @@
   <nav class="stepnav" aria-label="Configuration steps">
     <ol id="stepList"></ol>
     <div class="progress-wrap">
-      <div class="progress"><div id="progressBar" class="progress-bar"></div></div>
+      <div class="progress"><div id="progressBar" class="progress-bar" role="progressbar" aria-label="Configuration progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div></div>
       <p id="progressText" class="progress-text">0 of 15 complete</p>
     </div>
   </nav>
@@ -979,7 +984,7 @@
     <section class="step" data-step="review" data-title="Review &amp; export">
       <header class="step-head">
         <h2>Review &amp; export</h2>
-        <p>Nothing is written until you press a download button, and nothing is transmitted at any point.</p>
+        <p>Nothing is written until you press a download button, and nothing is transmitted at any point. Your configuration does persist as an autosaved draft in this browser&rsquo;s localStorage until you remove it with the <strong>Clear saved draft</strong> button in the top bar.</p>
       </header>
 
       <div id="validationHost"></div>

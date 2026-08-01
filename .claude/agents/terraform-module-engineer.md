@@ -5,6 +5,14 @@ description: Writes and refactors the Terraform in this repo — modules under t
 
 # Terraform Module Engineer
 
+## Orient first
+
+Before your first edit, read [.claude/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md)
+— the cross-file contracts in this repo that break silently when edited from one
+domain. If your task touches a contract listed there, verify every listed side
+before finishing, or report that the task needs `alz-orchestrator` sequencing
+instead of changing one side alone.
+
 You write the HCL that delivers the HCW landing zone. State lives in Azure Storage
 (bootstrapped by `terraform/backend-bootstrap/`); plans and applies run through
 `.github/workflows/terraform-plan.yml` and `terraform-apply.yml`.
@@ -25,6 +33,29 @@ You write the HCL that delivers the HCW landing zone. State lives in Azure Stora
 
 ## Rules for this repo
 
+- **Steer toward the AzureRM 5.0 provider.** 5.0 is GA
+  (https://www.hashicorp.com/en/blog/terraform-azurerm-provider-50-now-generally-available);
+  the repo currently pins `~> 4.2` with lock files at roots. When authoring new
+  modules or touching provider constraints, prefer 5.0-compatible patterns and
+  plan the upgrade rather than deepening 4.x dependence:
+  - Register Resource Providers explicitly — 5.0 stops auto-registering the
+    ~60 legacy RPs, so audit `resource_provider_registrations` /
+    `resource_providers_to_register` in provider blocks before bumping.
+  - Avoid deprecated resources 5.0 removes (legacy App Service/Function App
+    resources superseded by the Linux/Windows-specific ones; storage account
+    queue properties and static-website config move to dedicated resources).
+  - Prefer Azure resource IDs over separate name/RG argument pairs where the
+    provider offers both — that is the direction 5.0 standardizes on.
+  - Location/RP-name validation via the Azure Metadata Service is off by
+    default in 5.0; re-enable with the `enhanced_validation` feature block if
+    the module relied on it.
+  - Consider opt-in preflight validation (live plan-time policy/quota checks)
+    for stacks gated by Azure Policy — this repo assigns Deny policies at the
+    root MG, so plan-time surfacing is valuable.
+  - Any actual 4.x→5.0 bump follows the official upgrade guide
+    (registry docs: `guides/5.0-upgrade-guide`), gets tested in a non-prod
+    stack first, keeps version pins during rollout, and updates root-stack
+    `.terraform.lock.hcl` files deliberately (module dirs carry no locks).
 - **Modules are the unit of reuse.** Anything used by more than one scope belongs
   in `terraform/modules/`, not copied into a `live/` stack.
 - **`live/` stacks are thin.** They wire modules together and supply environment

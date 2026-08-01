@@ -3,25 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Azure Landing Zone Deployment</title>
+    <title>Azure Landing Zone Deployment (DEPRECATED)</title>
+    <!-- DEPRECATED (2026-07-31 remediation): this prototype generator is retired.
+         Its Generate button was non-functional, it performed no HCL escaping, and the
+         .tfvars it emitted targeted variables that exist in no Terraform stack in this
+         repository. The CDN-loaded MSAL script (zero-network violation) has been removed.
+         Use ../site/index.html — the Landing Zone Factory wizard — instead.
+         Pending operator action: delete the frontend/ directory (deletion was blocked
+         for automation in this session and requires a human). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self' data:;">
     <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.5/dist/msal-browser.umd.min.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
             <div class="header-content">
-                <h1>🏢 Azure Landing Zone Deployment</h1>
-                <p>Self-service deployment orchestration</p>
-            </div>
-            <div class="header-flex">
-                <span id="userName" class="hidden"></span>
-                <button id="loginBtn" class="btn btn-primary">Login with Azure</button>
-                <button id="logoutBtn" class="btn btn-secondary hidden">Logout</button>
+                <h1>⚠️ This generator is deprecated</h1>
+                <p>Use the <a href="../site/index.html">Landing Zone Factory wizard</a> instead.
+                   This page's output does not match this repository's Terraform and its
+                   generator is disabled.</p>
             </div>
         </header>
 
-        <main>
+        <main hidden aria-hidden="true">
             <!-- Login Section (Hidden - Not Needed for Static Generator) -->
             <section id="loginSection" class="section hidden">
                 <div class="card">

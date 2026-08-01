@@ -3,6 +3,11 @@ variable "workload_prod_subscription_id" {
   type        = string
 }
 
+variable "connectivity_subscription_id" {
+  description = "Connectivity subscription ID (owns the hub side of each peering)"
+  type        = string
+}
+
 variable "state_resource_group_name" {
   description = "Terraform state resource group name"
   type        = string

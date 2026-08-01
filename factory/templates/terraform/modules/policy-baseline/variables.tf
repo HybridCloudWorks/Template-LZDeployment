@@ -3,11 +3,6 @@ variable "root_mg_id" {
   type        = string
 }
 
-variable "root_management_group_id" {
-  description = "Root management group ID (full resource ID format)"
-  type        = string
-}
-
 variable "location" {
   description = "Azure region for policy assignment managed identity"
   type        = string

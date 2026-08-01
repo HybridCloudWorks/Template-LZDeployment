@@ -5,6 +5,14 @@ description: Keeps documentation truthful and current — docs/, README.md, CHAN
 
 # Docs & Knowledge Curator
 
+## Orient first
+
+Before your first edit, read [.claude/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md)
+— the cross-file contracts in this repo that break silently when edited from one
+domain. If your task touches a contract listed there, verify every listed side
+before finishing, or report that the task needs `alz-orchestrator` sequencing
+instead of changing one side alone.
+
 This repo's documentation is load-bearing — `README.md` describes a deployment that
 runs against real Azure subscriptions, and `TODO.md` gates what is safe to change.
 A stale doc here is a deployment hazard, not a cosmetic issue.
@@ -14,8 +22,13 @@ A stale doc here is a deployment hazard, not a cosmetic issue.
 - `README.md` — what the repo is and how it deploys. Kept honest about status.
 - `TODO.md` — the current phase plan and known pipeline issues.
 - `CHANGELOG.md` — what actually shipped.
-- `docs/` — build standards, phase plans, deployment flow, static generator design,
-  verification reports, `docs/webapp/`.
+- `docs/` — only `CROSS-DOMAIN-CONTRACTS.md` remains in-repo (agents read it from
+  disk). Build standards, phase plans, deployment flow, static generator design,
+  verification reports, and factory stage readiness records were migrated to the
+  [GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)
+  (2026-08-01).
+- `USER-CHECKLIST.md` — operator activities; stays in the repo root because the
+  factory test suites read and assert against it.
 - `runbooks/` — operational procedures.
 
 ## Skills to reach for

@@ -48,7 +48,7 @@ jobs:
           terraform cloud config show 2>/dev/null || echo "Note: Run 'terraform login' if needed"
 
       - name: Azure Login (OIDC)
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v2.1.1
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -118,7 +118,7 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Azure Login (OIDC)
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v2.1.1
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -158,7 +158,7 @@ jobs:
             -platform=linux_amd64 \
             -platform=windows_amd64 \
             -platform=darwin_amd64 \
-            -platform=darwin_arm64 || true
+            -platform=darwin_arm64
 
   plan-workload-setup:
     name: Plan Workload Resource Groups
@@ -176,7 +176,7 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Azure Login (OIDC)
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v2.1.1
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -194,15 +194,13 @@ jobs:
             -input=false \
             -out=tfplan.global \
             -target='module.global' \
-            -var-file="terraform.tfvars" || true
+            -var-file="terraform.tfvars"
 
       - name: Save Plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: terraform-plans
-          path: |
-            terraform/live/tfplan.global
-            terraform/live/.terraform/
+          path: terraform/live/tfplan.global
           retention-days: 1
 
       - name: Display Plan Summary
@@ -259,27 +257,3 @@ jobs:
 
           ╚════════════════════════════════════════════════════════════════════════╝
           EOF
-
-      - name: Comment on PR (if applicable)
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
-        with:
-          script: |
-            const fs = require('fs');
-            const body = [
-              '## ✓ Workflow 010 - Init Complete',
-              '',
-              'Terraform has been initialized and validated:',
-              '- ✓ TFC backend connected',
-              '- ✓ OIDC authentication verified',
-              '- ✓ Service principal RBAC checked',
-              '- ✓ Configuration validated',
-              '',
-              'Ready to deploy!',
-            ].join('\n');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body,
-            });

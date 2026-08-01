@@ -65,6 +65,31 @@ variable "use_remote_gateways" {
   default     = false
 }
 
+variable "additional_security_rules" {
+  description = "Extra NSG rules applied to the app and data subnets, above the built-in AzureLoadBalancer allow (4095) and deny-all floor (4096). Priorities must be below 4095."
+  type = list(object({
+    name                         = string
+    priority                     = number
+    direction                    = string
+    access                       = string
+    protocol                     = string
+    source_port_range            = optional(string, "*")
+    destination_port_range       = optional(string, "*")
+    source_address_prefix        = optional(string)
+    source_address_prefixes      = optional(list(string))
+    destination_address_prefix   = optional(string)
+    destination_address_prefixes = optional(list(string))
+  }))
+  default = []
+
+  validation {
+    condition = alltrue([
+      for rule in var.additional_security_rules : rule.priority >= 100 && rule.priority < 4095
+    ])
+    error_message = "additional_security_rules priorities must be between 100 and 4094 so the built-in AzureLoadBalancer allow and deny-all floor keep their positions."
+  }
+}
+
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)

@@ -2,6 +2,12 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# The renderer owns layer derivation (Get-LzActiveLayers). The broker consumes
+# it rather than keeping a divergent copy — a bootstrap plan that provisions
+# identities for layers the renderer never emits (or misses one it does) is a
+# broken landing zone.
+Import-Module (Join-Path $PSScriptRoot '../renderer/LZFactory.Renderer.psd1') -Force -ErrorAction Stop
+
 function Write-LzBrokerEvent {
     param([string]$Level, [string]$Message)
     $colour = switch ($Level) {
@@ -64,7 +70,14 @@ function Get-LzEnvironmentSubscription {
         'shared-services' { return (Get-LzConfigValue $subscriptions 'sharedServices' $subscriptions.management) }
         'prod' { return $subscriptions.workloadProd }
         'sandbox' { return (Get-LzConfigValue $subscriptions 'sandbox' $subscriptions.management) }
-        default { return (Get-LzConfigValue $subscriptions 'workloadNonProd' $subscriptions.management) }
+        { $_ -in @('dev', 'test', 'uat') } {
+            return (Get-LzConfigValue $subscriptions 'workloadNonProd' $subscriptions.management)
+        }
+        default {
+            # Fail closed: silently mapping an unrecognised environment to a
+            # subscription would grant an OIDC identity scope nobody reviewed.
+            throw "Unknown environment '$Environment'. Expected one of: connectivity, management, identity, shared-services, prod, sandbox, dev, test, uat."
+        }
     }
 }
 
@@ -104,12 +117,8 @@ function New-LzBootstrapPlan {
             scope = $scope
         }
     }
-    $layers = @('global')
-    if ($Config.connectivity.model -ne 'none') { $layers += 'platform-connectivity' }
-    $layers += 'platform-management'
-    if (@($Config.environments.application) -match 'dev|test|uat') { $layers += 'workloads-nonprod' }
-    if (@($Config.environments.application) -contains 'prod') { $layers += 'workloads-prod' }
-    if (@($Config.environments.application) -contains 'sandbox') { $layers += 'sandbox' }
+    # Single source of truth: the renderer's layer derivation (control AR3).
+    $layers = @(Get-LzActiveLayers -Config $Config)
 
     [pscustomobject]@{
         schemaVersion = '1.0.0'
@@ -215,9 +224,9 @@ function Set-LzIdentity {
 
 function Set-LzGitHubVariable {
     param([string]$Repository, [string]$Name, [string]$Value, [string]$Environment)
-    $args = @('variable', 'set', $Name, '--repo', $Repository, '--body', $Value)
-    if ($Environment) { $args += @('--env', $Environment) }
-    & gh @args 2>&1 | Out-Null
+    $ghArguments = @('variable', 'set', $Name, '--repo', $Repository, '--body', $Value)
+    if ($Environment) { $ghArguments += @('--env', $Environment) }
+    & gh @ghArguments 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to set GitHub variable $Name." }
 }
 
@@ -386,6 +395,7 @@ function Get-LzLayerEnvironment {
         'global' { return 'bootstrap' }
         'platform-connectivity' { return 'connectivity' }
         'platform-management' { return 'management' }
+        'platform-identity' { return 'identity' }
         'workloads-prod' { return 'prod' }
         'sandbox' { return 'sandbox' }
         'workloads-nonprod' {
@@ -430,65 +440,77 @@ function Invoke-LzBootstrap {
         branchProtection = @{ status = 'planned' }
         pendingUserActivities = @()
         status = 'planned'
+        error = $null
     }
 
-    if ($Apply) {
-        Assert-LzBrokerPrerequisites -Config $config
-        foreach ($identity in $plan.identities) {
-            Write-LzBrokerEvent INFO "Reconciling $($identity.displayName)"
-            $audit.identities += Set-LzIdentity -Identity $identity
-        }
-        foreach ($environment in $plan.environments) {
-            $audit.environments += Set-LzGitHubEnvironment -Config $config -Environment $environment -Identities $audit.identities
-        }
-        $planClientIds = [ordered]@{}
-        $subscriptionIds = [ordered]@{}
-        foreach ($layer in $plan.layers) {
-            $environment = Get-LzLayerEnvironment -Config $config -Layer $layer
-            $identity = $audit.identities |
-                Where-Object { $_.environment -eq $environment -and $_.kind -eq 'plan' } |
+    $auditPath = Join-Path $OutputDirectory 'bootstrap-audit.json'
+    try {
+        if ($Apply) {
+            Assert-LzBrokerPrerequisites -Config $config
+            foreach ($identity in $plan.identities) {
+                Write-LzBrokerEvent INFO "Reconciling $($identity.displayName)"
+                $audit.identities += Set-LzIdentity -Identity $identity
+            }
+            foreach ($environment in $plan.environments) {
+                $audit.environments += Set-LzGitHubEnvironment -Config $config -Environment $environment -Identities $audit.identities
+            }
+            $planClientIds = [ordered]@{}
+            $subscriptionIds = [ordered]@{}
+            foreach ($layer in $plan.layers) {
+                $environment = Get-LzLayerEnvironment -Config $config -Layer $layer
+                $identity = $audit.identities |
+                    Where-Object { $_.environment -eq $environment -and $_.kind -eq 'plan' } |
+                    Select-Object -First 1
+                $planClientIds[$layer] = $identity.appId
+                $subscriptionIds[$layer] = Get-LzEnvironmentSubscription -Config $config -Environment $environment
+            }
+            Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_PLAN_CLIENT_IDS' `
+                -Value ($planClientIds | ConvertTo-Json -Compress)
+            Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_SUBSCRIPTION_IDS' `
+                -Value ($subscriptionIds | ConvertTo-Json -Compress)
+            $bootstrapPlan = $audit.identities |
+                Where-Object { $_.environment -eq 'bootstrap' -and $_.kind -eq 'plan' } |
                 Select-Object -First 1
-            $planClientIds[$layer] = $identity.appId
-            $subscriptionIds[$layer] = Get-LzEnvironmentSubscription -Config $config -Environment $environment
-        }
-        Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_PLAN_CLIENT_IDS' `
-            -Value ($planClientIds | ConvertTo-Json -Compress)
-        Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_SUBSCRIPTION_IDS' `
-            -Value ($subscriptionIds | ConvertTo-Json -Compress)
-        $bootstrapPlan = $audit.identities |
-            Where-Object { $_.environment -eq 'bootstrap' -and $_.kind -eq 'plan' } |
-            Select-Object -First 1
-        if (-not $bootstrapPlan) {
-            $bootstrapPlan = $audit.identities | Where-Object kind -eq 'plan' | Select-Object -First 1
-        }
-        Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_PLAN_CLIENT_ID' -Value $bootstrapPlan.appId
-        Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_SUBSCRIPTION_ID' `
-            -Value ((Get-LzEnvironmentSubscription -Config $config -Environment $bootstrapPlan.environment))
-        Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_TENANT_ID' -Value $config.azure.tenantId
-        Set-LzGitHubVariable -Repository $plan.repository -Name 'FACTORY_VERSION' -Value $config.factoryVersion
-        $audit.branchProtection = Set-LzBranchProtection -Config $config
-        if ($config.backend.type -eq 'azurerm') {
-            $audit.backend.details = Set-LzAzurermBackend -Config $config
-        }
-        else {
-            if ($env:TFE_TOKEN) {
-                $hcp = Set-LzHcpBackend -Config $config -Layers $plan.layers
-                $audit.backend.details = $hcp
-                $audit.pendingUserActivities += @($hcp.pending)
+            if (-not $bootstrapPlan) {
+                $bootstrapPlan = $audit.identities | Where-Object kind -eq 'plan' | Select-Object -First 1
+            }
+            Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_PLAN_CLIENT_ID' -Value $bootstrapPlan.appId
+            Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_SUBSCRIPTION_ID' `
+                -Value ((Get-LzEnvironmentSubscription -Config $config -Environment $bootstrapPlan.environment))
+            Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_TENANT_ID' -Value $config.azure.tenantId
+            Set-LzGitHubVariable -Repository $plan.repository -Name 'FACTORY_VERSION' -Value $config.factoryVersion
+            $audit.branchProtection = Set-LzBranchProtection -Config $config
+            if ($config.backend.type -eq 'azurerm') {
+                $audit.backend.details = Set-LzAzurermBackend -Config $config
             }
             else {
-                $audit.pendingUserActivities += 'Set TFE_TOKEN and re-run broker apply for HCP workspace reconciliation.'
+                if ($env:TFE_TOKEN) {
+                    $hcp = Set-LzHcpBackend -Config $config -Layers $plan.layers
+                    $audit.backend.details = $hcp
+                    $audit.pendingUserActivities += @($hcp.pending)
+                }
+                else {
+                    $audit.pendingUserActivities += 'Set TFE_TOKEN and re-run broker apply for HCP workspace reconciliation.'
+                }
             }
+            $audit.backend.status = if ($audit.pendingUserActivities.Count) { 'pending-user-activity' } else { 'reconciled' }
+            $audit.status = if ($audit.pendingUserActivities.Count) { 'completed-with-user-activities' } else { 'completed' }
         }
-        $audit.backend.status = if ($audit.pendingUserActivities.Count) { 'pending-user-activity' } else { 'reconciled' }
-        $audit.status = if ($audit.pendingUserActivities.Count) { 'completed-with-user-activities' } else { 'completed' }
     }
-
-    $audit.completedAt = (Get-Date).ToUniversalTime().ToString('o')
-    $auditPath = Join-Path $OutputDirectory 'bootstrap-audit.json'
-    $audit | ConvertTo-Json -Depth 40 | Set-Content $auditPath -Encoding utf8
-    Write-LzBrokerEvent OK "Plan: $planPath"
-    Write-LzBrokerEvent OK "Audit: $auditPath"
+    catch {
+        # The audit trail must record a failed apply, not vanish with it. The
+        # finally block below still writes the file; this records why.
+        $audit.status = 'failed'
+        $audit.error = $_.Exception.Message
+        $audit.pendingUserActivities += 'Resolve the recorded error and re-run the idempotent broker.'
+        throw
+    }
+    finally {
+        $audit.completedAt = (Get-Date).ToUniversalTime().ToString('o')
+        $audit | ConvertTo-Json -Depth 40 | Set-Content $auditPath -Encoding utf8
+        Write-LzBrokerEvent OK "Plan: $planPath"
+        Write-LzBrokerEvent OK "Audit: $auditPath"
+    }
     return [pscustomobject]@{ PlanPath = $planPath; AuditPath = $auditPath; Applied = [bool]$Apply }
 }
 

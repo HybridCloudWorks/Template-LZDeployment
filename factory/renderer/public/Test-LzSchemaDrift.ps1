@@ -45,8 +45,8 @@ function Get-LzTerraformVariables {
 
     # Match: variable "name" { ... } with brace balancing so a nested object
     # type does not terminate the block early.
-    $matches = [regex]::Matches($content, 'variable\s+"(?<name>[^"]+)"\s*\{')
-    foreach ($m in $matches) {
+    $variableBlocks = [regex]::Matches($content, 'variable\s+"(?<name>[^"]+)"\s*\{')
+    foreach ($m in $variableBlocks) {
         $name = $m.Groups['name'].Value
         $start = $m.Index + $m.Length
         $depth = 1
@@ -227,7 +227,10 @@ function Get-LzSchemaPattern {
 
     $node = $Schema
     foreach ($segment in ($Path -split '\.')) {
-        if (-not $node.PSObject.Properties.Name -contains 'properties') { return $null }
+        # Parenthesised: without the parentheses, -not binds to the name list
+        # first and the guard never fires, so a path with no `properties` node
+        # throws under StrictMode instead of returning $null.
+        if (-not ($node.PSObject.Properties.Name -contains 'properties')) { return $null }
         if (-not ($node.properties.PSObject.Properties.Name -contains $segment)) { return $null }
         $node = $node.properties.$segment
     }

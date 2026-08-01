@@ -115,6 +115,31 @@ if (-not $result.InSync) { exit 1 }
     Invoke-LzFactoryCheck 'Site no network' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-SiteNoNetwork.ps1') -Category 'policy' | Out-Null
     Invoke-LzFactoryCheck 'Action pinning' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ActionPins.ps1') -Category 'policy' | Out-Null
 
+    # Parse sweep: every PowerShell file in the repository must parse cleanly.
+    # This runs unconditionally (unlike PSScriptAnalyzer) because it needs no
+    # external module and a parse error anywhere is always a defect.
+    $parseSweepCommand = @'
+$parseFailures = @()
+Get-ChildItem . -Recurse -File -Include *.ps1,*.psm1 |
+    Where-Object { $_.FullName -notmatch '[\\/](\.git|generated-output|node_modules)[\\/]' } |
+    ForEach-Object {
+        $filePath = $_.FullName
+        $parseTokens = $null
+        $parseErrors = $null
+        [System.Management.Automation.Language.Parser]::ParseFile($filePath, [ref]$parseTokens, [ref]$parseErrors) | Out-Null
+        foreach ($parseError in @($parseErrors)) {
+            $parseFailures += ('{0}:{1}:{2} {3}' -f $filePath, $parseError.Extent.StartLineNumber, $parseError.Extent.StartColumnNumber, $parseError.Message)
+        }
+    }
+if ($parseFailures.Count -gt 0) {
+    Write-Host "PowerShell parse sweep found $($parseFailures.Count) error(s):"
+    $parseFailures | ForEach-Object { Write-Host "  $_" }
+    exit 1
+}
+Write-Host 'All PowerShell files parse cleanly.'
+'@
+    Invoke-LzFactoryCheck 'PowerShell parse sweep' pwsh @('-NoLogo', '-NoProfile', '-Command', $parseSweepCommand) -Category 'static-analysis' | Out-Null
+
     if (-not $skipStaticRequested) {
         Test-LzCommand 'shellcheck'
         $shellFiles = @(Get-ChildItem $repo -Recurse -File -Filter '*.sh' |

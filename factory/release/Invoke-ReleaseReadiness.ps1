@@ -41,6 +41,33 @@ function Get-LzReleaseCheck {
     return @($Report.checks | Where-Object { "$($_.name)" -eq $Name } | Select-Object -First 1)
 }
 
+function Get-LzReleaseProperty {
+    # StrictMode-safe property read: a malformed evidence report must surface
+    # as a failed finding, never as a property-access throw.
+    param([AllowNull()][object]$Object, [Parameter(Mandatory)][string]$Name, $Default = $null)
+    if ($null -eq $Object) { return $Default }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($property) { return $property.Value }
+    return $Default
+}
+
+function ConvertTo-LzReleaseUtcInstant {
+    # Culture-invariant round-trip parsing. [datetime]::Parse with the current
+    # culture accepts or rejects ISO 8601 timestamps depending on the host's
+    # regional settings, which would make readiness evidence machine-dependent.
+    param([Parameter(Mandatory)][string]$Value)
+    try {
+        return [datetime]::Parse(
+            $Value,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind
+        ).ToUniversalTime()
+    }
+    catch {
+        throw "Evidence timestamp '$Value' is not a valid ISO 8601 round-trip datetime."
+    }
+}
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $FactoryCiReport = Get-LzReleaseValue $FactoryCiReport 'LZ_RELEASE_FACTORY_CI_REPORT'
 $DogfoodReport = Get-LzReleaseValue $DogfoodReport 'LZ_RELEASE_DOGFOOD_REPORT'
@@ -54,13 +81,13 @@ if ($maximumAgeHours -lt 1) {
     throw 'LZ_RELEASE_MAX_EVIDENCE_AGE_HOURS must be a positive integer.'
 }
 
-foreach ($input in @(
+foreach ($evidenceInput in @(
     @{ Name = 'Factory CI report'; Path = $FactoryCiReport },
     @{ Name = 'Dogfood report'; Path = $DogfoodReport },
     @{ Name = 'Release attestation'; Path = $AttestationPath }
 )) {
-    if ([string]::IsNullOrWhiteSpace($input.Path) -or -not (Test-Path $input.Path -PathType Leaf)) {
-        throw "$($input.Name) is required and must be an existing file."
+    if ([string]::IsNullOrWhiteSpace($evidenceInput.Path) -or -not (Test-Path $evidenceInput.Path -PathType Leaf)) {
+        throw "$($evidenceInput.Name) is required and must be an existing file."
     }
 }
 
@@ -114,9 +141,9 @@ function Add-LzReleaseFinding {
     })
 }
 
-$factoryCompleted = [datetime]::Parse("$($factory.generatedAt)").ToUniversalTime()
-$dogfoodCompleted = [datetime]::Parse("$($dogfood.completedAt)").ToUniversalTime()
-$attestedAt = [datetime]::Parse("$($attestation.issuedAt)").ToUniversalTime()
+$factoryCompleted = ConvertTo-LzReleaseUtcInstant "$($factory.generatedAt)"
+$dogfoodCompleted = ConvertTo-LzReleaseUtcInstant "$($dogfood.completedAt)"
+$attestedAt = ConvertTo-LzReleaseUtcInstant "$($attestation.issuedAt)"
 $factoryAge = ($now - $factoryCompleted).TotalHours
 $dogfoodAge = ($now - $dogfoodCompleted).TotalHours
 $attestationAge = ($now - $attestedAt).TotalHours
@@ -126,9 +153,15 @@ $attestationFresh = $attestationAge -ge 0 -and $attestationAge -le $maximumAgeHo
 
 Add-LzReleaseFinding 'R01' 'Factory CI report targets the current factory version.' `
     ("$($factory.factoryVersion)" -eq "$($factoryVersion.factoryVersion)") "$($factory.factoryVersion)"
+# The skipped block is read defensively: a Factory CI report missing or
+# malforming it is treated as if the checks were skipped, so the finding fails
+# instead of the runner throwing under StrictMode.
+$factorySkipped = Get-LzReleaseProperty $factory 'skipped'
+$factoryTerraformSkipped = [bool](Get-LzReleaseProperty $factorySkipped 'terraform' $true)
+$factoryStaticSkipped = [bool](Get-LzReleaseProperty $factorySkipped 'staticAnalysis' $true)
 Add-LzReleaseFinding 'R02' 'Factory CI completed successfully without skipped checks.' `
-    ([bool]$factory.success -and -not [bool]$factory.skipped.terraform -and -not [bool]$factory.skipped.staticAnalysis) `
-    "success=$($factory.success); terraformSkipped=$($factory.skipped.terraform); staticSkipped=$($factory.skipped.staticAnalysis)"
+    ([bool](Get-LzReleaseProperty $factory 'success' $false) -and -not $factoryTerraformSkipped -and -not $factoryStaticSkipped) `
+    "success=$(Get-LzReleaseProperty $factory 'success' $false); terraformSkipped=$factoryTerraformSkipped; staticSkipped=$factoryStaticSkipped"
 Add-LzReleaseFinding 'R03' 'Factory CI evidence is within the allowed age.' $factoryFresh `
     "completed=$($factoryCompleted.ToString('o')); maxHours=$maximumAgeHours"
 Add-LzReleaseFinding 'R04' 'Dogfood report targets this repository and current factory version.' `

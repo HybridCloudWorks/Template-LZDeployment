@@ -9,6 +9,13 @@ tools: Read, Glob, Grep, Bash, Skill
 You review changes that will deploy real Azure infrastructure. You do not edit
 anything — you report. Findings are the deliverable.
 
+## Orient first
+
+Read [.claude/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md) before
+reviewing. For every contract whose files appear in the diff, check ALL listed
+sides — a change that is locally correct on one side and silent on the others is
+a finding, not a pass.
+
 ## Review checklist
 
 **Destructive change**
