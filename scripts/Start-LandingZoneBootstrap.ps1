@@ -42,7 +42,13 @@ param(
     [switch]$SkipToolValidation,
     [switch]$SkipAzureSetup,
     [string]$ReportDirectory = ".reports/bootstrap",
-    [string]$StateFile = ".lz-bootloader-state.json"
+    [string]$StateFile = ".lz-bootloader-state.json",
+
+    # Sandbox subscription ID. When supplied, the deploying SP (main-prod) is
+    # granted Role Based Access Control Administrator scoped to this
+    # subscription so platform-management can write the sandbox-cleanup
+    # Contributor assignment. Without it, that apply fails AuthorizationFailed.
+    [string]$SandboxSubscriptionId = ''
 )
 
 Set-StrictMode -Version Latest
@@ -66,9 +72,6 @@ $MIN_VERSIONS = [ordered]@{
 # Landing Zone naming convention
 $LZ_APP_PATTERN = "sp-terraform-{layer}-{environment}"
 
-# Timeout for user interaction
-$INTERACTION_TIMEOUT_SEC = 300
-
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                         OUTPUT FORMATTING                               ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
@@ -89,7 +92,7 @@ function Write-Section {
     param([string]$Number, [string]$Title)
     Write-Host ""
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
-    Write-Host "  PHASE $Number: $Title" -ForegroundColor Cyan
+    Write-Host "  PHASE ${Number}: $Title" -ForegroundColor Cyan
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
 }
 
@@ -108,7 +111,7 @@ function Write-Warn {
     Write-Host "  ⚠  $Message" -ForegroundColor Yellow
 }
 
-function Write-Error {
+function Write-Fail {
     param([string]$Message)
     Write-Host "  ✗  $Message" -ForegroundColor Red
 }
@@ -128,6 +131,18 @@ function Write-Critical {
 function Write-Manual {
     param([string]$Message)
     Write-Host "  👉  $Message" -ForegroundColor Magenta
+}
+
+function Assert-LastExitCode {
+    <#
+        Fails fast when an external CLI (az/gh/git) returned a non-zero exit
+        code. Used after invocations whose stderr is suppressed (2>$null) so
+        failures surface instead of being reported as success.
+    #>
+    param([string]$Operation)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed (exit code $LASTEXITCODE): $Operation"
+    }
 }
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -205,7 +220,7 @@ function Install-MissingCli {
 
     Write-Warn "Tool not found: $Tool"
     Write-Host ""
-    Write-Host "Installation instructions for $Tool:" -ForegroundColor Cyan
+    Write-Host "Installation instructions for ${Tool}:" -ForegroundColor Cyan
 
     switch ($Tool) {
         'az' {
@@ -426,9 +441,11 @@ function New-LzServicePrincipal {
 
     # Check if exists
     $existing = az ad app list --display-name $displayName --query "[0].appId" -o tsv 2>$null
+    Assert-LastExitCode "az ad app list --display-name $displayName"
     if ([string]::IsNullOrWhiteSpace($existing)) {
         Write-Step "Creating app registration: $displayName"
         $appId = (az ad app create --display-name $displayName --output json | ConvertFrom-Json).appId
+        Assert-LastExitCode "az ad app create --display-name $displayName"
         Write-OK "Created app registration"
     } else {
         $appId = $existing
@@ -437,20 +454,41 @@ function New-LzServicePrincipal {
 
     # Create service principal if needed
     $spCheck = az ad sp list --filter "appId eq '$appId'" --query "[0].id" -o tsv 2>$null
+    Assert-LastExitCode "az ad sp list --filter appId eq $appId"
     if ([string]::IsNullOrWhiteSpace($spCheck)) {
         Write-Step "Creating service principal..."
         az ad sp create --id $appId --output none 2>$null
+        Assert-LastExitCode "az ad sp create --id $appId"
         Start-Sleep -Seconds 5  # Wait for replication
         Write-OK "Created service principal"
     }
 
     # Get object ID for RBAC
     $spObjId = az ad sp show --id $appId --query id -o tsv 2>$null
+    Assert-LastExitCode "az ad sp show --id $appId"
 
-    # Assign roles based on layer
-    $roles = @("Contributor")
-    if ($layer -ne "main") {
-        $roles += "User Access Administrator"
+    # Assign roles based on layer (least privilege):
+    #  - plan:     Reader + Storage Blob Data Reader — the PR-triggered plan
+    #              identity must never mutate
+    #  - main:     Contributor + Storage Blob Data Contributor
+    #  - dev/prod: the above + Role Based Access Control Administrator
+    #              (replaces User Access Administrator; constrain the assignment
+    #              with delegation conditions — restrict which roles it may
+    #              assign and to which principal types — before production use)
+    #
+    # The Storage Blob Data roles are the data plane: the state account has
+    # shared_access_key_enabled = false and every backend.hcl sets
+    # use_azuread_auth = true, so state reads/writes go over AAD. Contributor
+    # and Reader alone stop at the management plane and 403 on the blobs.
+    if ($Layer -eq 'plan') {
+        # No data-plane write: PR plans run with -lock=false and can never
+        # mutate state.
+        $roles = @("Reader", "Storage Blob Data Reader")
+    } else {
+        $roles = @("Contributor", "Storage Blob Data Contributor")
+        if ($Layer -ne 'main') {
+            $roles += "Role Based Access Control Administrator"
+        }
     }
 
     foreach ($role in $roles) {
@@ -459,6 +497,7 @@ function New-LzServicePrincipal {
             --role $role `
             --scope "/subscriptions/$SubscriptionId" `
             --query "[0].id" -o tsv 2>$null
+        Assert-LastExitCode "az role assignment list (role '$role' on $displayName)"
 
         if ([string]::IsNullOrWhiteSpace($existing)) {
             Write-Step "Assigning role: $role"
@@ -468,6 +507,7 @@ function New-LzServicePrincipal {
                 --assignee-principal-type ServicePrincipal `
                 --scope "/subscriptions/$SubscriptionId" `
                 --output none 2>$null
+            Assert-LastExitCode "az role assignment create (role '$role' on $displayName)"
             Write-OK "Assigned $role"
         }
     }
@@ -477,6 +517,7 @@ function New-LzServicePrincipal {
         --assignee-object-id $spObjId `
         --query "[?roleDefinitionName=='Owner']" `
         --output json 2>$null | ConvertFrom-Json
+    Assert-LastExitCode "az role assignment list (Owner check on $displayName)"
 
     if (($owner | Measure-Object).Count -gt 0) {
         Write-Critical "Service principal has Owner role! This violates least-privilege."
@@ -500,6 +541,7 @@ function Add-OidcFederatedCredential {
 
     # Check if exists
     $existing = az ad app federated-credential list --id $AppId --query "[?name=='$Name']" -o json 2>$null | ConvertFrom-Json
+    Assert-LastExitCode "az ad app federated-credential list --id $AppId"
     if ($existing.Count -gt 0) {
         Write-OK "Federated credential already exists: $Name"
         return
@@ -517,6 +559,7 @@ function Add-OidcFederatedCredential {
         } | ConvertTo-Json | Set-Content -Path $credFile -Encoding UTF8
 
         az ad app federated-credential create --id $AppId --parameters "@$credFile" --output none 2>$null
+        Assert-LastExitCode "az ad app federated-credential create ($Name)"
         Write-OK "Created federated credential"
     } finally {
         Remove-Item $credFile -Force -ErrorAction SilentlyContinue
@@ -529,17 +572,18 @@ function Setup-Azure-OIDC {
         [string]$SubscriptionId,
         [string]$TenantId,
         [string]$GithubOwner,
-        [string]$RepoName
+        [string]$RepoName,
+        [string]$SandboxSubscriptionId = ''
     )
 
     Write-Section "4" "Azure OIDC Service Principals & Federated Credentials"
 
     Write-Critical "RESOURCE CREATION: This section will create Azure resources (Entra apps, SPs, RBAC roles)"
     Write-Info "Estimated resources:"
-    Write-Info "  - 3 app registrations (main, dev, prod)"
-    Write-Info "  - 3 service principals"
-    Write-Info "  - 6+ federated credentials (OIDC tokens)"
-    Write-Info "  - 3 RBAC role assignments"
+    Write-Info "  - 4 app registrations (main, plan, dev, prod)"
+    Write-Info "  - 4 service principals"
+    Write-Info "  - 8+ federated credentials (OIDC tokens)"
+    Write-Info "  - 4+ RBAC role assignments"
     Write-Info ""
     $confirm = Read-Host "  Type 'CREATE' to proceed, or press ENTER to skip"
 
@@ -559,6 +603,12 @@ function Setup-Azure-OIDC {
         }
     }
 
+    # Split identities: a dedicated Reader-only SP is the ONLY identity bound to
+    # the pull_request OIDC subject, so PR-triggered plans can read but never
+    # mutate Azure. The Contributor SP keeps main-branch and environment subjects.
+    Write-Step "Setting up: plan (Reader-only PR plan identity)"
+    $sps['plan'] = New-LzServicePrincipal -Layer 'plan' -Environment 'ci' -SubscriptionId $SubscriptionId -State $State
+
     # Create federated credentials for each layer
     foreach ($layer in @('main', 'dev', 'prod')) {
         foreach ($env in $State['environments']) {
@@ -569,18 +619,19 @@ function Setup-Azure-OIDC {
 
             switch ($layer) {
                 'main' {
-                    # Main runs on push to main branch (terraform-apply.yml)
+                    # Contributor SP: bound to main-branch pushes (terraform-apply.yml)
+                    # and to the deployment environments (dev/prod/hub). It is
+                    # deliberately NOT bound to the pull_request subject — PR-triggered
+                    # plans authenticate as the Reader-only 'plan' SP instead.
                     Add-OidcFederatedCredential -AppId $sp.appId `
                         -Name "github-main-branch" `
                         -Subject "repo:$GithubOwner/$RepoName`:ref:refs/heads/main"
 
-                    # terraform-plan.yml runs on pull_request against main and uses the
-                    # same repo-level AZURE_CLIENT_ID secret. Without this credential,
-                    # every PR-triggered Azure OIDC login fails (no subject matches a
-                    # pull_request-issued token).
-                    Add-OidcFederatedCredential -AppId $sp.appId `
-                        -Name "github-pull-request" `
-                        -Subject "repo:$GithubOwner/$RepoName`:pull_request"
+                    foreach ($envName in @('dev', 'prod', 'hub')) {
+                        Add-OidcFederatedCredential -AppId $sp.appId `
+                            -Name "github-environment-$envName" `
+                            -Subject "repo:$GithubOwner/$RepoName`:environment:$envName"
+                    }
                 }
                 'dev' {
                     # Dev runs on environment:dev
@@ -600,6 +651,46 @@ function Setup-Azure-OIDC {
                 }
             }
         }
+    }
+
+    # Reader-only plan SP: the ONLY identity holding the pull_request subject.
+    Write-Step "Creating federated credential for: plan (pull_request)"
+    Add-OidcFederatedCredential -AppId $sps['plan'].appId `
+        -Name "github-pull-request" `
+        -Subject "repo:$GithubOwner/$RepoName`:pull_request"
+
+    # platform-management writes a Contributor assignment into the sandbox
+    # subscription (sandbox-cleanup automation), which needs
+    # Microsoft.Authorization/roleAssignments/write there. Grant the deploying
+    # SP (main-prod, published as AZURE_CLIENT_ID) RBAC Administrator scoped to
+    # the sandbox subscription only — never Owner/UAA, and never in the
+    # management subscription.
+    if (-not [string]::IsNullOrWhiteSpace($SandboxSubscriptionId)) {
+        Write-Step "Granting sandbox-subscription RBAC Administrator to main-prod SP"
+        $mainObjId = az ad sp show --id $sps['main-prod'].appId --query id -o tsv 2>$null
+        Assert-LastExitCode "az ad sp show --id $($sps['main-prod'].appId)"
+
+        $existingSandboxGrant = az role assignment list `
+            --assignee-object-id $mainObjId `
+            --role "Role Based Access Control Administrator" `
+            --scope "/subscriptions/$SandboxSubscriptionId" `
+            --query "[0].id" -o tsv 2>$null
+        Assert-LastExitCode "az role assignment list (sandbox RBAC grant)"
+
+        if ([string]::IsNullOrWhiteSpace($existingSandboxGrant)) {
+            az role assignment create `
+                --role "Role Based Access Control Administrator" `
+                --assignee-object-id $mainObjId `
+                --assignee-principal-type ServicePrincipal `
+                --scope "/subscriptions/$SandboxSubscriptionId" `
+                --output none 2>$null
+            Assert-LastExitCode "az role assignment create (sandbox RBAC grant)"
+            Write-OK "Granted RBAC Administrator on sandbox subscription"
+        } else {
+            Write-OK "Sandbox RBAC Administrator grant already present"
+        }
+    } else {
+        Write-Warn "No -SandboxSubscriptionId supplied: platform-management's sandbox-cleanup role assignment will fail (AuthorizationFailed) until the deploying SP is granted RBAC Administrator in the sandbox subscription"
     }
 
     Write-OK "Azure OIDC setup complete"
@@ -640,6 +731,18 @@ function Set-GitHubSecrets {
             Write-OK "Secret set: $($secret.Name)"
         } else {
             Write-Warn "Could not set secret $($secret.Name) via CLI"
+        }
+    }
+
+    # Reader-only plan SP client id, for PR-triggered workflows (pull_request
+    # OIDC subject is bound only to this identity).
+    if ($ServicePrincipals.ContainsKey('plan')) {
+        Write-Step "Setting secret: AZURE_PLAN_CLIENT_ID (Reader-only plan SP)"
+        $ServicePrincipals['plan'].appId | gh secret set 'AZURE_PLAN_CLIENT_ID' --repo $repo 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-OK "Secret set: AZURE_PLAN_CLIENT_ID"
+        } else {
+            Write-Warn "Could not set secret AZURE_PLAN_CLIENT_ID via CLI"
         }
     }
 
@@ -691,19 +794,45 @@ function Setup-GitHub-Environments {
 
     $repo = "$GithubOwner/$RepoName"
 
+    # Protection payload sent with every environment PUT:
+    #  - reviewers: the bootstrapping operator, resolved at runtime. A single
+    #    reviewer means self-approval in a single-owner repo — replace with a
+    #    Team object (@{ type = 'Team'; id = <numeric-team-id> }) once one
+    #    exists, but an explicit human gate always beats an empty one.
+    #  - deployment_branch_policy: restrict deployments to protected branches.
+    Write-Step "Resolving bootstrap operator for environment approval gate"
+    $reviewerId = [int](gh api user --jq '.id')
+    Assert-LastExitCode "gh api user (resolve reviewer id)"
+    $reviewerLogin = gh api user --jq '.login'
+    Assert-LastExitCode "gh api user (resolve reviewer login)"
+    Write-OK "Environment reviewer: $reviewerLogin ($reviewerId)"
+
+    $protectionPayload = @{
+        reviewers                = @(
+            @{ type = 'User'; id = $reviewerId }
+        )
+        deployment_branch_policy = @{
+            protected_branches     = $true
+            custom_branch_policies = $false
+        }
+    } | ConvertTo-Json -Depth 4
+
     foreach ($env in $State['environments']) {
         Write-Step "Ensuring environment: $env"
 
-        # Create environment (idempotent)
-        gh api -X PUT "repos/$repo/environments/$env" 2>&1 | Out-Null
+        # Create/update environment with protection settings (idempotent)
+        $protectionPayload | gh api -X PUT "repos/$repo/environments/$env" --input - 2>$null | Out-Null
+        Assert-LastExitCode "gh api PUT repos/$repo/environments/$env"
 
         Write-OK "Environment exists: $env"
     }
 
     # Create 'hub' environment for approval gate
     Write-Step "Creating approval gate environment: hub"
-    gh api -X PUT "repos/$repo/environments/hub" 2>&1 | Out-Null
+    $protectionPayload | gh api -X PUT "repos/$repo/environments/hub" --input - 2>$null | Out-Null
+    Assert-LastExitCode "gh api PUT repos/$repo/environments/hub"
     Write-Info "Note: 'hub' environment requires manual approval for prod deployments"
+    Write-Info "      (gated on $reviewerLogin; swap in a Team reviewer when one exists)"
     Write-OK "Environment exists: hub"
 
     Write-OK "GitHub environments configured"
@@ -822,6 +951,7 @@ function Generate-BootstrapReport {
 | Layer | Environment | App ID | Status |
 |-------|-------------|--------|--------|
 | main | prod | $($State['azure_sps']['main-prod'].appId) | ✓ Created |
+| plan | ci (Reader-only, pull_request) | $($State['azure_sps']['plan'].appId) | ✓ Created |
 | dev | $($State['environments'] -join ', ') | $($State['azure_sps']['dev-prod'].appId) | ✓ Created |
 | prod | $($State['environments'] -join ', ') | $($State['azure_sps']['prod-prod'].appId) | ✓ Created |
 
@@ -859,9 +989,10 @@ If you need to restart:
 ## Security Notes
 
 - All service principals use OIDC federated credentials (no secrets stored)
-- Least-privilege RBAC: Contributor-only for main, +User Access Admin for dev/prod
-- Main SP scoped to main-branch pushes and pull requests only (cannot deploy from other branches/forks)
-- No Owner roles assigned to any service principal
+- Least-privilege RBAC: Contributor for main; Contributor + Role Based Access Control Administrator (constrain with delegation conditions) for dev/prod; Reader-only for the plan SP
+- Contributor (main) SP scoped to main-branch pushes and dev/prod/hub environments (cannot deploy from other branches/forks)
+- pull_request OIDC subject bound ONLY to the Reader-only plan SP (PR plans cannot mutate Azure)
+- No Owner or User Access Administrator roles assigned to any service principal
 - GitHub secrets are encrypted and never exposed in logs
 
 ## Support
@@ -1000,7 +1131,8 @@ function Main {
                 -SubscriptionId $state['subscription_id'] `
                 -TenantId $state['tenant_id'] `
                 -GithubOwner $ghUser `
-                -RepoName $state['repo_name']
+                -RepoName $state['repo_name'] `
+                -SandboxSubscriptionId $SandboxSubscriptionId
 
             if ($sps.Count -gt 0) {
                 Mark-StepComplete $state "azure-oidc-setup"
@@ -1008,7 +1140,9 @@ function Main {
         }
 
         # Phase 5: GitHub secrets
-        if ($state['azure_sps'].Count -gt 0) {
+        # Guard key presence explicitly — under StrictMode, indexing a missing
+        # key then calling .Count on $null would fail.
+        if ($state.ContainsKey('azure_sps') -and $state['azure_sps'].Count -gt 0) {
             Set-GitHubSecrets `
                 -State $state `
                 -GithubOwner $ghUser `
@@ -1066,7 +1200,7 @@ function Main {
 
     } catch {
         Write-Host ""
-        Write-Error "Bootstrap failed: $_"
+        Write-Fail "Bootstrap failed: $_"
         Write-Info ""
         Write-Info "Fix the issue and re-run this script (it will resume from where it stopped)"
         Write-Info "State is saved in: $STATE_FILE_PATH"

@@ -36,6 +36,7 @@ module "hub_primary" {
   hub_address_space          = var.primary_hub_address_space
   firewall_type              = var.firewall_type
   azfw_tier                  = var.azfw_tier
+  firewall_threat_intel_mode = var.firewall_threat_intel_mode
   nva_trust_ip_placeholder   = var.primary_nva_trust_ip
   deploy_bastion_placeholder = var.deploy_bastion
   deploy_dns_placeholder     = var.deploy_dns
@@ -55,6 +56,7 @@ module "hub_dr" {
   hub_address_space          = var.dr_hub_address_space
   firewall_type              = var.firewall_type
   azfw_tier                  = var.azfw_tier
+  firewall_threat_intel_mode = var.firewall_threat_intel_mode
   nva_trust_ip_placeholder   = var.dr_nva_trust_ip
   deploy_bastion_placeholder = var.deploy_bastion
   deploy_dns_placeholder     = var.deploy_dns

@@ -27,6 +27,11 @@ provider "azurerm" {
     }
   }
   subscription_id = var.management_subscription_id
+
+  # The state storage account disables shared keys, and the provider manages
+  # its containers over the data plane — without this it falls back to
+  # key-based auth and gets KeyBasedAuthenticationNotPermitted.
+  storage_use_azuread = true
 }
 
 # Random suffix for globally unique storage account name
@@ -58,13 +63,19 @@ resource "azurerm_storage_account" "state" {
   min_tls_version            = "TLS1_2"
   https_traffic_only_enabled = true
 
+  # State access is via Azure AD (OIDC) only; shared keys stay off so a leaked
+  # key can never read state.
+  shared_access_key_enabled = false
+
   # Security - CRITICAL: Public access disabled by default (Finding 1.2 - CVSS 8.2)
   public_network_access_enabled = var.allow_public_access_during_setup
 
-  # Lifecycle precondition: Warn if public access enabled without private endpoint
+  # Lifecycle precondition: block public access unless a private endpoint is
+  # also being provisioned (public access is a temporary setup bridge, not a
+  # steady state).
   lifecycle {
     precondition {
-      condition     = !var.allow_public_access_during_setup || !var.enable_private_endpoint
+      condition     = !var.allow_public_access_during_setup || var.enable_private_endpoint
       error_message = <<-EOT
         SECURITY WARNING (Finding 1.2 - CVSS 8.2):
         Public network access is ENABLED on Terraform state storage.
@@ -93,9 +104,29 @@ resource "azurerm_storage_account" "state" {
     }
   }
 
+  # Deny by default even while public network access is temporarily enabled;
+  # only the explicitly allowed CIDRs (parsed fail-closed below) get through.
+  network_rules {
+    default_action = "Deny"
+    bypass         = ["AzureServices"]
+    ip_rules       = local.state_ip_rules
+  }
+
   tags = merge(var.default_tags, {
     purpose = "Terraform State Storage"
   })
+}
+
+locals {
+  # Azure storage ip_rules accept public IPv4 addresses or CIDR ranges, with
+  # /32 written as a bare address. The parser fails closed: an entry that does
+  # not parse as an IPv4 CIDR is dropped, narrowing access instead of
+  # widening it, and an empty result leaves default_action = "Deny" in force.
+  state_ip_rules = [
+    for c in var.allowed_ip_cidrs :
+    (endswith(c, "/32") ? split("/", c)[0] : c)
+    if can(cidrhost(c, 0)) && !strcontains(c, ":")
+  ]
 }
 
 # Private DNS Zone for Blob Storage
@@ -173,10 +204,12 @@ resource "azurerm_log_analytics_workspace" "state" {
   tags = var.default_tags
 }
 
-# Diagnostic settings for state storage account
+# Diagnostic settings for state storage. The StorageRead/Write/Delete log
+# categories exist on the blob service sub-resource, not on the storage
+# account itself, so the setting targets .../blobServices/default.
 resource "azurerm_monitor_diagnostic_setting" "state" {
   name                       = "diag-state-storage"
-  target_resource_id         = azurerm_storage_account.state.id
+  target_resource_id         = "${azurerm_storage_account.state.id}/blobServices/default"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.state.id
 
   enabled_log {
@@ -190,5 +223,4 @@ resource "azurerm_monitor_diagnostic_setting" "state" {
   enabled_log {
     category = "StorageDelete"
   }
-
 }

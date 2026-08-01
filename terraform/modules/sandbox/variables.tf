@@ -21,9 +21,13 @@ variable "location" {
   type        = string
   nullable    = false
 
+  # Bound must match the azureRegion definition in
+  # factory/schema/lz-config.schema.json, which is ^[a-z0-9]+$. The original
+  # ^[a-z]+$ rejected every numbered region — eastus2, westus3, southeastasia's
+  # numbered neighbours — so a valid wizard selection failed only at plan time.
   validation {
-    condition     = can(regex("^[a-z]+$", var.location))
-    error_message = "Location must be a valid Azure region name"
+    condition     = can(regex("^[a-z0-9]+$", var.location))
+    error_message = "Location must be a valid Azure region short name, e.g. southcentralus or eastus2."
   }
 }
 

@@ -50,14 +50,20 @@ function Invoke-LzDogfoodCommand {
     $old = Get-Location
     try {
         Set-Location $WorkingDirectory
-        $output = @(& $Command @Arguments 2>&1)
+        # Capture stdout and stderr separately: stderr lines surface as
+        # ErrorRecord objects on the merged stream. Terraform writes warnings to
+        # stderr, and mixing those into stdout corrupts `terraform show -json`
+        # parsing downstream. The log keeps both streams in arrival order.
+        $merged = @(& $Command @Arguments 2>&1)
         $exitCode = $LASTEXITCODE
-        $output | Set-Content -Path $LogPath -Encoding utf8
+        $stdout = @($merged | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+        $stderr = @($merged | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+        @($merged | ForEach-Object { "$_" }) | Set-Content -Path $LogPath -Encoding utf8
     }
     finally {
         Set-Location $old
     }
-    return [pscustomobject]@{ ExitCode = $exitCode; Output = $output }
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = $stdout; ErrorOutput = $stderr }
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -124,21 +130,22 @@ try {
 
         foreach ($operation in @('init', 'plan')) {
             $log = Join-Path $EvidenceDirectory "$currentLayer-$operation.log"
-            $args = if ($operation -eq 'init') {
+            $tfArguments = if ($operation -eq 'init') {
                 @('init', '-input=false', '-no-color')
             }
             else {
                 @('plan', '-input=false', '-no-color', '-detailed-exitcode', '-out=dogfood.tfplan')
             }
             $timer = Get-Date
-            $result = Invoke-LzDogfoodCommand terraform $args $layerPath $log
+            $result = Invoke-LzDogfoodCommand terraform $tfArguments $layerPath $log
             $accepted = if ($operation -eq 'plan') { @(0, 2) } else { @(0) }
             $status = if ($result.ExitCode -in $accepted) { 'passed' } else { 'failed' }
+            $relativeLog = [IO.Path]::GetRelativePath($EvidenceDirectory, $log) -replace '\\', '/'
             $checks.Add([pscustomobject]@{
                 name = "$currentLayer-$operation"; status = $status
                 exitCode = $result.ExitCode
                 durationSeconds = ((Get-Date) - $timer).TotalSeconds
-                log = [IO.Path]::GetRelativePath($EvidenceDirectory, $log) -replace '\\', '/'
+                log = $relativeLog
             })
             if ($status -eq 'failed') {
                 throw "Terraform $operation failed for $currentLayer. See $log"
@@ -152,12 +159,13 @@ try {
         $destructive = @($planJson.resource_changes | Where-Object {
             @($_.change.actions) -contains 'delete'
         }).Count
+        $relativeShowLog = [IO.Path]::GetRelativePath($EvidenceDirectory, $showLog) -replace '\\', '/'
         $checks.Add([pscustomobject]@{
             name = "$currentLayer-destructive-change-policy"
             status = if ($destructive -eq 0) { 'passed' } else { 'failed' }
             exitCode = if ($destructive -eq 0) { 0 } else { 1 }
             durationSeconds = 0
-            log = [IO.Path]::GetRelativePath($EvidenceDirectory, $showLog) -replace '\\', '/'
+            log = $relativeShowLog
             destructiveChanges = $destructive
         })
         if ($destructive -gt 0) {
@@ -170,12 +178,13 @@ try {
             $apply = Invoke-LzDogfoodCommand terraform @(
                 'apply', '-input=false', '-no-color', '-auto-approve', 'dogfood.tfplan'
             ) $layerPath $applyLog
+            $relativeApplyLog = [IO.Path]::GetRelativePath($EvidenceDirectory, $applyLog) -replace '\\', '/'
             $checks.Add([pscustomobject]@{
                 name = "$currentLayer-apply"
                 status = if ($apply.ExitCode -eq 0) { 'passed' } else { 'failed' }
                 exitCode = $apply.ExitCode
                 durationSeconds = ((Get-Date) - $timer).TotalSeconds
-                log = [IO.Path]::GetRelativePath($EvidenceDirectory, $applyLog) -replace '\\', '/'
+                log = $relativeApplyLog
             })
             if ($apply.ExitCode -ne 0) { throw "Terraform apply failed for $currentLayer." }
         }

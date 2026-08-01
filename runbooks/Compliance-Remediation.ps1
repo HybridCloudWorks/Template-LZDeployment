@@ -147,7 +147,7 @@ policyresources
                     error          = $_
                 }
 
-                Write-Error "Failed to remediate tags for $resourceName: $_"
+                Write-Error "Failed to remediate tags for ${resourceName}: $_"
             }
         }
 
@@ -171,7 +171,7 @@ policyresources
                     Write-Output "    ✅ HTTPS enabled: $resourceName"
                 }
             } catch {
-                Write-Error "Failed to enable HTTPS for $resourceName: $_"
+                Write-Error "Failed to enable HTTPS for ${resourceName}: $_"
             }
         }
 

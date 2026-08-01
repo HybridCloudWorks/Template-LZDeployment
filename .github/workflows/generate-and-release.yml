@@ -1,4 +1,9 @@
-name: Generate and Release ALZ Configuration
+# DEPRECATED — DISABLED (2026-07-31 remediation): this legacy generator interpolated
+# free-text workflow_dispatch inputs directly into run: blocks (script injection with a
+# contents:write token) and fed an ungated auto-apply consumer. Superseded by the factory
+# pipeline (site/ -> factory/renderer -> scaffold). The job is hard-disabled below.
+# Pending operator action: delete this file together with terraform/compose-package/.
+name: Generate and Release ALZ Configuration (DEPRECATED - disabled)
 
 on:
   workflow_dispatch:
@@ -34,6 +39,7 @@ on:
 
 jobs:
   compose-and-release:
+    if: ${{ false }}  # hard-disabled — see deprecation header
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -106,7 +112,7 @@ jobs:
           echo "$PLAN_STATUS"
 
       - name: Create GitHub Release
-        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
           tag: "v1.0.0-${{ github.event.inputs.org_prefix }}-${{ github.event.inputs.compliance_variant }}-${{ github.run_number }}"
           name: "ALZ Deployment: ${{ github.event.inputs.org_prefix }}"

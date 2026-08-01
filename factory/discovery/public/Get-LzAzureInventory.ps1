@@ -72,7 +72,7 @@ function Get-LzAzureInventory {
 
     # ── Management group hierarchy ───────────────────────────────────────────
     $probes['Management groups'] = Invoke-LzProbe -Name 'Management groups' -ForbiddenRemediation `
-        'Cannot enumerate management groups. Greenfield hierarchy creation requires write access at the root scope; see docs/factory/FACTORY-DESIGN.md assumption A7 for the intermediate-root alternative.' -Probe {
+        'Cannot enumerate management groups. Greenfield hierarchy creation requires write access at the root scope; see the Factory-Design wiki page (https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Factory-Design) assumption A7 for the intermediate-root alternative.' -Probe {
         $mgs = Invoke-LzAz account management-group list --query '[].{Name:name,DisplayName:displayName,Id:id}'
         if (-not $mgs) { return @() }
         @($mgs)

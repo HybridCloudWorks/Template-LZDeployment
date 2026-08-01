@@ -1,5 +1,9 @@
 # Azure Firewall Policy with Threat Intelligence
 # Task 5.3: Configure Azure Firewall Threat Intelligence (Phase 2)
+#
+# The policy is attached to the single azurerm_firewall.hub resource in
+# main.tf via firewall_policy_id; no separate firewall resource exists for the
+# threat-intelligence path.
 
 resource "azurerm_firewall_policy" "hub" {
   count               = var.firewall_type == "azfw" && var.enable_firewall_threat_intel ? 1 : 0
@@ -78,32 +82,9 @@ resource "azurerm_firewall_policy" "hub" {
   )
 }
 
-# Link Firewall Policy to Firewall
-resource "azurerm_firewall" "hub_with_policy" {
-  count               = var.firewall_type == "azfw" && var.enable_firewall_threat_intel ? 1 : 0
-  name                = "azfw-hub-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.hub.name
-  location            = azurerm_resource_group.hub.location
-  sku_name            = "AZFW_VNet"
-  sku_tier            = var.azfw_tier
-  zones               = var.availability_zones
-  firewall_policy_id  = azurerm_firewall_policy.hub[0].id
-  tags                = var.tags
-
-  ip_configuration {
-    name                 = "ipconfig1"
-    subnet_id            = azurerm_subnet.azfw[0].id
-    public_ip_address_id = azurerm_public_ip.azfw[0].id
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
 # Diagnostic Settings for Firewall Policy
 resource "azurerm_monitor_diagnostic_setting" "firewall_policy" {
-  count                      = var.firewall_type == "azfw" && var.enable_firewall_threat_intel ? 1 : 0
+  count                      = var.firewall_type == "azfw" && var.enable_firewall_threat_intel && var.log_analytics_workspace_id != "" ? 1 : 0
   name                       = "diag-azfwpol-${var.region_code}-${var.environment}"
   target_resource_id         = azurerm_firewall_policy.hub[0].id
   log_analytics_workspace_id = var.log_analytics_workspace_id
@@ -116,11 +97,12 @@ resource "azurerm_monitor_diagnostic_setting" "firewall_policy" {
   }
 }
 
-# Diagnostic Settings for Firewall (Threat Intelligence Logs)
+# Diagnostic Settings for Firewall (Threat Intelligence Logs). Replaces the
+# base diag-azfw setting in main.tf when threat intelligence is enabled.
 resource "azurerm_monitor_diagnostic_setting" "firewall_threat_intel" {
-  count                      = var.firewall_type == "azfw" && var.enable_firewall_threat_intel ? 1 : 0
+  count                      = var.firewall_type == "azfw" && var.enable_firewall_threat_intel && var.log_analytics_workspace_id != "" ? 1 : 0
   name                       = "diag-azfw-threatintel-${var.region_code}-${var.environment}"
-  target_resource_id         = azurerm_firewall.hub_with_policy[0].id
+  target_resource_id         = azurerm_firewall.hub[0].id
   log_analytics_workspace_id = var.log_analytics_workspace_id
 
   enabled_log {
@@ -155,7 +137,7 @@ resource "azurerm_monitor_diagnostic_setting" "firewall_threat_intel" {
 
 # Alerts for Threat Intelligence Hits
 resource "azurerm_monitor_scheduled_query_rules_alert_v2" "threat_intel_alert" {
-  count               = var.firewall_type == "azfw" && var.enable_firewall_threat_intel && var.enable_threat_intel_alerts ? 1 : 0
+  count               = var.firewall_type == "azfw" && var.enable_firewall_threat_intel && var.enable_threat_intel_alerts && var.log_analytics_workspace_id != "" ? 1 : 0
   name                = "alert-azfw-threatintel-${var.region_code}-${var.environment}"
   resource_group_name = azurerm_resource_group.hub.name
   location            = azurerm_resource_group.hub.location
@@ -197,25 +179,4 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "threat_intel_alert" {
   }
 
   tags = var.tags
-}
-
-# Outputs
-output "firewall_policy_id" {
-  description = "ID of the Azure Firewall Policy"
-  value       = var.enable_firewall_threat_intel ? azurerm_firewall_policy.hub[0].id : null
-}
-
-output "firewall_threat_intel_mode" {
-  description = "Threat Intelligence mode configured"
-  value       = var.enable_firewall_threat_intel ? var.firewall_threat_intel_mode : "Disabled"
-}
-
-output "firewall_idps_mode" {
-  description = "IDPS mode configured (Premium SKU only)"
-  value       = var.azfw_tier == "Premium" && var.enable_firewall_threat_intel ? var.firewall_idps_mode : "Not Available"
-}
-
-output "firewall_diagnostics_enabled" {
-  description = "Whether threat intelligence diagnostics are enabled"
-  value       = var.enable_firewall_threat_intel
 }

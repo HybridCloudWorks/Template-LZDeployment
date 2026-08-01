@@ -75,7 +75,7 @@ HCW-Demo-LZDeployment/
 │   │   └── sandbox/                 # Isolated sandbox environment
 │   └── scripts/
 │       └── Cleanup-ExpiredSandboxResources.ps1
-├── frontend/                     # Static, backend-free .tfvars generator (see docs/webapp/PLAN.md)
+├── frontend/                     # Static, backend-free .tfvars generator (see the wiki's Webapp-Plan page)
 │   ├── index.html
 │   ├── app.js
 │   └── styles.css
@@ -195,7 +195,7 @@ Each layer under `terraform/live/` deploys independently and in dependency order
 
 ## Optional Static Configuration Generator
 
-`frontend/` is a standalone static page — open `frontend/index.html` in a browser, no server required. It lets you pick org name, region, network topology, policy assignments, and other options, then generates a `.tfvars` file you can download or copy. Feed that file into the Terraform layer it corresponds to (`terraform apply -var-file=your-file.tfvars`). See [docs/webapp/PLAN.md](docs/webapp/PLAN.md) for details.
+`frontend/` is a standalone static page — open `frontend/index.html` in a browser, no server required. It lets you pick org name, region, network topology, policy assignments, and other options, then generates a `.tfvars` file you can download or copy. Feed that file into the Terraform layer it corresponds to (`terraform apply -var-file=your-file.tfvars`). See [Webapp-Plan on the wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Webapp-Plan) for details.
 
 ---
 
@@ -246,9 +246,11 @@ See [TODO.md](TODO.md) for the full, current list. Highlights as of 2026-07-01:
 
 ## Documentation
 
-- **[TODO.md](TODO.md)** — current phase plan and open work
-- **[CHANGELOG.md](CHANGELOG.md)** — completed work history, with verification notes
-- **[docs/webapp/PLAN.md](docs/webapp/PLAN.md)** — static config-generator build plan
+- **[GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)** — build docs, factory design and Stage 7–14 readiness records, and the webapp/static-generator docs (migrated from `docs/` on 2026-08-01)
+- **[TODO.md](TODO.md)** — the open backlog (legacy deployment debt plus factory runtime work)
+- **[CHANGELOG.md](CHANGELOG.md)** — completed work history, with verification notes and the archived `HANDOFF.md` decisions
+- **[USER-CHECKLIST.md](USER-CHECKLIST.md)** — operator authentication, publication, and verification activities
+- **[.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)** — load-bearing cross-file contracts (stays in-repo; agents read it from disk)
 - **[terraform/modules/\*/README.md](terraform/modules/)** — per-module usage docs (where they exist — see Known Issues)
 
 ---

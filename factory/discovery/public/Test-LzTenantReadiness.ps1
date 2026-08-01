@@ -216,7 +216,7 @@ function Test-LzCanCreateManagementGroups {
         default {
             return New-LzReadinessCheck -Id 'R03' -Category 'Azure' -Name 'Create management groups' -Status 'Fail' `
                 -Detail "Microsoft.Management/managementGroups/write is not permitted at $scope." `
-                -Remediation 'Assign Management Group Contributor at the root management group. Alternatively, set azure.managementGroups.rootId to an existing intermediate management group you already control — see assumption A7 in docs/factory/FACTORY-DESIGN.md.'
+                -Remediation 'Assign Management Group Contributor at the root management group. Alternatively, set azure.managementGroups.rootId to an existing intermediate management group you already control — see assumption A7 in the Factory-Design wiki page (https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Factory-Design).'
         }
     }
 }

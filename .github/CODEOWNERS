@@ -1,0 +1,11 @@
+# Code owners for HCW-Plan_LZDeployment
+# Owner handle derived from `git remote get-url origin`:
+# https://github.com/saulpatinojr/HCW-Plan_LZDeployment.git
+#
+# Later rules take precedence over earlier ones.
+
+/.github/    @saulpatinojr
+/factory/    @saulpatinojr
+/terraform/  @saulpatinojr
+/scripts/    @saulpatinojr
+/site/       @saulpatinojr

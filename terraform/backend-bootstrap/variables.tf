@@ -44,6 +44,19 @@ variable "management_subnet_id" {
   default     = ""
 }
 
+variable "allowed_ip_cidrs" {
+  description = "Public IPv4 CIDR ranges allowed through the state storage account firewall while public network access is enabled (e.g. operator egress ranges). Entries that fail to parse are dropped (fail closed)."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for c in var.allowed_ip_cidrs : can(cidrhost(c, 0)) && !strcontains(c, ":")
+    ])
+    error_message = "Each entry in allowed_ip_cidrs must be a valid IPv4 CIDR (e.g. 203.0.113.0/24)."
+  }
+}
+
 variable "enable_private_endpoint" {
   description = "Deploy private endpoint for state storage (recommended for production)"
   type        = bool

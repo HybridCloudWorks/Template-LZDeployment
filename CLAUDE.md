@@ -62,40 +62,55 @@ instruction not to spawn subagents unless asked. Where that applies, do the work
 inline and route only to *skills* and *tools*; note the constraint rather than
 silently skipping the match.
 
+**Dispatch-by-default** (operator decision, 2026-08-01)
+
+- Dispatch is the standing policy, not an option to weigh. Non-trivial
+  single-domain work goes to the domain specialist; anything spanning two or more
+  domains goes through `alz-orchestrator`. "Already having context inline" is not
+  a reason to skip dispatch. Inline work is reserved for trivial edits and
+  `.claude/` meta-config (which has no owner).
+- Dispatch briefs must warm-start the specialist: include the task's current
+  state, relevant contract references
+  ([.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)), file paths,
+  and the validation commands to run. The specialist must not re-discover session
+  state from scratch.
+- Cross-domain contract changes (see
+  [.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)) are exactly
+  the `alz-orchestrator` trigger — never split a contract across
+  independently-briefed specialists.
+
 ## 2. Capability usage report
 
 Reporting is **enabled in the current repository state**. The setting lives in
 [`.claude/agent-report.json`](.claude/agent-report.json) (`{"enabled": true}`).
 
-When it is on, end each completed task with:
+When it is on, end each completed task with a **reasons table** — no numbers:
 
 ```
 ## Usage Report for This Task
-Agents used:
-- <name> — <one-line reason>   (or "None")
-Skills used:
-- <name> — <one-line reason>   (or "None")
-Tools used:
-- <name> — <one-line reason>   (or "None")
-Counts:
-- Agents: X
-- Skills: X
-- Tools: X
+| Capability | Type | Why it was used |
+| --- | --- | --- |
+| <name> | Agent | <one-line reason> |
+| <name> | Skill | <one-line reason> |
+| <name> | Tool  | <one-line reason> |
+
+Counts: printed below by the Stop hook, observed per-name from the session
+transcript. If no tally appears, telemetry was unavailable this turn.
 ```
+
+(If nothing was invoked, replace the table with one line: `No repo capabilities
+used — <reason>`.)
 
 Rules for this report, which override any instinct to produce a tidy answer:
 
 - **Report only what was actually invoked in this task.** Never list a capability
   you considered, recommended, or described but did not call.
-- **Never estimate a count.** If the exact number is not derivable from what you
-  can see, write `Unavailable` and the sentence:
-  "Exact usage telemetry is not available from the current context."
-- The `Stop` hook (§3) independently counts `tool_use` records in the session
-  transcript and prints its own tally. If your narrative report disagrees with the
-  hook's numbers, the hook's numbers are the observed ones — say so rather than
-  reconciling silently.
-- The hook counts calls; only you can supply the *reason* for each. Reasons are
-  yours, counts are the transcript's.
+- **Reasons are yours, counts are the transcript's.** The narrative report never
+  states call counts — not even ones that look derivable. The `Stop` hook (§3)
+  counts `tool_use` records in the session transcript and prints the per-name
+  tally directly beneath the report; that tally is the single source of numbers.
+- Group multiple uses of one capability into a single row with one combined
+  reason; the hook shows how many times it was called.
 
 ## 3. Toggling the report
 
@@ -104,7 +119,7 @@ paraphrases such as "enable the usage report", "stop showing the capability
 report" — are commands to flip the persisted setting. Run:
 
 ```bash
-pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/agent-report.ps1 -Mode Toggle -State On
+powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/agent-report.ps1 -Mode Toggle -State On
 ```
 
 (`-State Off` to turn it off.) This rewrites `.claude/agent-report.json`; the

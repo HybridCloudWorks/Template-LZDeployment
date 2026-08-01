@@ -3,8 +3,16 @@ name: Action Pinning Policy
 on:
   pull_request:
     branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'factory/templates/.github/workflows/**'
+      - 'factory/ci/Test-ActionPins.ps1'
   push:
     branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'factory/templates/.github/workflows/**'
+      - 'factory/ci/Test-ActionPins.ps1'
 
 permissions:
   contents: read
@@ -13,25 +21,16 @@ jobs:
   enforce-pinning:
     name: Enforce Immutable Action Refs
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - name: Fail on mutable action refs
-        shell: bash
+      - name: Fail on non-SHA action refs
+        shell: pwsh
         run: |
-          set -euo pipefail
-          echo "Scanning workflows for mutable refs (@v*, @main, @master, @latest)..."
-
-          # Ignore local actions (uses: ./path)
-          MATCHES=$(grep -RInE '^[[:space:]]*uses:[[:space:]]*[^./][^[:space:]]+@(v[0-9]|main|master|latest)\b' .github/workflows deployments/**/.github/workflows 2>/dev/null || true)
-
-          if [[ -n "$MATCHES" ]]; then
-            echo "Mutable action references detected:"
-            echo "$MATCHES"
-            echo
-            echo "Use full commit SHAs for all third-party actions."
-            exit 1
-          fi
-
-          echo "All action refs are immutable (SHA-pinned)."
+          # Strict policy: every `uses:` ref (except local ./ and docker:// refs)
+          # must be pinned to a full 40-hex commit SHA. Shares the exact rule the
+          # factory CI enforces (factory/ci/Test-ActionPins.ps1) and avoids bash
+          # globstar entirely.
+          ./factory/ci/Test-ActionPins.ps1

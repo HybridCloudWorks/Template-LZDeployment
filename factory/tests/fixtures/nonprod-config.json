@@ -4,7 +4,7 @@
   "generatedAt": "2026-07-25T00:00:00.000Z",
   "organization": {
     "companyName": "Contoso Health Group",
-    "companyShortName": "contoso",
+    "companyShortName": "chg",
     "businessUnit": "Platform",
     "outputDirectoryName": "contoso"
   },
@@ -122,7 +122,10 @@
     "strategy": "cloud-only",
     "deployIdentitySubscription": false,
     "privilegedAccessModel": "pim-eligible",
-    "breakGlassAccounts": []
+    "breakGlassAccounts": [
+      { "name": "bg-admin-1@contoso.onmicrosoft.com", "email": "secops@contoso.com", "role": "Global Administrator" },
+      { "name": "bg-admin-2@contoso.onmicrosoft.com", "email": "secops@contoso.com", "role": "Global Administrator" }
+    ]
   },
   "security": {
     "defender": {
@@ -202,10 +205,14 @@
     "operatingModel": "centralized",
     "platformTeam": {
       "name": "Cloud Platform",
-      "contacts": []
+      "contacts": [
+        { "name": "Alex Fictional", "email": "alex@contoso.com", "role": "Lead" }
+      ]
     },
     "approvalChain": [],
-    "breakGlassContacts": []
+    "breakGlassContacts": [
+      { "name": "Dana Fictional", "email": "dana@contoso.com" }
+    ]
   },
   "finops": {
     "costCenter": "CC-1",

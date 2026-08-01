@@ -88,6 +88,20 @@ a { color: var(--accent); }
 }
 .skip-link:focus { left: 0; }
 
+/* Visually hidden but exposed to assistive technology — used for step-status
+ * text, since the status dot alone communicates state by color only. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ── Top bar ──────────────────────────────────────────────────────── */
 
 .topbar {

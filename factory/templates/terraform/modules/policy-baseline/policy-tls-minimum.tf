@@ -322,7 +322,7 @@ resource "azurerm_policy_set_definition" "tls_12_enforcement" {
 # Policy Assignment: Apply to Root Management Group
 resource "azurerm_management_group_policy_assignment" "tls_12_root" {
   name                 = "tls-12-enforcement"
-  management_group_id  = var.root_management_group_id
+  management_group_id  = var.root_mg_id
   policy_definition_id = azurerm_policy_set_definition.tls_12_enforcement.id
   display_name         = "Enforce TLS 1.2 Minimum Version"
   description          = "Enforces TLS 1.2 minimum version across all Azure services in the organization"

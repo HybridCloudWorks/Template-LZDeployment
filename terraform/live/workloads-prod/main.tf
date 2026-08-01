@@ -18,6 +18,14 @@ provider "azurerm" {
   subscription_id = var.workload_prod_subscription_id
 }
 
+# The hub side of each VNet peering must be created in the connectivity
+# subscription that owns the hub VNet, not in the workload subscription.
+provider "azurerm" {
+  alias           = "hub"
+  subscription_id = var.connectivity_subscription_id
+  features {}
+}
+
 # Data source for hub outputs
 data "terraform_remote_state" "connectivity" {
   backend = "azurerm"
@@ -26,6 +34,8 @@ data "terraform_remote_state" "connectivity" {
     storage_account_name = var.state_storage_account_name
     container_name       = "platform-connectivity"
     key                  = "terraform.tfstate"
+    # State storage disables shared keys; without AAD auth this read 403s.
+    use_azuread_auth = true
   }
 }
 
@@ -41,6 +51,11 @@ locals {
 # Production spoke in primary region
 module "spoke_prod_primary" {
   source = "../../modules/spoke-network"
+
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm.hub
+  }
 
   spoke_name              = "prod-app"
   region                  = var.primary_region
@@ -60,6 +75,11 @@ module "spoke_prod_primary" {
 # Production spoke in DR region
 module "spoke_prod_dr" {
   source = "../../modules/spoke-network"
+
+  providers = {
+    azurerm     = azurerm
+    azurerm.hub = azurerm.hub
+  }
 
   spoke_name              = "prod-app"
   region                  = var.dr_region

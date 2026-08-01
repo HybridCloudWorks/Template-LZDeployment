@@ -15,6 +15,28 @@
 
 Set-StrictMode -Version Latest
 
+# Substituted values are masked so they are inert for the remainder of the
+# render. Without this, a FOREACH body's output (already token-expanded with
+# the scoped context) flows into the outer token pass, where a legitimate value
+# containing '{{' would be either re-expanded or rejected as a residual
+# placeholder. The mask uses Unicode private-use characters that never occur in
+# templates or configuration values, and is removed once — at the end of
+# Resolve-LzTemplate, after the residual-token check has run.
+$script:LzMaskOpen  = [string][char]0xE000
+$script:LzMaskClose = [string][char]0xE001
+
+function Protect-LzRenderedValue {
+    param([AllowNull()][AllowEmptyString()][string]$Value)
+    if ([string]::IsNullOrEmpty($Value)) { return $Value }
+    return $Value.Replace('{{', $script:LzMaskOpen).Replace('}}', $script:LzMaskClose)
+}
+
+function Unprotect-LzRenderedText {
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return $Text }
+    return $Text.Replace($script:LzMaskOpen, '{{').Replace($script:LzMaskClose, '}}')
+}
+
 function Resolve-LzTemplate {
     <#
     .SYNOPSIS
@@ -39,7 +61,11 @@ function Resolve-LzTemplate {
     $rendered = Expand-LzTokens -Template $afterDirectives -Context $Context -SourceName $SourceName
 
     Assert-LzNoResidualTokens -Text $rendered -SourceName $SourceName
-    return $rendered
+
+    # Substituted spans were masked by Expand-LzTokens so they could not be
+    # re-expanded or misread as residual placeholders. Restore them now that
+    # every expansion pass and the residual check have completed.
+    return Unprotect-LzRenderedText $rendered
 }
 
 function Expand-LzDirectives {
@@ -256,16 +282,21 @@ function Expand-LzTokens {
         try { $value = Get-LzTokenValue -Context $Context -Path $path }
         catch { throw "$SourceName : $($_.Exception.Message)" }
 
-        switch ($kind) {
-            ''       { return ConvertTo-LzHclString $value }
-            '-RAW'   { return [string]$value }
-            '-BOOL'  { return ConvertTo-LzBoolLiteral $value }
-            '-NUM'   { if ($null -eq $value) { return '0' } return [string]$value }
-            '-LIST'  { return ConvertTo-LzHclList $value }
-            '-MAP'   { return ConvertTo-LzHclMap $value }
-            '-JSON'  { return (ConvertTo-Json -InputObject $value -Compress -Depth 12) }
+        $substituted = switch ($kind) {
+            ''       { ConvertTo-LzHclString $value }
+            '-RAW'   { [string]$value }
+            '-BOOL'  { ConvertTo-LzBoolLiteral $value }
+            '-NUM'   { if ($null -eq $value) { '0' } else { [string]$value } }
+            '-LIST'  { ConvertTo-LzHclList $value }
+            '-MAP'   { ConvertTo-LzHclMap $value }
+            '-JSON'  { ConvertTo-Json -InputObject $value -Compress -Depth 12 }
             default  { throw "$SourceName : unsupported token kind '$kind'." }
         }
+
+        # Mask the substituted text so a later expansion pass (the global pass
+        # after a FOREACH, or an enclosing loop) treats it as literal output:
+        # values are data, never templates to expand again.
+        return Protect-LzRenderedValue $substituted
     }
 
     return [regex]::Replace($Template, $script:LzTokenPattern, $evaluator)

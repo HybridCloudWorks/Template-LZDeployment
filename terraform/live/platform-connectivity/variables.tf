@@ -55,16 +55,35 @@ variable "azfw_tier" {
   default     = "Standard"
 }
 
-variable "primary_nva_trust_ip" {
-  description = "Placeholder IP for primary NVA trust interface (if using Palo/Fortinet)"
+variable "firewall_threat_intel_mode" {
+  # The hub-network module has implemented threat intelligence since
+  # firewall-threat-intel.tf landed, but this layer never plumbed a variable
+  # through to it, so the module default silently governed. The wizard exposes
+  # connectivity.firewall.threatIntelligenceMode; without this variable that
+  # choice would render into a .tfvars entry Terraform ignores. Secure default
+  # is Deny, matching the schema.
+  description = "Azure Firewall threat intelligence mode (Alert, Deny, or Off)"
   type        = string
-  default     = "10.0.1.4"
+  default     = "Deny"
+
+  validation {
+    condition     = contains(["Alert", "Deny", "Off"], var.firewall_threat_intel_mode)
+    error_message = "Threat intelligence mode must be one of: Alert, Deny, Off."
+  }
+}
+
+variable "primary_nva_trust_ip" {
+  description = "Placeholder IP for primary NVA trust interface (if using Palo/Fortinet). Null derives the first usable host of the trust subnet."
+  type        = string
+  default     = null
+  nullable    = true
 }
 
 variable "dr_nva_trust_ip" {
-  description = "Placeholder IP for DR NVA trust interface (if using Palo/Fortinet)"
+  description = "Placeholder IP for DR NVA trust interface (if using Palo/Fortinet). Null derives the first usable host of the trust subnet."
   type        = string
-  default     = "10.10.1.4"
+  default     = null
+  nullable    = true
 }
 
 variable "deploy_bastion" {
@@ -80,9 +99,18 @@ variable "deploy_dns" {
 }
 
 variable "management_ip_ranges" {
-  description = "IP ranges allowed to access management interfaces"
-  type        = string
-  default     = "*"
+  # No default: every landing zone must state which operator ranges may reach
+  # firewall management interfaces. Wildcards are rejected by the hub-network
+  # module as well.
+  description = "CIDR ranges allowed to access management interfaces. Wildcard sources are rejected."
+  type        = list(string)
+
+  validation {
+    condition = length(var.management_ip_ranges) > 0 && alltrue([
+      for r in var.management_ip_ranges : !contains(["*", "0.0.0.0/0"], r)
+    ])
+    error_message = "management_ip_ranges must contain at least one CIDR and must not include '*' or '0.0.0.0/0'."
+  }
 }
 
 variable "primary_availability_zones" {

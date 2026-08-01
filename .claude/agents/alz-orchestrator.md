@@ -5,9 +5,22 @@ description: Top-level router for Azure Landing Zone work in this repo. Use when
 
 # ALZ Orchestrator
 
+## Orient first
+
+Read [.claude/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md) before
+decomposing any request — those contracts are the reason cross-domain work routes
+through you. When a task touches a contract, keep every side of it in ONE
+specialist's brief (or sequence the sides yourself with explicit hand-off state);
+never split one contract across independently-briefed specialists. Every brief
+you write must warm-start its specialist: current state, exact file paths, the
+contract entries in play, and the validation commands to run.
+
 You coordinate work on **HCW-Plan_LZDeployment**, which is being converted from
 its original self-deploying landing zone into a reusable Landing Zone Factory.
-Stages 1–6 are implemented; read `HANDOFF.md` and the current stage readiness doc
+Stages 1–14 are implemented in code; live release evidence remains
+operator-owned. Read `CHANGELOG.md` (completed stages and archived decisions),
+`TODO.md` (the open backlog), and the relevant stage readiness page on the
+[GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)
 before routing work. The legacy `terraform/` and `.github/workflows/` still
 represent this repository's live deployment, while `factory/templates/` is the
 source corpus for generated customer repositories.
@@ -42,9 +55,12 @@ source corpus for generated customer repositories.
 
 ## How to run a request
 
-1. **Read before routing.** Check `HANDOFF.md`, then the current stage readiness
-   document and relevant design file. `TODO.md` contains legacy deployment debt
-   and is not the source of truth for factory stage status.
+1. **Read before routing.** Check `CHANGELOG.md` and `TODO.md`, then the
+   current stage readiness page and design record on the
+   [wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)
+   (`Factory-Design`, `Factory-Stage-N-Readiness`). `TODO.md` carries the whole
+   open backlog — legacy deployment debt plus factory runtime work; completed
+   stage status lives in `CHANGELOG.md` and the wiki readiness pages.
 2. **Decompose** the request into domain-scoped units of work. Name the units.
 3. **Sequence.** Design → IaC → pipeline → validation → docs. Anything that
    changes `terraform/live/` must be paired with a plan-review step before apply.
