@@ -1,19 +1,24 @@
 # TODO - HCW Landing Zone Platform
 
-> **Factory transition notice (updated 2026-08-01):** This file now carries the
-> whole open backlog — legacy deployment debt plus the factory runtime work
-> formerly tracked in `HANDOFF.md` (retired 2026-08-01; its completed content
-> and durable decisions are archived in [CHANGELOG.md](CHANGELOG.md)). Stage
-> completion evidence lives on the
-> [GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki) —
-> Stage 14 evidence is
+> **Production-motion work lives in [PROD-TODO.md](PROD-TODO.md)** — everything
+> required to run a customer engagement (fork → clone/initiate → wizard →
+> generate the customer repo → deploy → dispose the clone) moved there on
+> 2026-08-01. This file keeps only repo-internal engineering debt.
+
+> **Factory transition notice (updated 2026-08-01):** This file formerly
+> carried the whole open backlog (including the factory runtime work from the
+> retired `HANDOFF.md`, whose completed content and durable decisions are
+> archived in [CHANGELOG.md](CHANGELOG.md)). Stage completion evidence lives on
+> the [GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)
+> — Stage 14 evidence is
 > [Factory-Stage-14-Readiness](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Factory-Stage-14-Readiness).
-> Items below remain valid only where they are also confirmed by those documents
-> or by a fresh code review.
+> Items below remain valid only where they are also confirmed by those
+> documents or by a fresh code review.
 
 **Last Updated**: August 1, 2026
 **Status**: 🟡 IN PROGRESS
 **Completed work**: [CHANGELOG.md](CHANGELOG.md)
+**Production-readiness backlog**: [PROD-TODO.md](PROD-TODO.md)
 **External tracking**: [GitHub Issues](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues)
 
 ---
@@ -33,57 +38,35 @@ no other open pull requests, and the local checkout was clean on `main`.
 
 ## 📋 What This Repo Is
 
-This repo **is** the landing zone deployment — it is not a template that spins up a separate customer repo.
+This repo is the **Landing Zone Factory** (see [README.md](README.md)): it
+renders a self-contained, per-customer landing-zone repository from
+`lz-config.json`. The legacy self-deploying path (`terraform/live/` plus the
+numbered workflows) is retained for compatibility and serves as the Stage 13
+dogfood instance. The end-to-end customer motion is described in
+[PROD-TODO.md](PROD-TODO.md).
 
-1. **`bootstrap-broker.ps1` / `.sh`** — the Stage 9 non-interactive entry point. It consumes config/discovery artifacts, plans by default, and reconciles Entra, RBAC, GitHub, and backend prerequisites in apply mode. Operator activities are in [USER-CHECKLIST.md](USER-CHECKLIST.md).
-2. **`scaffold-copy.ps1` / `.sh`** — the Stage 10 plan-first scaffold entry point. It verifies the exact renderer inventory and publishes the generated working tree only under explicit apply controls.
-3. **`brownfield-import.ps1` / `.sh`** — the Stage 11 plan-first classification/import artifact generator. It never runs Terraform import.
-4. **Numbered GitHub Actions workflows** (`.github/workflows/010-*.yml`, `020-*.yml`, ...) pick up from there — init, RBAC validation, plan, apply — and work together with the Terraform code under `terraform/` to actually deliver the landing zone.
-5. **`frontend/`** is a separate, optional static HTML/JS page (no backend) where a user picks deployment options and it generates a `.tfvars` file, fed into the same Terraform/workflow pipeline.
+1. **`site/`** — the 15-step offline wizard that exports `lz-config.json` and
+   its derived artifacts.
+2. **`bootstrap-broker.ps1` / `.sh`** — the Stage 9 non-interactive entry
+   point. It consumes config/discovery artifacts, plans by default, and
+   reconciles Entra, RBAC, GitHub, and backend prerequisites in apply mode.
+   Operator activities are in [USER-CHECKLIST.md](USER-CHECKLIST.md).
+3. **`scaffold-copy.ps1` / `.sh`** — the Stage 10 plan-first scaffold entry
+   point. It verifies the exact renderer inventory and publishes the generated
+   working tree only under explicit apply controls.
+4. **`brownfield-import.ps1` / `.sh`** — the Stage 11 plan-first
+   classification/import artifact generator. It never runs Terraform import.
+5. **Numbered GitHub Actions workflows** (`.github/workflows/010-*.yml`,
+   `020-*.yml`, ...) plus `terraform-plan.yml`/`terraform-apply.yml` deliver
+   the legacy in-repo deployment against `terraform/`.
+6. **`frontend/`** is a separate, optional static HTML/JS page (no backend)
+   where a user picks deployment options and it generates a `.tfvars` file,
+   fed into the same Terraform/workflow pipeline.
 
 ---
 
-## 🔴 CI/CD & OIDC Reliability (Blocking)
+## 🔴 CI/CD Hygiene
 
-- [ ] **Execute and accept the Stage 13 dogfood instance** — populate the
-  variables in `USER-CHECKLIST.md`, run render and read-only plans, apply each
-  layer through its protected environment, preserve `dogfood-report.json`, and
-  independently read back Azure, state, OIDC, and GitHub controls. Only then
-  set `dogfoodInstanceAppliesGreen=true` in a reviewed PR.
-
-- [ ] **Run Stage 14 release attestation** — select exact successful Factory CI
-  and full dogfood apply run IDs, approve the hash-pinned read-back attestation,
-  and retain the readiness report. Open a separate release-gate PR only when
-  `readyForPromotion=true`.
-
-- [ ] **Add the live Entra `pull_request` federated credential, then verify it**
-  — CI is red on every PR: `RBAC Audit & Validation` and `RBAC Compliance
-  Checks` fail at Azure login with
-  `AADSTS700213: No matching federated identity record found for presented
-  assertion subject 'repo:saulpatinojr/HCW-Plan_LZDeployment:pull_request'`.
-  The code fix landed; the live Entra app registration was never updated, and
-  this reproduces on any PR. Fix (needs Application Administrator):
-
-  ```bash
-  az ad app federated-credential create --id <APP_ID> --parameters '{"name":"pr-plan","issuer":"https://token.actions.githubusercontent.com","subject":"repo:saulpatinojr/HCW-Plan_LZDeployment:pull_request","audiences":["api://AzureADTokenExchange"]}'
-  ```
-
-  Then run the repository bootstrap/remediation against the live application
-  registration, confirm the exact repo-scoped subject by API read-back, and
-  prove token exchange from a pull request. Requires an authenticated Entra
-  operator session and is not performed by PR #35.
-- [ ] **Enable and verify required `main` status checks** — `main` currently has
-  **no** `required_status_checks`, and Terraform Apply/Plan, secret scanning,
-  and action pinning exist in the repo while being turned off in GitHub
-  settings — every check on a PR is advisory, so a green merge proves nothing.
-  Run Factory CI at least once, then configure branch protection/rulesets using
-  the stable check names (including `Factory CI / Factory CI`) and confirm the
-  required contexts plus enforcement by GitHub API read-back. Requires
-  repository administration access.
-- [ ] **Execute the Stage 9 broker, Stage 10 scaffold, and Stage 11 import test
-  suites in a provisioned toolchain** — authenticated external services and the
-  required binaries were intentionally unavailable/skipped during
-  implementation; runtime validation of those suites is still owed.
 - [ ] **Mark the GitGuardian incident a false positive** —
   `factory/tests/Test-Discovery.ps1:85` holds the canonical jwt.io sample token
   (header `{"alg":"HS256"}`, payload `{"sub":"1234567890"}`) solely to prove
@@ -92,19 +75,6 @@ This repo **is** the landing zone deployment — it is not a template that spins
   marked a false positive in the GitGuardian dashboard (a UI action outside the
   repository). Do **not** "fix" it by deleting the test or splitting the
   literal — the first removes real coverage, the second evades a scanner.
-- [ ] **Reconcile the remaining `terraform/live/` ↔ factory-corpus divergence**
-  — the 2026-08-01 remediation converged `org_prefix`,
-  `firewall_threat_intel_mode`, and the automation `start_time` (see
-  [CHANGELOG.md](CHANGELOG.md)), but `terraform/live/sandbox/variables.tf`
-  still validates `location` with `^[a-z]+$` (corpus uses `^[a-z0-9]+$`), the
-  `workloads-prod` remote-state container layout should be re-verified against
-  the corpus, and the approved hub-network subnet re-layout plan lands in the
-  PR's terraform-plan run. `Test-LzSchemaDrift` only compares the schema
-  against `factory/templates/` — the live tree is synced by hand until Stage 13
-  regenerates this repo from the factory, which resolves the split permanently.
-- [ ] **Verify the pipeline actually runs green** — confirm `010-terraform-init.yml`, `020-rbac-validation.yml`, `terraform-plan.yml`, and `terraform-apply.yml` all complete successfully on a real PR/push, now that the OIDC federated-credential gap and SHA-pinning are fixed. As of 2026-07-01 there is no recorded successful run of any of these.
-- [ ] **Investigate 0-second workflow failures** — some historical runs of `010-terraform-init.yml` / `020-rbac-validation.yml` fail in 0 seconds, suggesting a trigger/syntax issue independent of the OIDC fix. Confirm once a run is attempted post-fix.
-- [ ] **Migrate backend from `azurerm` to Terraform Cloud** — tracked as [GitHub Issue #11](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues/11), not here (blocked on interactive TFC org/workspace/token setup).
 
 ---
 
@@ -141,16 +111,23 @@ This repo **is** the landing zone deployment — it is not a template that spins
 
 ## 🟢 Documentation & Repo Hygiene
 
-- [ ] Verify GitHub repo settings that can't be checked from a local clone: secret scanning enabled, required PR approval count (currently 0 — branch protection exists but doesn't require human review)
-- [ ] Review the remaining single-purpose docs under `docs/` not yet individually verified against current repo state: `BUILD_CRITICAL_PATH.md`, `BUILD_README.md`, `BUILD_STANDARDS_REFERENCE.md`, `BUILD_VERIFICATION_REPORT.md`, `DEPLOYMENT_FLOW.md`, `EXPANDED_SCOPE.md`, `FIX_LOGIN_ERROR.md`, `QUICK_START.md`, `STATIC_GENERATOR_DESIGN.md`, `STATIC_GENERATOR_IMPLEMENTATION.md`, `TESTING_STATIC_GENERATOR.md` — likely consolidation/deletion candidates
+- [ ] Review the single-purpose docs migrated from `docs/` to the wiki on
+  2026-08-01 and not yet individually verified against current repo state:
+  `Build-Critical-Path`, `Build-README`, `Build-Standards-Reference`,
+  `Build-Verification-Report`, `Deployment-Flow`, `Expanded-Scope`,
+  `Fix-Login-Error`, `Quick-Start`, `Static-Generator-Design`,
+  `Static-Generator-Implementation`, `Testing-Static-Generator` — the
+  2026-08-01 wiki restructure filed them under "Source Material" with
+  historical labels; content-level review/consolidation is still owed.
 - [ ] Confirm every `terraform/modules/*/README.md` variable table and cost estimate stays in sync as modules change (no tooling currently enforces this beyond manual review)
 
 ---
 
 ## 📚 Key Documents
 
+- **[PROD-TODO.md](PROD-TODO.md)** — production-readiness backlog for the customer motion
 - **[CHANGELOG.md](CHANGELOG.md)** — historical record of completed work
-- **[GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)** — build docs, factory design and stage readiness records, webapp/static-generator docs (including [Webapp-Plan](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Webapp-Plan))
+- **[GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)** — operator guidebook ("How to Get Started") and source material (build docs, factory design and stage readiness records, webapp/static-generator docs, including [Webapp-Plan](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Webapp-Plan))
 - **[GitHub Issues](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues)** — cross-cutting or infrastructure-dependent work (e.g. TFC migration, #11)
 
 ---
