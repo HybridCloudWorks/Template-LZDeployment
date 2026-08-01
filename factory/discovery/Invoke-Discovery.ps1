@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 <#
 .SYNOPSIS
     Landing Zone Factory — Phase 0 discovery. Read-only.
@@ -49,7 +49,13 @@ $ErrorActionPreference = 'Stop'
 
 # The status glyphs and box-drawing characters are UTF-8; without this they
 # render as replacement characters on a default Windows console.
-try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+} catch {
+    # Cosmetic only: some hosts do not allow changing the console encoding.
+    # Write-Debug stays silent unless -Debug is set, so output is unchanged.
+    Write-Debug "Could not set console output encoding to UTF-8: $($_.Exception.Message)"
+}
 
 Import-Module (Join-Path $PSScriptRoot 'LZFactory.Discovery.psd1') -Force
 

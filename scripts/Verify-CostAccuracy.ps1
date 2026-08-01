@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Azure Landing Zone Cost Verification & Accuracy Auditing Script
 .DESCRIPTION
@@ -70,42 +70,6 @@ try {
     # Set date range
     $startDate = "$Month-01"
     $endDate = [datetime]::ParseExact("$Month-01", "yyyy-MM-dd", $null).AddMonths(1).AddDays(-1).ToString("yyyy-MM-dd")
-
-    # Build KQL query for cost analysis
-    $query = @{
-        type        = "ActualCost"
-        timeframe   = "Custom"
-        timePeriod  = @{
-            from = "$($startDate)T00:00:00Z"
-            to   = "$($endDate)T23:59:59Z"
-        }
-        dataset     = @{
-            granularity = "Daily"
-            aggregation = @{
-                totalCost = @{
-                    name      = "PreTaxCost"
-                    function  = "Sum"
-                }
-            }
-            grouping    = @(
-                @{
-                    type = "Dimension"
-                    name = "ResourceType"
-                }
-                @{
-                    type = "Dimension"
-                    name = "ServiceName"
-                }
-            )
-            filter      = @{
-                dimensions = @{
-                    name   = "SubscriptionId"
-                    operator = "In"
-                    values = @($SubscriptionId)
-                }
-            }
-        }
-    }
 
     # Call Cost Management API
     $costData = az costmanagement query --subscription $SubscriptionId --timeframe Custom `

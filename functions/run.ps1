@@ -1,4 +1,4 @@
-# REST API for Azure Landing Zone Operations
+﻿# REST API for Azure Landing Zone Operations
 # Azure Function HTTP Trigger
 # Endpoints: GET /status, /costs, POST /audit, /redeploy
 

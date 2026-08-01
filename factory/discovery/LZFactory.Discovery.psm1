@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 <#
     LZFactory.Discovery — Phase 0 discovery engine for the Azure Landing Zone
     Factory.

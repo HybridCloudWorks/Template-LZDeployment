@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Azure Landing Zone Bulk Operations Script
 .DESCRIPTION

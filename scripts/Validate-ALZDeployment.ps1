@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Azure Landing Zone Pre-Flight Validation Script
 .DESCRIPTION
@@ -112,7 +112,7 @@ if (-not (Test-Path $TerraformPath)) {
                 Category    = "Terraform"
                 Check       = "Terraform code formatting"
                 Passed      = $false
-                Message     = "Code formatting issues detected"
+                Message     = "Code formatting issues detected in: $($formatOutput -join ', ')"
                 Severity    = "Warning"
                 Remediation = "Run: terraform fmt -recursive"
             }
@@ -222,8 +222,8 @@ if (-not $azExe) {
             Severity    = "Info"
         }
 
-        # Check subscription exists
-        $subCheck = az account show --subscription $SubscriptionId 2>&1
+        # Check subscription exists (only the exit code matters here)
+        az account show --subscription $SubscriptionId 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             $validationResults += [ValidationResult]@{
                 Category    = "Azure"
@@ -361,8 +361,8 @@ if ($GitHubRepo) {
     $ghExe = Get-Command gh -ErrorAction SilentlyContinue
     if ($ghExe) {
         try {
-            # Check GitHub CLI authentication
-            $ghAuth = gh auth status 2>&1
+            # Check GitHub CLI authentication (only the exit code matters here)
+            gh auth status 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) {
                 $validationResults += [ValidationResult]@{
                     Category    = "GitHub"
@@ -372,8 +372,8 @@ if ($GitHubRepo) {
                     Severity    = "Info"
                 }
 
-                # Check if repo exists
-                $repoCheck = gh repo view $GitHubRepo 2>&1
+                # Check if repo exists (only the exit code matters here)
+                gh repo view $GitHubRepo 2>&1 | Out-Null
                 if ($LASTEXITCODE -eq 0) {
                     $validationResults += [ValidationResult]@{
                         Category    = "GitHub"
@@ -386,18 +386,18 @@ if ($GitHubRepo) {
                     # Check for required secrets
                     $secrets = @("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID")
                     foreach ($secret in $secrets) {
-                        try {
-                            $secretCheck = gh secret view $secret --repo $GitHubRepo 2>&1
-                            if ($LASTEXITCODE -eq 0) {
-                                $validationResults += [ValidationResult]@{
-                                    Category    = "GitHub Secrets"
-                                    Check       = "Secret: $secret"
-                                    Passed      = $true
-                                    Message     = "Secret is configured"
-                                    Severity    = "Info"
-                                }
+                        # A missing secret makes gh exit non-zero without throwing,
+                        # so branch on the exit code (a catch block never fires here).
+                        gh secret view $secret --repo $GitHubRepo 2>&1 | Out-Null
+                        if ($LASTEXITCODE -eq 0) {
+                            $validationResults += [ValidationResult]@{
+                                Category    = "GitHub Secrets"
+                                Check       = "Secret: $secret"
+                                Passed      = $true
+                                Message     = "Secret is configured"
+                                Severity    = "Info"
                             }
-                        } catch {
+                        } else {
                             $validationResults += [ValidationResult]@{
                                 Category    = "GitHub Secrets"
                                 Check       = "Secret: $secret"
@@ -467,6 +467,7 @@ Write-Host "="*80 + "`n"
 Write-Host "📊 SUMMARY:"
 Write-Host "  Total Checks: $($validationResults.Count)"
 Write-Host "  ✅ Passed: $(@($validationResults | Where-Object { $_.Passed }).Count)"
+Write-Host "  ❌ Failed: $failureCount"
 Write-Host "  ⚠️  Warnings: $warningCount"
 Write-Host "  ❌ Critical: $criticalCount"
 Write-Host ""
@@ -505,6 +506,7 @@ if ($OutputFormat -eq "json") {
         summary = @{
             total = $validationResults.Count
             passed = @($validationResults | Where-Object { $_.Passed }).Count
+            failed = $failureCount
             warnings = $warningCount
             critical = $criticalCount
         }

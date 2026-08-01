@@ -1,4 +1,4 @@
-# Azure Function: Slack Notifications for ALZ Events
+﻿# Azure Function: Slack Notifications for ALZ Events
 # HTTP Trigger
 # Sends deployment, compliance, cost, and incident alerts to Slack
 

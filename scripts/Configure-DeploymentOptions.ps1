@@ -1,4 +1,4 @@
-# Azure Landing Zone - Deployment Options Configuration Script
+﻿# Azure Landing Zone - Deployment Options Configuration Script
 # Helps configure optional security and compliance modules
 
 <#
@@ -152,7 +152,6 @@ function Write-ModuleInfo {
 function Get-UserChoice {
     param([string]$Prompt, [bool]$DefaultYes = $false)
     
-    $default = if ($DefaultYes) { "Y" } else { "N" }
     $choices = if ($DefaultYes) { "[Y/n]" } else { "[y/N]" }
     
     Write-Host "$Prompt $choices : " -NoNewline -ForegroundColor White

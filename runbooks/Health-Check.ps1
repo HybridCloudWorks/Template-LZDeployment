@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Azure Landing Zone Health Check Runbook
 .DESCRIPTION
@@ -24,8 +24,6 @@ $VerbosePreference = "SilentlyContinue"
 try {
     $subscriptionId = Get-AutomationVariable -Name "SubscriptionId" -ErrorAction Stop
     $resourceGroupName = Get-AutomationVariable -Name "ResourceGroupName" -ErrorAction Stop
-    $orgPrefix = Get-AutomationVariable -Name "OrgPrefix" -ErrorAction Stop
-    $actionGroupId = Get-AutomationVariable -Name "ActionGroupId" -ErrorAction Stop
 } catch {
     Write-Error "Failed to retrieve Automation Account variables: $_"
     exit 1
@@ -52,7 +50,6 @@ $failureCount = 0
 Write-Output "🔍 Checking Firewall Status..."
 
 try {
-    $firewallName = "$orgPrefix-fw-prod-*"
     $firewalls = Get-AzFirewall -ResourceGroupName $resourceGroupName -ErrorAction Stop
 
     foreach ($fw in $firewalls) {
@@ -359,13 +356,12 @@ if ($failureCount -gt 0) {
     try {
         # Save report to storage for audit trail
         $reportJson = $healthChecks | ConvertTo-Json
-        $reportDate = Get-Date -Format "yyyy-MM-dd-HH-mm-ss"
 
         Write-Output "Health Check Report:"
         Write-Output $reportJson
 
-        # TODO: Send to Action Group
-        # This would require additional Azure Automation integration
+        # TODO: Send to Action Group (fetch the ActionGroupId automation
+        # variable when implemented). Requires Azure Automation integration.
     } catch {
         Write-Error "Failed to send notification: $_"
     }

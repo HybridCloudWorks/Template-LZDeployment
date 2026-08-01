@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 <#
 .SYNOPSIS
     Landing Zone Phase 0 Bootloader — Complete OIDC + GitHub + Azure + TFC orchestration
@@ -69,8 +69,7 @@ $MIN_VERSIONS = [ordered]@{
     'terraform' = [version]'1.9.0'
 }
 
-# Landing Zone naming convention
-$LZ_APP_PATTERN = "sp-terraform-{layer}-{environment}"
+# Landing Zone service-principal naming convention: sp-terraform-{layer}-{environment}
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                         OUTPUT FORMATTING                               ║
@@ -295,7 +294,7 @@ function Test-GhAuth {
 }
 
 function Test-AzAuth {
-    $account = az account show --output json 2>&1
+    az account show --output json 2>&1 | Out-Null
     return ($LASTEXITCODE -eq 0)
 }
 
@@ -1016,8 +1015,6 @@ function Create-BootstrapPR {
     )
 
     Write-Section "9" "Creating Bootstrap PR (Optional)"
-
-    $repo = "$GithubOwner/$RepoName"
 
     Write-Manual "Would you like to create a PR with bootstrap artifacts?"
     Write-Info "This creates a branch with any generated files (terraform config, docs, etc.)"
