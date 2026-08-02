@@ -89,38 +89,196 @@ function Get-LzEnvironmentScope {
     return "/subscriptions/$(Get-LzEnvironmentSubscription -Config $Config -Environment $Environment)"
 }
 
+function Get-LzCicdIdentityModel {
+    # identity.cicdIdentityModel is broker-only: it never reaches a Terraform
+    # variable (deliberately absent from factory/renderer/variable-map.json,
+    # same pattern as the github.* keys). Absent key = 'minimal'.
+    param([object]$Config)
+    $identityConfig = Get-LzConfigValue $Config 'identity'
+    if (-not $identityConfig) { return 'minimal' }
+    return (Get-LzConfigValue $identityConfig 'cicdIdentityModel' 'minimal')
+}
+
+function Get-LzStateStorageScope {
+    # Deterministic resource ID of the azurerm state storage account, so the
+    # data-plane grants appear in the plan record before the account exists.
+    param([object]$Config)
+    if ($Config.backend.type -ne 'azurerm') { return $null }
+    $backend = $Config.backend.azurerm
+    $subscription = Get-LzConfigValue $backend 'subscriptionId' $Config.azure.subscriptions.management
+    return "/subscriptions/$subscription/resourceGroups/$($backend.resourceGroupName)/providers/Microsoft.Storage/storageAccounts/$($backend.storageAccountName)"
+}
+
+function Get-LzSandboxRbacAssignment {
+    <#
+    .SYNOPSIS
+        Constrained RBAC Administrator grant for the sandbox-cleanup automation.
+    .DESCRIPTION
+        The generated platform-management layer renders
+        azurerm_role_assignment.sandbox_cleanup whenever
+        azure.subscriptions.sandbox is set: it grants the automation account's
+        managed identity Contributor on the sandbox subscription. Writing that
+        assignment needs Microsoft.Authorization/roleAssignments/write there,
+        which plain Contributor does not carry — without this grant the first
+        platform-management apply fails AuthorizationFailed.
+
+        The grant is Role Based Access Control Administrator scoped to the
+        sandbox subscription ONLY, constrained by an ABAC delegation condition:
+        the identity may only write/delete role assignments for the Contributor
+        role and only to service principals. Never Owner/UAA, never
+        unconditioned, never in the management subscription. Expressions
+        mirror scripts/Start-LandingZoneBootstrap.ps1 (the proven originals);
+        the attribute source differs per action — Request for
+        roleAssignments/write, Resource for roleAssignments/delete
+        (Microsoft Learn: delegate-role-assignments-examples).
+    .OUTPUTS
+        A role-assignment spec (role, scope, condition, conditionVersion), or
+        $null when azure.subscriptions.sandbox is not set.
+    #>
+    param([object]$Config)
+    $sandboxSubscription = Get-LzConfigValue $Config.azure.subscriptions 'sandbox'
+    if ([string]::IsNullOrWhiteSpace([string]$sandboxSubscription)) { return $null }
+    $contributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'  # Contributor built-in role
+    $condition = (
+        "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR " +
+        "(@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$contributorRoleId} AND " +
+        "@Request[Microsoft.Authorization/roleAssignments:PrincipalType] ForAnyOfAnyValues:StringEqualsIgnoreCase {'ServicePrincipal'})) AND " +
+        "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'})) OR " +
+        "(@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$contributorRoleId} AND " +
+        "@Resource[Microsoft.Authorization/roleAssignments:PrincipalType] ForAnyOfAnyValues:StringEqualsIgnoreCase {'ServicePrincipal'}))"
+    )
+    return [pscustomobject]@{
+        role = 'Role Based Access Control Administrator'
+        scope = "/subscriptions/$sandboxSubscription"
+        condition = $condition
+        conditionVersion = '2.0'
+    }
+}
+
 function New-LzBootstrapPlan {
     param([object]$Config)
     $repo = "$($Config.github.ownerName)/$($Config.github.repositoryName)"
     $environments = @($Config.environments.platform) + @($Config.environments.application) |
         Select-Object -Unique
+    $identityModel = Get-LzCicdIdentityModel -Config $Config
+
+    # State data-plane roles. The generated backend.tf.tmpl sets
+    # use_azuread_auth and the state account disables shared keys (contract #3),
+    # so without these grants a generated repo cannot read its own state.
+    # hcp-terraform configs have no state storage account and get none.
+    $stateScope = Get-LzStateStorageScope -Config $Config
+    $planStateRoles = @([pscustomobject]@{ role = 'Storage Blob Data Reader'; scope = $stateScope })
+    $applyStateRoles = @([pscustomobject]@{ role = 'Storage Blob Data Contributor'; scope = $stateScope })
+
+    # Constrained sandbox RBAC Administrator (see Get-LzSandboxRbacAssignment):
+    # emitted only when azure.subscriptions.sandbox is set, on the identity
+    # that applies platform-management — minimal: the shared apply;
+    # per-environment: the management environment's apply identity.
+    $sandboxRbac = Get-LzSandboxRbacAssignment -Config $Config
+
     $identities = @()
-    foreach ($environment in $environments) {
-        $scope = Get-LzEnvironmentScope -Config $Config -Environment $environment
+    if ($identityModel -eq 'per-environment') {
+        # This branch is byte-for-byte the pre-cicdIdentityModel broker output
+        # for non-azurerm backends (Test-Bootstrap.ps1 asserts parity against
+        # fixtures/bootstrap-plan-per-environment.expected.json), so existing
+        # generated estates re-run idempotently with zero drift. Do not reshape
+        # these records. azurerm backends additionally carry
+        # stateRoleAssignments (the state data-plane defect fix).
+        foreach ($environment in $environments) {
+            $scope = Get-LzEnvironmentScope -Config $Config -Environment $environment
+            $prefix = $Config.organization.companyShortName
+            $planRecord = [pscustomobject]@{
+                environment = $environment
+                kind = 'plan'
+                displayName = "sp-$prefix-$environment-plan"
+                subject = "repo:$repo`:pull_request"
+                roles = @('Reader')
+                scope = $scope
+            }
+            $applyRecord = [pscustomobject]@{
+                environment = $environment
+                kind = 'apply'
+                displayName = "sp-$prefix-$environment-apply"
+                subject = "repo:$repo`:environment:$environment"
+                roles = if ($environment -eq 'bootstrap') {
+                    @('Management Group Contributor', 'Resource Policy Contributor')
+                } else { @('Contributor') }
+                scope = $scope
+            }
+            if ($stateScope) {
+                $planRecord | Add-Member -NotePropertyName stateRoleAssignments -NotePropertyValue @($planStateRoles)
+                $applyRecord | Add-Member -NotePropertyName stateRoleAssignments -NotePropertyValue @($applyStateRoles)
+            }
+            $identities += $planRecord
+            $identities += $applyRecord
+        }
+        if ($sandboxRbac) {
+            # platform-management is applied by the management environment's
+            # identity (Get-LzLayerEnvironment), so the constrained grant lands
+            # there. Fixture parity is unaffected: the pre-change fixture sets
+            # no sandbox subscription, and this optional property exists only
+            # when one is set — a deliberate, documented delta from the
+            # pre-change output for sandbox-enabled configs.
+            $managementApply = @($identities | Where-Object { $_.kind -eq 'apply' -and $_.environment -eq 'management' }) | Select-Object -First 1
+            if (-not $managementApply) {
+                $managementApply = @($identities | Where-Object kind -eq 'apply') | Select-Object -First 1
+            }
+            $managementApply | Add-Member -NotePropertyName delegatedRoleAssignments -NotePropertyValue @($sandboxRbac)
+        }
+    }
+    else {
+        # Minimal model (the default): exactly ONE plan and ONE apply identity.
+        # The apply record's subject is a LIST — one environment:<name> subject
+        # per unique environment — and its RBAC is the union of the scopes the
+        # per-environment model would grant, deduplicated by scope. The plan
+        # identity gets Reader once at the MG root so a single assignment
+        # inherits everywhere. Contract #2 holds: pull_request only ever on
+        # the plan record.
         $prefix = $Config.organization.companyShortName
+        $mgScope = "/providers/Microsoft.Management/managementGroups/$($Config.azure.managementGroups.rootId)"
+        $applySubjects = @()
+        $applyAssignments = @()
+        $seenScopes = @()
+        foreach ($environment in $environments) {
+            $applySubjects += "repo:$repo`:environment:$environment"
+            $scope = Get-LzEnvironmentScope -Config $Config -Environment $environment
+            if ($environment -eq 'bootstrap') {
+                foreach ($role in @('Management Group Contributor', 'Resource Policy Contributor')) {
+                    $applyAssignments += [pscustomobject]@{ role = $role; scope = $scope }
+                }
+            }
+            elseif ($scope -notin $seenScopes) {
+                $seenScopes += $scope
+                $applyAssignments += [pscustomobject]@{ role = 'Contributor'; scope = $scope }
+            }
+        }
+        $planAssignments = @([pscustomobject]@{ role = 'Reader'; scope = $mgScope })
+        if ($stateScope) {
+            $planAssignments += $planStateRoles
+            $applyAssignments += $applyStateRoles
+        }
+        if ($sandboxRbac) { $applyAssignments += $sandboxRbac }
         $identities += [pscustomobject]@{
-            environment = $environment
+            environment = 'shared'
+            environments = @($environments)
             kind = 'plan'
-            displayName = "sp-$prefix-$environment-plan"
+            displayName = "sp-$prefix-plan"
             subject = "repo:$repo`:pull_request"
-            roles = @('Reader')
-            scope = $scope
+            roleAssignments = @($planAssignments)
         }
         $identities += [pscustomobject]@{
-            environment = $environment
+            environment = 'shared'
+            environments = @($environments)
             kind = 'apply'
-            displayName = "sp-$prefix-$environment-apply"
-            subject = "repo:$repo`:environment:$environment"
-            roles = if ($environment -eq 'bootstrap') {
-                @('Management Group Contributor', 'Resource Policy Contributor')
-            } else { @('Contributor') }
-            scope = $scope
+            displayName = "sp-$prefix-apply"
+            subject = @($applySubjects)
+            roleAssignments = @($applyAssignments)
         }
     }
     # Single source of truth: the renderer's layer derivation (control AR3).
     $layers = @(Get-LzActiveLayers -Config $Config)
 
-    [pscustomobject]@{
+    $plan = [pscustomobject]@{
         schemaVersion = '1.0.0'
         generatedAt = (Get-Date).ToUniversalTime().ToString('o')
         mode = 'plan'
@@ -131,6 +289,12 @@ function New-LzBootstrapPlan {
         identities = @($identities)
         backend = $Config.backend.type
     }
+    if ($identityModel -ne 'per-environment') {
+        # Only in minimal mode: the per-environment plan must stay byte-for-byte
+        # the pre-change output (idempotent re-runs of existing estates).
+        $plan | Add-Member -NotePropertyName identityModel -NotePropertyValue $identityModel
+    }
+    return $plan
 }
 
 function Get-LzEntraApplication {
@@ -172,17 +336,24 @@ function Set-LzFederatedCredential {
 }
 
 function Set-LzRoleAssignment {
-    param([string]$PrincipalId, [string]$Role, [string]$Scope)
+    # Condition/ConditionVersion carry an ABAC delegation condition (the
+    # constrained sandbox RBAC Administrator grant); both are optional and
+    # omitted for ordinary assignments.
+    param([string]$PrincipalId, [string]$Role, [string]$Scope, [string]$Condition, [string]$ConditionVersion)
     $existing = Invoke-LzNativeJson az @(
         'role', 'assignment', 'list', '--assignee-object-id', $PrincipalId,
         '--scope', $Scope, '--role', $Role, '--output', 'json'
     )
     if (@($existing).Count -eq 0) {
-        Invoke-LzNativeJson az @(
+        $createArguments = @(
             'role', 'assignment', 'create', '--assignee-object-id', $PrincipalId,
             '--assignee-principal-type', 'ServicePrincipal', '--role', $Role,
             '--scope', $Scope, '--output', 'json'
-        ) | Out-Null
+        )
+        if ($Condition) {
+            $createArguments += @('--condition', $Condition, '--condition-version', $ConditionVersion)
+        }
+        Invoke-LzNativeJson az $createArguments | Out-Null
     }
     $verified = Invoke-LzNativeJson az @(
         'role', 'assignment', 'list', '--assignee-object-id', $PrincipalId,
@@ -190,6 +361,25 @@ function Set-LzRoleAssignment {
     )
     if (@($verified).Count -eq 0) { throw "RBAC read-back failed for $Role at $Scope." }
     return @($verified)[0]
+}
+
+function Get-LzIdentityRecord {
+    <#
+    .SYNOPSIS
+        Resolve the identity record serving an environment, in either model.
+    .DESCRIPTION
+        per-environment records carry environment = '<name>'; minimal-model
+        records carry environment = 'shared' and serve every environment. An
+        exact environment match wins so mixed audits stay unambiguous.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Identities,
+        [Parameter(Mandatory)][string]$Environment,
+        [Parameter(Mandatory)][string]$Kind
+    )
+    $exact = @($Identities | Where-Object { $_.kind -eq $Kind -and $_.environment -eq $Environment }) | Select-Object -First 1
+    if ($exact) { return $exact }
+    return @($Identities | Where-Object { $_.kind -eq $Kind -and $_.environment -eq 'shared' }) | Select-Object -First 1
 }
 
 function Set-LzIdentity {
@@ -202,11 +392,48 @@ function Set-LzIdentity {
     if (-not $sp) {
         $sp = Invoke-LzNativeJson az @('ad', 'sp', 'create', '--id', $app.appId, '--output', 'json')
     }
-    $credentialName = "github-$($Identity.kind)-$($Identity.environment)"
-    $credential = Set-LzFederatedCredential -AppId $app.appId -Name $credentialName -Subject $Identity.subject
+    # One federated credential per subject. A minimal-model apply record has a
+    # subject LIST (one environment:<name> per environment); every other record
+    # has a single subject. The name stays github-<kind>-<environment> in both
+    # models, so a per-environment estate re-run reconciles the exact
+    # credentials it already has (zero drift).
+    $credentials = @()
+    foreach ($subject in @($Identity.subject)) {
+        $credentialName = if ($subject -match ':environment:(?<environmentName>[^:]+)$') {
+            "github-$($Identity.kind)-$($Matches['environmentName'])"
+        }
+        else {
+            "github-$($Identity.kind)-$($Identity.environment)"
+        }
+        $credentials += Set-LzFederatedCredential -AppId $app.appId -Name $credentialName -Subject $subject
+    }
+    # Role assignments: minimal-model records carry explicit
+    # roleAssignments (role+scope pairs, union across environments);
+    # per-environment records carry roles at one scope plus optional
+    # stateRoleAssignments (azurerm state data-plane grants) and
+    # delegatedRoleAssignments (the constrained sandbox RBAC grant).
+    $assignmentSpecs = @()
+    if ($Identity.PSObject.Properties['roleAssignments']) {
+        $assignmentSpecs += @($Identity.roleAssignments)
+    }
+    else {
+        foreach ($role in @($Identity.roles)) {
+            $assignmentSpecs += [pscustomobject]@{ role = $role; scope = $Identity.scope }
+        }
+        foreach ($extra in @('stateRoleAssignments', 'delegatedRoleAssignments')) {
+            if ($Identity.PSObject.Properties[$extra]) {
+                $assignmentSpecs += @($Identity.$extra)
+            }
+        }
+    }
     $assignments = @()
-    foreach ($role in @($Identity.roles)) {
-        $assignments += Set-LzRoleAssignment -PrincipalId $sp.id -Role $role -Scope $Identity.scope
+    foreach ($spec in $assignmentSpecs) {
+        $roleParameters = @{ PrincipalId = $sp.id; Role = $spec.role; Scope = $spec.scope }
+        if ($spec.PSObject.Properties['condition'] -and $spec.condition) {
+            $roleParameters.Condition = $spec.condition
+            $roleParameters.ConditionVersion = $spec.conditionVersion
+        }
+        $assignments += Set-LzRoleAssignment @roleParameters
     }
     [pscustomobject]@{
         environment = $Identity.environment
@@ -215,9 +442,8 @@ function Set-LzIdentity {
         objectId = $sp.id
         displayName = $Identity.displayName
         subject = $Identity.subject
-        roles = @($Identity.roles)
-        scope = $Identity.scope
-        federatedCredentialId = $credential.id
+        roleAssignments = @($assignmentSpecs)
+        federatedCredentialIds = @($credentials | ForEach-Object { $_.id })
         roleAssignmentIds = @($assignments | ForEach-Object { $_.id })
     }
 }
@@ -234,8 +460,8 @@ function Set-LzGitHubEnvironment {
     param([object]$Config, [string]$Environment, [object[]]$Identities)
     $repo = "$($Config.github.ownerName)/$($Config.github.repositoryName)"
     Invoke-LzNativeJson gh @('api', '--method', 'PUT', "repos/$repo/environments/$Environment") | Out-Null
-    $plan = $Identities | Where-Object { $_.environment -eq $Environment -and $_.kind -eq 'plan' } | Select-Object -First 1
-    $apply = $Identities | Where-Object { $_.environment -eq $Environment -and $_.kind -eq 'apply' } | Select-Object -First 1
+    $plan = Get-LzIdentityRecord -Identities $Identities -Environment $Environment -Kind 'plan'
+    $apply = Get-LzIdentityRecord -Identities $Identities -Environment $Environment -Kind 'apply'
     Set-LzGitHubVariable -Repository $repo -Environment $Environment -Name 'AZURE_PLAN_CLIENT_ID' -Value $plan.appId
     Set-LzGitHubVariable -Repository $repo -Environment $Environment -Name 'AZURE_APPLY_CLIENT_ID' -Value $apply.appId
     Set-LzGitHubVariable -Repository $repo -Environment $Environment -Name 'AZURE_TENANT_ID' -Value $Config.azure.tenantId
@@ -370,9 +596,12 @@ function Set-LzAzurermBackend {
     if ($LASTEXITCODE -ne 0) { throw "Cannot select backend subscription $subscription." }
     & az group create --name $backend.resourceGroupName --location $Config.azure.primaryRegion --output none
     if ($LASTEXITCODE -ne 0) { throw 'Failed to reconcile backend resource group.' }
+    # --allow-shared-key-access false: contract #3 (AAD-only state access). The
+    # generated backend.hcl sets use_azuread_auth = true and the identities get
+    # Storage Blob Data Reader/Contributor data-plane grants; shared keys stay off.
     & az storage account create --name $backend.storageAccountName --resource-group $backend.resourceGroupName `
         --location $Config.azure.primaryRegion --sku Standard_GRS --kind StorageV2 `
-        --min-tls-version TLS1_2 --allow-blob-public-access false --output none
+        --min-tls-version TLS1_2 --allow-blob-public-access false --allow-shared-key-access false --output none
     if ($LASTEXITCODE -ne 0) { throw 'Failed to reconcile backend storage account.' }
     & az storage container create --name (Get-LzConfigValue $backend 'containerName' 'tfstate') `
         --account-name $backend.storageAccountName --auth-mode login --output none
@@ -545,8 +774,8 @@ function Test-LzFirstApplyPreflight {
             $findings += [pscustomobject]@{
                 id = 'PF-C1'
                 severity = 'WARN'
-                message = 'The sandbox layer is active but azure.subscriptions.sandbox is not set; sandbox identities fall back to the management subscription, so no RBAC lands on the real sandbox subscription and the first sandbox apply fails AuthorizationFailed.'
-                remediation = 'Set azure.subscriptions.sandbox in lz-config.json (re-export from the wizard) or grant the sandbox apply identity Contributor on the sandbox subscription manually, then re-run the idempotent broker.'
+                message = 'The sandbox layer is active but azure.subscriptions.sandbox is not set; the identity serving the sandbox environment falls back to the management subscription, so no RBAC lands on the real sandbox subscription and the first sandbox apply fails AuthorizationFailed. The constrained sandbox RBAC Administrator grant (needed by platform-management''s sandbox-cleanup role assignment) is also only emitted when the subscription is set.'
+                remediation = 'Set azure.subscriptions.sandbox in lz-config.json (re-export from the wizard) and re-run the idempotent broker — that emits both the Contributor scope and the constrained RBAC Administrator grant. Granting them manually also works.'
             }
         }
     }
@@ -609,6 +838,13 @@ function Invoke-LzBootstrap {
     try {
         if ($Apply) {
             Assert-LzBrokerPrerequisites -Config $config
+            if ($config.backend.type -eq 'azurerm') {
+                # State storage is reconciled BEFORE the identities: the identity
+                # records carry Storage Blob Data Reader/Contributor grants scoped
+                # to the state storage account (the state data-plane fix), and a
+                # role assignment on a scope that does not exist yet fails.
+                $audit.backend.details = Set-LzAzurermBackend -Config $config
+            }
             foreach ($identity in $plan.identities) {
                 Write-LzBrokerEvent INFO "Reconciling $($identity.displayName)"
                 $audit.identities += Set-LzIdentity -Identity $identity
@@ -620,9 +856,7 @@ function Invoke-LzBootstrap {
             $subscriptionIds = [ordered]@{}
             foreach ($layer in $plan.layers) {
                 $environment = Get-LzLayerEnvironment -Config $config -Layer $layer
-                $identity = $audit.identities |
-                    Where-Object { $_.environment -eq $environment -and $_.kind -eq 'plan' } |
-                    Select-Object -First 1
+                $identity = Get-LzIdentityRecord -Identities $audit.identities -Environment $environment -Kind 'plan'
                 $planClientIds[$layer] = $identity.appId
                 $subscriptionIds[$layer] = Get-LzEnvironmentSubscription -Config $config -Environment $environment
             }
@@ -630,22 +864,26 @@ function Invoke-LzBootstrap {
                 -Value ($planClientIds | ConvertTo-Json -Compress)
             Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_SUBSCRIPTION_IDS' `
                 -Value ($subscriptionIds | ConvertTo-Json -Compress)
-            $bootstrapPlan = $audit.identities |
-                Where-Object { $_.environment -eq 'bootstrap' -and $_.kind -eq 'plan' } |
-                Select-Object -First 1
+            $bootstrapPlan = Get-LzIdentityRecord -Identities $audit.identities -Environment 'bootstrap' -Kind 'plan'
             if (-not $bootstrapPlan) {
                 $bootstrapPlan = $audit.identities | Where-Object kind -eq 'plan' | Select-Object -First 1
             }
             Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_PLAN_CLIENT_ID' -Value $bootstrapPlan.appId
-            Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_SUBSCRIPTION_ID' `
-                -Value ((Get-LzEnvironmentSubscription -Config $config -Environment $bootstrapPlan.environment))
+            # The shared plan identity (minimal model) belongs to no single
+            # environment; the management subscription is the deterministic
+            # repo-level default there.
+            $bootstrapSubscription = if ($bootstrapPlan.environment -eq 'shared') {
+                $config.azure.subscriptions.management
+            } else {
+                Get-LzEnvironmentSubscription -Config $config -Environment $bootstrapPlan.environment
+            }
+            Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_SUBSCRIPTION_ID' -Value $bootstrapSubscription
             Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_TENANT_ID' -Value $config.azure.tenantId
             Set-LzGitHubVariable -Repository $plan.repository -Name 'FACTORY_VERSION' -Value $config.factoryVersion
             $audit.branchProtection = Set-LzBranchProtection -Config $config
-            if ($config.backend.type -eq 'azurerm') {
-                $audit.backend.details = Set-LzAzurermBackend -Config $config
-            }
-            else {
+            # azurerm state storage was already reconciled before the identities
+            # (see above); only the HCP backend remains to reconcile here.
+            if ($config.backend.type -ne 'azurerm') {
                 if ($env:TFE_TOKEN) {
                     $hcp = Set-LzHcpBackend -Config $config -Layers $plan.layers
                     $audit.backend.details = $hcp

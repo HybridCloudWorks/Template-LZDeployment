@@ -1,9 +1,79 @@
 # CHANGELOG - Completed Work
 
 **Purpose**: Historical record of all completed tasks and deliverables  
-**Last Updated**: August 1, 2026
+**Last Updated**: August 2, 2026
 
 ---
+
+## Minimal-by-default CI/CD identity estate (2026-08-02)
+
+Operator directive 2026-08-01: minimal by default, scale is the client's
+choice. Design authority: `azure-platform-architect` (legacy matrix = 7
+identities, 4 never wired to any workflow secret; grants simultaneously
+excessive — 4 subscription-scope RBAC Administrators nothing needed — and
+insufficient — no MG-root grants, which `management-groups`/`policy-baseline`
+require). Decision record:
+[docs/decisions/0002-minimal-identity-estate.md](docs/decisions/0002-minimal-identity-estate.md).
+
+**Schema / wizard**:
+
+- New broker-only key `identity.cicdIdentityModel`
+  (`minimal|per-environment`, default `minimal`; like `github.*`, deliberately
+  absent from `factory/renderer/variable-map.json`).
+- The wizard asks "Deployment identity model" with a live count recomputed
+  from the environment selections: minimal → 2 (one shared plan + one shared
+  apply, one federated credential per environment); per-environment →
+  2 × |unique(platform ∪ application environments)|.
+
+**Broker** (`factory/bootstrap/LZFactory.Bootstrap.psm1`):
+
+- Minimal mode emits exactly 2 identity records — the apply record carries a
+  subject **list** (one `environment:<name>` per environment) and the union
+  of RBAC scopes, deduplicated; the plan record gets Reader once at the MG
+  root. Per-environment mode is proven **byte-parity** with the prior output
+  (`factory/tests/fixtures/bootstrap-plan-per-environment.expected.json`).
+- **Defect fixed**: the broker now grants the state data-plane roles when the
+  backend is azurerm (plan → Storage Blob Data Reader, apply → Storage Blob
+  Data Contributor) — previously a generated azurerm repo could not read its
+  own state — and `Set-LzAzurermBackend` creates the state account with
+  `--allow-shared-key-access false` (contract #3).
+
+**Legacy bootstrap** (`scripts/Start-LandingZoneBootstrap.ps1`):
+
+- The layers × environments matrix is removed; the script consumes the
+  broker's plan builder. Roles: plan = Reader at MG root (+ SBDR on the state
+  account for azurerm); apply = Management Group Contributor + Resource
+  Policy Contributor at MG root, Contributor per distinct subscription
+  (+ SBDC for azurerm); RBAC Administrator **only** on sandbox selection,
+  sandbox-subscription scope, ABAC-constrained (delegation condition:
+  role = Contributor, principalType = ServicePrincipal, condition-version
+  2.0).
+- Subjects: plan = `pull_request` + `ref:refs/heads/main`; apply =
+  `environment:*` only. Secret names (`AZURE_CLIENT_ID`,
+  `AZURE_PLAN_CLIENT_ID`) unchanged.
+- Legacy-matrix estates are detected and routed to a **report-only**
+  remediation section of operator-run `az` commands (delete the 4 dead apps,
+  remove the subscription-scope RBAC Administrator grants, add the missing
+  MG-root grants); old `azure_sps` state routes to remediation without
+  crashing.
+
+**Root workflows** (contract #2 realignment — read-only jobs authenticate as
+the plan identity; SHA pins untouched):
+
+- `010-terraform-init.yml`: all 3 logins → `AZURE_PLAN_CLIENT_ID`; the plan
+  step gained `-lock=false`.
+- `020-rbac-validation.yml`: both jobs always authenticate as the plan
+  identity — the `pull_request`-conditional fallback to `AZURE_CLIENT_ID` is
+  removed.
+- `terraform-apply.yml`: the read-only rbac-validation gate → plan identity
+  (apply jobs keep `environment:` + `AZURE_CLIENT_ID`).
+- `azure-auth-test.yml` → plan identity.
+
+**Template corpus**: `platform-management` gains the `sandbox_cleanup` role
+assignment (Contributor for the automation account's identity on the sandbox
+subscription), inside the existing sandbox conditional — both fixture
+branches validate — with a least-privilege comment tying it to the ABAC
+delegation condition.
 
 ## PROD-TODO implementation — production-motion tooling and corpus fixes (2026-08-01)
 

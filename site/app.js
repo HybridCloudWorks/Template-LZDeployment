@@ -217,6 +217,7 @@ function defaultConfig() {
     },
     identity: {
       strategy: 'cloud-only', deployIdentitySubscription: false,
+      cicdIdentityModel: 'minimal',
       privilegedAccessModel: 'pim-eligible', breakGlassAccounts: []
     },
     security: {
@@ -646,6 +647,32 @@ function validate() {
   }
 
   return { errors, warnings };
+}
+
+/* ---------------------------------------------------------------------
+ * CI/CD identity estate
+ * ------------------------------------------------------------------- */
+
+/** Unique environments across both planes — the set the bootstrap broker
+ *  federates deployment identities against. */
+function uniqueEnvironments() {
+  return new Set([
+    ...(config.environments.platform || []),
+    ...(config.environments.application || [])
+  ]);
+}
+
+/**
+ * How many Entra ID app registrations the bootstrap broker will create for
+ * CI/CD, given identity.cicdIdentityModel. Broker-only key: it never reaches
+ * a Terraform variable (see factory/schema/lz-config.schema.json).
+ *   minimal          -> 2 (one shared plan + one shared apply identity)
+ *   per-environment  -> 2 × |unique(platform ∪ application)|
+ */
+function cicdIdentityCount() {
+  const model = (config.identity && config.identity.cicdIdentityModel) || 'minimal';
+  if (model !== 'per-environment') return 2;
+  return 2 * uniqueEnvironments().size;
 }
 
 function tagsObject() {
@@ -1124,6 +1151,18 @@ function updateHints() {
       verdict.textContent = `over the cap — roughly $${low}–$${high}/mo at the $0.10 Essentials rate`;
       verdict.className = 'pill pill-bad';
     }
+  }
+
+  // CI/CD identity estate: recomputed live, because the count depends on the
+  // environment selections made on the Environments step.
+  const idCountEl = $('#cicdIdentityCount');
+  if (idCountEl) {
+    const model = (config.identity && config.identity.cicdIdentityModel) || 'minimal';
+    const n = cicdIdentityCount();
+    const envCount = uniqueEnvironments().size;
+    idCountEl.textContent = model === 'per-environment'
+      ? `This will create ${n} Entra identities: one plan and one apply identity for each of your ${envCount} unique environment${envCount === 1 ? '' : 's'}.`
+      : `This will create ${n} Entra identities: one shared plan identity and one shared apply identity, federated to each of your ${envCount} environment${envCount === 1 ? '' : 's'}.`;
   }
 
   const outDir = config.organization.outputDirectoryName || config.organization.companyShortName || '<company>';
@@ -1671,6 +1710,12 @@ function environmentDefinitions(cfg) {
   // Own-property lookups so a hostile key in an imported config can never
   // pull inherited values off Object.prototype into the exported artifact.
   const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key) ? obj[key] : undefined;
+  // Broker-only key: with the minimal model (the default) the broker creates
+  // ONE shared plan and ONE shared apply app registration; each environment
+  // below still gets its own environment:<name> federated credential on the
+  // shared apply identity, so the subjects are identical in both models.
+  const model = (cfg.identity && cfg.identity.cicdIdentityModel) || 'minimal';
+  const shared = model !== 'per-environment';
   const mk = (name, plane) => ({
     name,
     plane,
@@ -1683,16 +1728,24 @@ function environmentDefinitions(cfg) {
     oidcSubject: `repo:${cfg.github.ownerName}/${cfg.github.repositoryName}:environment:${name}`,
     identities: {
       plan: {
-        appName: `sp-${cfg.organization.companyShortName}-${name}-plan`,
+        appName: shared
+          ? `sp-${cfg.organization.companyShortName}-plan`
+          : `sp-${cfg.organization.companyShortName}-${name}-plan`,
         subject: `repo:${cfg.github.ownerName}/${cfg.github.repositoryName}:pull_request`,
         azureRoles: ['Reader'],
-        note: 'Plan-time identity. Read-only by design so a compromised pull request cannot mutate Azure.'
+        note: shared
+          ? 'Shared plan-time identity (minimal model). Read-only by design so a compromised pull request cannot mutate Azure.'
+          : 'Plan-time identity. Read-only by design so a compromised pull request cannot mutate Azure.'
       },
       apply: {
-        appName: `sp-${cfg.organization.companyShortName}-${name}-apply`,
+        appName: shared
+          ? `sp-${cfg.organization.companyShortName}-apply`
+          : `sp-${cfg.organization.companyShortName}-${name}-apply`,
         subject: `repo:${cfg.github.ownerName}/${cfg.github.repositoryName}:environment:${name}`,
         azureRoles: ['Contributor'],
-        note: 'Apply-time identity. Bound to the environment subject only, so it cannot be assumed from an arbitrary branch or pull request.'
+        note: shared
+          ? 'Shared apply-time identity (minimal model): one app registration carrying one federated credential per environment subject, so it still cannot be assumed from an arbitrary branch or pull request.'
+          : 'Apply-time identity. Bound to the environment subject only, so it cannot be assumed from an arbitrary branch or pull request.'
       }
     }
   });
@@ -1701,11 +1754,14 @@ function environmentDefinitions(cfg) {
     generatedAt: cfg.generatedAt,
     factoryVersion: cfg.factoryVersion,
     repository: `${cfg.github.ownerName}/${cfg.github.repositoryName}`,
+    cicdIdentityModel: model,
     platform: cfg.environments.platform.map((e) => mk(e, 'platform')),
     application: cfg.environments.application.map((e) => mk(e, 'application')),
     promotionPath: cfg.environments.promotionPath,
     notes: [
-      'Two identities per environment is deliberate: it makes it structurally impossible for a pull-request-triggered run to hold write access.',
+      shared
+        ? 'Minimal identity model: 2 Entra identities in total. The plan/apply split is preserved — it stays structurally impossible for a pull-request-triggered run to hold write access.'
+        : 'Two identities per environment is deliberate: it makes it structurally impossible for a pull-request-triggered run to hold write access.',
       'The apply subject is pinned to environment:<name>. A wildcard subject such as repo:owner/repo:* would let any branch assume the apply identity.'
     ]
   };

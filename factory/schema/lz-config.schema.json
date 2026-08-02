@@ -509,6 +509,11 @@
           "default": "cloud-only"
         },
         "deployIdentitySubscription": { "type": "boolean", "default": false },
+        "cicdIdentityModel": {
+          "enum": ["minimal", "per-environment"],
+          "default": "minimal",
+          "description": "Broker-only (like github.*): consumed by factory/bootstrap, never mapped to a Terraform variable, deliberately absent from factory/renderer/variable-map.json. 'minimal' (default) creates 2 Entra identities total — one shared plan identity and one shared apply identity carrying one federated credential per environment. 'per-environment' creates a plan/apply pair per unique environment (2 × N)."
+        },
         "privilegedAccessModel": {
           "enum": ["pim-eligible", "standing-access"],
           "default": "pim-eligible",

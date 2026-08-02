@@ -78,6 +78,21 @@ dogfood instance. The end-to-end customer motion is described in
 
 ---
 
+## 🟠 Factory Bootstrap
+
+- [ ] **Fix `Get-LzEnvironmentSubscription` for the `bootstrap` environment**
+  (`factory/bootstrap/LZFactory.Bootstrap.psm1`) — the function's switch has no
+  `bootstrap` case, so it fails closed (throws
+  `Unknown environment 'bootstrap'`). Reachable in **both** identity models:
+  `Invoke-LzBootstrap -Apply` calls `Set-LzGitHubEnvironment` for every
+  `plan.environments` entry — so any broker apply against a default wizard
+  export (whose platform environments include `bootstrap`) throws.
+  Pre-existing defect found during the 2026-08-02 minimal-identity-estate
+  work; deliberately out of scope for that parity-preserving change — needs
+  its own fix.
+
+---
+
 ## 🟠 Script Cleanup
 
 - [ ] **Decide fate of 4 orphaned utility scripts** — `Configure-DeploymentOptions.ps1`, `Invoke-BulkOperations.ps1`, `Validate-ALZDeployment.ps1`, `Verify-CostAccuracy.ps1` have no call site anywhere (not referenced from any workflow, other script, or doc). Either wire them into the real pipeline (e.g. `Validate-ALZDeployment.ps1` as a pre-flight check in `010-terraform-init.yml`) or move them out of `scripts/` into a clearly-labeled `scripts/utilities/` or similar so they don't read as part of the core flow.

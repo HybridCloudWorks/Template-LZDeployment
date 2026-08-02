@@ -50,7 +50,11 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          # Read-only job on a push-to-main (branch) OIDC subject: the branch
+          # subject is bound to the plan identity only. The apply identity
+          # (AZURE_CLIENT_ID) holds environment:<name> subjects exclusively
+          # and cannot authenticate here.
+          client-id: ${{ secrets.AZURE_PLAN_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -120,7 +124,11 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          # Read-only job on a push-to-main (branch) OIDC subject: the branch
+          # subject is bound to the plan identity only. The apply identity
+          # (AZURE_CLIENT_ID) holds environment:<name> subjects exclusively
+          # and cannot authenticate here.
+          client-id: ${{ secrets.AZURE_PLAN_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -178,7 +186,11 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          # Read-only job on a push-to-main (branch) OIDC subject: the branch
+          # subject is bound to the plan identity only. The apply identity
+          # (AZURE_CLIENT_ID) holds environment:<name> subjects exclusively
+          # and cannot authenticate here.
+          client-id: ${{ secrets.AZURE_PLAN_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -190,8 +202,11 @@ jobs:
         working-directory: ./terraform/live
         run: |
           echo "Planning global layer (resource groups, tags, etc.)..."
+          # -lock=false: this job authenticates as the read-only plan
+          # identity, which cannot take state lock leases (contract #2).
           terraform plan \
             -input=false \
+            -lock=false \
             -out=tfplan.global \
             -target='module.global' \
             -var-file="terraform.tfvars"

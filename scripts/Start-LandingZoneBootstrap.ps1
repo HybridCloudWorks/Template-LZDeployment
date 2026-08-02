@@ -27,8 +27,14 @@
 
     SINGLE USER: Designed for admin/owner bootstrapping. Prompts for authentication.
 
-    LANDING ZONE: Creates proper separation between human OAuth and CI/CD OIDC,
-                  with layered service principals (Main/Dev/Prod).
+    LANDING ZONE: Creates proper separation between human OAuth and CI/CD OIDC.
+                  Identities come from the factory broker's plan builder
+                  (factory/bootstrap/LZFactory.Bootstrap.psm1): minimal model
+                  (default) = 1 read-only plan identity + 1 apply identity with
+                  multi-subject federated credentials; per-environment model =
+                  a plan/apply pair per environment. The legacy Main/Dev/Prod
+                  matrix is no longer created — existing matrix estates are
+                  detected and reported for operator-run remediation.
 
 .EXAMPLE
     .\scripts\Start-LandingZoneBootstrap.ps1
@@ -84,11 +90,12 @@ param(
     # unacceptable for customer engagements.
     [string[]]$EnvironmentReviewers = @(),
 
-    # Sandbox subscription ID. When supplied, the deploying main-layer SP
-    # (main-prod, or main-dev for Dev-only deployments) is
-    # granted Role Based Access Control Administrator scoped to this
-    # subscription so platform-management can write the sandbox-cleanup
-    # Contributor assignment. Without it, that apply fails AuthorizationFailed.
+    # Sandbox subscription ID. When supplied, the apply identity is granted
+    # Role Based Access Control Administrator scoped to this subscription —
+    # constrained by an ABAC delegation condition (may only write/delete
+    # Contributor role assignments to service principals) — so
+    # platform-management can write the sandbox-cleanup Contributor
+    # assignment. Without it, that apply fails AuthorizationFailed.
     # When -ConfigPath is used, azure.subscriptions.sandbox from lz-config.json
     # fills this in automatically if the parameter is omitted.
     [string]$SandboxSubscriptionId = '',
@@ -508,6 +515,39 @@ function Import-LzConfig {
         }
     }
 
+    # backend.azurerm → state storage account coordinates (drive the state
+    # data-plane role assignments in the identity plan)
+    if ($config.ContainsKey('backend') -and $config['backend'].ContainsKey('azurerm')) {
+        $azurermCfg = $config['backend']['azurerm']
+        if (-not $State.ContainsKey('backend_rg') -and $azurermCfg.ContainsKey('resourceGroupName')) {
+            $State['backend_rg'] = $azurermCfg['resourceGroupName']
+        }
+        if (-not $State.ContainsKey('backend_sa') -and $azurermCfg.ContainsKey('storageAccountName')) {
+            $State['backend_sa'] = $azurermCfg['storageAccountName']
+        }
+    }
+
+    # identity.cicdIdentityModel → identity_model. Absent key = 'minimal'
+    # (broker contract: Get-LzCicdIdentityModel), so a config import never
+    # falls through to the interactive prompt.
+    if (-not $State.ContainsKey('identity_model')) {
+        $identityModel = 'minimal'
+        if ($config.ContainsKey('identity') -and $config['identity'].ContainsKey('cicdIdentityModel')) {
+            $identityModel = $config['identity']['cicdIdentityModel']
+        }
+        $State['identity_model'] = $identityModel
+        Write-OK "CI/CD identity model (from config): $($State['identity_model'])"
+    }
+
+    # azure.managementGroups.rootId → mg_root_id (the scope of the plan
+    # identity's Reader and the apply identity's MG-root grants)
+    if (-not $State.ContainsKey('mg_root_id') -and
+        $config.ContainsKey('azure') -and $config['azure'].ContainsKey('managementGroups') -and
+        $config['azure']['managementGroups'].ContainsKey('rootId')) {
+        $State['mg_root_id'] = $config['azure']['managementGroups']['rootId']
+        Write-OK "Management group root (from config): $($State['mg_root_id'])"
+    }
+
     # environments.application → environments (only dev/prod are layers this
     # legacy script knows how to bootstrap; other application environments are
     # owned by the factory renderer).
@@ -684,6 +724,54 @@ function Gather-DeploymentConfig {
     }
     Write-OK "State backend: $($State['backend_type'])"
 
+    # azurerm backend: the state storage account coordinates drive the
+    # Storage Blob Data Reader/Contributor grants in the identity plan
+    # (contract #3: AAD-only state — shared keys are disabled, so without the
+    # data-plane roles every init 403s on the blobs).
+    if ($State['backend_type'] -eq 'azurerm') {
+        if (-not $State.ContainsKey('backend_rg')) {
+            $backend_rg = Read-Host "  State backend resource group (default: rg-tfstate-$($State['region_code'])-prod-01)"
+            if ([string]::IsNullOrEmpty($backend_rg)) { $backend_rg = "rg-tfstate-$($State['region_code'])-prod-01" }
+            $State['backend_rg'] = $backend_rg
+        }
+        if (-not $State.ContainsKey('backend_sa')) {
+            $backend_sa = Read-Host "  State storage account name (from backend-bootstrap output, e.g. st$($State['org_prefix'])tfstatexxxx)"
+            if ($backend_sa -notmatch '^[a-z0-9]{3,24}$') {
+                throw "State storage account name must match ^[a-z0-9]{3,24}$ (got '$backend_sa')"
+            }
+            $State['backend_sa'] = $backend_sa
+        }
+        Write-OK "State account: $($State['backend_sa']) (rg: $($State['backend_rg']))"
+    }
+
+    # CI/CD identity model (seeded by -ConfigPath; minimal is the operator
+    # default — 1 plan + 1 apply identity, scale driven by client selection)
+    if (-not $State.ContainsKey('identity_model')) {
+        Write-Host ""
+        Write-Host "  Which CI/CD identity model should the bootstrap create?" -ForegroundColor Cyan
+        Write-Host "  [1] Minimal (default): 1 plan + 1 apply identity, multi-subject federated credentials"
+        Write-Host "  [2] Per-environment: a plan/apply pair per environment (2 x N identities)"
+        $identity_choice = Read-Host "  Select [1-2]"
+
+        $State['identity_model'] = if ($identity_choice -eq '2') { 'per-environment' } else { 'minimal' }
+    }
+    Write-OK "CI/CD identity model: $($State['identity_model'])"
+
+    # Management group root: the global layer (management-groups/,
+    # policy-baseline/) needs Management Group Contributor + Resource Policy
+    # Contributor here — subscription-scope grants cannot satisfy it.
+    if (-not $State.ContainsKey('mg_root_id')) {
+        $mgDefault = if ($State.ContainsKey('tenant_id')) { $State['tenant_id'] } else { '' }
+        $mgPrompt = if ($mgDefault) { "  Management group root ID (default: tenant root group $mgDefault)" } else { "  Management group root ID (tenant ID = Tenant Root Group)" }
+        $mg_root = Read-Host $mgPrompt
+        if ([string]::IsNullOrEmpty($mg_root)) { $mg_root = $mgDefault }
+        if ([string]::IsNullOrEmpty($mg_root)) {
+            throw "A management group root ID is required (use the tenant ID to root at the Tenant Root Group)"
+        }
+        $State['mg_root_id'] = $mg_root
+    }
+    Write-OK "Management group root: $($State['mg_root_id'])"
+
     # Sandbox subscription (seeded by -ConfigPath when supplied). Enabling it
     # requires -SandboxSubscriptionId — enforced in Main before OIDC setup.
     if (-not $State.ContainsKey('sandbox_enabled')) {
@@ -699,31 +787,116 @@ function Gather-DeploymentConfig {
 # ║                 AZURE IDENTITIES & OIDC                                 ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-function New-LzServicePrincipal {
+function Import-LzBootstrapBroker {
+    <#
+        Loads the factory bootstrap module. The broker owns identity-plan
+        derivation (New-LzBootstrapPlan); this script deliberately consumes
+        that single source of truth instead of keeping a divergent
+        layers-x-environments copy, but keeps its own az-CLI execution and
+        .lz-bootloader-state.json idempotency.
+    #>
+    $modulePath = Join-Path -Path $REPO_ROOT -ChildPath 'factory/bootstrap/LZFactory.Bootstrap.psm1'
+    if (-not (Test-Path $modulePath)) {
+        throw "Factory bootstrap module not found: $modulePath (the identity plan builder lives there)"
+    }
+    Import-Module $modulePath -Force -ErrorAction Stop
+    Write-OK "Identity plan builder loaded: factory/bootstrap/LZFactory.Bootstrap.psm1"
+}
+
+function Build-LzPlanConfig {
+    <#
+        Produces the config object New-LzBootstrapPlan consumes. A wizard
+        export (-ConfigPath) is used verbatim; otherwise a minimal config is
+        synthesized from the interactively gathered state. The synthesized
+        platform list is @('bootstrap') so the apply identity receives the
+        MG-root grants (Management Group Contributor + Resource Policy
+        Contributor) that terraform/modules/management-groups/ and
+        policy-baseline/ require — subscription-scope grants cannot satisfy
+        the global layer.
+    #>
     param(
-        [string]$Layer,
-        [string]$Environment,
-        [string]$SubscriptionId,
-        [hashtable]$State
+        [hashtable]$State,
+        [string]$GithubOwner,
+        [string]$RepoName,
+        [string]$SandboxSubscriptionId = ''
     )
 
-    $orgPrefix = $State['org_prefix']
-    $displayName = "sp-terraform-$layer-$environment-$orgPrefix"
+    if ($State.ContainsKey('config_path') -and (Test-Path $State['config_path'])) {
+        Write-OK "Identity plan input: wizard export $($State['config_path'])"
+        return (Get-Content -Path $State['config_path'] -Raw | ConvertFrom-Json)
+    }
 
-    # Check if exists
-    $existing = az ad app list --display-name $displayName --query "[0].appId" -o tsv 2>$null
-    Assert-LastExitCode "az ad app list --display-name $displayName"
+    Write-OK "Identity plan input: synthesized from interactive configuration"
+
+    $subscriptionId = $State['subscription_id']
+    $applicationEnvs = @($State['environments'])
+    $sandboxSub = ''
+    if ($State['sandbox_enabled'] -and -not [string]::IsNullOrWhiteSpace($SandboxSubscriptionId)) {
+        # Selecting the sandbox scales the estate: the apply identity gains
+        # Contributor on the sandbox subscription (distinct scope) and an
+        # environment:sandbox subject.
+        $sandboxSub = $SandboxSubscriptionId
+        if ($applicationEnvs -notcontains 'sandbox') { $applicationEnvs += 'sandbox' }
+    }
+
+    $backendConfig = if ($State['backend_type'] -eq 'azurerm') {
+        [pscustomobject]@{
+            type    = 'azurerm'
+            azurerm = [pscustomobject]@{
+                resourceGroupName  = $State['backend_rg']
+                storageAccountName = $State['backend_sa']
+                containerName      = 'tfstate'
+                subscriptionId     = $subscriptionId
+            }
+        }
+    } else {
+        [pscustomobject]@{ type = 'hcp-terraform' }
+    }
+
+    return [pscustomobject]@{
+        organization = [pscustomobject]@{ companyShortName = $State['org_prefix'] }
+        github       = [pscustomobject]@{ ownerName = $GithubOwner; repositoryName = $RepoName }
+        azure        = [pscustomobject]@{
+            tenantId         = $State['tenant_id']
+            managementGroups = [pscustomobject]@{ rootId = $State['mg_root_id'] }
+            subscriptions    = [pscustomobject]@{
+                management      = $subscriptionId
+                connectivity    = $subscriptionId
+                workloadProd    = $subscriptionId
+                workloadNonProd = $subscriptionId
+                sandbox         = $sandboxSub
+            }
+        }
+        environments = [pscustomobject]@{
+            platform    = @('bootstrap')
+            application = @($applicationEnvs)
+        }
+        connectivity = [pscustomobject]@{ model = 'hub-spoke' }
+        backend      = $backendConfig
+        identity     = [pscustomobject]@{ cicdIdentityModel = $State['identity_model'] }
+    }
+}
+
+function New-LzIdentityPrincipal {
+    <#
+        Idempotently ensures an app registration + service principal for one
+        identity-plan record. Role assignments are NOT made here — they come
+        from the plan record via Set-LzScopedRoleAssignment.
+    #>
+    param([string]$DisplayName)
+
+    $existing = az ad app list --display-name $DisplayName --query "[0].appId" -o tsv 2>$null
+    Assert-LastExitCode "az ad app list --display-name $DisplayName"
     if ([string]::IsNullOrWhiteSpace($existing)) {
-        Write-Step "Creating app registration: $displayName"
-        $appId = (az ad app create --display-name $displayName --output json | ConvertFrom-Json).appId
-        Assert-LastExitCode "az ad app create --display-name $displayName"
+        Write-Step "Creating app registration: $DisplayName"
+        $appId = (az ad app create --display-name $DisplayName --output json | ConvertFrom-Json).appId
+        Assert-LastExitCode "az ad app create --display-name $DisplayName"
         Write-OK "Created app registration"
     } else {
         $appId = $existing
-        Write-OK "Using existing app registration"
+        Write-OK "Using existing app registration: $DisplayName"
     }
 
-    # Create service principal if needed
     $spCheck = az ad sp list --filter "appId eq '$appId'" --query "[0].id" -o tsv 2>$null
     Assert-LastExitCode "az ad sp list --filter appId eq $appId"
     if ([string]::IsNullOrWhiteSpace($spCheck)) {
@@ -734,72 +907,141 @@ function New-LzServicePrincipal {
         Write-OK "Created service principal"
     }
 
-    # Get object ID for RBAC
     $spObjId = az ad sp show --id $appId --query id -o tsv 2>$null
     Assert-LastExitCode "az ad sp show --id $appId"
 
-    # Assign roles based on layer (least privilege):
-    #  - plan:     Reader + Storage Blob Data Reader — the PR-triggered plan
-    #              identity must never mutate
-    #  - main:     Contributor + Storage Blob Data Contributor
-    #  - dev/prod: the above + Role Based Access Control Administrator
-    #              (replaces User Access Administrator; constrain the assignment
-    #              with delegation conditions — restrict which roles it may
-    #              assign and to which principal types — before production use)
-    #
-    # The Storage Blob Data roles are the data plane: the state account has
-    # shared_access_key_enabled = false and every backend.hcl sets
-    # use_azuread_auth = true, so state reads/writes go over AAD. Contributor
-    # and Reader alone stop at the management plane and 403 on the blobs.
-    if ($Layer -eq 'plan') {
-        # No data-plane write: PR plans run with -lock=false and can never
-        # mutate state.
-        $roles = @("Reader", "Storage Blob Data Reader")
-    } else {
-        $roles = @("Contributor", "Storage Blob Data Contributor")
-        if ($Layer -ne 'main') {
-            $roles += "Role Based Access Control Administrator"
-        }
-    }
-
-    foreach ($role in $roles) {
-        $existing = az role assignment list `
-            --assignee-object-id $spObjId `
-            --role $role `
-            --scope "/subscriptions/$SubscriptionId" `
-            --query "[0].id" -o tsv 2>$null
-        Assert-LastExitCode "az role assignment list (role '$role' on $displayName)"
-
-        if ([string]::IsNullOrWhiteSpace($existing)) {
-            Write-Step "Assigning role: $role"
-            az role assignment create `
-                --role $role `
-                --assignee-object-id $spObjId `
-                --assignee-principal-type ServicePrincipal `
-                --scope "/subscriptions/$SubscriptionId" `
-                --output none 2>$null
-            Assert-LastExitCode "az role assignment create (role '$role' on $displayName)"
-            Write-OK "Assigned $role"
-        }
-    }
-
-    # Validate no Owner role
+    # Least-privilege invariant: no identity this script manages may hold Owner.
     $owner = az role assignment list `
         --assignee-object-id $spObjId `
         --query "[?roleDefinitionName=='Owner']" `
         --output json 2>$null | ConvertFrom-Json
-    Assert-LastExitCode "az role assignment list (Owner check on $displayName)"
-
+    Assert-LastExitCode "az role assignment list (Owner check on $DisplayName)"
     if (($owner | Measure-Object).Count -gt 0) {
-        Write-Critical "Service principal has Owner role! This violates least-privilege."
+        Write-Critical "Service principal $DisplayName has Owner role! This violates least-privilege."
         throw "Owner role must be removed before proceeding"
     }
 
     return @{
-        appId  = $appId
-        spObjId = $spObjId
-        displayName = $displayName
-        roles = $roles
+        appId       = $appId
+        spObjId     = $spObjId
+        displayName = $DisplayName
+    }
+}
+
+function Set-LzScopedRoleAssignment {
+    <#
+        Idempotent role assignment at an arbitrary scope (subscription,
+        management group, or storage account resource ID). An optional ABAC
+        condition constrains what the assignment can do (used for the
+        sandbox RBAC Administrator delegation).
+    #>
+    param(
+        [string]$SpObjId,
+        [string]$Role,
+        [string]$Scope,
+        [string]$DisplayName,
+        [string]$Condition = '',
+        [string]$ConditionVersion = '2.0'
+    )
+
+    $existing = az role assignment list `
+        --assignee-object-id $SpObjId `
+        --role $Role `
+        --scope $Scope `
+        --query "[0].id" -o tsv 2>$null
+    Assert-LastExitCode "az role assignment list (role '$Role' on $DisplayName at $Scope)"
+
+    if (-not [string]::IsNullOrWhiteSpace($existing)) {
+        Write-OK "Role present: $Role @ $Scope"
+        return
+    }
+
+    Write-Step "Assigning role: $Role @ $Scope"
+    $createArgs = @(
+        'role', 'assignment', 'create',
+        '--role', $Role,
+        '--assignee-object-id', $SpObjId,
+        '--assignee-principal-type', 'ServicePrincipal',
+        '--scope', $Scope,
+        '--output', 'none'
+    )
+    if (-not [string]::IsNullOrWhiteSpace($Condition)) {
+        # ABAC delegation condition. Syntax per
+        # https://learn.microsoft.com/azure/role-based-access-control/delegate-role-assignments-examples
+        $createArgs += @('--condition', $Condition, '--condition-version', $ConditionVersion)
+    }
+    az @createArgs 2>$null
+    Assert-LastExitCode "az role assignment create (role '$Role' on $DisplayName at $Scope)"
+    Write-OK "Assigned $Role"
+}
+
+function Resolve-PublishedIdentity {
+    <#
+        Picks the identity record published to the repo-level GitHub secrets
+        (AZURE_CLIENT_ID / AZURE_PLAN_CLIENT_ID). Minimal model: the 'shared'
+        record. Per-environment model: prefer prod, fall back to dev, then the
+        first record of that kind — the same prefer-prod-else-dev resolution
+        the legacy main-prod/main-dev fallback used.
+    #>
+    param([hashtable]$Identities, [string]$Kind)
+
+    foreach ($candidate in @("$Kind-shared", "$Kind-prod", "$Kind-dev")) {
+        if ($Identities.ContainsKey($candidate)) { return $Identities[$candidate] }
+    }
+    foreach ($key in ($Identities.Keys | Sort-Object)) {
+        if ($key -like "$Kind-*") { return $Identities[$key] }
+    }
+    return $null
+}
+
+function Find-LegacyIdentityEstate {
+    <#
+        Detects legacy-matrix identities (sp-terraform-{main,dev,prod,plan}-*
+        naming) from bootloader state and from Entra, and records the evidence
+        in state. NOTHING is deleted — the bootstrap report renders the
+        operator-run remediation commands.
+    #>
+    param([hashtable]$State)
+
+    Write-Step "Scanning for legacy-matrix identities (sp-terraform-*)"
+    $prefix = $State['org_prefix']
+
+    $legacyNames = @()
+    foreach ($layer in @('main', 'dev', 'prod')) {
+        foreach ($legacyEnv in @('dev', 'prod')) {
+            $legacyNames += "sp-terraform-$layer-$legacyEnv-$prefix"
+        }
+    }
+    $legacyNames += "sp-terraform-plan-ci-$prefix"
+
+    $found = @{}
+
+    # State evidence (a previous run of the matrix-era script)
+    if ($State.ContainsKey('azure_sps')) {
+        foreach ($key in $State['azure_sps'].Keys) {
+            $record = $State['azure_sps'][$key]
+            if ($record.ContainsKey('displayName') -and $record.ContainsKey('appId')) {
+                $found[$record['displayName']] = $record['appId']
+            }
+        }
+    }
+
+    # Entra evidence (read-only probes)
+    foreach ($name in $legacyNames) {
+        if ($found.ContainsKey($name)) { continue }
+        $appId = az ad app list --display-name $name --query "[0].appId" -o tsv 2>$null
+        Assert-LastExitCode "az ad app list --display-name $name"
+        if (-not [string]::IsNullOrWhiteSpace($appId)) {
+            $found[$name] = $appId
+        }
+    }
+
+    if ($found.Count -gt 0) {
+        Write-Warn "Legacy-matrix identities detected ($($found.Count)); the bootstrap report will include operator-run remediation commands (nothing is deleted automatically)"
+        $State['legacy_estate'] = $found
+        Save-BootloaderState $State
+    } else {
+        Write-OK "No legacy-matrix identities found"
     }
 }
 
@@ -848,14 +1090,38 @@ function Setup-Azure-OIDC {
         [switch]$SandboxRbacSkipRequested
     )
 
-    Write-Section "4" "Azure OIDC Service Principals & Federated Credentials"
+    Write-Section "4" "Azure OIDC Identities & Federated Credentials (broker plan)"
+
+    # The identity plan is built by the factory broker (single source of
+    # truth); this script executes it with its own az CLI calls and state
+    # tracking. Minimal model (default): 1 plan + 1 apply identity.
+    # Per-environment model: a plan/apply pair per unique environment.
+    Import-LzBootstrapBroker
+
+    $planConfig = Build-LzPlanConfig `
+        -State $State `
+        -GithubOwner $GithubOwner `
+        -RepoName $RepoName `
+        -SandboxSubscriptionId $SandboxSubscriptionId
+    $identityPlan = New-LzBootstrapPlan -Config $planConfig
+
+    $identityModel = if ($identityPlan.PSObject.Properties['identityModel']) {
+        $identityPlan.identityModel
+    } else {
+        'per-environment'
+    }
+    $identityRecords = @($identityPlan.identities)
 
     Write-Critical "RESOURCE CREATION: This section will create Azure resources (Entra apps, SPs, RBAC roles)"
+    Write-Info "Identity model: $identityModel"
     Write-Info "Estimated resources:"
-    Write-Info "  - 4 app registrations (main, plan, dev, prod)"
-    Write-Info "  - 4 service principals"
-    Write-Info "  - 8+ federated credentials (OIDC tokens)"
-    Write-Info "  - 4+ RBAC role assignments"
+    Write-Info "  - $($identityRecords.Count) app registrations + service principals:"
+    foreach ($record in $identityRecords) {
+        Write-Info "      $($record.displayName) [$($record.kind)]"
+    }
+    Write-Info "  - federated credentials: one per OIDC subject (plus main-branch on plan, hub on apply)"
+    Write-Info "  - RBAC: Reader @ MG root (plan); MG Contributor + Resource Policy Contributor @ MG root"
+    Write-Info "          and Contributor per distinct subscription (apply); state data-plane roles (azurerm)"
     Write-Info ""
     $confirm = Read-Host "  Type 'CREATE' to proceed, or press ENTER to skip"
 
@@ -864,118 +1130,172 @@ function Setup-Azure-OIDC {
         return @{}
     }
 
-    $sps = @{}
+    # Evidence pass: legacy-matrix identities are reported for operator-run
+    # remediation, never deleted.
+    Find-LegacyIdentityEstate -State $State
 
-    # Create three SPs: main, dev, prod
-    foreach ($layer in @('main', 'dev', 'prod')) {
-        foreach ($env in $State['environments']) {
-            $key = "$layer-$env"
-            Write-Step "Setting up: $key"
-            $sps[$key] = New-LzServicePrincipal -Layer $layer -Environment $env -SubscriptionId $SubscriptionId -State $State
-        }
-    }
+    $identities = @{}
+    foreach ($record in $identityRecords) {
+        $key = "$($record.kind)-$($record.environment)"
+        Write-Step "Setting up identity: $($record.displayName) [$key]"
 
-    # Split identities: a dedicated Reader-only SP is the ONLY identity bound to
-    # the pull_request OIDC subject, so PR-triggered plans can read but never
-    # mutate Azure. The Contributor SP keeps main-branch and environment subjects.
-    Write-Step "Setting up: plan (Reader-only PR plan identity)"
-    $sps['plan'] = New-LzServicePrincipal -Layer 'plan' -Environment 'ci' -SubscriptionId $SubscriptionId -State $State
+        $principal = New-LzIdentityPrincipal -DisplayName $record.displayName
 
-    # Create federated credentials for each layer
-    foreach ($layer in @('main', 'dev', 'prod')) {
-        foreach ($env in $State['environments']) {
-            $key = "$layer-$env"
-            $sp = $sps[$key]
-
-            Write-Step "Creating federated credentials for: $key"
-
-            switch ($layer) {
-                'main' {
-                    # Contributor SP: bound to main-branch pushes (terraform-apply.yml)
-                    # and to the deployment environments (dev/prod/hub). It is
-                    # deliberately NOT bound to the pull_request subject — PR-triggered
-                    # plans authenticate as the Reader-only 'plan' SP instead.
-                    Add-OidcFederatedCredential -AppId $sp.appId `
-                        -Name "github-main-branch" `
-                        -Subject "repo:$GithubOwner/$RepoName`:ref:refs/heads/main"
-
-                    foreach ($envName in @('dev', 'prod', 'hub')) {
-                        Add-OidcFederatedCredential -AppId $sp.appId `
-                            -Name "github-environment-$envName" `
-                            -Subject "repo:$GithubOwner/$RepoName`:environment:$envName"
-                    }
-                }
-                'dev' {
-                    # Dev runs on environment:dev
-                    Add-OidcFederatedCredential -AppId $sp.appId `
-                        -Name "github-environment-dev" `
-                        -Subject "repo:$GithubOwner/$RepoName`:environment:dev"
-                }
-                'prod' {
-                    # Prod runs on environment:prod and environment:hub (approval gate)
-                    Add-OidcFederatedCredential -AppId $sp.appId `
-                        -Name "github-environment-prod" `
-                        -Subject "repo:$GithubOwner/$RepoName`:environment:prod"
-
-                    Add-OidcFederatedCredential -AppId $sp.appId `
-                        -Name "github-environment-hub" `
-                        -Subject "repo:$GithubOwner/$RepoName`:environment:hub"
-                }
+        # Role assignments come in two record shapes (mirrors the broker's
+        # Set-LzIdentity): minimal records carry explicit roleAssignments
+        # (role+scope pairs, union across environments — possibly including
+        # the ABAC-constrained sandbox spec with condition/conditionVersion);
+        # per-environment records carry roles at one scope plus optional
+        # stateRoleAssignments and optional delegatedRoleAssignments (the
+        # broker's constrained sandbox grant).
+        $assignmentSpecs = @()
+        if ($record.PSObject.Properties['roleAssignments']) {
+            $assignmentSpecs += @($record.roleAssignments)
+        } else {
+            foreach ($role in @($record.roles)) {
+                $assignmentSpecs += [pscustomobject]@{ role = $role; scope = $record.scope }
+            }
+            if ($record.PSObject.Properties['stateRoleAssignments']) {
+                $assignmentSpecs += @($record.stateRoleAssignments)
             }
         }
+        if ($record.PSObject.Properties['delegatedRoleAssignments']) {
+            $assignmentSpecs += @($record.delegatedRoleAssignments)
+        }
+        foreach ($spec in $assignmentSpecs) {
+            # A spec-supplied ABAC condition MUST survive execution — dropping
+            # it would create the sandbox RBAC Administrator grant
+            # UNCONDITIONED, exactly what this migration forbids.
+            $specCondition = ''
+            $specConditionVersion = '2.0'
+            if ($spec.PSObject.Properties['condition'] -and $spec.condition) {
+                $specCondition = $spec.condition
+                if ($spec.PSObject.Properties['conditionVersion'] -and $spec.conditionVersion) {
+                    $specConditionVersion = $spec.conditionVersion
+                }
+            }
+            Set-LzScopedRoleAssignment `
+                -SpObjId $principal.spObjId `
+                -Role $spec.role `
+                -Scope $spec.scope `
+                -DisplayName $record.displayName `
+                -Condition $specCondition `
+                -ConditionVersion $specConditionVersion
+        }
+
+        # One federated credential per subject, broker naming convention:
+        # github-<kind>-<environment>. A minimal-model apply record has a
+        # subject LIST (one environment:<name> per environment).
+        $subjects = @($record.subject)
+        foreach ($subject in $subjects) {
+            $credentialName = if ($subject -match ':environment:(?<environmentName>[^:]+)$') {
+                "github-$($record.kind)-$($Matches['environmentName'])"
+            } else {
+                "github-$($record.kind)-$($record.environment)"
+            }
+            Add-OidcFederatedCredential -AppId $principal.appId -Name $credentialName -Subject $subject
+        }
+
+        $identities[$key] = @{
+            appId           = $principal.appId
+            spObjId         = $principal.spObjId
+            displayName     = $record.displayName
+            kind            = $record.kind
+            environment     = $record.environment
+            subjects        = @($subjects)
+            roleAssignments = @($assignmentSpecs | ForEach-Object {
+                $conditionNote = if ($_.PSObject.Properties['condition'] -and $_.condition) { ' (ABAC-constrained)' } else { '' }
+                "$($_.role)$conditionNote @ $($_.scope)"
+            })
+        }
     }
 
-    # Reader-only plan SP: the ONLY identity holding the pull_request subject.
-    Write-Step "Creating federated credential for: plan (pull_request)"
-    Add-OidcFederatedCredential -AppId $sps['plan'].appId `
-        -Name "github-pull-request" `
-        -Subject "repo:$GithubOwner/$RepoName`:pull_request"
+    $publishedPlan = Resolve-PublishedIdentity -Identities $identities -Kind 'plan'
+    $publishedApply = Resolve-PublishedIdentity -Identities $identities -Kind 'apply'
+    if ($null -eq $publishedPlan -or $null -eq $publishedApply) {
+        throw "Identity plan produced no plan/apply pair — cannot continue (records: $($identities.Keys -join ', '))"
+    }
+
+    # Contract #2, extended for this repo's workflows:
+    #  - plan identity: pull_request (exclusively) AND ref:refs/heads/main —
+    #    the push-triggered READ-ONLY jobs (010 init/validate, the apply
+    #    workflow's RBAC gate) authenticate on the branch subject and must
+    #    never carry write RBAC.
+    #  - apply identity: environment:<name> subjects ONLY — plus the 'hub'
+    #    approval-gate environment terraform-apply.yml maps platform layers to.
+    Write-Step "Binding main-branch (read-only) subject to plan identity: $($publishedPlan['displayName'])"
+    Add-OidcFederatedCredential -AppId $publishedPlan['appId'] `
+        -Name 'github-plan-main-branch' `
+        -Subject "repo:$GithubOwner/$RepoName`:ref:refs/heads/main"
+    $publishedPlan['subjects'] = @($publishedPlan['subjects']) + "repo:$GithubOwner/$RepoName`:ref:refs/heads/main"
+
+    # Hub gate binding. terraform-apply.yml maps the PLATFORM layers (global,
+    # platform-connectivity, platform-management) to environment:hub, and
+    # those layers need the MG-root pair (Management Group Contributor +
+    # Resource Policy Contributor). Minimal model: the single apply identity
+    # carries the pair, so hub binds to it. Per-environment model: the pair
+    # lives on the bootstrap-environment apply identity, so hub binds to THAT
+    # identity and Set-GitHubSecrets env-scopes AZURE_CLIENT_ID to it on the
+    # hub environment. Binding hub to apply-prod would AuthorizationFailed on
+    # MG/policy operations; duplicating the MG-root pair onto a workload
+    # identity would violate minimal-by-default. Subjects stay coherent:
+    # hub (platform plane) -> platform-plane identity.
+    $hubIdentity = if ($identities.ContainsKey('apply-bootstrap')) {
+        $identities['apply-bootstrap']
+    } else {
+        $publishedApply
+    }
+    Write-Step "Binding hub approval-gate subject to: $($hubIdentity['displayName'])"
+    Add-OidcFederatedCredential -AppId $hubIdentity['appId'] `
+        -Name 'github-apply-hub' `
+        -Subject "repo:$GithubOwner/$RepoName`:environment:hub"
+    $hubIdentity['subjects'] = @($hubIdentity['subjects']) + "repo:$GithubOwner/$RepoName`:environment:hub"
 
     # platform-management writes a Contributor assignment into the sandbox
     # subscription (sandbox-cleanup automation), which needs
-    # Microsoft.Authorization/roleAssignments/write there. Grant the deploying
-    # main-layer SP (published as AZURE_CLIENT_ID) RBAC Administrator scoped to
-    # the sandbox subscription only — never Owner/UAA, and never in the
-    # management subscription. The key is per selected environment: prefer
-    # main-prod, fall back to main-dev (Dev-only deployments no longer create
-    # a main-prod SP) — the SAME resolution Set-GitHubSecrets uses, so the
-    # grant lands on the identity the workflows actually authenticate as.
+    # Microsoft.Authorization/roleAssignments/write there. platform-management
+    # applies under environment:hub, so the grant goes to the HUB-BOUND
+    # identity (the shared apply identity in minimal mode; apply-bootstrap in
+    # per-environment mode) — RBAC Administrator scoped to the sandbox
+    # subscription only, CONSTRAINED by an ABAC delegation condition: it may
+    # only write/delete role assignments for the Contributor role and only to
+    # service principals. Never Owner/UAA, never unconditioned, never in the
+    # management subscription.
     if (-not [string]::IsNullOrWhiteSpace($SandboxSubscriptionId)) {
-        $mainSpKey = if ($sps.ContainsKey('main-prod')) { 'main-prod' } else { 'main-dev' }
-        Write-Step "Granting sandbox-subscription RBAC Administrator to $mainSpKey SP"
-        $mainObjId = az ad sp show --id $sps[$mainSpKey].appId --query id -o tsv 2>$null
-        Assert-LastExitCode "az ad sp show --id $($sps[$mainSpKey].appId)"
-
-        $existingSandboxGrant = az role assignment list `
-            --assignee-object-id $mainObjId `
-            --role "Role Based Access Control Administrator" `
-            --scope "/subscriptions/$SandboxSubscriptionId" `
-            --query "[0].id" -o tsv 2>$null
-        Assert-LastExitCode "az role assignment list (sandbox RBAC grant)"
-
-        if ([string]::IsNullOrWhiteSpace($existingSandboxGrant)) {
-            az role assignment create `
-                --role "Role Based Access Control Administrator" `
-                --assignee-object-id $mainObjId `
-                --assignee-principal-type ServicePrincipal `
-                --scope "/subscriptions/$SandboxSubscriptionId" `
-                --output none 2>$null
-            Assert-LastExitCode "az role assignment create (sandbox RBAC grant)"
-            Write-OK "Granted RBAC Administrator on sandbox subscription"
-        } else {
-            Write-OK "Sandbox RBAC Administrator grant already present"
-        }
+        Write-Step "Granting constrained sandbox RBAC Administrator to $($hubIdentity['displayName'])"
+        $contributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'  # Contributor built-in role
+        # Two expressions are required because the attribute source differs
+        # per action: Request for roleAssignments/write, Resource for
+        # roleAssignments/delete (Microsoft Learn: delegate-role-assignments-examples).
+        $sandboxCondition = (
+            "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR " +
+            "(@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$contributorRoleId} AND " +
+            "@Request[Microsoft.Authorization/roleAssignments:PrincipalType] ForAnyOfAnyValues:StringEqualsIgnoreCase {'ServicePrincipal'})) AND " +
+            "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'})) OR " +
+            "(@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$contributorRoleId} AND " +
+            "@Resource[Microsoft.Authorization/roleAssignments:PrincipalType] ForAnyOfAnyValues:StringEqualsIgnoreCase {'ServicePrincipal'}))"
+        )
+        Set-LzScopedRoleAssignment `
+            -SpObjId $hubIdentity['spObjId'] `
+            -Role 'Role Based Access Control Administrator' `
+            -Scope "/subscriptions/$SandboxSubscriptionId" `
+            -DisplayName $hubIdentity['displayName'] `
+            -Condition $sandboxCondition
+        $hubIdentity['roleAssignments'] = @($hubIdentity['roleAssignments']) +
+            "Role Based Access Control Administrator (ABAC: Contributor-to-ServicePrincipal only) @ /subscriptions/$SandboxSubscriptionId"
     } elseif ($SandboxRbacSkipRequested) {
-        Write-Warn "Sandbox RBAC grant deliberately skipped (-SkipSandboxRbac): platform-management's sandbox-cleanup role assignment will fail (AuthorizationFailed) until the deploying SP is granted RBAC Administrator in the sandbox subscription"
+        Write-Warn "Sandbox RBAC grant deliberately skipped (-SkipSandboxRbac): platform-management's sandbox-cleanup role assignment will fail (AuthorizationFailed) until the apply identity is granted constrained RBAC Administrator in the sandbox subscription"
     } else {
-        Write-Warn "No -SandboxSubscriptionId supplied: platform-management's sandbox-cleanup role assignment will fail (AuthorizationFailed) until the deploying SP is granted RBAC Administrator in the sandbox subscription"
+        Write-Warn "No -SandboxSubscriptionId supplied: platform-management's sandbox-cleanup role assignment will fail (AuthorizationFailed) until the apply identity is granted constrained RBAC Administrator in the sandbox subscription"
     }
 
-    Write-OK "Azure OIDC setup complete"
-    $State['azure_sps'] = $sps
+    Write-OK "Azure OIDC setup complete ($identityModel model, $($identityRecords.Count) identities)"
+    $State['azure_identities'] = $identities
+    $State['identity_model'] = $identityModel
+    $State['plan_environments'] = @($identityPlan.environments)
     Save-BootloaderState $State
 
-    return $sps
+    return $identities
 }
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -987,24 +1307,30 @@ function Set-GitHubSecrets {
         [hashtable]$State,
         [string]$GithubOwner,
         [string]$RepoName,
-        [hashtable]$ServicePrincipals
+        [hashtable]$Identities
     )
 
     Write-Section "5" "GitHub Secrets & Variables Configuration"
 
     $repo = "$GithubOwner/$RepoName"
 
-    # Repo-level secrets (used by main branch jobs). The main-layer SP is
-    # keyed per selected environment: prefer main-prod, fall back to main-dev
-    # (Dev-only deployments no longer create a main-prod SP).
-    $mainSpKey = if ($ServicePrincipals.ContainsKey('main-prod')) { 'main-prod' } else { 'main-dev' }
-    $mainSp = $ServicePrincipals[$mainSpKey]
-    Write-Step "Setting repo-level secrets (used by main branch; deploying SP: $mainSpKey)..."
+    # Compat shim: this repo's workflows keep their secret names unmodified —
+    # AZURE_CLIENT_ID is the apply identity (environment-subject deploys),
+    # AZURE_PLAN_CLIENT_ID is the read-only plan identity (pull_request and
+    # main-branch subjects). Resolution: shared (minimal model), else the
+    # prefer-prod-else-dev fallback (per-environment model).
+    $applyIdentity = Resolve-PublishedIdentity -Identities $Identities -Kind 'apply'
+    $planIdentity = Resolve-PublishedIdentity -Identities $Identities -Kind 'plan'
+    if ($null -eq $applyIdentity -or $null -eq $planIdentity) {
+        throw "Cannot publish GitHub secrets: identity records are incomplete (have: $($Identities.Keys -join ', '))"
+    }
+    Write-Step "Setting repo-level secrets (apply: $($applyIdentity['displayName']); plan: $($planIdentity['displayName']))..."
 
     foreach ($secret in @(
         @{ Name = 'AZURE_TENANT_ID';       Value = $State['tenant_id'] },
         @{ Name = 'AZURE_SUBSCRIPTION_ID'; Value = $State['subscription_id'] },
-        @{ Name = 'AZURE_CLIENT_ID';       Value = $mainSp.appId }
+        @{ Name = 'AZURE_CLIENT_ID';       Value = $applyIdentity['appId'] },
+        @{ Name = 'AZURE_PLAN_CLIENT_ID';  Value = $planIdentity['appId'] }
     )) {
         Write-Step "Setting secret: $($secret.Name)"
         $secret.Value | gh secret set $secret.Name --repo $repo 2>&1 | Out-Null
@@ -1015,27 +1341,64 @@ function Set-GitHubSecrets {
         }
     }
 
-    # Reader-only plan SP client id, for PR-triggered workflows (pull_request
-    # OIDC subject is bound only to this identity).
-    if ($ServicePrincipals.ContainsKey('plan')) {
-        Write-Step "Setting secret: AZURE_PLAN_CLIENT_ID (Reader-only plan SP)"
-        $ServicePrincipals['plan'].appId | gh secret set 'AZURE_PLAN_CLIENT_ID' --repo $repo 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Write-OK "Secret set: AZURE_PLAN_CLIENT_ID"
-        } else {
-            Write-Warn "Could not set secret AZURE_PLAN_CLIENT_ID via CLI"
-        }
+    # Environment-scoped secrets. GitHub resolves environment secrets OVER
+    # repo secrets, so a stale env-scoped AZURE_CLIENT_ID (the matrix-era
+    # script set one on 'prod' = sp-terraform-prod-prod-*) would silently keep
+    # deployments authenticating as the legacy over-privileged SP — and break
+    # with AADSTS700016 the moment that app is deleted.
+    $environmentScanList = @($State['environments'])
+    if ($State.ContainsKey('plan_environments')) {
+        $environmentScanList += @($State['plan_environments'])
     }
+    $environmentScanList = @($environmentScanList + 'hub' | Select-Object -Unique)
 
-    # Environment-scoped secrets (override repo-level for specific environments)
-    foreach ($env in $State['environments']) {
-        if ($env -ne 'prod') { continue }  # Only prod needs environment secrets for now
+    if ($State.ContainsKey('identity_model') -and $State['identity_model'] -eq 'per-environment') {
+        # Per-environment model: each environment's jobs authenticate as their
+        # own apply identity via an env-scoped override (this also overwrites
+        # any stale matrix-era value).
+        foreach ($env in $State['environments']) {
+            if (-not $Identities.ContainsKey("apply-$env")) { continue }
 
-        $sp = $ServicePrincipals["prod-$env"]
-        Write-Step "Setting environment-scoped secrets for: $env"
+            Write-Step "Setting environment-scoped secret for: $env"
+            # The environment must exist before a secret can scope to it
+            # (phase 6 re-PUTs it later with the protection payload).
+            gh api -X PUT "repos/$repo/environments/$env" 2>$null | Out-Null
+            Assert-LastExitCode "gh api PUT repos/$repo/environments/$env (pre-create for env secret)"
+            $Identities["apply-$env"]['appId'] | gh secret set "AZURE_CLIENT_ID" --repo $repo --env $env 2>&1 | Out-Null
+            Write-OK "Set env secret: AZURE_CLIENT_ID (env:$env = $($Identities["apply-$env"]['displayName']))"
+        }
 
-        $sp.appId | gh secret set "AZURE_CLIENT_ID" --repo $repo --env $env 2>&1 | Out-Null
-        Write-OK "Set env secret: AZURE_CLIENT_ID (env:$env)"
+        # hub gates the platform layers; its jobs must authenticate as the
+        # hub-bound identity that carries the MG-root pair (apply-bootstrap —
+        # the same identity Setup-Azure-OIDC bound the environment:hub
+        # subject to). The repo-level secret (apply-prod) must not leak into
+        # hub jobs.
+        if ($Identities.ContainsKey('apply-bootstrap')) {
+            Write-Step "Setting environment-scoped secret for: hub (platform plane)"
+            gh api -X PUT "repos/$repo/environments/hub" 2>$null | Out-Null
+            Assert-LastExitCode "gh api PUT repos/$repo/environments/hub (pre-create for env secret)"
+            $Identities['apply-bootstrap']['appId'] | gh secret set "AZURE_CLIENT_ID" --repo $repo --env hub 2>&1 | Out-Null
+            Write-OK "Set env secret: AZURE_CLIENT_ID (env:hub = $($Identities['apply-bootstrap']['displayName']))"
+        }
+    } else {
+        # Minimal model: the repo-level secret is the SINGLE source of truth —
+        # delete any surviving env-scoped AZURE_CLIENT_ID override so a
+        # migrated repo cannot keep deploying as a legacy matrix SP.
+        $removedEnvSecrets = @()
+        foreach ($envName in $environmentScanList) {
+            gh api "repos/$repo/environments/$envName/secrets/AZURE_CLIENT_ID" 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { continue }  # environment or secret absent
+
+            Write-Warn "STALE environment-scoped AZURE_CLIENT_ID found on '$envName' — it overrides the repo-level secret and points at a legacy identity"
+            gh api -X DELETE "repos/$repo/environments/$envName/secrets/AZURE_CLIENT_ID" 2>$null | Out-Null
+            Assert-LastExitCode "gh api DELETE repos/$repo/environments/$envName/secrets/AZURE_CLIENT_ID"
+            Write-OK "Deleted env-scoped AZURE_CLIENT_ID (env:$envName) — repo-level secret ($($applyIdentity['displayName'])) is now the single source"
+            $removedEnvSecrets += $envName
+        }
+        if ($removedEnvSecrets.Count -gt 0) {
+            $State['removed_env_secrets'] = @($removedEnvSecrets)
+            Save-BootloaderState $State
+        }
     }
 
     # GitHub Variables. TERRAFORM_CLOUD_ENABLED follows the backend choice:
@@ -1126,7 +1489,17 @@ function Setup-GitHub-Environments {
         }
     } | ConvertTo-Json -Depth 4
 
-    foreach ($env in $State['environments']) {
+    # Every environment the identity plan bound an apply subject to needs a
+    # matching GitHub environment, or that federated credential can never be
+    # presented. Union of the selected environments and the plan's
+    # (bootstrap/platform environments included when a wizard config drives
+    # the plan).
+    $environmentNames = @($State['environments'])
+    if ($State.ContainsKey('plan_environments')) {
+        $environmentNames = @($environmentNames + @($State['plan_environments']) | Select-Object -Unique)
+    }
+
+    foreach ($env in $environmentNames) {
         Write-Step "Ensuring environment: $env"
 
         # Create/update environment with protection settings (idempotent)
@@ -1257,19 +1630,206 @@ function Generate-BootstrapReport {
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $reportPath = Join-Path $ReportDir "$timestamp-bootstrap-report.md"
 
-    # Precompute dynamic sections: the SP inventory follows the selected
-    # environments (dev-only no longer implies *-prod keys), and the backend
-    # section follows the backend_type decision.
+    # Precompute dynamic sections: the identity inventory follows the broker
+    # plan (minimal or per-environment), and the backend section follows the
+    # backend_type decision.
     $spRows = ''
-    if ($State.ContainsKey('azure_sps') -and $State['azure_sps'].Count -gt 0) {
-        foreach ($spKey in ($State['azure_sps'].Keys | Sort-Object)) {
-            $spNote = if ($spKey -eq 'plan') { 'plan (Reader-only, pull_request)' } else { $spKey }
-            $spRows += "| $spNote | $($State['azure_sps'][$spKey]['appId']) | ✓ Created |`n"
+    $roleRows = ''
+    if ($State.ContainsKey('azure_identities') -and $State['azure_identities'].Count -gt 0) {
+        foreach ($idKey in ($State['azure_identities'].Keys | Sort-Object)) {
+            $identityRecord = $State['azure_identities'][$idKey]
+            $subjectList = (@($identityRecord['subjects']) -join '<br>')
+            $spRows += "| $($identityRecord['displayName']) | $($identityRecord['kind']) | $($identityRecord['appId']) | $subjectList |`n"
+            foreach ($roleEntry in @($identityRecord['roleAssignments'])) {
+                $roleRows += "| $($identityRecord['displayName']) | $roleEntry |`n"
+            }
         }
     } else {
-        $spRows = "| (none — Azure OIDC setup was skipped) | — | — |`n"
+        $spRows = "| (none — Azure OIDC setup was skipped) | — | — | — |`n"
+        $roleRows = "| — | — |`n"
     }
     $spRows = $spRows.TrimEnd("`n")
+    $roleRows = $roleRows.TrimEnd("`n")
+
+    # Legacy-matrix estate remediation. Evidence comes from the Entra scan
+    # (legacy_estate, recorded during phase 4) or, failing that, from an old
+    # state file's azure_sps records. Commands are OPERATOR-RUN ONLY — this
+    # script never deletes identities or role assignments.
+    $legacyEvidence = @{}
+    if ($State.ContainsKey('legacy_estate') -and $State['legacy_estate'].Count -gt 0) {
+        $legacyEvidence = $State['legacy_estate']
+    } elseif ($State.ContainsKey('azure_sps')) {
+        foreach ($legacyKey in $State['azure_sps'].Keys) {
+            $legacyRecord = $State['azure_sps'][$legacyKey]
+            if ($legacyRecord.ContainsKey('displayName') -and $legacyRecord.ContainsKey('appId')) {
+                $legacyEvidence[$legacyRecord['displayName']] = $legacyRecord['appId']
+            }
+        }
+    }
+
+    $remediationSection = ''
+    if ($legacyEvidence.Count -gt 0) {
+        $prefix = $State['org_prefix']
+        $legacySubscription = $State['subscription_id'] ?? '<subscription-id>'
+        $legacyMgRoot = $State['mg_root_id'] ?? '<mg-root-id>'
+        $sandboxSubForReport = $State['sandbox_subscription_id'] ?? ''
+
+        # Cutover target: the apply identity this run published (if phase 4 ran).
+        $newApplyNote = 'the new apply identity (re-run this script to create and publish it)'
+        if ($State.ContainsKey('azure_identities') -and $State['azure_identities'].Count -gt 0) {
+            $publishedApplyRecord = Resolve-PublishedIdentity -Identities $State['azure_identities'] -Kind 'apply'
+            if ($null -ne $publishedApplyRecord) {
+                $newApplyNote = "``$($publishedApplyRecord['displayName'])`` (appId ``$($publishedApplyRecord['appId'])``)"
+            }
+        }
+        $removedSecretsNote = if ($State.ContainsKey('removed_env_secrets') -and @($State['removed_env_secrets']).Count -gt 0) {
+            "This run already deleted stale environment-scoped AZURE_CLIENT_ID overrides on: $(@($State['removed_env_secrets']) -join ', ')."
+        } else {
+            "Also verify no environment-scoped AZURE_CLIENT_ID override survives (Settings → Environments → <env> → Secrets) — environment secrets override repo secrets."
+        }
+
+        # Dead-weight apps. CAUTION: dev-only estates published
+        # sp-terraform-main-dev-* AS the live AZURE_CLIENT_ID, and secret
+        # values cannot be read back via API — deletion is gated on the
+        # pre-flight verification below.
+        $deadNames = @(
+            "sp-terraform-dev-dev-$prefix",
+            "sp-terraform-dev-prod-$prefix",
+            "sp-terraform-prod-dev-$prefix",
+            "sp-terraform-main-dev-$prefix"
+        )
+        $deadCommands = ''
+        foreach ($deadName in $deadNames) {
+            if ($legacyEvidence.ContainsKey($deadName)) {
+                $caution = if ($deadName -eq "sp-terraform-main-dev-$prefix") {
+                    ' — on dev-only estates this WAS the live AZURE_CLIENT_ID; pre-flight check is MANDATORY'
+                } else { '' }
+                $deadCommands += "az ad app delete --id $($legacyEvidence[$deadName])  # $deadName$caution`n"
+            }
+        }
+        if (-not $deadCommands) { $deadCommands = "# (none of the four dead-weight apps were found)`n" }
+
+        # RBAC Administrator removals:
+        #  - legacy dev-*/prod-* layer SPs: unconditioned grant at the legacy
+        #    deployment subscription;
+        #  - legacy main-* SPs: the matrix-era sandbox grant was UNCONDITIONED
+        #    RBAC Administrator at the sandbox subscription — the highest
+        #    residual privilege in the estate.
+        $rbacAdminCommands = ''
+        foreach ($legacyName in ($legacyEvidence.Keys | Sort-Object)) {
+            if ($legacyName -match "^sp-terraform-(dev|prod)-") {
+                $rbacAdminCommands += "az role assignment delete --assignee $($legacyEvidence[$legacyName]) --role `"Role Based Access Control Administrator`" --scope /subscriptions/$legacySubscription  # $legacyName`n"
+            }
+        }
+        foreach ($legacyName in ($legacyEvidence.Keys | Sort-Object)) {
+            if ($legacyName -match "^sp-terraform-main-") {
+                $legacyAppId = $legacyEvidence[$legacyName]
+                if (-not [string]::IsNullOrWhiteSpace($sandboxSubForReport)) {
+                    $rbacAdminCommands += "az role assignment delete --assignee $legacyAppId --role `"Role Based Access Control Administrator`" --scope /subscriptions/$sandboxSubForReport  # $legacyName (UNCONDITIONED sandbox grant)`n"
+                } else {
+                    $rbacAdminCommands += "az role assignment list --assignee $legacyAppId --role `"Role Based Access Control Administrator`" --all -o table  # $legacyName`: locate the unconditioned sandbox-subscription grant, then delete it with: az role assignment delete --assignee $legacyAppId --role `"Role Based Access Control Administrator`" --scope /subscriptions/<sandbox-subscription-id>`n"
+                }
+            }
+        }
+        if (-not $rbacAdminCommands) { $rbacAdminCommands = "# (no legacy RBAC Administrator grants found)`n" }
+
+        # Retirement of the remaining (wired) legacy identities. The legacy
+        # main SP keeps ref:refs/heads/main + environment:* subjects WITH
+        # Contributor — a write-capable identity on a branch subject, exactly
+        # the contract-#2 violation this migration eliminates. It must not
+        # survive cutover.
+        $retireCommands = ''
+        foreach ($legacyName in ($legacyEvidence.Keys | Sort-Object)) {
+            if ($legacyName -in $deadNames) { continue }
+            $legacyAppId = $legacyEvidence[$legacyName]
+            $retireCommands += "az ad app federated-credential list --id $legacyAppId --query `"[].{name:name,subject:subject}`" -o table  # $legacyName`: inspect remaining OIDC subjects`n"
+            if ($legacyName -match "^sp-terraform-main-") {
+                $retireCommands += "az ad app federated-credential delete --id $legacyAppId --federated-credential-id github-main-branch  # $legacyName`: remove the write-capable BRANCH subject first`n"
+                foreach ($legacyCredEnv in @('dev', 'prod', 'hub')) {
+                    $retireCommands += "az ad app federated-credential delete --id $legacyAppId --federated-credential-id github-environment-$legacyCredEnv  # $legacyName`n"
+                }
+            }
+            $retireCommands += "az ad app delete --id $legacyAppId  # $legacyName — retire once cutover is verified`n"
+        }
+        if (-not $retireCommands) { $retireCommands = "# (no remaining legacy identities to retire)`n" }
+
+        # MG-root grants for the legacy apply SP — legitimate ONLY on the
+        # explicit no-cutover path; the default motion is cutover + retirement.
+        $legacyMainName = if ($legacyEvidence.ContainsKey("sp-terraform-main-prod-$prefix")) {
+            "sp-terraform-main-prod-$prefix"
+        } elseif ($legacyEvidence.ContainsKey("sp-terraform-main-dev-$prefix")) {
+            "sp-terraform-main-dev-$prefix"
+        } else { '' }
+        $mgGrantCommands = if ($legacyMainName) {
+            "az role assignment create --assignee $($legacyEvidence[$legacyMainName]) --role `"Management Group Contributor`" --scope /providers/Microsoft.Management/managementGroups/$legacyMgRoot  # $legacyMainName`n" +
+            "az role assignment create --assignee $($legacyEvidence[$legacyMainName]) --role `"Resource Policy Contributor`" --scope /providers/Microsoft.Management/managementGroups/$legacyMgRoot  # $legacyMainName"
+        } else {
+            "# (no legacy main-layer SP found)"
+        }
+
+        $remediationSection = @"
+
+## Legacy Identity Estate — Remediation (OPERATOR-RUN, nothing executed)
+
+Legacy-matrix identities (sp-terraform-{layer}-{env}-$prefix) were detected.
+The commands below are **recommendations for the operator to review and run
+manually** — this script never deletes identities or role assignments.
+
+Detected legacy identities:
+
+$(($legacyEvidence.Keys | Sort-Object | ForEach-Object { "- $_ (``$($legacyEvidence[$_])``)" }) -join "`n")
+
+### 0. Pre-flight — verify the live secrets first
+
+GitHub secret values cannot be read back via the API. Before deleting ANY app
+below, confirm in **Settings → Secrets and variables → Actions** (repo AND
+every environment) that ``AZURE_CLIENT_ID`` no longer references a legacy
+appId. Expected value after cutover: $newApplyNote.
+$removedSecretsNote
+
+### 1. Delete the dead-weight apps (delete ONLY after the pre-flight check confirms AZURE_CLIENT_ID no longer references them)
+
+``````bash
+$($deadCommands.TrimEnd("`n"))
+``````
+
+### 2. Remove the legacy RBAC Administrator grants (highest residual privilege)
+
+Includes the matrix-era UNCONDITIONED sandbox-subscription grant on the legacy
+main SP — the new estate replaces it with an ABAC-constrained grant on the
+hub-bound apply identity.
+
+``````bash
+$($rbacAdminCommands.TrimEnd("`n"))
+``````
+
+### 3. After cutover: retire the remaining legacy identities
+
+The legacy main SP still holds ``ref:refs/heads/main`` and ``environment:*``
+subjects WITH Contributor — a write-capable identity on a branch subject
+(contract #2 violation). Remove its federated credentials, then delete the app.
+
+``````bash
+$($retireCommands.TrimEnd("`n"))
+``````
+
+### 4. ONLY if NOT cutting over: MG-root grants for the legacy apply SP
+
+Skip this section on the normal cutover path — the new apply identity already
+carries these grants. Run it only if you deliberately keep deploying as the
+legacy SP (and then still complete sections 1-2):
+
+``````bash
+$mgGrantCommands
+``````
+"@
+    }
+
+    # Stale env-scoped secret deletions performed by Set-GitHubSecrets
+    # (minimal-mode migration hygiene) are part of the record.
+    $staleSecretLine = if ($State.ContainsKey('removed_env_secrets') -and @($State['removed_env_secrets']).Count -gt 0) {
+        "`n- ⚠ Deleted stale environment-scoped AZURE_CLIENT_ID overrides (they shadowed the repo-level secret): $(@($State['removed_env_secrets']) -join ', ')"
+    } else { '' }
 
     $backendSection = if ($State.ContainsKey('backend_type') -and $State['backend_type'] -eq 'azurerm') {
         @"
@@ -1301,28 +1861,37 @@ function Generate-BootstrapReport {
 |-----|-------|
 | Organization Prefix | $($State['org_prefix']) |
 | Environments | $($State['environments'] -join ', ') |
+| CI/CD Identity Model | $($State['identity_model'] ?? 'minimal') |
+| Management Group Root | $($State['mg_root_id'] ?? 'not set') |
 | Region | $($State['region']) ($($State['region_code'])) |
 | Repository | $($State['github_owner'])/$($State['repo_name']) |
 | State Backend | $($State['backend_type'] ?? 'hcp-terraform') |
 | Azure Tenant | $($State['tenant_id']) |
 | Azure Subscription | $($State['subscription_id']) |
 
-## OIDC Service Principals
+## OIDC Identities (broker plan)
 
-| Identity (layer-environment) | App ID | Status |
-|------------------------------|--------|--------|
+| Identity | Kind | App ID | OIDC Subjects |
+|----------|------|--------|---------------|
 $spRows
+
+### Role Assignments
+
+| Identity | Role @ Scope |
+|----------|--------------|
+$roleRows
 
 ## GitHub Configuration
 
-- ✓ Repository Secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+- ✓ Repository Secrets: AZURE_CLIENT_ID (apply), AZURE_PLAN_CLIENT_ID (plan), AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 - ✓ GitHub Variables: Org prefix, region, TF version, etc.
-- ✓ Environments: $($State['environments'] -join ', '), hub
-- ✓ Federated Credentials: OIDC tokens scoped per layer/environment
+- ✓ Environments: $((@(@($State['environments']) + @($State['plan_environments'] ?? @()) + 'hub') | Select-Object -Unique) -join ', ')
+- ✓ Federated Credentials: one per OIDC subject (plan: pull_request + main branch; apply: environments only)$staleSecretLine
 
 ## State Backend
 
 $backendSection
+$remediationSection
 
 ## Next Steps (Workflow 010)
 
@@ -1342,11 +1911,12 @@ If you need to restart:
 
 ## Security Notes
 
-- All service principals use OIDC federated credentials (no secrets stored)
-- Least-privilege RBAC: Contributor for main; Contributor + Role Based Access Control Administrator (constrain with delegation conditions) for dev/prod; Reader-only for the plan SP
-- Contributor (main) SP scoped to main-branch pushes and dev/prod/hub environments (cannot deploy from other branches/forks)
-- pull_request OIDC subject bound ONLY to the Reader-only plan SP (PR plans cannot mutate Azure)
-- No Owner or User Access Administrator roles assigned to any service principal
+- All identities use OIDC federated credentials (no client secrets stored)
+- Plan identity: Reader at the management group root (+ Storage Blob Data Reader on the state account for azurerm) — read-only, can never mutate
+- Apply identity: Management Group Contributor + Resource Policy Contributor at the MG root (required by the global layer), Contributor per distinct subscription, Storage Blob Data Contributor on the state account (azurerm)
+- pull_request and main-branch (read-only) OIDC subjects bound ONLY to the plan identity; the apply identity holds environment:<name> subjects exclusively
+- RBAC Administrator appears nowhere except (when the sandbox is selected) on the apply identity, scoped to the sandbox subscription and constrained by an ABAC delegation condition (Contributor-to-ServicePrincipal role assignments only)
+- No Owner or User Access Administrator roles assigned to any identity
 - GitHub secrets are encrypted and never exposed in logs
 
 ## Support
@@ -1401,7 +1971,7 @@ function Create-BootstrapPR {
 
         git commit -m "chore: phase 0 bootstrap OIDC and GitHub setup
 
-- Created OIDC service principals (main/dev/prod)
+- Created OIDC identities from the broker plan (plan + apply)
 - Configured federated credentials (GitHub Actions OIDC)
 - Set GitHub secrets and variables
 - Configured GitHub environments
@@ -1539,15 +2109,20 @@ function Main {
 
         # Phase 5: GitHub secrets
         # Guard key presence explicitly — under StrictMode, indexing a missing
-        # key then calling .Count on $null would fail.
-        if ($state.ContainsKey('azure_sps') -and $state['azure_sps'].Count -gt 0) {
+        # key then calling .Count on $null would fail. A pre-upgrade state
+        # file carries only azure_sps (legacy matrix) — that never reaches
+        # here; it is routed to the remediation section of the report instead.
+        if ($state.ContainsKey('azure_identities') -and $state['azure_identities'].Count -gt 0) {
             Set-GitHubSecrets `
                 -State $state `
                 -GithubOwner $repoOwner `
                 -RepoName $repoName `
-                -ServicePrincipals $state['azure_sps']
+                -Identities $state['azure_identities']
 
             Mark-StepComplete $state "github-secrets"
+        } elseif ($state.ContainsKey('azure_sps')) {
+            Write-Warn "State file contains only legacy-matrix identities (azure_sps); GitHub secrets were NOT updated."
+            Write-Warn "Re-run phase 4 (type CREATE) to provision the minimal identity estate, then re-run."
         }
 
         # Phase 6: GitHub environments

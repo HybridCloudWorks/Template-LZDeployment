@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "1.0.0",
+  "generatedAt": "NORMALIZED",
+  "mode": "plan",
+  "repository": "contoso-platform/contoso_LZ_Deployment",
+  "tenantId": "11111111-2222-3333-4444-555555555555",
+  "environments": [
+    "bootstrap",
+    "connectivity",
+    "management",
+    "prod"
+  ],
+  "layers": [
+    "global",
+    "platform-connectivity",
+    "platform-management",
+    "workloads-prod"
+  ],
+  "identities": [
+    {
+      "environment": "bootstrap",
+      "kind": "plan",
+      "displayName": "sp-chg-bootstrap-plan",
+      "subject": "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+      "roles": [
+        "Reader"
+      ],
+      "scope": "/providers/Microsoft.Management/managementGroups/mg-contoso"
+    },
+    {
+      "environment": "bootstrap",
+      "kind": "apply",
+      "displayName": "sp-chg-bootstrap-apply",
+      "subject": "repo:contoso-platform/contoso_LZ_Deployment:environment:bootstrap",
+      "roles": [
+        "Management Group Contributor",
+        "Resource Policy Contributor"
+      ],
+      "scope": "/providers/Microsoft.Management/managementGroups/mg-contoso"
+    },
+    {
+      "environment": "connectivity",
+      "kind": "plan",
+      "displayName": "sp-chg-connectivity-plan",
+      "subject": "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+      "roles": [
+        "Reader"
+      ],
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000002"
+    },
+    {
+      "environment": "connectivity",
+      "kind": "apply",
+      "displayName": "sp-chg-connectivity-apply",
+      "subject": "repo:contoso-platform/contoso_LZ_Deployment:environment:connectivity",
+      "roles": "Contributor",
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000002"
+    },
+    {
+      "environment": "management",
+      "kind": "plan",
+      "displayName": "sp-chg-management-plan",
+      "subject": "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+      "roles": [
+        "Reader"
+      ],
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001"
+    },
+    {
+      "environment": "management",
+      "kind": "apply",
+      "displayName": "sp-chg-management-apply",
+      "subject": "repo:contoso-platform/contoso_LZ_Deployment:environment:management",
+      "roles": "Contributor",
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001"
+    },
+    {
+      "environment": "prod",
+      "kind": "plan",
+      "displayName": "sp-chg-prod-plan",
+      "subject": "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+      "roles": [
+        "Reader"
+      ],
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000003"
+    },
+    {
+      "environment": "prod",
+      "kind": "apply",
+      "displayName": "sp-chg-prod-apply",
+      "subject": "repo:contoso-platform/contoso_LZ_Deployment:environment:prod",
+      "roles": "Contributor",
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000003"
+    }
+  ],
+  "backend": "hcp-terraform"
+}

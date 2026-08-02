@@ -111,10 +111,19 @@ SHA-pinned and travel with the fork.
   "retained for compatibility" per README) — phases: (1) CLI validation
   (az ≥ 2.69.0, gh ≥ 2.67.0, git ≥ 2.43.0, terraform ≥ 1.9.0); (2.1–2.3)
   Azure / GitHub / Terraform Cloud authentication; (3) config gathering
-  (org prefix, environments, repo name); (4) OIDC — four app registrations +
-  SPs (`main`/`dev`/`prod` layers plus the **Reader-only `plan` SP** bound
-  exclusively to the `pull_request` subject), federated credentials per
-  layer/environment, and the `-SandboxSubscriptionId` RBAC-Administrator grant;
+  (org prefix, environments, repo name); (4) OIDC — **minimal identity
+  estate by default since 2026-08-02** (the old layers × environments matrix
+  is removed; the script consumes the broker's plan builder): one shared
+  read-only **plan** SP (Reader at MG root, subjects `pull_request` +
+  `ref:refs/heads/main`) and one shared **apply** SP (Management Group
+  Contributor + Resource Policy Contributor at MG root, Contributor per
+  distinct subscription, subjects `environment:*` only, one federated
+  credential per environment); `per-environment` is the explicit 2 × N
+  scale-out (`identity.cicdIdentityModel`); RBAC Administrator only on
+  sandbox selection, sandbox-subscription scope, ABAC-constrained; legacy
+  `sp-terraform-*` matrix estates are detected and routed to a report-only
+  remediation section (see
+  [docs/decisions/0002-minimal-identity-estate.md](docs/decisions/0002-minimal-identity-estate.md));
   (5) GitHub secrets (`AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
   `AZURE_CLIENT_ID`, `AZURE_PLAN_CLIENT_ID`) and variables; (6) environments
   `dev`/`prod`/`hub`, each with the bootstrapping operator as required reviewer
@@ -154,8 +163,13 @@ SHA-pinned and travel with the fork.
   against this repo. The real remediation is executing the Phase-2 bootstrap
   end-to-end (`Start-LandingZoneBootstrap.ps1` or the broker) in the
   **confirmed** engagement tenant; credential patching
-  (`scripts/Add-PlanFederatedCredential.ps1`, shipped this PR) has no
-  legitimate target until that estate exists.
+  (`scripts/Add-PlanFederatedCredential.ps1`) has no legitimate target until
+  that estate exists. *(Updated 2026-08-02: the packaged bootstrap run now
+  creates the **minimal** estate by default — 2 identities, one shared plan
+  and one shared apply, per
+  [docs/decisions/0002-minimal-identity-estate.md](docs/decisions/0002-minimal-identity-estate.md)
+  — superseding any earlier expectation of the 7-app legacy matrix with its
+  subscription-scope RBAC Administrator grants.)*
   **Open question / hard stop**: which tenant and subscription the three
   2026-05-29 secrets actually reference is unverifiable from a clone (secret
   values are unreadable). The engagement owner must confirm the intended
@@ -168,21 +182,23 @@ SHA-pinned and travel with the fork.
   on this item.
   The same failure will occur **per customer** if the bootstrap's phase 4 is
   skipped — the per-customer fix remains "do not skip phase 4".
-- [ ] **[BLOCKER] Privilege-split hazard: the plan-secret fallback in
+- [x] **[BLOCKER] Privilege-split hazard: the plan-secret fallback in
   `020-rbac-validation.yml`** *(found 2026-08-01 during the read-only live
   check above)* — the workflow's client-id expression
   (`github.event_name == 'pull_request' && secrets.AZURE_PLAN_CLIENT_ID ||
-  secrets.AZURE_CLIENT_ID`) falls back to `AZURE_CLIENT_ID` when
-  `AZURE_PLAN_CLIENT_ID` is unset. With `AZURE_PLAN_CLIENT_ID` confirmed
-  absent from the repo, every PR run authenticates as the
+  secrets.AZURE_CLIENT_ID`) fell back to `AZURE_CLIENT_ID` when
+  `AZURE_PLAN_CLIENT_ID` was unset, so a PR run would authenticate as the
   **Contributor-designated** client id — a contract-#2 violation
   ([.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md))
-  waiting to go live the moment the identity estate is created. When the
-  Phase-2 bootstrap runs, the `AZURE_PLAN_CLIENT_ID` secret MUST be added in
-  the **same change** that creates the identities. Follow-up (owner:
-  `github-actions-engineer`): harden the workflow to fail loudly when the
-  plan secret is missing on a `pull_request` trigger instead of silently
-  falling back.
+  waiting to go live the moment the identity estate was created.
+  *(Resolved in-repo 2026-08-02: the fallback expression is removed — both
+  `020-rbac-validation.yml` jobs, all three `010-terraform-init.yml` logins,
+  `terraform-apply.yml`'s read-only gate, and `azure-auth-test.yml` now
+  always authenticate as `AZURE_PLAN_CLIENT_ID`; a missing plan secret fails
+  the login outright instead of silently escalating. The operator
+  requirement stands and is folded into the first blocker above: the
+  `AZURE_PLAN_CLIENT_ID` secret must be added in the same change that
+  creates the identity estate, or every read-only job fails.)*
 - [ ] **[BLOCKER] Supply `-SandboxSubscriptionId` at bootstrap (or grant
   manually).** Without it, platform-management's sandbox-cleanup Contributor
   assignment fails `AuthorizationFailed` at apply. Blocks any engagement whose
@@ -235,9 +251,14 @@ SHA-pinned and travel with the fork.
   execution pending.)*
 
 **CRUD per engagement**
-- Created (client tenant): 4 app registrations + service principals, 8+
-  federated credentials, RBAC assignments (Contributor / Storage Blob Data
-  Contributor / RBAC Administrator / Reader / Storage Blob Data Reader).
+- Created (client tenant): 2 app registrations + service principals by
+  default (minimal model; `per-environment` scales to 2 × N), federated
+  credentials — plan: `pull_request` + `ref:refs/heads/main`; apply: one
+  `environment:<name>` per environment — and RBAC assignments (Reader @ MG
+  root; Management Group Contributor + Resource Policy Contributor @ MG root;
+  Contributor per distinct subscription; Storage Blob Data Reader/Contributor
+  on the state account for azurerm; ABAC-constrained RBAC Administrator on
+  the sandbox subscription only when sandbox is selected).
 - Created (fork): 4–5 secrets, 5–7 variables, 3 environments, optional
   bootstrap branch + PR. Created (clone): `.lz-bootloader-state.json`,
   `.reports/bootstrap/*`.
