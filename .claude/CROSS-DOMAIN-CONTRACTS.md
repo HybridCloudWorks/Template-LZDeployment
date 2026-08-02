@@ -105,6 +105,13 @@ The site's connectivity tfvars export emits commented operator placeholders for
 both. Do **not** "fix" this by adding schema keys or wizard fields; the omission
 is the contract.
 
+**Planned change (not yet in the tree)**: WP4 of the corpus↔live reconciliation
+retires the manual `log_analytics_workspace_id` paste in favour of a
+`count`-gated remote-state read in the generated connectivity layer. The wizard
+omission stays the contract either way. Amendment text and rationale:
+[docs/decisions/0003-management-baseline-promotion.md](../docs/decisions/0003-management-baseline-promotion.md).
+Do not apply that amendment here until the templates actually carry the read.
+
 ## 5. `spoke-network` provider alias
 
 `terraform/modules/spoke-network` declares
