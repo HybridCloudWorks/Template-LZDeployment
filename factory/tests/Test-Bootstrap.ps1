@@ -307,5 +307,86 @@ ok 'schema: an unknown cicdIdentityModel value is rejected' (
     -not (Test-Json -Json ($cBad | ConvertTo-Json -Depth 50) -SchemaFile $schemaPath -ErrorAction SilentlyContinue)
 )
 
+# ---------------------------------------------------------------------------
+# apply-path environment resolution (TODO.md Factory Bootstrap defect):
+# Invoke-LzBootstrap -Apply resolves a subscription for every plan.environments
+# entry (Set-LzGitHubEnvironment) and for every layer's environment
+# (AZURE_SUBSCRIPTION_IDS). 'bootstrap' is in every default wizard export's
+# platform plane and previously hit the fail-closed default throw, so every
+# broker apply against a default export failed after identity reconciliation.
+# These are dry exercises of the exact resolution calls the apply path makes,
+# run inside module scope because the helpers are deliberately not exported.
+# ---------------------------------------------------------------------------
+$module = Get-Module LZFactory.Bootstrap
+$resolveSubscription = {
+    param($Config, $Environment)
+    Get-LzEnvironmentSubscription -Config $Config -Environment $Environment
+}
+$resolveLayerEnvironment = {
+    param($Config, $Layer)
+    Get-LzLayerEnvironment -Config $Config -Layer $Layer
+}
+
+foreach ($model in @('minimal', 'per-environment')) {
+    $cfgResolve = Get-SampleConfig
+    $cfgResolve.identity | Add-Member -NotePropertyName cicdIdentityModel -NotePropertyValue $model
+    $planResolve = New-LzBootstrapPlan -Config $cfgResolve
+    $resolutionErrors = @()
+    # Set-LzGitHubEnvironment path: one resolution per GitHub environment.
+    foreach ($environment in @($planResolve.environments)) {
+        try { & $module $resolveSubscription $cfgResolve $environment | Out-Null }
+        catch { $resolutionErrors += "$environment -> $($_.Exception.Message)" }
+    }
+    # AZURE_SUBSCRIPTION_IDS path: one resolution per layer's environment.
+    foreach ($layer in @($planResolve.layers)) {
+        $layerEnvironment = & $module $resolveLayerEnvironment $cfgResolve $layer
+        try { & $module $resolveSubscription $cfgResolve $layerEnvironment | Out-Null }
+        catch { $resolutionErrors += "$layer ($layerEnvironment) -> $($_.Exception.Message)" }
+    }
+    ok "apply path resolves every default-export environment ($model model)" (
+        $resolutionErrors.Count -eq 0
+    ) ($resolutionErrors -join '; ')
+}
+
+# The chosen resolution rule: bootstrap anchors to the management subscription,
+# because the global layer maps to the bootstrap environment and its azurerm
+# provider is pinned to management_subscription_id.
+$cfgRule = Get-SampleConfig
+ok 'bootstrap environment anchors to the management subscription' (
+    (& $module $resolveSubscription $cfgRule 'bootstrap') -eq $cfgRule.azure.subscriptions.management
+)
+
+# Full schema coverage: every environment name the schema can emit
+# (unique(platform-enum + application-enum)) resolves without throwing,
+# including optional planes that fall back to the management subscription.
+$cfgFull = Get-SampleConfig
+$cfgFull.environments.platform = @('bootstrap', 'identity', 'connectivity', 'management', 'shared-services')
+$cfgFull.environments.application = @('sandbox', 'dev', 'test', 'uat', 'prod')
+$fullErrors = @()
+foreach ($model in @('minimal', 'per-environment')) {
+    $cfgModel = Get-SampleConfig
+    $cfgModel.environments.platform = $cfgFull.environments.platform
+    $cfgModel.environments.application = $cfgFull.environments.application
+    $cfgModel.identity | Add-Member -NotePropertyName cicdIdentityModel -NotePropertyValue $model
+    $planFull = New-LzBootstrapPlan -Config $cfgModel
+    foreach ($environment in @($planFull.environments)) {
+        try { & $module $resolveSubscription $cfgModel $environment | Out-Null }
+        catch { $fullErrors += "$model/$environment -> $($_.Exception.Message)" }
+    }
+}
+ok 'every schema-emittable environment resolves in both models' ($fullErrors.Count -eq 0) ($fullErrors -join '; ')
+ok 'optional planes fall back to the management subscription' (
+    (& $module $resolveSubscription $cfgFull 'identity') -eq $cfgFull.azure.subscriptions.management -and
+    (& $module $resolveSubscription $cfgFull 'shared-services') -eq $cfgFull.azure.subscriptions.management -and
+    (& $module $resolveSubscription $cfgFull 'dev') -eq $cfgFull.azure.subscriptions.management
+)
+
+# Fail-closed default is preserved: an environment name outside the schema set
+# must still throw rather than silently anchor somewhere unreviewed.
+$unknownThrew = $false
+try { & $module $resolveSubscription $cfgFull 'hub' | Out-Null }
+catch { $unknownThrew = $true }
+ok 'unknown environment still fails closed' $unknownThrew
+
 Write-Host "$pass passed, $fail failed"
 exit $(if ($fail) { 1 } else { 0 })

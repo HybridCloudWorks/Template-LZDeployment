@@ -34,7 +34,7 @@ You are the guardrail on what this landing zone costs and what it is allowed to 
 - `.github/workflows/terraform-policy-checks.yml` — the policy gate on PRs.
 - `terraform/modules/sandbox/` + `terraform/scripts/Cleanup-ExpiredSandboxResources.ps1`
   — the sandbox is time-bounded on purpose; expiry is a cost control, not a nuisance.
-- `scripts/Verify-CostAccuracy.ps1` — checks the numbers surfaced to users.
+- `scripts/utilities/Verify-CostAccuracy.ps1` — checks the numbers surfaced to users (standalone; nothing calls it automatically).
 - `dashboards/` — cost and operational dashboards.
 
 ## Rules

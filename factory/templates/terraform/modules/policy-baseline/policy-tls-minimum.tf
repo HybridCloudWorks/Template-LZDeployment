@@ -37,7 +37,7 @@ resource "azurerm_policy_definition" "enforce_storage_tls_12" {
       ]
     }
     then = {
-      effect = "Deny"
+      effect = "[parameters('effect')]"
     }
   })
 
@@ -55,10 +55,15 @@ resource "azurerm_policy_definition" "enforce_storage_tls_12" {
 }
 
 # Policy Definition: Enforce TLS 1.2 for App Services
+# Targets the sites/config sub-resource: minTlsVersion lives on
+# Microsoft.Web/sites/config, not on the site resource itself, so a policy
+# aimed at Microsoft.Web/sites never evaluates it.
+# Mode is "All" because sites/config is not a taggable resource type and
+# Indexed policies skip it entirely.
 resource "azurerm_policy_definition" "enforce_appservice_tls_12" {
   name         = "enforce-appservice-tls-12"
   policy_type  = "Custom"
-  mode         = "Indexed"
+  mode         = "All"
   display_name = "App Service should use TLS 1.2 or higher"
   description  = "Enforce TLS 1.2 minimum version for Azure App Service to ensure secure connections"
 
@@ -72,24 +77,27 @@ resource "azurerm_policy_definition" "enforce_appservice_tls_12" {
       allOf = [
         {
           field  = "type"
-          equals = "Microsoft.Web/sites"
+          equals = "Microsoft.Web/sites/config"
         },
         {
           anyOf = [
             {
-              field  = "Microsoft.Web/sites/siteConfig.minTlsVersion"
+              # Alias verified against Microsoft's built-in policy
+              # RequireLatestTls_WebApp_Audit.json, which evaluates this same
+              # field. "less" (not notEquals) so TLS 1.3 stays compliant.
+              field  = "Microsoft.Web/sites/config/minTlsVersion"
               exists = false
             },
             {
-              field     = "Microsoft.Web/sites/siteConfig.minTlsVersion"
-              notEquals = "1.2"
+              field = "Microsoft.Web/sites/config/minTlsVersion"
+              less  = "1.2"
             }
           ]
         }
       ]
     }
     then = {
-      effect = "Deny"
+      effect = "[parameters('effect')]"
     }
   })
 
@@ -107,10 +115,12 @@ resource "azurerm_policy_definition" "enforce_appservice_tls_12" {
 }
 
 # Policy Definition: Enforce TLS 1.2 for Function Apps
+# Same sites/config targeting and "All" mode rationale as the App Service
+# definition above.
 resource "azurerm_policy_definition" "enforce_functionapp_tls_12" {
   name         = "enforce-functionapp-tls-12"
   policy_type  = "Custom"
-  mode         = "Indexed"
+  mode         = "All"
   display_name = "Function Apps should use TLS 1.2 or higher"
   description  = "Enforce TLS 1.2 minimum version for Azure Function Apps to ensure secure connections"
 
@@ -124,7 +134,7 @@ resource "azurerm_policy_definition" "enforce_functionapp_tls_12" {
       allOf = [
         {
           field  = "type"
-          equals = "Microsoft.Web/sites"
+          equals = "Microsoft.Web/sites/config"
         },
         {
           field = "kind"
@@ -133,19 +143,22 @@ resource "azurerm_policy_definition" "enforce_functionapp_tls_12" {
         {
           anyOf = [
             {
-              field  = "Microsoft.Web/sites/siteConfig.minTlsVersion"
+              # Alias verified against Microsoft's built-in policy
+              # RequireLatestTls_WebApp_Audit.json, which evaluates this same
+              # field. "less" (not notEquals) so TLS 1.3 stays compliant.
+              field  = "Microsoft.Web/sites/config/minTlsVersion"
               exists = false
             },
             {
-              field     = "Microsoft.Web/sites/siteConfig.minTlsVersion"
-              notEquals = "1.2"
+              field = "Microsoft.Web/sites/config/minTlsVersion"
+              less  = "1.2"
             }
           ]
         }
       ]
     }
     then = {
-      effect = "Deny"
+      effect = "[parameters('effect')]"
     }
   })
 
@@ -197,7 +210,7 @@ resource "azurerm_policy_definition" "enforce_mysql_tls_12" {
       ]
     }
     then = {
-      effect = "Deny"
+      effect = "[parameters('effect')]"
     }
   })
 
@@ -249,7 +262,94 @@ resource "azurerm_policy_definition" "enforce_postgresql_tls_12" {
       ]
     }
     then = {
-      effect = "Deny"
+      effect = "[parameters('effect')]"
+    }
+  })
+
+  parameters = jsonencode({
+    effect = {
+      type = "String"
+      metadata = {
+        displayName = "Effect"
+        description = "Enable or disable the execution of the policy"
+      }
+      allowedValues = ["Audit", "Deny", "Disabled"]
+      defaultValue  = "Deny"
+    }
+  })
+}
+
+# Policy Definition: Enforce TLS 1.2 for API Management
+# APIM exposes no single minimumTlsVersion property: legacy protocol
+# enablement lives in the customProperties map, keys
+# Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls10/Tls11
+# (Learn: /azure/templates/microsoft.apimanagement/service, customProperties).
+# Azure Policy defines an alias only for the whole customProperties object —
+# there is no per-key alias — so, like Microsoft's Azure Landing Zones policy
+# Deny-APIM-TLS (Azure/Enterprise-Scale
+# policyDefinitions/Deny-APIM-TLS.json), the rule string-matches the
+# lower-cased object for either key set to true, in both "true" (string) and
+# true (bool) payload forms. indexof returns -1 when absent; a real match
+# inside the JSON object is always > 0.
+#
+# Hardening over upstream: the ALZ rule passes field() straight into
+# string(). customProperties is optional on APIM PUTs, and per the policy
+# docs a template-function error is an implicit DENY
+# (Learn: /azure/governance/policy/concepts/definition-structure-policy-rule,
+# "Avoiding template failures") — so an errored evaluation would block every
+# APIM create that omits customProperties. coalesce(field(...),
+# createObject()) substitutes an empty object when the property is absent:
+# string({}) is "{}", indexof returns -1, no condition matches, and the
+# request is allowed — absent properties fail open, exactly the secure
+# default those services carry. Both functions are in the policy rules'
+# supported ARM-function set (neither appears on the documented exclusion
+# list).
+# Mode is "All" to match the ALZ definition. Services created after
+# 2018-04-01 default these properties to false, so omitting them is
+# compliant; only explicit TLS 1.0/1.1 enablement is caught.
+resource "azurerm_policy_definition" "enforce_apim_tls_12" {
+  name         = "enforce-apim-tls-12"
+  policy_type  = "Custom"
+  mode         = "All"
+  display_name = "API Management should use TLS 1.2 or higher"
+  description  = "Enforce TLS 1.2 minimum version for Azure API Management by denying services that enable the legacy TLS 1.0/1.1 gateway protocols"
+
+  metadata = jsonencode({
+    category = "API Management"
+    version  = "1.0.0"
+  })
+
+  policy_rule = jsonencode({
+    if = {
+      allOf = [
+        {
+          field  = "type"
+          equals = "Microsoft.ApiManagement/service"
+        },
+        {
+          anyOf = [
+            {
+              value   = "[indexof(toLower(string(coalesce(field('Microsoft.ApiManagement/service/customProperties'), createObject()))), '\"microsoft.windowsazure.apimanagement.gateway.security.protocols.tls10\":\"true\"')]"
+              greater = 0
+            },
+            {
+              value   = "[indexof(toLower(string(coalesce(field('Microsoft.ApiManagement/service/customProperties'), createObject()))), '\"microsoft.windowsazure.apimanagement.gateway.security.protocols.tls10\":true')]"
+              greater = 0
+            },
+            {
+              value   = "[indexof(toLower(string(coalesce(field('Microsoft.ApiManagement/service/customProperties'), createObject()))), '\"microsoft.windowsazure.apimanagement.gateway.security.protocols.tls11\":\"true\"')]"
+              greater = 0
+            },
+            {
+              value   = "[indexof(toLower(string(coalesce(field('Microsoft.ApiManagement/service/customProperties'), createObject()))), '\"microsoft.windowsazure.apimanagement.gateway.security.protocols.tls11\":true')]"
+              greater = 0
+            }
+          ]
+        }
+      ]
+    }
+    then = {
+      effect = "[parameters('effect')]"
     }
   })
 
@@ -271,7 +371,7 @@ resource "azurerm_policy_set_definition" "tls_12_enforcement" {
   name         = "tls-12-enforcement-initiative"
   policy_type  = "Custom"
   display_name = "Enforce TLS 1.2 Across All Services"
-  description  = "Policy initiative to enforce TLS 1.2 minimum version across Storage, App Services, Function Apps, and Database services"
+  description  = "Policy initiative to enforce TLS 1.2 minimum version across Storage, App Services, Function Apps, API Management, and Database services"
 
   metadata = jsonencode({
     category = "Security"
@@ -317,6 +417,18 @@ resource "azurerm_policy_set_definition" "tls_12_enforcement" {
       effect = { value = "Deny" }
     })
   }
+
+  policy_definition_reference {
+    policy_definition_id = azurerm_policy_definition.enforce_apim_tls_12.id
+    reference_id         = "APIMTLS12"
+    parameter_values = jsonencode({
+      # Audit for the first release: this rule string-matches an object alias
+      # at root-MG scope with no tenant compliance data yet, so a misfire
+      # denies every APIM PUT tenant-wide — promote to Deny after an audit
+      # cycle shows zero false positives. The definition stays Deny-capable.
+      effect = { value = "Audit" }
+    })
+  }
 }
 
 # Policy Assignment: Apply to Root Management Group
@@ -334,27 +446,5 @@ resource "azurerm_management_group_policy_assignment" "tls_12_root" {
 
   non_compliance_message {
     content = "Resources must use TLS 1.2 or higher. TLS 1.0 and TLS 1.1 are deprecated and insecure."
-  }
-}
-
-# Outputs
-output "tls_policy_initiative_id" {
-  description = "ID of the TLS 1.2 enforcement policy initiative"
-  value       = azurerm_policy_set_definition.tls_12_enforcement.id
-}
-
-output "tls_policy_assignment_id" {
-  description = "ID of the TLS 1.2 policy assignment"
-  value       = azurerm_management_group_policy_assignment.tls_12_root.id
-}
-
-output "policy_definitions" {
-  description = "Map of all TLS 1.2 policy definitions"
-  value = {
-    storage_tls_12     = azurerm_policy_definition.enforce_storage_tls_12.id
-    appservice_tls_12  = azurerm_policy_definition.enforce_appservice_tls_12.id
-    functionapp_tls_12 = azurerm_policy_definition.enforce_functionapp_tls_12.id
-    mysql_tls_12       = azurerm_policy_definition.enforce_mysql_tls_12.id
-    postgresql_tls_12  = azurerm_policy_definition.enforce_postgresql_tls_12.id
   }
 }

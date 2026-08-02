@@ -35,6 +35,17 @@ This Terraform module enables **NSG Flow Logs** and **Traffic Analytics** for Az
 1. **High Traffic Alert** - Triggers when traffic exceeds threshold (default 100 GB)
 2. **Denied Traffic Spike Alert** - Potential attack or misconfiguration (default 1,000 denied flows)
 
+## Scope: Explicit NSG List — No Auto-Discovery
+
+This module does **not** discover NSGs. It enables flow logs only for the
+NSGs explicitly passed in `var.nsg_ids` (default `{}` — passing nothing
+deploys the storage/analytics scaffolding but logs zero NSGs). Every
+`terraform/live/*` caller must enumerate each NSG it creates into `nsg_ids`;
+an NSG added to a spoke or hub without a matching `nsg_ids` entry silently
+has no flow logs. As of 2026-08-02 no `terraform/live/*` stack instantiates
+this module yet — when wiring it in, source the map from the owning modules'
+NSG outputs rather than hand-maintained IDs.
+
 ## Cost Estimate
 
 | Component | Monthly Cost |

@@ -61,9 +61,31 @@ function Assert-LzBrokerPrerequisites {
 }
 
 function Get-LzEnvironmentSubscription {
+    <#
+    .SYNOPSIS
+        Resolve the Azure subscription anchoring a GitHub environment.
+    .DESCRIPTION
+        Covers every environment name the schema can emit —
+        unique(environments.platform ∪ environments.application):
+        bootstrap, identity, connectivity, management, shared-services,
+        sandbox, dev, test, uat, prod. Optional planes fall back to the
+        management subscription; anything else fails closed.
+
+        'bootstrap' resolution rule: the bootstrap environment's RBAC lives at
+        the MG root (Get-LzEnvironmentScope — MG-scope work is not
+        subscription-bound), but its AZURE_SUBSCRIPTION_ID still needs a value:
+        the global layer maps to this environment (Get-LzLayerEnvironment) and
+        its azurerm provider requires a subscription context even for
+        MG-scope resources — and that provider is pinned to the management
+        subscription (factory/templates/terraform/live/global/main.tf:
+        subscription_id = var.management_subscription_id). The management
+        subscription is therefore the anchor, matching what the rendered
+        layer will actually run against.
+    #>
     param([object]$Config, [string]$Environment)
     $subscriptions = $Config.azure.subscriptions
     switch ($Environment) {
+        'bootstrap' { return $subscriptions.management }
         'connectivity' { return $subscriptions.connectivity }
         'management' { return $subscriptions.management }
         'identity' { return (Get-LzConfigValue $subscriptions 'identity' $subscriptions.management) }
@@ -76,7 +98,7 @@ function Get-LzEnvironmentSubscription {
         default {
             # Fail closed: silently mapping an unrecognised environment to a
             # subscription would grant an OIDC identity scope nobody reviewed.
-            throw "Unknown environment '$Environment'. Expected one of: connectivity, management, identity, shared-services, prod, sandbox, dev, test, uat."
+            throw "Unknown environment '$Environment'. Expected one of: bootstrap, connectivity, management, identity, shared-services, prod, sandbox, dev, test, uat."
         }
     }
 }
@@ -869,9 +891,12 @@ function Invoke-LzBootstrap {
                 $bootstrapPlan = $audit.identities | Where-Object kind -eq 'plan' | Select-Object -First 1
             }
             Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_PLAN_CLIENT_ID' -Value $bootstrapPlan.appId
-            # The shared plan identity (minimal model) belongs to no single
-            # environment; the management subscription is the deterministic
-            # repo-level default there.
+            # Both branches resolve to the management subscription for a
+            # default export: 'shared' (minimal model) is not a real
+            # environment name and anchors to management directly, and the
+            # per-environment 'bootstrap' record now resolves via
+            # Get-LzEnvironmentSubscription's bootstrap rule (also management —
+            # see the rationale there).
             $bootstrapSubscription = if ($bootstrapPlan.environment -eq 'shared') {
                 $config.azure.subscriptions.management
             } else {

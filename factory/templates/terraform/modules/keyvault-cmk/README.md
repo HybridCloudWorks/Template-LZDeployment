@@ -95,7 +95,7 @@ modules:
 
 Or run the interactive script:
 ```powershell
-.\scripts\Configure-DeploymentOptions.ps1
+.\scripts\utilities\Configure-DeploymentOptions.ps1
 ```
 
 ### 2. Review Prerequisites
@@ -219,4 +219,4 @@ After deployment, existing resources must be migrated:
 
 ---
 
-**💡 To enable this module**: Run `.\scripts\Configure-DeploymentOptions.ps1` and set `cmk.enabled = true`
+**💡 To enable this module**: Run `.\scripts\utilities\Configure-DeploymentOptions.ps1` and set `cmk.enabled = true`

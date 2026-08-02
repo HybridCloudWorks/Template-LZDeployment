@@ -9,3 +9,25 @@ output "policy_assignments" {
     deny_sandbox_peering = azurerm_management_group_policy_assignment.deny_sandbox_peering.id
   }
 }
+
+output "tls_policy_initiative_id" {
+  description = "ID of the TLS 1.2 enforcement policy initiative"
+  value       = azurerm_policy_set_definition.tls_12_enforcement.id
+}
+
+output "tls_policy_assignment_id" {
+  description = "ID of the TLS 1.2 policy assignment"
+  value       = azurerm_management_group_policy_assignment.tls_12_root.id
+}
+
+output "policy_definitions" {
+  description = "Map of all TLS 1.2 policy definitions"
+  value = {
+    storage_tls_12     = azurerm_policy_definition.enforce_storage_tls_12.id
+    appservice_tls_12  = azurerm_policy_definition.enforce_appservice_tls_12.id
+    functionapp_tls_12 = azurerm_policy_definition.enforce_functionapp_tls_12.id
+    mysql_tls_12       = azurerm_policy_definition.enforce_mysql_tls_12.id
+    postgresql_tls_12  = azurerm_policy_definition.enforce_postgresql_tls_12.id
+    apim_tls_12        = azurerm_policy_definition.enforce_apim_tls_12.id
+  }
+}

@@ -54,10 +54,11 @@ HCW-Demo-LZDeployment/
 │   ├── Add-PlanFederatedCredential.ps1    # Plan-first AADSTS700213 remediation for the plan SP
 │   ├── Dispose-Engagement.ps1             # Plan-first engagement disposal (archive, then delete)
 │   ├── Start-LandingZoneBootstrap.ps1    # Legacy single-repo bootstrap; retained for compatibility
-│   ├── Configure-DeploymentOptions.ps1    # Interactively enable optional modules
-│   ├── Validate-ALZDeployment.ps1
-│   ├── Verify-CostAccuracy.ps1
-│   └── Invoke-BulkOperations.ps1
+│   └── utilities/                         # Standalone operator utilities — nothing calls these (see its README)
+│       ├── Configure-DeploymentOptions.ps1  # Records optional-module choices (planning-only artifact)
+│       ├── Validate-ALZDeployment.ps1
+│       ├── Verify-CostAccuracy.ps1
+│       └── Invoke-BulkOperations.ps1
 ├── terraform/
 │   ├── backend-bootstrap/       # One-time state storage setup
 │   ├── modules/                 # 11 reusable Terraform modules
@@ -202,7 +203,7 @@ Each layer under `terraform/live/` deploys independently and in dependency order
 
 ## Optional Static Configuration Generator
 
-`frontend/` is a standalone static page — open `frontend/index.html` in a browser, no server required. It lets you pick org name, region, network topology, policy assignments, and other options, then generates a `.tfvars` file you can download or copy. Feed that file into the Terraform layer it corresponds to (`terraform apply -var-file=your-file.tfvars`). See [Webapp-Plan on the wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Webapp-Plan) for details.
+`frontend/` is a standalone static page for the **legacy in-repo pipeline** — open `frontend/index.html` in a browser, no server required (`site/` is the primary path for customer engagements). It lets you pick org name, region, network topology, and options, then emits two layer-accurate variable files: `terraform.auto.tfvars` (for `terraform/live/global`) and `connectivity.auto.tfvars` (for `terraform/live/platform-connectivity`). Policy toggles are presented honestly: the baseline's enforced policies are listed separately from catalog entries marked "not yet enforced". Usage and placement: [frontend/README.md](frontend/README.md); background: [Webapp-Plan on the wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Webapp-Plan).
 
 ---
 
@@ -232,9 +233,8 @@ See [TODO.md](TODO.md) and [PROD-TODO.md](PROD-TODO.md) for the full, current li
 
 - CI/CD pipeline has no recorded successful run yet — read-only live discovery (2026-08-01) found that no landing-zone identity estate exists: no app registrations, no `AZURE_PLAN_CLIENT_ID` or `TF_API_TOKEN` secret, and no dev/prod/hub environments. The remediation is running the Phase-2 bootstrap end-to-end in the confirmed engagement tenant, not credential patching; see [PROD-TODO.md](PROD-TODO.md) Phase 2
 - Backend is currently `azurerm` native storage everywhere except the bootloader and workflow `010`, which assume Terraform Cloud — migration tracked as [GitHub Issue #11](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues/11)
-- 6 of 11 Terraform modules are missing a `README.md`
 - Two modules (`keyvault-cmk`, `sentinel-siem`) are scaffold-only stubs with no real resources yet
-- 4 utility scripts (`Configure-DeploymentOptions.ps1`, `Invoke-BulkOperations.ps1`, `Validate-ALZDeployment.ps1`, `Verify-CostAccuracy.ps1`) exist but aren't currently called from anywhere in the pipeline — their disposition is tracked in [TODO.md](TODO.md)
+- 4 utility scripts (`Configure-DeploymentOptions.ps1`, `Invoke-BulkOperations.ps1`, `Validate-ALZDeployment.ps1`, `Verify-CostAccuracy.ps1`) aren't called from anywhere in the pipeline — they now live in [`scripts/utilities/`](scripts/utilities/README.md), clearly separated from the core flow; wiring any of them in is tracked in [TODO.md](TODO.md)
 
 ---
 
@@ -259,7 +259,7 @@ See [TODO.md](TODO.md) and [PROD-TODO.md](PROD-TODO.md) for the full, current li
 - **[USER-CHECKLIST.md](USER-CHECKLIST.md)** — operator authentication, publication, and verification activities
 - **[docs/runbooks/](docs/runbooks/)** — engagement disposal and lifecycle-hygiene runbooks; **[docs/decisions/](docs/decisions/)** — decision records (private copy over public fork)
 - **[.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)** — load-bearing cross-file contracts (stays in-repo; agents read it from disk)
-- **[terraform/modules/\*/README.md](terraform/modules/)** — per-module usage docs (where they exist — see Known Issues)
+- **[terraform/modules/\*/README.md](terraform/modules/)** — per-module usage docs (all 11 modules, as of 2026-08-02)
 
 ---
 

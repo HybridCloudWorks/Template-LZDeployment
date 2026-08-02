@@ -3,71 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Azure Landing Zone Deployment (DEPRECATED)</title>
-    <!-- DEPRECATED (2026-07-31 remediation): this prototype generator is retired.
-         Its Generate button was non-functional, it performed no HCL escaping, and the
-         .tfvars it emitted targeted variables that exist in no Terraform stack in this
-         repository. The CDN-loaded MSAL script (zero-network violation) has been removed.
-         Use ../site/index.html — the Landing Zone Factory wizard — instead.
-         Pending operator action: delete the frontend/ directory (deletion was blocked
-         for automation in this session and requires a human). -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self' data:;">
+    <title>Azure Landing Zone .tfvars Generator (Legacy)</title>
+    <!-- LEGACY (reconciled 2026-08-02): this static generator feeds only the
+         legacy in-repo pipeline (terraform/live/*). The site/ wizard is the
+         primary Landing Zone Factory path. This page is fully offline: no
+         network requests, no CDN, no backend (CSP below enforces it). Every
+         form control that no Terraform stack consumes is labelled and its
+         value is never emitted. See frontend/README.md. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <header>
             <div class="header-content">
-                <h1>⚠️ This generator is deprecated</h1>
-                <p>Use the <a href="../site/index.html">Landing Zone Factory wizard</a> instead.
-                   This page's output does not match this repository's Terraform and its
-                   generator is disabled.</p>
+                <h1>Azure Landing Zone .tfvars Generator</h1>
+                <p class="legacy-banner"><strong>Legacy tool.</strong> The <a href="../site/index.html">Landing Zone Factory wizard</a> (<code>site/</code>) is the primary path and produces the full artifact set.
+                   This page only generates <code>terraform.auto.tfvars</code> (global layer) and <code>connectivity.auto.tfvars</code> (platform-connectivity layer)
+                   for the legacy in-repo pipeline. See <a href="README.md">frontend/README.md</a> for the usage guide.</p>
             </div>
         </header>
 
-        <main hidden aria-hidden="true">
-            <!-- Login Section (Hidden - Not Needed for Static Generator) -->
-            <section id="loginSection" class="section hidden">
-                <div class="card">
-                    <h2>Sign In</h2>
-                    <p>Authenticate with your Azure account to deploy a landing zone.</p>
-                    <button id="loginBtn2" class="btn btn-primary btn-large">Login with Microsoft</button>
-                    <div id="errorMsg" class="error hidden"></div>
-                </div>
-            </section>
-
+        <main>
             <!-- Form Section -->
             <section id="formSection" class="section hidden">
                 <form id="deploymentForm">
                     <!-- Section 1: Organization & Location -->
                     <div class="form-section">
-                        <h3 class="section-title">1. Organization & Location</h3>
+                        <h3 class="section-title">1. Organization &amp; Location</h3>
 
                         <div class="form-group">
                             <label for="orgName">Organization Name <span class="required">*</span></label>
                             <input type="text" id="orgName" name="orgName" placeholder="e.g., Contoso" required>
-                            <small>Display name for your organization (e.g., "Contoso Corporation")</small>
+                            <small>Display name, used only in the generated file headers</small>
                         </div>
 
                         <div class="form-group">
-                            <label for="orgId">Organization ID <span class="required">*</span></label>
-                            <input type="text" id="orgId" name="orgId" pattern="^[a-z0-9]{3,20}$" placeholder="e.g., contoso" required>
-                            <small>3-20 lowercase alphanumeric characters, used in all resource naming</small>
+                            <label for="orgId">Organization ID (<code>org_prefix</code>) <span class="required">*</span></label>
+                            <input type="text" id="orgId" name="orgId" pattern="^[a-z0-9]{2,10}$" maxlength="10" placeholder="e.g., contoso" required>
+                            <small>2&ndash;10 lowercase alphanumeric characters &mdash; must satisfy the <code>org_prefix</code> validation in <code>terraform/live/global/variables.tf</code></small>
                         </div>
 
                         <div class="form-group">
-                            <label for="defenderEmail">Defender Email <span class="required">*</span></label>
-                            <input type="email" id="defenderEmail" name="defenderEmail" placeholder="security@contoso.com" required>
-                            <small>Email for Microsoft Defender for Cloud security alerts</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Starter Locations <span class="required">*</span></label>
+                            <label>Regions (<code>allowed_locations</code>) <span class="required">*</span></label>
                             <div class="form-row">
                             <div class="form-group">
                                 <label for="primaryRegion">Primary Region <span class="required">*</span></label>
-                                <select id="primaryRegion" name="primaryRegion" required onchange="updateSecondaryRegionOptions()">
-                                    <option value="">-- Select Primary Region --</option>
+                                <select id="primaryRegion" name="primaryRegion" required>
                                     <option value="eastus2">eastus2 (East US 2)</option>
                                     <option value="westus" selected>westus (West US)</option>
                                     <option value="uksouth">uksouth (UK South)</option>
@@ -76,22 +58,21 @@
                                     <option value="centralus">centralus (Central US)</option>
                                     <option value="canadacentral">canadacentral (Canada Central)</option>
                                 </select>
-                                <small>Primary region for hub deployment</small>
+                                <small>Feeds <code>primary_region</code> / <code>primary_region_code</code> in the connectivity layer</small>
                             </div>
                             <div class="form-group">
-                                <label for="secondaryRegion">Secondary Region (DR) <span class="required">*</span></label>
+                                <label for="secondaryRegion">DR Region <span class="required">*</span></label>
                                 <select id="secondaryRegion" name="secondaryRegion" required>
-                                    <option value="">-- Select DR Region --</option>
                                 </select>
-                                <small>Disaster recovery region (auto-paired with primary)</small>
+                                <small>Feeds <code>dr_region</code> / <code>dr_region_code</code> (auto-paired with primary, editable)</small>
                             </div>
                         </div>
 
-                        <div id="additionalRegions" class="form-group hidden-section">
-                            <label>Additional Regions</label>
+                        <div id="additionalRegions" class="form-group">
+                            <label>Additional Allowed Regions</label>
                             <div id="additionalRegionsList" class="regions-list"></div>
                             <button type="button" class="btn btn-small" id="addRegionBtn">+ Add Region</button>
-                            <small>Add more regions for multi-region deployment</small>
+                            <small>Added to <code>allowed_locations</code> only (no extra hubs are deployed)</small>
                         </div>
                         </div>
                     </div>
@@ -101,23 +82,23 @@
                         <h3 class="section-title">2. Network Architecture</h3>
 
                         <div class="form-group">
-                            <label>Network Topology <span class="required">*</span></label>
+                            <label>Network Topology</label>
                             <div class="radio-group">
                                 <label class="radio">
                                     <input type="radio" name="networkTopology" value="hub-spoke" checked>
                                     <span class="radio-label">Hub-and-Spoke VNet</span>
-                                    <span class="radio-description">Traditional VNet peering with central hub firewall (recommended)</span>
+                                    <span class="radio-description">Traditional VNet peering with central hub firewall &mdash; the only topology this repository implements</span>
                                 </label>
-                                <label class="radio">
-                                    <input type="radio" name="networkTopology" value="virtual-wan">
-                                    <span class="radio-label">Virtual WAN</span>
-                                    <span class="radio-description">Microsoft-managed WAN fabric (modern, simplified routing)</span>
+                                <label class="radio radio-unavailable">
+                                    <input type="radio" name="networkTopology" value="virtual-wan" disabled>
+                                    <span class="radio-label">Virtual WAN <span class="badge badge-roadmap">no module exists &mdash; not selectable</span></span>
+                                    <span class="radio-description">No Virtual WAN module exists in <code>terraform/modules/</code>; the site/ wizard blocks this choice for the same reason</span>
                                 </label>
                             </div>
                         </div>
 
                         <div class="form-group">
-                            <label>Firewall SKU <span class="required">*</span></label>
+                            <label>Azure Firewall Tier (<code>azfw_tier</code>) <span class="required">*</span></label>
                             <div class="radio-group">
                                 <label class="radio">
                                     <input type="radio" name="firewallSku" value="Standard" checked>
@@ -130,30 +111,31 @@
                                     <span class="radio-description">Advanced threat protection (required for PCI-DSS, HIPAA, FedRAMP)</span>
                                 </label>
                             </div>
+                            <small>Emitted as <code>firewall_type = "azfw"</code> with the chosen <code>azfw_tier</code>. Palo Alto / Fortinet NVA options exist in Terraform but are not offered here &mdash; use the site/ wizard.</small>
                         </div>
 
                         <div class="form-group">
                             <label>Network Feature Toggles</label>
                             <div class="toggle-group">
                                 <label class="toggle">
-                                    <input type="checkbox" name="ddosProtection" checked>
-                                    <span class="toggle-label">Deploy DDoS Protection</span>
-                                    <small>Azure DDoS Protection Standard for VNets</small>
-                                </label>
-                                <label class="toggle">
-                                    <input type="checkbox" name="bastionHost" checked>
-                                    <span class="toggle-label">Deploy Bastion Host</span>
+                                    <input type="checkbox" id="bastionHost" name="bastionHost" checked>
+                                    <span class="toggle-label">Deploy Bastion subnet (<code>deploy_bastion</code>)</span>
                                     <small>Secure RDP/SSH access without public IPs</small>
                                 </label>
                                 <label class="toggle">
-                                    <input type="checkbox" name="privateDnsZones" checked>
-                                    <span class="toggle-label">Deploy Private DNS Zones</span>
+                                    <input type="checkbox" id="privateDnsZones" name="privateDnsZones" checked>
+                                    <span class="toggle-label">Deploy DNS resolver subnet (<code>deploy_dns</code>)</span>
                                     <small>Private DNS for Azure PaaS services</small>
                                 </label>
-                                <label class="toggle">
-                                    <input type="checkbox" name="vnetGateway" checked>
-                                    <span class="toggle-label">Deploy Virtual Network Gateways</span>
-                                    <small>Enable VPN/ExpressRoute hybrid connectivity</small>
+                                <label class="toggle toggle-unwired">
+                                    <input type="checkbox" name="ddosProtection" disabled>
+                                    <span class="toggle-label">DDoS Protection <span class="badge badge-roadmap">not yet enforced &mdash; no wiring exists</span></span>
+                                    <small>No <code>terraform/live/*</code> variable or module input controls DDoS Protection; nothing is emitted</small>
+                                </label>
+                                <label class="toggle toggle-unwired">
+                                    <input type="checkbox" name="vnetGateway" disabled>
+                                    <span class="toggle-label">Virtual Network Gateways <span class="badge badge-roadmap">not yet enforced &mdash; no wiring exists</span></span>
+                                    <small>No <code>terraform/live/*</code> variable deploys VPN/ExpressRoute gateways; nothing is emitted</small>
                                 </label>
                             </div>
                         </div>
@@ -161,25 +143,25 @@
 
                     <!-- Section 3: Monitoring & Security -->
                     <div class="form-section">
-                        <h3 class="section-title">3. Monitoring & Security</h3>
+                        <h3 class="section-title">3. Monitoring &amp; Security</h3>
+                        <p class="section-description">None of the toggles below is connected to a <code>terraform/live/*</code> call today, so none is emitted. They are shown to preserve roadmap intent.</p>
 
                         <div class="form-group">
-                            <label>Monitoring & Alerting</label>
                             <div class="toggle-group">
-                                <label class="toggle">
-                                    <input type="checkbox" name="ama" checked>
-                                    <span class="toggle-label">Azure Monitoring Agent</span>
-                                    <small>Collect logs and metrics from VMs</small>
+                                <label class="toggle toggle-unwired">
+                                    <input type="checkbox" name="defenderPlans" disabled>
+                                    <span class="toggle-label">Microsoft Defender for Cloud <span class="badge badge-available">available, not auto-deployed</span></span>
+                                    <small>The <code>defender-baseline</code> module is implemented, but no <code>terraform/live</code> layer calls it and the renderer does not wire it in. Deploying it is a deliberate follow-up step, not something the first apply does for you.</small>
                                 </label>
-                                <label class="toggle">
-                                    <input type="checkbox" name="amba" checked>
-                                    <span class="toggle-label">AMBA Baseline Alerts</span>
-                                    <small>Pre-built Azure Monitor Baseline Alerts</small>
+                                <label class="toggle toggle-unwired">
+                                    <input type="checkbox" name="ama" disabled>
+                                    <span class="toggle-label">Azure Monitoring Agent <span class="badge badge-roadmap">not yet enforced &mdash; no policy definition exists</span></span>
+                                    <small>The AMA deploy policies (Enable-AMAforVMs/VMSS/Hybrid) are not implemented in <code>policy-baseline</code></small>
                                 </label>
-                                <label class="toggle">
-                                    <input type="checkbox" name="defenderPlans" checked>
-                                    <span class="toggle-label">Microsoft Defender Plans</span>
-                                    <small>Threat detection and protection</small>
+                                <label class="toggle toggle-unwired">
+                                    <input type="checkbox" name="amba" disabled>
+                                    <span class="toggle-label">AMBA Baseline Alerts <span class="badge badge-roadmap">not yet enforced &mdash; no policy definition exists</span></span>
+                                    <small>No AMBA policy definitions exist in <code>policy-baseline</code>; platform-management deploys its own alert baseline instead</small>
                                 </label>
                             </div>
                         </div>
@@ -187,8 +169,8 @@
 
                     <!-- Section 4: Policy Assignments -->
                     <div class="form-section">
-                        <h3 class="section-title">4. Policy Assignments (Official Azure Landing Zones)</h3>
-                        <p class="section-description">Select which official ALZ policy assignments to enable. Configure enforcement mode per policy.</p>
+                        <h3 class="section-title">4. Azure Policy &mdash; what this repository actually enforces</h3>
+                        <p class="section-description">Reconciled against <code>terraform/modules/policy-baseline/</code>. Enforced policies deploy unconditionally with the global layer; there is no per-policy variable, so no policy selection is written to the generated .tfvars.</p>
 
                         <div id="policyAssignments" class="policy-assignments">
                             <!-- Populated by JavaScript -->
@@ -196,79 +178,28 @@
                     </div>
 
                     <!-- Section 5: Management Group Customization -->
-                    <div class="form-section">
-                        <h3 class="section-title">5. Management Group Customization</h3>
-                        <p class="section-description">Override default management group names (leave blank for defaults)</p>
+                    <div class="form-section form-section-unwired">
+                        <h3 class="section-title">5. Management Group Customization <span class="badge badge-roadmap">not consumed &mdash; nothing emitted</span></h3>
+                        <p class="section-description">The <code>management-groups</code> module derives all management group names from <code>org_prefix</code>; there is no variable to override individual names. Custom names entered here would go nowhere, so the fields are disabled.</p>
 
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="mgIntRoot">Intermediate Root Name</label>
-                                <input type="text" id="mgIntRoot" name="mgIntRoot" placeholder="e.g., Contoso">
-                                <small>Default: organization name</small>
+                                <input type="text" id="mgIntRoot" name="mgIntRoot" placeholder="derived from org_prefix" disabled>
                             </div>
                             <div class="form-group">
                                 <label for="mgPlatform">Platform Name</label>
-                                <input type="text" id="mgPlatform" name="mgPlatform" placeholder="e.g., Platform">
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="mgConnectivity">Connectivity Name</label>
-                                <input type="text" id="mgConnectivity" name="mgConnectivity" placeholder="e.g., Connectivity">
-                            </div>
-                            <div class="form-group">
-                                <label for="mgIdentity">Identity Name</label>
-                                <input type="text" id="mgIdentity" name="mgIdentity" placeholder="e.g., Identity">
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="mgManagement">Management Name</label>
-                                <input type="text" id="mgManagement" name="mgManagement" placeholder="e.g., Management">
-                            </div>
-                            <div class="form-group">
-                                <label for="mgLandingZones">Landing Zones Name</label>
-                                <input type="text" id="mgLandingZones" name="mgLandingZones" placeholder="e.g., Landing Zones">
+                                <input type="text" id="mgPlatform" name="mgPlatform" placeholder="derived from org_prefix" disabled>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Section 6: Resource Naming Configuration -->
-                    <div class="form-section">
-                        <h3 class="section-title">6. Resource Naming Configuration</h3>
-                        <p class="section-description">Configure resource naming following Cloud Adoption Framework standard</p>
+                    <!-- Section 6: Resource Naming -->
+                    <div class="form-section form-section-unwired">
+                        <h3 class="section-title">6. Resource Naming <span class="badge badge-roadmap">informational only &mdash; nothing emitted</span></h3>
+                        <p class="section-description">CAF-style naming is fixed inside the Terraform modules and derived from <code>org_prefix</code>, environment, and region code. There is no naming variable to configure. Examples with your Organization ID:</p>
 
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="resourcePrefix">Resource Name Prefix</label>
-                                <input type="text" id="resourcePrefix" name="resourcePrefix" placeholder="Leave blank to use org ID" oninput="updateNamingExamples()">
-                                <small>Prefix used in all resource names (e.g., storage account "st{prefix}prod001")</small>
-                            </div>
-                            <div class="form-group">
-                                <label for="instanceStart">Instance Counter Start</label>
-                                <input type="number" id="instanceStart" name="instanceStart" value="1" min="1" oninput="updateNamingExamples()">
-                                <small>Starting number for resource instance counters</small>
-                            </div>
-                        </div>
-
-                        <!-- Environment Suffixes -->
-                        <div class="form-group">
-                            <label>Environment Suffixes <span class="required">*</span></label>
-                            <div id="environmentSuffixes" class="suffixes-list">
-                                <div class="suffix-input-group">
-                                    <input type="text" class="suffix-input" placeholder="e.g., prod" value="prod" oninput="updateNamingExamples()">
-                                    <button type="button" class="btn btn-small" onclick="removeEnvironmentSuffix(this)">✕</button>
-                                </div>
-                            </div>
-                            <button type="button" class="btn btn-small" id="addSuffixBtn" onclick="addEnvironmentSuffix()">+ Add Environment</button>
-                            <small>Add multiple environment names (prod, dev, test, etc.)</small>
-                        </div>
-
-                        <!-- Naming Examples -->
                         <div class="naming-examples-box">
-                            <h4>Resource Naming Examples</h4>
                             <div id="namingExamples" class="naming-examples">
                                 <div class="example-row">
                                     <span class="example-type">Storage Account:</span>
@@ -284,7 +215,7 @@
                                 </div>
                                 <div class="example-row">
                                     <span class="example-type">Resource Group:</span>
-                                    <span id="exampleRG" class="example-name">rg-[prefix]-prod-eastus2</span>
+                                    <span id="exampleRG" class="example-name">rg-[prefix]-prod-westus</span>
                                 </div>
                             </div>
                         </div>
@@ -295,35 +226,36 @@
                         <h3 class="section-title">7. Network Configuration (CIDR Blocks)</h3>
 
                         <div class="form-group">
-                            <label for="hubCidr">Hub VNet CIDR Block <span class="required">*</span></label>
+                            <label for="hubCidr">Hub VNet CIDR (<code>primary_hub_address_space</code>) <span class="required">*</span></label>
                             <input type="text" id="hubCidr" name="hubCidr" value="10.0.0.0/16" placeholder="e.g., 10.0.0.0/16" required>
-                            <small>CIDR block for hub virtual network</small>
+                            <small>Address space for the primary hub virtual network</small>
                         </div>
 
                         <div class="form-group">
-                            <label for="spokeCidrs">Spoke VNet CIDR Blocks <span class="required">*</span></label>
-                            <textarea id="spokeCidrs" name="spokeCidrs" placeholder="One CIDR per line, e.g.&#10;10.1.0.0/16&#10;10.2.0.0/16" required>10.1.0.0/16</textarea>
-                            <small>CIDR blocks for spoke networks (one per line)</small>
+                            <label for="spokeCidrs">Spoke VNet CIDR</label>
+                            <textarea id="spokeCidrs" name="spokeCidrs" placeholder="e.g. 10.1.0.0/16">10.1.0.0/16</textarea>
+                            <small>Belongs to a different layer: the first entry is emitted as a <em>comment</em> for hand-copy into <code>terraform/live/workloads-prod</code> (<code>primary_spoke_address_space</code>). Additional lines are not consumed by any stack.</small>
                         </div>
                     </div>
 
                     <!-- Section 8: Tagging Configuration -->
                     <div class="form-section">
-                        <h3 class="section-title">8. Tagging Configuration (Cloud Adoption Framework)</h3>
+                        <h3 class="section-title">8. Default Tags (<code>default_tags</code>)</h3>
+                        <p class="section-description">Emitted into the connectivity layer&rsquo;s <code>default_tags</code>. The <code>require-mandatory-tags</code> policy (always enforced at root) denies resources missing <code>owner</code>, <code>application</code>, <code>environment</code>, or <code>cost_center</code> tags.</p>
 
                         <div class="form-group">
                             <label class="toggle">
-                                <input type="checkbox" id="tagEnforcement" name="tagEnforcement" onchange="toggleTaggingFields()">
-                                <span class="toggle-label">Enable Tag Enforcement Policy</span>
-                                <small>Enforce required tags on all resources</small>
+                                <input type="checkbox" id="tagEnforcement" name="tagEnforcement">
+                                <span class="toggle-label">Set default tag values</span>
+                                <small>Leave off to keep the <code>default_tags</code> defaults declared in <code>variables.tf</code></small>
                             </label>
                         </div>
 
                         <div id="taggingFields" class="form-row hidden-section">
                             <div class="form-group">
                                 <label for="tagEnvironment">Environment Tag Value</label>
-                                <input type="text" id="tagEnvironment" name="tagEnvironment" placeholder="Auto-populated from environment suffixes" readonly>
-                                <small>Auto-filled from environment suffixes defined above</small>
+                                <input type="text" id="tagEnvironment" name="tagEnvironment" value="prod">
+                                <small>e.g. prod</small>
                             </div>
                             <div class="form-group">
                                 <label for="tagOwner">Owner Tag Value <span class="required">*</span></label>
@@ -348,10 +280,11 @@
 
                     <!-- Section 9: Review & Generate -->
                     <div class="form-section">
-                        <h3 class="section-title">9. Review & Generate</h3>
+                        <h3 class="section-title">9. Review &amp; Generate</h3>
+                        <p class="section-description">Generates two files: <code>terraform.auto.tfvars</code> (global layer) and <code>connectivity.auto.tfvars</code> (platform-connectivity layer). Subscription IDs, <code>management_ip_ranges</code>, and the Log Analytics workspace ID are emitted as commented placeholders you fill by hand &mdash; see <a href="README.md">README.md</a>.</p>
                         <div class="form-actions">
                             <button type="button" class="btn btn-primary btn-large" id="generateBtn">
-                                📋 Generate Configuration (.tfvars)
+                                Generate .tfvars files
                             </button>
                         </div>
                     </div>
@@ -361,7 +294,7 @@
                 <div class="card preview-card hidden" id="previewCard">
                     <h3>Generated Configuration (Preview)</h3>
                     <p class="preview-description">
-                        Review this configuration before deploying. You can edit it locally if needed.
+                        Both files are shown below. Review before use; commented placeholders marked REQUIRED must be filled before <code>terraform plan</code>.
                     </p>
 
                     <div class="preview-content">
@@ -370,40 +303,21 @@
 
                     <div class="preview-actions">
                         <button type="button" class="btn btn-primary" id="downloadBtn">
-                            ⬇️ Download .tfvars
+                            Download both .tfvars files
                         </button>
                         <button type="button" class="btn btn-secondary" id="copyBtn">
-                            📋 Copy to Clipboard
+                            Copy to Clipboard
                         </button>
                         <button type="button" class="btn btn-secondary" id="regenerateBtn">
-                            🔄 Back to Form
+                            Back to Form
                         </button>
                     </div>
-                </div>
-            </section>
-
-            <!-- Loading Section -->
-            <section id="loadingSection" class="section hidden">
-                <div class="card">
-                    <h2>Deploying...</h2>
-                    <div class="spinner"></div>
-                    <p>Creating your Azure Landing Zone deployment package...</p>
-                </div>
-            </section>
-
-            <!-- Success Section -->
-            <section id="successSection" class="section hidden">
-                <div class="card success">
-                    <h2>✅ Deployment Package Created!</h2>
-                    <p>Your Terraform configuration has been generated and released.</p>
-                    <div id="successDetails"></div>
-                    <button class="btn btn-primary" onclick="location.reload()">Deploy Another</button>
                 </div>
             </section>
         </main>
 
         <footer>
-            <p>Azure Landing Zone Deployment Orchestration • <a href="docs/CUSTOMER-SETUP.md">Setup Guide</a></p>
+            <p>Legacy .tfvars generator for the in-repo pipeline &bull; <a href="README.md">Usage guide</a> &bull; Primary path: <a href="../site/index.html">Landing Zone Factory wizard</a></p>
         </footer>
     </div>
 
