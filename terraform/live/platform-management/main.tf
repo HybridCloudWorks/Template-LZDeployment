@@ -135,8 +135,14 @@ resource "azurerm_automation_job_schedule" "sandbox_cleanup" {
 # The runbook enumerates and deletes expired sandbox resource groups, so the
 # automation account's system-assigned identity needs rights in the sandbox
 # subscription; without this assignment every run fails at login.
+# principal_type must be set explicitly: the ABAC delegation condition on the
+# granting identity evaluates PrincipalType from the create request, and the
+# provider omits it unless this argument is set — the grant would be denied.
+# skip_service_principal_aad_check is deliberately off; if the same-apply MSI
+# hits AAD replication lag, retry the apply rather than skip the check.
 resource "azurerm_role_assignment" "sandbox_cleanup" {
   scope                = "/subscriptions/${var.sandbox_subscription_id}"
   role_definition_name = "Contributor"
   principal_id         = azurerm_automation_account.main.identity[0].principal_id
+  principal_type       = "ServicePrincipal"
 }

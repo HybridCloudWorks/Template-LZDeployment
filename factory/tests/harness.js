@@ -36,7 +36,7 @@ global.setInterval = () => 0;
 
 const src = fs.readFileSync(path.join(SITE, 'app.js'), 'utf8');
 // Expose internals for testing.
-const wrapped = src + '\n;module.exports = { validate, estimateRum, buildConfig, tfvarsGlobal, tfvarsConnectivity, backendHcl, environmentDefinitions, deploymentMetadata, configurationMarkdown, nextStepsMarkdown, defaultConfig, cidrsOverlap, get config(){return config;}, set config(v){config=v;}, get defaultTagRows(){return defaultTagRows;}, set defaultTagRows(v){defaultTagRows=v;} };';
+const wrapped = src + '\n;module.exports = { validate, estimateRum, buildConfig, tfvarsGlobal, tfvarsConnectivity, backendHcl, environmentDefinitions, deploymentMetadata, configurationMarkdown, nextStepsMarkdown, defaultConfig, cidrsOverlap, cicdIdentityCount, get config(){return config;}, set config(v){config=v;}, get defaultTagRows(){return defaultTagRows;}, set defaultTagRows(v){defaultTagRows=v;} };';
 const mod = { exports: {} };
 new Function('module', 'exports', 'require', wrapped)(mod, mod.exports, require);
 module.exports = mod.exports;

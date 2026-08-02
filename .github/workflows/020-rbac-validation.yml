@@ -62,9 +62,13 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
         with:
-          # pull_request tokens match only the Reader-only plan SP's federated
-          # credential; every other trigger authenticates as the Contributor SP.
-          client-id: ${{ github.event_name == 'pull_request' && secrets.AZURE_PLAN_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+          # This audit is read-only on EVERY trigger, so it always
+          # authenticates as the plan identity. pull_request, push, schedule,
+          # and workflow_dispatch tokens all carry subjects (pull_request /
+          # ref:refs/heads/main) that are bound to the plan identity only —
+          # the apply identity (AZURE_CLIENT_ID, the AUDITED principal) holds
+          # environment:<name> subjects exclusively and cannot log in here.
+          client-id: ${{ secrets.AZURE_PLAN_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -181,70 +185,102 @@ jobs:
           echo "passed=true" >> "$GITHUB_OUTPUT"
 
       # ─────────────────────────────────────────────────────────────────────────
-      # STEP 2: Check for Layered Service Principals (from 000 bootloader)
+      # STEP 2: Check Bootstrap Identities (broker plan naming) + legacy residue
       # ─────────────────────────────────────────────────────────────────────────
-      - name: Check Layered Service Principals
-        id: check_layers
+      - name: Check Bootstrap Identities
+        id: check_identities
         run: |
-          echo "=== Checking for Layered Service Principals ==="
-          echo ""
-
           ORG_PREFIX="${{ vars.ORG_PREFIX }}"
           SUBSCRIPTION_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+
+          echo "=== Checking Bootstrap Identities (sp-$ORG_PREFIX-*) ==="
+          echo ""
 
           if [ -z "$ORG_PREFIX" ]; then
             echo "⚠  ORG_PREFIX not set in GitHub variables"
             echo "   This is set by Start-LandingZoneBootstrap.ps1"
-            echo "   Skipping layered SP checks (they may not exist yet)"
+            echo "   Skipping identity checks (they may not exist yet)"
             exit 0
           fi
 
           echo "Organization Prefix: $ORG_PREFIX"
           echo ""
 
-          # Check for layered SPs
-          LAYERS=("main" "dev" "prod")
-          for layer in "${LAYERS[@]}"; do
-            echo "Checking layer: $layer"
+          # Current model (broker plan naming): minimal = sp-<prefix>-plan +
+          # sp-<prefix>-apply; per-environment = sp-<prefix>-<env>-{plan,apply}.
+          # Enumerate everything under the prefix so both models are covered.
+          echo "Identities under prefix sp-$ORG_PREFIX-:"
+          az ad app list \
+            --filter "startswith(displayName,'sp-$ORG_PREFIX-')" \
+            --query '[].{name:displayName, appId:appId}' \
+            -o table || true
+          echo ""
 
-            SP_NAME="sp-terraform-$layer-prod-$ORG_PREFIX"
+          FOUND_ANY=0
+          for SP_NAME in $(az ad app list \
+              --filter "startswith(displayName,'sp-$ORG_PREFIX-')" \
+              --query '[].displayName' -o tsv 2>/dev/null); do
+            FOUND_ANY=1
             SP_ID=$(az ad app list --display-name "$SP_NAME" --query "[0].appId" -o tsv 2>/dev/null)
+            SP_OBJ_ID=$(az ad sp show --id "$SP_ID" --query id -o tsv 2>/dev/null)
+            echo "Auditing: $SP_NAME ($SP_ID)"
 
-            if [ -z "$SP_ID" ]; then
-              echo "  ℹ  Not found (expected if not yet created): $SP_NAME"
+            # Over-privilege check across ALL scopes (MG-root and sandbox
+            # grants live outside the deployment subscription).
+            PRIV_COUNT=$(az role assignment list \
+              --assignee-object-id "$SP_OBJ_ID" \
+              --all \
+              --query "[?roleDefinitionName=='Owner' || roleDefinitionName=='User Access Administrator'] | length(@)" \
+              -o tsv)
+
+            if [ "$PRIV_COUNT" -gt 0 ]; then
+              echo "  ❌ CRITICAL: Has Owner or User Access Administrator role (must remove)"
+              exit 1
             else
-              echo "  ✓ Found: $SP_NAME"
-              echo "    App ID: $SP_ID"
-
-              # Audit the layered SP
-              SP_OBJ_ID=$(az ad sp show --id "$SP_ID" --query id -o tsv 2>/dev/null)
-
-              # Check for over-privileged roles (Owner or User Access Administrator)
-              PRIV_COUNT=$(az role assignment list \
-                --assignee-object-id "$SP_OBJ_ID" \
-                --scope "/subscriptions/$SUBSCRIPTION_ID" \
-                --query "[?roleDefinitionName=='Owner' || roleDefinitionName=='User Access Administrator'] | length(@)" \
-                -o tsv)
-
-              if [ "$PRIV_COUNT" -gt 0 ]; then
-                echo "  ❌ CRITICAL: Has Owner or User Access Administrator role (must remove)"
-                exit 1
-              else
-                echo "  ✓ No Owner / User Access Administrator role"
-              fi
-
-              # List roles for layer SP
-              echo "  Roles:"
-              az role assignment list \
-                --assignee-object-id "$SP_OBJ_ID" \
-                --scope "/subscriptions/$SUBSCRIPTION_ID" \
-                --query '[].roleDefinitionName' \
-                -o tsv | sed 's/^/    - /'
+              echo "  ✓ No Owner / User Access Administrator role"
             fi
+
+            echo "  Roles:"
+            az role assignment list \
+              --assignee-object-id "$SP_OBJ_ID" \
+              --all \
+              --query '[].{role:roleDefinitionName, scope:scope}' \
+              -o tsv | sed 's/^/    - /'
             echo ""
           done
 
-          echo "✓ Layered SP check complete"
+          if [ "$FOUND_ANY" -eq 0 ]; then
+            echo "ℹ  No sp-$ORG_PREFIX-* identities found (expected if bootstrap has not run yet)"
+            echo ""
+          fi
+
+          # Legacy residue: matrix-era sp-terraform-* identities should NOT
+          # exist post-migration. Warn (never fail) and point at the bootstrap
+          # report's remediation section.
+          echo "=== Legacy residue check (matrix-era sp-terraform-*) ==="
+          LEGACY_FOUND=0
+          LEGACY_NAMES=""
+          for layer in main dev prod; do
+            for env in dev prod; do
+              LEGACY_NAMES="$LEGACY_NAMES sp-terraform-$layer-$env-$ORG_PREFIX"
+            done
+          done
+          LEGACY_NAMES="$LEGACY_NAMES sp-terraform-plan-ci-$ORG_PREFIX"
+
+          for SP_NAME in $LEGACY_NAMES; do
+            SP_ID=$(az ad app list --display-name "$SP_NAME" --query "[0].appId" -o tsv 2>/dev/null)
+            if [ -n "$SP_ID" ]; then
+              LEGACY_FOUND=1
+              echo "::warning::Legacy identity residue: $SP_NAME ($SP_ID) still exists — see the 'Legacy Identity Estate — Remediation' section of the latest bootstrap report (.reports/bootstrap/)"
+            fi
+          done
+
+          if [ "$LEGACY_FOUND" -eq 0 ]; then
+            echo "✓ No legacy matrix-era identities remain"
+          fi
+
+          echo ""
+          echo "✓ Identity check complete"
 
       # ─────────────────────────────────────────────────────────────────────────
       # STEP 3: Detect Global Service Principals (for alerting)
@@ -370,8 +406,9 @@ jobs:
           - ✓ Contributor role: VERIFIED
           - ✓ Scope: Subscription-level
 
-          ## Layered Service Principals
-          - Checked: dev, prod layers
+          ## Bootstrap Identities
+          - Checked: sp-<prefix>-* (plan/apply, both identity models)
+          - Legacy residue: matrix-era sp-terraform-* warned if present
           - Status: See details below
 
           ## Federated Credentials
@@ -411,8 +448,8 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
         with:
-          # Same identity split as the rbac-audit job above.
-          client-id: ${{ github.event_name == 'pull_request' && secrets.AZURE_PLAN_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+          # Read-only, like the rbac-audit job above: always the plan identity.
+          client-id: ${{ secrets.AZURE_PLAN_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -512,7 +549,7 @@ jobs:
           ✓ Main Service Principal audit
           ✓ Owner role validation
           ✓ Contributor role verification
-          ✓ Layered SP checks (dev, prod)
+          ✓ Bootstrap identity audit (plan/apply) + legacy residue check
           ✓ Federated credential scoping
           ✓ Global permission detection
           ✓ Best practices validation

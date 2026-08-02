@@ -42,12 +42,20 @@ downloading or validating live evidence in this environment.
   exception.
 - [ ] Run `pwsh ./bootstrap-broker.ps1` without `-Apply` and review
   `bootstrap-plan.json`.
-- [ ] Confirm every plan identity is Reader-only.
-- [ ] Confirm workload apply identities are Contributor-only at their declared
-  subscription scopes and the bootstrap apply identity has only the required
-  management-group/policy roles at the configured root.
+- [ ] Confirm `identity.cicdIdentityModel` is the intended model: `minimal`
+  (default — one shared plan and one shared apply identity) or
+  `per-environment` (a plan/apply pair per unique environment).
+- [ ] Confirm every plan identity is read-only: Reader (at the management-group
+  root in the minimal model), plus Storage Blob Data Reader on the state
+  storage account for azurerm backends — no other roles.
+- [ ] Confirm apply-identity roles match the model: Contributor at declared
+  subscription scopes only (the minimal model's shared identity carries the
+  deduplicated union), the management-group/policy roles (Management Group
+  Contributor + Resource Policy Contributor) only at the configured root, and
+  Storage Blob Data Contributor on the state account for azurerm backends.
 - [ ] Confirm subjects are exactly `pull_request` or
-  `environment:<environment>` and contain no wildcard.
+  `environment:<environment>` and contain no wildcard (a minimal-model apply
+  record lists one `environment:<name>` subject per environment).
 - [ ] Confirm backend names, HCP organization/workspace prefix, environments,
   and branch-protection settings.
 

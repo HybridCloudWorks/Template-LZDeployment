@@ -609,6 +609,17 @@
         <label class="check"><input type="checkbox" data-path="identity.deployIdentitySubscription"> Deploy a dedicated identity subscription layer</label>
       </div>
 
+      <h3 class="sub">Deployment identities</h3>
+      <div class="field">
+        <label for="id_cicdModel">Deployment identity model</label>
+        <select id="id_cicdModel" data-path="identity.cicdIdentityModel">
+          <option value="minimal">One shared apply identity &mdash; minimum footprint (default)</option>
+          <option value="per-environment">One apply identity per environment</option>
+        </select>
+        <p class="hint" id="cicdIdentityCount"></p>
+        <p class="hint">Both models keep the plan/apply privilege split: the plan identity only ever holds the read-only <code>pull_request</code> subject, and every apply credential is pinned to an <code>environment:&lt;name&gt;</code> subject. Per-environment adds blast-radius isolation between environments at the cost of a larger identity estate.</p>
+      </div>
+
       <h3 class="sub">Break-glass accounts</h3>
       <p class="note">Microsoft guidance is at least two, excluded from Conditional Access and from federation, with credentials held offline. List them here so they appear in the generated recovery runbooks.</p>
       <div class="repeater" data-repeater="identity.breakGlassAccounts"

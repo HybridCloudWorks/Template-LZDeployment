@@ -174,5 +174,60 @@ c.github.visibility = 'internal';
 ok('internal on non-enterprise blocks', A.validate().errors.some(e => /Enterprise Cloud/.test(e.message)));
 c.github.visibility = 'private';
 
+console.log('\n== 11. CI/CD identity model (identity.cicdIdentityModel) ==');
+ok('default config is the minimal model', A.defaultConfig().identity.cicdIdentityModel === 'minimal');
+// An untouched wizard exports the default: c was built from defaultConfig()
+// before this suite mutated other sections, so the key is still the default.
+let exported = A.buildConfig();
+ok('untouched config exports cicdIdentityModel minimal', exported.identity.cicdIdentityModel === 'minimal');
+c.identity.cicdIdentityModel = 'minimal';
+exported = A.buildConfig();
+ok('minimal is exported in lz-config.json', exported.identity.cicdIdentityModel === 'minimal');
+c.identity.cicdIdentityModel = 'per-environment';
+exported = A.buildConfig();
+ok('per-environment is exported in lz-config.json', exported.identity.cicdIdentityModel === 'per-environment');
+
+// Count math. Current selections: platform [bootstrap,connectivity,management],
+// application [dev,prod] -> 5 unique environments.
+c.identity.cicdIdentityModel = 'minimal';
+ok('minimal counts 2 identities', A.cicdIdentityCount() === 2, A.cicdIdentityCount());
+c.identity.cicdIdentityModel = 'per-environment';
+ok('per-environment counts 2 x unique environments (10)', A.cicdIdentityCount() === 10, A.cicdIdentityCount());
+c.environments.application = ['sandbox', 'dev', 'test', 'uat', 'prod'];
+ok('count recomputes when environment selections change (16)', A.cicdIdentityCount() === 16, A.cicdIdentityCount());
+c.environments.application = ['dev', 'prod', 'management']; // overlap with platform plane
+ok('count uses the UNION of planes (duplicates not double-counted)', A.cicdIdentityCount() === 10, A.cicdIdentityCount());
+c.environments.application = ['dev', 'prod'];
+c.identity.cicdIdentityModel = 'minimal';
+ok('minimal count is environment-independent', A.cicdIdentityCount() === 2);
+
+// environments.json must describe the estate the broker will actually build.
+c.identity.cicdIdentityModel = 'minimal';
+let envDefs = A.environmentDefinitions(A.buildConfig());
+ok('environments.json records the minimal model', envDefs.cicdIdentityModel === 'minimal');
+ok('minimal model shares one plan/apply app name', envDefs.application.every(e =>
+  e.identities.plan.appName === 'sp-contoso-plan' && e.identities.apply.appName === 'sp-contoso-apply'));
+ok('minimal apply subjects stay environment-pinned', envDefs.application.every(e =>
+  e.identities.apply.subject === `repo:contoso-platform/contoso_LZ_Deployment:environment:${e.name}`));
+c.identity.cicdIdentityModel = 'per-environment';
+envDefs = A.environmentDefinitions(A.buildConfig());
+ok('per-environment model keeps per-env app names', envDefs.application.every(e =>
+  e.identities.plan.appName === `sp-contoso-${e.name}-plan`));
+c.identity.cicdIdentityModel = 'minimal';
+
+console.log('\n== 12. Schema declares the broker-only key ==');
+const schema = JSON.parse(require('fs').readFileSync(require('path').resolve(__dirname, '..', 'schema', 'lz-config.schema.json'), 'utf8'));
+const modelDecl = schema.properties.identity.properties.cicdIdentityModel;
+ok('schema declares identity.cicdIdentityModel', !!modelDecl);
+ok('schema enum is exactly [minimal, per-environment]', JSON.stringify(modelDecl && modelDecl.enum) === '["minimal","per-environment"]', JSON.stringify(modelDecl && modelDecl.enum));
+ok('schema default is minimal', modelDecl && modelDecl.default === 'minimal');
+ok('key stays optional (identity has no new required entries)', !Array.isArray(schema.properties.identity.required) || !schema.properties.identity.required.includes('cicdIdentityModel'));
+// Wizard <select> options ⊂ schema enum (contract #7, wizard side).
+const html = require('fs').readFileSync(require('path').resolve(__dirname, '..', '..', 'site', 'index.html'), 'utf8');
+const selectBlock = (html.match(/<select id="id_cicdModel"[\s\S]*?<\/select>/) || [''])[0];
+const optionValues = Array.from(selectBlock.matchAll(/option value="([^"]+)"/g)).map(m => m[1]);
+ok('wizard offers exactly the schema enum values', JSON.stringify(optionValues.sort()) === JSON.stringify([...modelDecl.enum].sort()), JSON.stringify(optionValues));
+ok('wizard binds the select to identity.cicdIdentityModel', /data-path="identity\.cicdIdentityModel"/.test(selectBlock));
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -6,7 +6,7 @@ every file that participates. If you edit **one** side of a contract, you must
 check — and usually change — the other sides, or dispatch the change through
 `alz-orchestrator` so no side is edited in isolation.
 
-All entries verified against the repo on 2026-08-01.
+All entries verified against the repo on 2026-08-02.
 
 ---
 
@@ -33,22 +33,35 @@ it yourself.
 
 ## 2. OIDC identity split (plan SP vs apply SP)
 
-Two service principals, strictly separated by OIDC subject:
+Two service principals, strictly separated by OIDC subject (subject table
+updated 2026-08-02 — `ref:refs/heads/main` moved to the plan SP because
+read-only push-triggered jobs authenticate as it; the apply SP holds
+environment subjects only):
 
 | Identity | Secret | Roles | OIDC subjects |
 | --- | --- | --- | --- |
-| Plan SP (read-only) | `AZURE_PLAN_CLIENT_ID` | Reader + Storage Blob Data Reader | `pull_request` (exclusively) |
-| Contributor SP | `AZURE_CLIENT_ID` | Contributor + Storage Blob Data Contributor | `ref:refs/heads/main`, `environment:dev/prod/hub` |
+| Plan SP (read-only) | `AZURE_PLAN_CLIENT_ID` | Reader @ MG root (+ Storage Blob Data Reader on the state account, azurerm) | `pull_request`, `ref:refs/heads/main` |
+| Apply SP | `AZURE_CLIENT_ID` | Management Group Contributor + Resource Policy Contributor @ MG root, Contributor per distinct subscription (+ Storage Blob Data Contributor, azurerm) | `environment:<name>` only |
 
-PR plans run `terraform plan -lock=false` (the plan SP cannot take state leases).
+Read-only jobs run `terraform plan`/`init` with `-lock=false` (the plan SP
+cannot take state leases).
 
-Spans: `scripts/Start-LandingZoneBootstrap.ps1` (creates the federated
-credentials), `.github/workflows/terraform-plan.yml`,
-`.github/workflows/020-rbac-validation.yml`.
+Spans: `scripts/Start-LandingZoneBootstrap.ps1` and
+`factory/bootstrap/LZFactory.Bootstrap.psm1` (create the identities and
+federated credentials; `identity.cicdIdentityModel` selects minimal vs
+per-environment — see
+[docs/decisions/0002-minimal-identity-estate.md](../docs/decisions/0002-minimal-identity-estate.md)),
+`.github/workflows/terraform-plan.yml`,
+`.github/workflows/010-terraform-init.yml`,
+`.github/workflows/020-rbac-validation.yml`,
+`.github/workflows/terraform-apply.yml` (read-only gate job),
+`.github/workflows/azure-auth-test.yml`.
 
-**Rule**: any new workflow that logs into Azure on a `pull_request` trigger must
-use `AZURE_PLAN_CLIENT_ID`. Giving the `pull_request` subject to the Contributor
-SP breaks the privilege split.
+**Rule**: any job that is read-only — every `pull_request` trigger, and any
+push/schedule/dispatch job without an `environment:` — must authenticate as
+`AZURE_PLAN_CLIENT_ID`. The apply SP can only be assumed from an
+environment-gated job. Giving the `pull_request` subject (or any branch
+subject) to the apply SP breaks the privilege split.
 
 ## 3. AAD-only state access
 
@@ -68,9 +81,12 @@ corpus remote-state reads in
 generator in `site/app.js`, `scripts/New-BackendConfig.ps1` (generates the
 per-layer `backend.hcl` files and always enforces `use_azuread_auth = true`,
 overriding any source that requests key auth), and the RBAC grants in the
-bootstrap script. A new root stack, a new remote-state read, or a change to
-the wizard's backend output must carry the flag or authentication fails at
-init.
+bootstrap script and broker — since 2026-08-02 the broker grants the state
+data-plane roles itself (plan → Storage Blob Data Reader, apply → Storage
+Blob Data Contributor) when the backend is azurerm, and `Set-LzAzurermBackend`
+creates the state account with `--allow-shared-key-access false`. A new root
+stack, a new remote-state read, or a change to the wizard's backend output
+must carry the flag or authentication fails at init.
 
 Note: the live and corpus state-container layouts are deliberately different —
 live uses one container per layer with key `terraform.tfstate`; the corpus
