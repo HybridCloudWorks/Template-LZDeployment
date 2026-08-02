@@ -412,5 +412,91 @@ ok 'Factory CI emits evidence' (
 ok 'Factory CI includes schema drift' ($factoryCiRunner -match 'Test-LzSchemaDrift')
 ok 'Factory CI includes Terraform validation' ($factoryCiRunner -match "terraform @\('validate'")
 
+Write-Host "`n== 23. Guard chain on a sparse config (schema-valid, optional blocks absent) ==" -ForegroundColor Cyan
+# Contract: any configuration that passes G00 schema validation must flow
+# through the whole guard chain producing structured PASS/VIOLATION/ADVISORY
+# results — never a StrictMode property exception. Seeded from the Stage 13
+# render exercise, where a hand-authored config with `security: {}` crashed
+# G02 with a raw "property 'sentinel' cannot be found" error before any guard
+# result was produced.
+$sparse = Clone $cfg
+$sparse.security = [pscustomobject]@{}     # empty block: the original G02/G03 crasher
+$sparse.governance = [pscustomobject]@{    # policyAsCodeEngines / dataResidencyRegions / requiredTags absent
+    policyBaseline = [pscustomobject]@{ enforcementMode = 'audit' }
+}
+$sparse.github = [pscustomobject]@{        # useSelfHostedRunners / branchProtection / defaultBranch absent
+    ownershipModel = $cfg.github.ownershipModel
+    ownerName = $cfg.github.ownerName
+    repositoryName = $cfg.github.repositoryName
+    visibility = 'private'
+}
+$sparse.connectivity = [pscustomobject]@{ model = 'hub-spoke' }   # hubSpoke absent entirely
+$sparse.environments = [pscustomobject]@{  # approvals absent; dev selected with no workloadNonProd
+    platform = @($cfg.environments.platform)
+    application = @('dev', 'prod')
+    promotionPath = @('dev', 'prod')
+}
+$sparse.naming = [pscustomobject]@{ standard = 'caf' }            # defaultTags / patterns absent
+$sparse.azure = [pscustomobject]@{         # allowedLocations / drRegion absent
+    tenantId = $cfg.azure.tenantId
+    primaryRegion = $cfg.azure.primaryRegion
+    primaryRegionCode = $cfg.azure.primaryRegionCode
+    subscriptions = [pscustomobject]@{
+        management = $cfg.azure.subscriptions.management
+        connectivity = $cfg.azure.subscriptions.connectivity
+        workloadProd = $cfg.azure.subscriptions.workloadProd
+    }
+    managementGroups = $cfg.azure.managementGroups
+}
+# The schema conditionally requires backend.azurerm with both names when
+# type is azurerm, so a G00-valid config cannot omit them (G18 exists for
+# hand-edited configs only). Placeholder values, obviously fictional.
+$sparse.backend = [pscustomobject]@{
+    type = 'azurerm'
+    azurerm = [pscustomobject]@{ resourceGroupName = 'rg-tfstate-test-01'; storageAccountName = 'sttfstatetest01' }
+}
+$sparse.PSObject.Properties.Remove('identity')                    # whole optional block absent
+$sparse.PSObject.Properties.Remove('observability')               # whole optional block absent
+
+ok 'sparse config passes G00 schema validation' (
+    Test-Json -Json ($sparse | ConvertTo-Json -Depth 30) -SchemaFile "$repo/factory/schema/lz-config.schema.json" -ErrorAction SilentlyContinue
+)
+$sparseError = errmsg { Test-LzRenderGuards -Config $sparse -FactoryVersion $fv }
+ok -name 'guard chain completes without exception' -cond ($sparseError -eq '') -extra $sparseError
+if ($sparseError -eq '') {
+    $gSparse = Test-LzRenderGuards -Config $sparse -FactoryVersion $fv
+    ok 'guard result is structured' (
+        @('Violations', 'BlockCount', 'WarnCount', 'CanRender') |
+            ForEach-Object { $gSparse.PSObject.Properties.Name -contains $_ } |
+            Where-Object { -not $_ } | Measure-Object |
+            Select-Object -ExpandProperty Count | ForEach-Object { $_ -eq 0 }
+    )
+    ok 'every violation carries Id and Severity' (
+        @($gSparse.Violations | Where-Object { -not $_.Id -or $_.Severity -notin @('Block', 'Warn') }).Count -eq 0
+    )
+    ok -name 'sparse gaps surface as violations, not crashes' -cond (
+        $gSparse.Violations.Id -contains 'G22'         # dev selected, workloadNonProd/hubSpoke absent -> structured block
+    ) -extra (($gSparse.Violations | ForEach-Object { $_.Id }) -join ', ')
+    ok 'absent approvals produce the G14 advisory' ($gSparse.Violations.Id -contains 'G14')
+    ok -name 'absent optional features stay silent' -cond (
+        $gSparse.Violations.Id -notcontains 'G02' -and  # security.sentinel absent = feature off
+        $gSparse.Violations.Id -notcontains 'G05' -and  # useSelfHostedRunners absent = GitHub-hosted
+        $gSparse.Violations.Id -notcontains 'G11' -and  # identity block absent = no identity layer
+        $gSparse.Violations.Id -notcontains 'G19'       # policyAsCodeEngines absent = no sentinel engine
+    ) -extra (($gSparse.Violations | ForEach-Object { $_.Id }) -join ', ')
+}
+else {
+    # Keep the counts aligned with the assertions above when the chain crashed.
+    foreach ($skippedAssertion in @(
+        'guard result is structured',
+        'every violation carries Id and Severity',
+        'sparse gaps surface as violations, not crashes',
+        'absent approvals produce the G14 advisory',
+        'absent optional features stay silent'
+    )) {
+        ok -name $skippedAssertion -cond $false -extra 'guard chain threw; see previous failure'
+    }
+}
+
 Write-Host "`n$script:pass passed, $script:fail failed`n" -ForegroundColor $(if($script:fail){'Red'}else{'Green'})
 exit $(if ($script:fail) { 1 } else { 0 })

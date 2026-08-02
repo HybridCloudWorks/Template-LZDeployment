@@ -7,15 +7,27 @@ rendered {{FACTORY-RAW:computed.generatedAt}}.
 
 | Capability | Value |
 |---|---|
+#{{IF defined observability.logAnalytics}}
 | Log Analytics SKU | {{FACTORY-RAW:observability.logAnalytics.sku}} |
 | Retention | {{FACTORY-NUM:observability.logAnalytics.retentionDays}} days |
 | Daily quota | {{FACTORY-NUM:observability.logAnalytics.dailyQuotaGb}} GB (`-1` means unlimited) |
+#{{ELSE}}
+| Log Analytics | Not configured — set `observability.logAnalytics` in `lz-config.json` |
+#{{ENDIF}}
+#{{IF defined observability.diagnosticSettings}}
 | Diagnostic settings | {{FACTORY-BOOL:observability.diagnosticSettings.enabled}} |
 | Activity Log | {{FACTORY-BOOL:observability.diagnosticSettings.sendActivityLog}} |
 | Archive to storage | {{FACTORY-BOOL:observability.diagnosticSettings.sendToStorage}} |
 | Stream to Event Hub | {{FACTORY-BOOL:observability.diagnosticSettings.sendToEventHub}} |
+#{{ELSE}}
+| Diagnostic settings | Not configured — set `observability.diagnosticSettings` in `lz-config.json` |
+#{{ENDIF}}
+#{{IF defined observability.alerting}}
 | Platform health alerts | {{FACTORY-BOOL:observability.alerting.enablePlatformHealthAlerts}} |
 | Drift alerts | {{FACTORY-BOOL:observability.alerting.enableDriftAlerts}} |
+#{{ELSE}}
+| Alerting | Not configured — set `observability.alerting` in `lz-config.json` |
+#{{ENDIF}}
 
 ## Required signals
 
@@ -38,12 +50,17 @@ path.
 
 ## Drift detection
 
+#{{IF defined observability.driftDetection}}
 | Setting | Value |
 |---|---|
 | Enabled | {{FACTORY-BOOL:observability.driftDetection.enabled}} |
 | Schedule | `{{FACTORY-RAW:observability.driftDetection.schedule}}` |
 | Fail on drift | {{FACTORY-BOOL:observability.driftDetection.failOnDrift}} |
 | Open issue | {{FACTORY-BOOL:observability.driftDetection.openIssueOnDrift}} |
+#{{ELSE}}
+Not configured — set `observability.driftDetection` in `lz-config.json` to
+enable scheduled drift detection.
+#{{ENDIF}}
 
 Drift jobs are read-only. A finding opens a tracked remediation path; it must
 never silently apply or import resources.

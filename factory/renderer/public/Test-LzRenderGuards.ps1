@@ -25,6 +25,40 @@ function New-LzGuardViolation {
     [pscustomobject]@{ Id = $Id; Message = $Message; Remediation = $Remediation; Severity = $Severity }
 }
 
+function Get-LzGuardConfigValue {
+    <#
+    .SYNOPSIS
+        StrictMode-safe dot-path read over a parsed configuration.
+    .DESCRIPTION
+        Walks Path one segment at a time via Test-LzHasProperty and returns
+        Default when any segment is absent or null. The guard-chain contract:
+        any configuration that passes G00 schema validation must flow through
+        every guard producing structured PASS/VIOLATION/ADVISORY results —
+        never a StrictMode property exception. The schema leaves whole blocks
+        optional (identity, environments.approvals, security.*, ...), so every
+        guard read of a path the schema does not mark required goes through
+        this helper; an absent path means feature-off/default, not a crash.
+    .PARAMETER Object
+        Root object to read from (usually the parsed config).
+    .PARAMETER Path
+        Dot-separated property path, e.g. 'security.sentinel.enabled'.
+    .PARAMETER Default
+        Returned when any path segment is missing or null.
+    #>
+    param(
+        [AllowNull()][object]$Object,
+        [Parameter(Mandatory)][string]$Path,
+        $Default = $null
+    )
+    $current = $Object
+    foreach ($segment in $Path.Split('.')) {
+        if (-not (Test-LzHasProperty $current $segment)) { return $Default }
+        $current = $current.$segment
+    }
+    if ($null -eq $current) { return $Default }
+    return $current
+}
+
 function Test-LzRenderGuards {
     <#
     .SYNOPSIS
@@ -73,13 +107,15 @@ function Test-LzRenderGuards {
         return ($moduleStatus.ContainsKey($name) -and $moduleStatus[$name] -eq 'scaffold')
     }
 
-    if ($Config.security.sentinel.enabled -and (& $isScaffold 'sentinel-siem')) {
+    # security is schema-required but its sub-blocks are not: an absent
+    # security.sentinel / security.keyVault means the feature is off.
+    if ((Get-LzGuardConfigValue -Object $Config -Path 'security.sentinel.enabled' -Default $false) -and (& $isScaffold 'sentinel-siem')) {
         $v += New-LzGuardViolation -Id 'G02' `
             -Message 'Sentinel is enabled, but the sentinel-siem module is scaffold-only and declares no resources.' `
             -Remediation 'Implement terraform/modules/sentinel-siem and set its status to "implemented" in factory-version.json, or disable Sentinel. Emitting it now would produce a layer that applies successfully and deploys nothing.'
     }
 
-    if ($Config.security.keyVault.customerManagedKeys -and (& $isScaffold 'keyvault-cmk')) {
+    if ((Get-LzGuardConfigValue -Object $Config -Path 'security.keyVault.customerManagedKeys' -Default $false) -and (& $isScaffold 'keyvault-cmk')) {
         $v += New-LzGuardViolation -Id 'G03' `
             -Message 'Customer-managed keys are enabled, but the keyvault-cmk module is scaffold-only and declares no resources.' `
             -Remediation 'Implement terraform/modules/keyvault-cmk and update its status in factory-version.json, or disable customer-managed keys. A no-op CMK module means data you believe is protected by your own keys is not.'
@@ -116,7 +152,9 @@ function Test-LzRenderGuards {
             -Remediation 'Use hub-spoke, or contribute a virtual-wan module and register it in factory-version.json.'
     }
 
-    if ($Config.github.useSelfHostedRunners) {
+    # Optional key: the schema requires github.{ownershipModel,ownerName,
+    # repositoryName,visibility} only. Absent means GitHub-hosted (default).
+    if (Get-LzGuardConfigValue -Object $Config -Path 'github.useSelfHostedRunners' -Default $false) {
         $v += New-LzGuardViolation -Id 'G05' `
             -Message 'Self-hosted runners are requested, but v1 emits GitHub-hosted workflows only.' `
             -Remediation 'Set github.useSelfHostedRunners to false. Extension point: the runs-on value is centralised in the workflow templates and can be parameterised once self-hosted runner labels are part of the schema.'
@@ -125,8 +163,10 @@ function Test-LzRenderGuards {
     # ── Tag coverage ─────────────────────────────────────────────────────────
     # A landing zone whose own tagging policy denies its first apply is the
     # single most common self-inflicted deployment failure.
-    $required = @($Config.governance.policyBaseline.requiredTags)
-    $defaults = $Config.naming.defaultTags
+    $required = @(Get-LzGuardConfigValue -Object $Config -Path 'governance.policyBaseline.requiredTags' -Default @())
+    # naming.standard is the only schema-required naming key; defaultTags may
+    # be absent, which G06 must report as missing values, not crash on.
+    $defaults = Get-LzGuardConfigValue -Object $Config -Path 'naming.defaultTags' -Default $null
     $missing = @()
     foreach ($t in $required) {
         $has = (Test-LzHasProperty $defaults $t) -and
@@ -140,21 +180,24 @@ function Test-LzRenderGuards {
     }
 
     # ── Region / policy coherence ────────────────────────────────────────────
-    $allowed = @($Config.azure.allowedLocations)
+    # allowedLocations is not schema-required; when absent there is no
+    # allowed-locations input to contradict, so G07/G08 have nothing to check.
+    $allowed = @(Get-LzGuardConfigValue -Object $Config -Path 'azure.allowedLocations' -Default @())
     $deployedRegions = @($Config.azure.primaryRegion)
     # drRegion is optional and stripped from the export when absent; reading it
     # unconditionally throws under StrictMode on a single-region configuration.
     if (Test-LzHasProperty $Config.azure 'drRegion') { $deployedRegions += $Config.azure.drRegion }
     foreach ($r in $deployedRegions) {
-        if ($r -and $allowed -notcontains $r) {
+        if ($allowed.Count -gt 0 -and $r -and $allowed -notcontains $r) {
             $v += New-LzGuardViolation -Id 'G07' `
                 -Message "Region '$r' is deployed to but is absent from azure.allowedLocations." `
                 -Remediation 'Add the region to allowedLocations. The allowed-locations policy would otherwise deny the landing zone its own resources.'
         }
     }
 
-    if (@($Config.governance.dataResidencyRegions).Count -gt 0) {
-        $outside = @($allowed | Where-Object { $_ -notin @($Config.governance.dataResidencyRegions) })
+    $residency = @(Get-LzGuardConfigValue -Object $Config -Path 'governance.dataResidencyRegions' -Default @())
+    if ($residency.Count -gt 0) {
+        $outside = @($allowed | Where-Object { $_ -notin $residency })
         if ($outside.Count -gt 0) {
             $v += New-LzGuardViolation -Id 'G08' `
                 -Message "Allowed locations [$($outside -join ', ')] fall outside the declared data-residency regions." `
@@ -187,9 +230,9 @@ function Test-LzRenderGuards {
             -Remediation 'Supply the shared non-production workload subscription ID.'
     }
     if ($nonProdEnvironments.Count -gt 0) {
-        $pairs = if (Test-LzHasProperty $Config.connectivity.hubSpoke 'nonProdSpokeAddressSpaces') {
-            $Config.connectivity.hubSpoke.nonProdSpokeAddressSpaces
-        } else { $null }
+        # connectivity.hubSpoke is itself optional (only .model is required),
+        # so the read must be safe from the hubSpoke segment down.
+        $pairs = Get-LzGuardConfigValue -Object $Config -Path 'connectivity.hubSpoke.nonProdSpokeAddressSpaces' -Default $null
         foreach ($envName in $nonProdEnvironments) {
             if ($null -eq $pairs -or -not (Test-LzHasProperty $pairs $envName) -or
                 -not (Test-LzHasProperty $pairs.$envName 'primary') -or -not $pairs.$envName.primary) {
@@ -207,7 +250,9 @@ function Test-LzRenderGuards {
         }
     }
 
-    if ($Config.identity.deployIdentitySubscription -and -not (& $hasSub 'identity')) {
+    # The identity block is not schema-required at all; absent means no
+    # dedicated identity subscription layer is requested.
+    if ((Get-LzGuardConfigValue -Object $Config -Path 'identity.deployIdentitySubscription' -Default $false) -and -not (& $hasSub 'identity')) {
         $v += New-LzGuardViolation -Id 'G11' `
             -Message 'An identity subscription layer is requested but no identity subscription ID was supplied.' `
             -Remediation 'Supply azure.subscriptions.identity, or set identity.deployIdentitySubscription to false.'
@@ -215,7 +260,7 @@ function Test-LzRenderGuards {
 
     # ── Address space sanity ─────────────────────────────────────────────────
     if ($Config.connectivity.model -eq 'hub-spoke') {
-        $hs = $Config.connectivity.hubSpoke
+        $hs = Get-LzGuardConfigValue -Object $Config -Path 'connectivity.hubSpoke' -Default $null
         $spaces = @()
         foreach ($n in @('primaryHubAddressSpace', 'drHubAddressSpace', 'primarySpokeAddressSpace', 'drSpokeAddressSpace')) {
             if ((Test-LzHasProperty $hs $n) -and $hs.$n) { $spaces += , @($n, $hs.$n) }
@@ -254,11 +299,10 @@ function Test-LzRenderGuards {
 
     # ── Approval gates on production ─────────────────────────────────────────
     if ($app -contains 'prod') {
-        $approvals = $Config.environments.approvals
-        $reviewers = @()
-        if ((Test-LzHasProperty $approvals 'prod')) {
-            $reviewers = @($approvals.prod.requiredReviewers)
-        }
+        # environments.approvals (and approvals.prod.requiredReviewers) are
+        # optional; absent means no reviewers, which is exactly what G14 warns
+        # about.
+        $reviewers = @(Get-LzGuardConfigValue -Object $Config -Path 'environments.approvals.prod.requiredReviewers' -Default @())
         if ($reviewers.Count -eq 0) {
             $v += New-LzGuardViolation -Id 'G14' -Severity 'Warn' `
                 -Message 'The prod environment has no required reviewers.' `
@@ -270,8 +314,8 @@ function Test-LzRenderGuards {
     if ($Config.naming.standard -eq 'custom') {
         $allowedTokens = @('org', 'scope', 'workload', 'type', 'region', 'regionCode', 'env', 'nn')
         foreach ($pair in @(
-            @('resourceGroupPattern', $Config.naming.resourceGroupPattern),
-            @('resourcePattern', $Config.naming.resourcePattern)
+            @('resourceGroupPattern', (Get-LzGuardConfigValue -Object $Config -Path 'naming.resourceGroupPattern' -Default '')),
+            @('resourcePattern', (Get-LzGuardConfigValue -Object $Config -Path 'naming.resourcePattern' -Default ''))
         )) {
             $name = $pair[0]; $pattern = $pair[1]
             if ([string]::IsNullOrWhiteSpace($pattern)) {
@@ -293,23 +337,23 @@ function Test-LzRenderGuards {
 
     # ── Backend coherence ────────────────────────────────────────────────────
     if ($Config.backend.type -eq 'hcp-terraform') {
-        if (-not ((Test-LzHasProperty $Config.backend 'hcpTerraform')) -or
-            [string]::IsNullOrWhiteSpace($Config.backend.hcpTerraform.organization)) {
+        # backend.hcpTerraform may exist without .organization; the nested
+        # read must not crash where G17 is supposed to report the gap.
+        if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.hcpTerraform.organization' -Default ''))) {
             $v += New-LzGuardViolation -Id 'G17' `
                 -Message 'Backend is hcp-terraform but no organization is configured.' `
                 -Remediation 'Supply backend.hcpTerraform.organization.'
         }
     }
     elseif ($Config.backend.type -eq 'azurerm') {
-        if (-not ((Test-LzHasProperty $Config.backend 'azurerm')) -or
-            [string]::IsNullOrWhiteSpace($Config.backend.azurerm.storageAccountName)) {
+        if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.azurerm.storageAccountName' -Default ''))) {
             $v += New-LzGuardViolation -Id 'G18' `
                 -Message 'Backend is azurerm but no state storage account is configured.' `
                 -Remediation 'Supply backend.azurerm.storageAccountName and resourceGroupName.'
         }
     }
 
-    if ($Config.governance.policyAsCodeEngines -contains 'sentinel' -and $Config.backend.type -ne 'hcp-terraform') {
+    if (@(Get-LzGuardConfigValue -Object $Config -Path 'governance.policyAsCodeEngines' -Default @()) -contains 'sentinel' -and $Config.backend.type -ne 'hcp-terraform') {
         $v += New-LzGuardViolation -Id 'G19' `
             -Message 'Sentinel policy enforcement requires the HCP Terraform backend.' `
             -Remediation 'Remove sentinel from governance.policyAsCodeEngines, or switch the backend to hcp-terraform.'

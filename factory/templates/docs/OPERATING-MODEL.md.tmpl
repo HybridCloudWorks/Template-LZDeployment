@@ -51,7 +51,11 @@ teams must not bypass module interfaces or edit state directly.
 |---|---|---|
 | Every pull request | Format, validate, policy, security, and plan checks | GitHub check run |
 | Every approved apply | Layer-by-layer apply and post-apply verification | Workflow run and state version |
+#{{IF defined observability.driftDetection.schedule}}
 | Weekly | Drift detection (`{{FACTORY-RAW:observability.driftDetection.schedule}}`) | Drift issue or clean run |
+#{{ELSE}}
+| Weekly | Drift detection (no schedule configured — set `observability.driftDetection.schedule`) | Drift issue or clean run |
+#{{ENDIF}}
 | Monthly | Cost, privileged access, policy compliance, backup health | Review record |
 | Quarterly | Restore exercise, break-glass test, architecture review | Exercise report |
 | Annually | Threat model and disaster-recovery plan review | Signed review |

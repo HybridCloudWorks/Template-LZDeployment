@@ -6,7 +6,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 management_subscription_id = {{FACTORY:azure.subscriptions.management}}
-#{{IF defined azure.subscriptions.sandbox}}
+#{{IF defined azure.subscriptions.sandbox && azure.subscriptions.sandbox}}
 sandbox_subscription_id = {{FACTORY:azure.subscriptions.sandbox}}
 #{{ELSE}}
 # No sandbox subscription is configured, so the sandbox-cleanup runbook and its

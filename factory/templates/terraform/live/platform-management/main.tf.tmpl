@@ -51,7 +51,7 @@ module "backup_dr" {
 #{{ENDIF}}
 #{{ENDIF}}
 
-#{{IF defined azure.subscriptions.sandbox}}
+#{{IF defined azure.subscriptions.sandbox && azure.subscriptions.sandbox}}
 # ── Sandbox cleanup automation ───────────────────────────────────────────────
 # Emitted only when a sandbox subscription exists. Without one the runbook
 # would be scheduled against an empty subscription ID and fail on every run,
