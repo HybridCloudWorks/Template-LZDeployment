@@ -76,7 +76,16 @@ SHA-pinned and travel with the fork.
   `Gitleaks Secret Detection`, `Terraform Security Scan`; caveat — the first
   two are path-filtered and can wait forever on non-matching PRs, the three
   secrets-scan checks always report; `-RequiredChecks` overrides. Operator
-  execution pending.)*
+  execution pending.)* *(Plan-verified live 2026-08-01, read-only: current
+  `main` protection has empty required contexts, `strict=false`, required
+  approvals 0, `enforce_admins=true`; Actions is enabled; secret scanning and
+  push protection are already on. The protection payload was prepared and
+  plan-verified against the live repo — preserved in the session scratchpad
+  as `protection-main.json` — but the mutation needs interactive operator
+  approval: apply it, or run `scripts/Initialize-ClientFork.ps1 -Repository
+  saulpatinojr/HCW-Plan_LZDeployment -Apply`, accepting its required-approvals
+  ≥ 1 floor. Single-owner caveat: required approvals ≥ 1 deadlocks
+  self-merges — this repo has one owner today.)*
 - [ ] **[HARDENING] Verify GitHub repo settings not checkable from a local
   clone** *(moved from TODO.md)* — secret scanning enabled, required PR
   approval count (currently 0 — branch protection exists but does not require
@@ -121,34 +130,59 @@ SHA-pinned and travel with the fork.
 
 **Missing / manual**
 
-- [ ] **[BLOCKER] Add the live Entra federated credentials — BOTH service
-  principals — then verify them** *(moved from TODO.md; re-confirmed 2026-08-01
-  on merged PR #53: `RBAC Audit & Validation` and `RBAC Compliance Checks`
-  fail in ~10 s)* — every PR fails Azure login with `AADSTS700213: No matching
-  federated identity record found for presented assertion subject
-  'repo:saulpatinojr/HCW-Plan_LZDeployment:pull_request'`. The code fix landed
-  (`terraform-plan.yml` authenticates as `AZURE_PLAN_CLIENT_ID`); the live
-  Entra app registration was never updated. **Widened 2026-08-01**: run logs
-  prove the gap covers both SPs, not just the plan SP — run 30721161313 shows
-  `AADSTS700213` for the **Contributor SP's `ref:refs/heads/main` subject**
-  too, so push-triggered runs on `main` fail the same way. Fix (needs
-  Application Administrator):
-
-  ```bash
-  az ad app federated-credential create --id <APP_ID> --parameters '{"name":"pr-plan","issuer":"https://token.actions.githubusercontent.com","subject":"repo:saulpatinojr/HCW-Plan_LZDeployment:pull_request","audiences":["api://AzureADTokenExchange"]}'
-  ```
-
-  Then run the bootstrap/remediation against the live app registrations,
-  confirm the exact repo-scoped subjects by API read-back, and prove token
-  exchange from a real pull request and a real push to `main`. The same
-  failure will occur **per customer** if the SPs' credentials are skipped —
-  the bootstrap creates them (`Setup-Azure-OIDC`), so the per-customer fix is
-  "do not skip phase 4". *(2026-08-01: Tooling shipped (this PR):
-  `scripts/Add-PlanFederatedCredential.ps1` — plan-first remediation for the
-  plan SP's `pull_request` subject, idempotent, with a contract-#2 guard that
-  refuses Contributor/Owner apps and API read-back after apply. NOT yet
-  executed live; the Contributor SP's `ref:refs/heads/main` subject still
-  needs its own remediation. Operator execution pending.)*
+- [ ] **[BLOCKER] Create the live landing-zone identity estate — the OIDC
+  bootstrap never ran against this repo** *(moved from TODO.md as "add the
+  federated credential"; re-confirmed 2026-08-01 on merged PR #53: `RBAC Audit
+  & Validation` and `RBAC Compliance Checks` fail in ~10 s)* — every PR fails
+  Azure login with `AADSTS700213: No matching federated identity record found
+  for presented assertion subject
+  'repo:saulpatinojr/HCW-Plan_LZDeployment:pull_request'`, and run
+  30721161313 shows the same `AADSTS700213` for the **Contributor SP's
+  `ref:refs/heads/main` subject**, so push-triggered runs on `main` fail the
+  same way. **Superseding finding — read-only live discovery, 2026-08-01
+  (operator-approved)**: the earlier premise "the live Entra app registration
+  was never updated" understates it. In the reachable tenant — a
+  client tenant; its identity is recorded in CBTS-side engagement records
+  (2026-08-01 session evidence), not in this file — **no landing-zone app
+  registrations exist at all**: 420 visible apps enumerated, none
+  HCW/terraform/plan-named, and both GitHub-named candidate apps carry ZERO
+  federated credentials. The repository holds only 3 secrets
+  (`AZURE_CLIENT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, all last
+  updated 2026-05-29) — `AZURE_PLAN_CLIENT_ID` and `TF_API_TOKEN` do **not**
+  exist — and the only repo environment is `copilot` (no dev/prod/hub).
+  **Conclusion**: the legacy bootstrap's OIDC/GitHub phases (4–6) never ran
+  against this repo. The real remediation is executing the Phase-2 bootstrap
+  end-to-end (`Start-LandingZoneBootstrap.ps1` or the broker) in the
+  **confirmed** engagement tenant; credential patching
+  (`scripts/Add-PlanFederatedCredential.ps1`, shipped this PR) has no
+  legitimate target until that estate exists.
+  **Open question / hard stop**: which tenant and subscription the three
+  2026-05-29 secrets actually reference is unverifiable from a clone (secret
+  values are unreadable). The engagement owner must confirm the intended
+  deployment tenant before **any** identity is created. The reachable tenant
+  belongs to a **regulated-industry client** — creating identities there
+  without engagement-owner confirmation is **prohibited**.
+  [REVIEW REQUIRED] — the unredacted identifiers (client name, tenant GUID)
+  live in the 2026-08-01 session evidence and CBTS-side engagement records,
+  not in this file; engagement-owner review is still required before acting
+  on this item.
+  The same failure will occur **per customer** if the bootstrap's phase 4 is
+  skipped — the per-customer fix remains "do not skip phase 4".
+- [ ] **[BLOCKER] Privilege-split hazard: the plan-secret fallback in
+  `020-rbac-validation.yml`** *(found 2026-08-01 during the read-only live
+  check above)* — the workflow's client-id expression
+  (`github.event_name == 'pull_request' && secrets.AZURE_PLAN_CLIENT_ID ||
+  secrets.AZURE_CLIENT_ID`) falls back to `AZURE_CLIENT_ID` when
+  `AZURE_PLAN_CLIENT_ID` is unset. With `AZURE_PLAN_CLIENT_ID` confirmed
+  absent from the repo, every PR run authenticates as the
+  **Contributor-designated** client id — a contract-#2 violation
+  ([.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md))
+  waiting to go live the moment the identity estate is created. When the
+  Phase-2 bootstrap runs, the `AZURE_PLAN_CLIENT_ID` secret MUST be added in
+  the **same change** that creates the identities. Follow-up (owner:
+  `github-actions-engineer`): harden the workflow to fail loudly when the
+  plan secret is missing on a `pull_request` trigger instead of silently
+  falling back.
 - [ ] **[BLOCKER] Supply `-SandboxSubscriptionId` at bootstrap (or grant
   manually).** Without it, platform-management's sandbox-cleanup Contributor
   assignment fails `AuthorizationFailed` at apply. Blocks any engagement whose
@@ -379,11 +413,12 @@ AAD-only state storage (contract #3).
   from TODO.md)* — confirm `010-terraform-init.yml`, `020-rbac-validation.yml`,
   `terraform-plan.yml`, and `terraform-apply.yml` complete successfully on a
   real PR/push. As of 2026-07-01 there is no recorded successful run of any of
-  these; the PR leg stays red until the Phase 2 AADSTS item is fixed — which
-  now covers **both** SP subjects. *(2026-08-01: Tooling shipped (this PR):
-  `scripts/Add-PlanFederatedCredential.ps1` for the plan SP's `pull_request`
-  subject — operator execution pending, and the Contributor SP's
-  `ref:refs/heads/main` subject needs its own remediation. See Phase 2.)*
+  these; the PR leg stays red until the Phase 2 identity blocker is fixed.
+  *(Updated 2026-08-01: read-only live discovery found no landing-zone
+  identity estate exists at all — no app registrations, no
+  `AZURE_PLAN_CLIENT_ID` secret, no dev/prod/hub environments — so the
+  prerequisite is the full Phase-2 bootstrap in the confirmed engagement
+  tenant, not credential patching. See Phase 2, first blocker.)*
 - [x] **[HARDENING] Investigate 0-second workflow failures** *(moved from
   TODO.md)* — historical runs of `010-terraform-init.yml` /
   `020-rbac-validation.yml` failed in 0 seconds. *(Investigated and resolved
