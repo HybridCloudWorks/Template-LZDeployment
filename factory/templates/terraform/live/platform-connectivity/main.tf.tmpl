@@ -23,10 +23,53 @@ provider "azurerm" {
   subscription_id = var.connectivity_subscription_id
 }
 
+# The central Log Analytics workspace is owned by platform-management, which
+# keeps separate state (control AR3). The read is count-gated on
+# wire_management_workspace (default false) so the FIRST plan of a freshly
+# generated repository succeeds before platform-management has ever been
+# applied — try() cannot rescue a provider read; only count works. Flip the
+# boolean in a PR after that layer's first apply.
+data "terraform_remote_state" "management" {
+  count = var.wire_management_workspace ? 1 : 0
+
+#{{IF computed.backendIsHcp}}
+  backend = "remote"
+
+  config = {
+    organization = {{FACTORY:backend.hcpTerraform.organization}}
+
+    workspaces = {
+      name = "{{FACTORY-RAW:computed.workspacePrefix}}-platform-management"
+    }
+  }
+#{{ELSE}}
+  backend = "azurerm"
+
+  config = {
+    resource_group_name  = var.state_resource_group_name
+    storage_account_name = var.state_storage_account_name
+    container_name       = var.state_container_name
+    key                  = "platform-management.tfstate"
+    # The state storage account disables shared keys; without AAD auth this
+    # read fails with a 403 at init. Must match backend.tf's auth mode.
+    use_azuread_auth = {{FACTORY-BOOL:backend.azurerm.useAzureAdAuth}}
+  }
+#{{ENDIF}}
+}
+
 locals {
   common_tags = merge(var.default_tags, {
     layer = "platform-connectivity"
   })
+
+  # Workspace ID precedence: an explicitly supplied variable wins; otherwise
+  # the gated remote-state read; otherwise empty, which disables hub
+  # diagnostics in the hub-network module.
+  effective_law_id = (
+    var.log_analytics_workspace_id != "" ? var.log_analytics_workspace_id :
+    var.wire_management_workspace ? data.terraform_remote_state.management[0].outputs.log_analytics_workspace_id :
+    ""
+  )
 }
 
 module "hub_primary" {
@@ -44,7 +87,7 @@ module "hub_primary" {
   deploy_dns_placeholder     = var.deploy_dns
   management_ip_ranges       = var.management_ip_ranges
   availability_zones         = var.primary_availability_zones
-  log_analytics_workspace_id = var.log_analytics_workspace_id
+  log_analytics_workspace_id = local.effective_law_id
   tags                       = local.common_tags
 }
 
@@ -64,7 +107,7 @@ module "hub_dr" {
   deploy_dns_placeholder     = var.deploy_dns
   management_ip_ranges       = var.management_ip_ranges
   availability_zones         = var.dr_availability_zones
-  log_analytics_workspace_id = var.log_analytics_workspace_id
+  log_analytics_workspace_id = local.effective_law_id
   tags                       = local.common_tags
 }
 

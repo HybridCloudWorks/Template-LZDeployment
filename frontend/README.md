@@ -23,8 +23,9 @@ wizard; use this page only when working the legacy stacks directly.
 
 ## Usage: fill form → download → place files
 
-1. Open `frontend/index.html` directly from disk in any modern browser
-   (the supported flow — the page is not hosted anywhere).
+1. Open the page: either `frontend/index.html` directly from disk in any
+   modern browser (local checkout), or `/frontend/` on the published GitHub
+   Pages site (see "Hosting" below). Both flows are supported.
 2. Fill the form. Controls that no Terraform stack consumes are disabled and
    badged (see "What is emitted" below); they exist to record roadmap intent.
 3. Click **Generate .tfvars files**, review the preview, then
@@ -76,5 +77,19 @@ The generated files contain **only** variables declared in the two
 
 ## Hosting
 
-The supported flow is opening `frontend/index.html` from a local clone.
-`.github/workflows/deploy-pages.yml` currently publishes `site/` only.
+`.github/workflows/deploy-pages.yml` publishes one GitHub Pages artifact with
+`site/` at the root and this page as a sibling subdirectory:
+
+| Page | Published URL | Local checkout path |
+| --- | --- | --- |
+| Landing Zone Factory wizard (primary) | `https://<owner>.github.io/<repo>/` | `site/index.html` |
+| This legacy generator | `https://<owner>.github.io/<repo>/frontend/` | `frontend/index.html` |
+
+Opening `frontend/index.html` from a local clone remains fully supported.
+Because the wizard sits at a different relative path in the two layouts
+(`../index.html` when published, `../site/index.html` on disk), the
+"Landing Zone Factory wizard" links on this page default to the published
+target and are rewritten to `../site/index.html` at load time when the page
+is opened over the `file:` protocol. With JavaScript disabled the links
+resolve correctly only on the published site — from a local checkout, open
+`site/index.html` directly.

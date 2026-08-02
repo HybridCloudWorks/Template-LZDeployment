@@ -50,9 +50,21 @@ variable "firewall_type" {
 }
 
 variable "azfw_tier" {
+  # Bound matches connectivity.firewall.azfwTier in the schema (contract #7:
+  # wizard ⊆ schema ⊆ terraform). Basic is deliberately NOT accepted: Azure
+  # Firewall Basic mandates a dedicated AzureFirewallManagementSubnet (/26)
+  # plus a management public IP that the hub-network module's
+  # azurerm_firewall.hub does not provision, and Basic supports threat-intel
+  # alert-only while this layer defaults to Deny. Accepting Basic here would
+  # let a plan succeed for a firewall that can never deploy.
   description = "Azure Firewall tier (Standard or Premium)"
   type        = string
   default     = "Standard"
+
+  validation {
+    condition     = contains(["Standard", "Premium"], var.azfw_tier)
+    error_message = "Azure Firewall tier must be one of: Standard, Premium."
+  }
 }
 
 variable "firewall_threat_intel_mode" {

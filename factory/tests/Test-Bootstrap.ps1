@@ -62,11 +62,34 @@ ok 'no wildcard subjects' (
 ok 'repository derived from config' ($plan.repository -eq 'contoso-platform/contoso_LZ_Deployment')
 ok 'active layers retained' ($plan.layers -contains 'platform-connectivity' -and $plan.layers -contains 'workloads-prod')
 
+# Deployment branch policy: every GitHub environment the plan will reconcile
+# must show protected_branches=true in plan-first mode (a workflow_dispatch
+# executes the dispatched ref's workflow file; unrestricted environments let a
+# write-capable actor run a stripped workflow copy past reviewers).
+function Test-BranchPolicyCoverage($planObject) {
+    @($planObject.githubEnvironments).Count -eq @($planObject.environments).Count -and
+    @($planObject.githubEnvironments | Where-Object {
+        $_.deploymentBranchPolicy.protectedBranches -ne $true -or
+        $_.deploymentBranchPolicy.customBranchPolicies -ne $false
+    }).Count -eq 0 -and
+    @($planObject.environments | Where-Object { $_ -notin @($planObject.githubEnvironments | ForEach-Object name) }).Count -eq 0
+}
+ok 'plan surfaces protected-branches deployment policy for every environment (per-environment model)' (
+    Test-BranchPolicyCoverage $plan
+)
+
 # Byte parity: with an hcp-terraform backend, per-environment output must be
 # byte-for-byte the pre-change broker output, so existing generated estates
 # re-run idempotently with zero drift. The fixture was captured from the
 # pre-change module with generatedAt normalized.
+#
+# DOCUMENTED DELTA (2026-08-02): githubEnvironments is stripped before the
+# comparison. It is new GitHub-path metadata added so plan-first mode shows the
+# deployment_branch_policy the broker now enforces; it changes nothing the
+# Azure reconciliation consumes. Identity records, environments, layers, and
+# every pre-existing field must still match the fixture byte-for-byte.
 $plan.generatedAt = 'NORMALIZED'
+$plan.PSObject.Properties.Remove('githubEnvironments')
 $expected = Get-Content "$PSScriptRoot/fixtures/bootstrap-plan-per-environment.expected.json" -Raw
 $actual = $plan | ConvertTo-Json -Depth 30
 ok 'per-environment plan is byte-for-byte the pre-change output' ($actual -eq $expected) $(
@@ -85,6 +108,9 @@ $planRecord = @($planMin.identities | Where-Object kind -eq 'plan')
 $applyRecord = @($planMin.identities | Where-Object kind -eq 'apply')
 
 ok 'minimal is the default when the key is absent' ($planMin.identityModel -eq 'minimal')
+ok 'plan surfaces protected-branches deployment policy for every environment (minimal model)' (
+    Test-BranchPolicyCoverage $planMin
+)
 ok 'minimal emits exactly 2 identity records' (@($planMin.identities).Count -eq 2) (@($planMin.identities).Count)
 ok 'minimal emits one plan and one apply record' ($planRecord.Count -eq 1 -and $applyRecord.Count -eq 1)
 ok 'minimal display names have no environment segment' (

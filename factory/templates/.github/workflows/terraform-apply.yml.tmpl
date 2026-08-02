@@ -33,7 +33,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout trusted default branch
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: {{FACTORY-RAW:computed.defaultBranch}}
       - name: Reject unknown layer
@@ -45,16 +45,56 @@ jobs:
             *",$REQUESTED_LAYER,"*) ;;
             *) echo "::error::Unknown or unrendered layer: $REQUESTED_LAYER"; exit 1 ;;
           esac
+      - name: Enforce layer -> environment binding
+        env:
+          REQUESTED_LAYER: ${{ inputs.layer }}
+          REQUESTED_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          # The environment input is free-form (type: environment), but each
+          # layer has exactly one canonical protected environment (the broker's
+          # Get-LzLayerEnvironment mapping). Without this guard, a layer could
+          # be applied through ANOTHER environment's reviewer gate — e.g.
+          # workloads-prod through the dev reviewers under the minimal
+          # identity model. Runs before Azure login: a mismatched dispatch
+          # fails here, before any credential is issued.
+          case "$REQUESTED_LAYER" in
+            global)                expected="bootstrap" ;;
+            platform-connectivity) expected="connectivity" ;;
+            platform-management)   expected="management" ;;
+            platform-identity)     expected="identity" ;;
+            workloads-prod)        expected="prod" ;;
+            sandbox)               expected="sandbox" ;;
+            workloads-nonprod)
+              # Config-dependent (first of dev/test/uat); constrain to the
+              # non-production class rather than one exact name.
+              case "$REQUESTED_ENVIRONMENT" in
+                dev|test|uat) expected="$REQUESTED_ENVIRONMENT" ;;
+                *) expected="dev|test|uat" ;;
+              esac ;;
+            *)                     expected="" ;;
+          esac
+          if [ -z "$expected" ]; then
+            echo "::error::No canonical environment mapping for layer '$REQUESTED_LAYER'."
+            exit 1
+          fi
+          if [ "$REQUESTED_ENVIRONMENT" != "$expected" ]; then
+            echo "::error::Layer '$REQUESTED_LAYER' must be applied through its canonical environment '$expected', not '$REQUESTED_ENVIRONMENT'."
+            exit 1
+          fi
+          echo "Layer '$REQUESTED_LAYER' correctly bound to environment '$REQUESTED_ENVIRONMENT'."
       - name: Azure login (environment apply identity)
-        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
         with:
           client-id: ${{ vars.AZURE_APPLY_CLIENT_ID }}
           tenant-id: {{FACTORY-RAW:azure.tenantId}}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: '{{FACTORY-RAW:computed.terraformVersion}}'
+          # Without this, the wrapper echoes a "[command]..." line ahead of
+          # stdout, corrupting the `terraform show -json` redirect below.
+          terraform_wrapper: false
 #{{IF computed.backendIsHcp}}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 #{{ENDIF}}

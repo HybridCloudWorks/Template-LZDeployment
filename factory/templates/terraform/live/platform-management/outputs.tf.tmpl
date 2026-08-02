@@ -1,6 +1,13 @@
 # GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
 # Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
 
+# Unconditional, like the module that feeds it. This is the value the
+# connectivity layer's wire_management_workspace remote-state read consumes.
+output "log_analytics_workspace_id" {
+  description = "Central Log Analytics workspace resource ID (consumed by the connectivity layer for hub diagnostics)"
+  value       = module.management_baseline.log_analytics_workspace_id
+}
+
 #{{IF security.backup.enabled}}
 output "backup_primary_rsv_id" {
   description = "Recovery Services vault ID in the primary region"

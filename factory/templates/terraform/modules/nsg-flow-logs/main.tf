@@ -10,9 +10,12 @@ resource "azurerm_storage_account" "flow_logs" {
   account_replication_type = "RAGZRS" # Geo-redundant for compliance
   min_tls_version          = "TLS1_2"
 
-  # Security settings
+  # Security settings. Public network access stays ENABLED because the NSG
+  # flow-log writer is a platform service that must reach the account through
+  # its public endpoint; access is still constrained by the deny-by-default
+  # network rules below (trusted-services bypass plus explicit allowances).
   allow_nested_items_to_be_public = false
-  public_network_access_enabled   = false
+  public_network_access_enabled   = true
 
   # Blob properties
   blob_properties {
@@ -33,6 +36,9 @@ resource "azurerm_storage_account" "flow_logs" {
 
     # Allow access from management subnet
     virtual_network_subnet_ids = var.allowed_subnet_ids
+
+    # Explicit public ranges, parsed fail-closed (see locals below)
+    ip_rules = local.flow_logs_ip_rules
   }
 
   tags = merge(
@@ -42,6 +48,18 @@ resource "azurerm_storage_account" "flow_logs" {
       component = "monitoring"
     }
   )
+}
+
+locals {
+  # Azure storage ip_rules accept public IPv4 addresses or CIDR ranges, with
+  # /32 written as a bare address. The parser fails closed: an entry that does
+  # not parse as an IPv4 CIDR is dropped, narrowing access instead of
+  # widening it, and an empty result leaves default_action = "Deny" in force.
+  flow_logs_ip_rules = [
+    for c in var.allowed_ip_cidrs :
+    (endswith(c, "/32") ? split("/", c)[0] : c)
+    if can(cidrhost(c, 0)) && !strcontains(c, ":")
+  ]
 }
 
 # Private Endpoint for Storage Account
@@ -107,15 +125,13 @@ resource "azurerm_network_watcher_flow_log" "nsg_flow_logs" {
   )
 }
 
-# Diagnostic Settings for Storage Account
+# Diagnostic Settings for the storage account's blob service. Log category
+# groups only exist on the blobServices sub-resource; the account level
+# exposes metrics alone.
 resource "azurerm_monitor_diagnostic_setting" "flow_logs_storage" {
   name                       = "diag-flowlogs-storage-${var.environment}"
-  target_resource_id         = azurerm_storage_account.flow_logs.id
+  target_resource_id         = "${azurerm_storage_account.flow_logs.id}/blobServices/default"
   log_analytics_workspace_id = var.log_analytics_workspace_resource_id
-
-  enabled_log {
-    category_group = "audit"
-  }
 
   enabled_log {
     category_group = "allLogs"
@@ -205,31 +221,3 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "denied_traffic_alert"
   tags = var.tags
 }
 
-output "next_steps" {
-  description = "Next steps after enabling NSG Flow Logs"
-  value       = <<-EOT
-    NSG Flow Logs + Traffic Analytics Enabled:
-    
-    ✅ Flow logs enabled for ${length(var.nsg_ids)} NSG(s)
-    ✅ Storage: ${azurerm_storage_account.flow_logs.name} (RAGZRS, ${var.flow_log_retention_days} day retention)
-    ✅ Traffic Analytics: ${var.enable_traffic_analytics ? "Enabled" : "Disabled"}
-    
-    Next Steps:
-    1. View Traffic Analytics dashboard in Azure Portal:
-       Navigate to Log Analytics workspace → Traffic Analytics
-    
-    2. Query flow logs with KQL:
-       AzureNetworkAnalytics_CL
-       | where SubType_s == "FlowLog"
-       | summarize FlowCount = count() by SrcIP_s, DestIP_s, DestPort_d
-    
-    3. Configure additional alerts for security monitoring
-    
-    4. Review denied flows for security threats:
-       AzureNetworkAnalytics_CL
-       | where FlowStatus_s == "D"
-       | project TimeGenerated, SrcIP_s, DestIP_s, DestPort_d, NSGRuleName_s
-    
-    Monthly Cost: ~$${var.flow_log_retention_days * length(var.nsg_ids) * 0.15 + (var.enable_traffic_analytics ? 100 : 0)}
-  EOT
-}

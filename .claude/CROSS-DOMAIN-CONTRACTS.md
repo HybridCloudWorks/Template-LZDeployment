@@ -23,6 +23,7 @@ appears.
 | `factory/templates/terraform/live/global/variables.tf` | `org_prefix` validation |
 | `terraform/live/global/variables.tf` | `org_prefix` validation |
 | `terraform/live/platform-management/variables.tf` | `org_prefix` validation |
+| `factory/templates/terraform/live/platform-management/variables.tf` | `org_prefix` validation |
 | `factory/tests/Test-Renderer.ps1` | Asserts the expected pattern |
 
 **Known gap**: the renderer drift check (`Test-LzSchemaDrift`) only compares the
@@ -99,18 +100,22 @@ internally consistent; do not "reconcile" them by editing one side.
 **intentionally not collected by the wizard**:
 
 - `management_ip_ranges` — operator-supplied, required, wildcard-rejecting.
-- `log_analytics_workspace_id` — owned by the platform-management stack.
+  In the corpus it maps to `literal:operator-supplied`: the rendered
+  connectivity tfvars carries a commented placeholder the operator must
+  uncomment, and the generated plan workflow fails fast while it is unset.
+- `log_analytics_workspace_id` — owned by the platform-management stack. It
+  remains **deliberately absent from the schema and the wizard** — the
+  workspace never flows through `lz-config.json`. The generated connectivity
+  layer carries a **pre-rendered `count`-gated remote-state read** of
+  platform-management (`wire_management_workspace`, default `false`), flipped
+  in a PR after that layer's first apply; an explicitly supplied variable
+  value overrides the read. The **manual resource-ID paste is retired**.
+  Rationale:
+  [docs/decisions/0003-management-baseline-promotion.md](../docs/decisions/0003-management-baseline-promotion.md).
 
 The site's connectivity tfvars export emits commented operator placeholders for
 both. Do **not** "fix" this by adding schema keys or wizard fields; the omission
 is the contract.
-
-**Planned change (not yet in the tree)**: WP4 of the corpus↔live reconciliation
-retires the manual `log_analytics_workspace_id` paste in favour of a
-`count`-gated remote-state read in the generated connectivity layer. The wizard
-omission stays the contract either way. Amendment text and rationale:
-[docs/decisions/0003-management-baseline-promotion.md](../docs/decisions/0003-management-baseline-promotion.md).
-Do not apply that amendment here until the templates actually carry the read.
 
 ## 5. `spoke-network` provider alias
 

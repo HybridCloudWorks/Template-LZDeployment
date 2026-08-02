@@ -6,6 +6,20 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 management_subscription_id = {{FACTORY:azure.subscriptions.management}}
+
+org_prefix = {{FACTORY:organization.companyShortName}}
+#{{IF defined observability.logAnalytics.retentionDays}}
+log_retention_days = {{FACTORY-NUM:observability.logAnalytics.retentionDays}}
+#{{ENDIF}}
+#{{IF defined observability.alerting.actionGroupEmails}}
+# Composed from observability.alerting.actionGroupEmails — the only contact
+# list that feeds Azure Monitor enrollment (decision record 0003).
+alert_email_receivers = [
+#{{FOREACH receiver IN computed.alertEmailReceivers}}
+  { name = {{FACTORY:receiver.name}}, email_address = {{FACTORY:receiver.email_address}} },
+#{{ENDFOREACH}}
+]
+#{{ENDIF}}
 #{{IF defined azure.subscriptions.sandbox && azure.subscriptions.sandbox}}
 sandbox_subscription_id = {{FACTORY:azure.subscriptions.sandbox}}
 #{{ELSE}}

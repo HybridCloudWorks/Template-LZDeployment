@@ -39,6 +39,51 @@ Only declared N-1 upgrades are supported. Skipping versions is prohibited unless
 the release explicitly declares a tested path. Schema changes and backend
 migrations require separate reviewable steps.
 
+### Known replacement boundary: hub-network reconciliation
+
+Repositories generated before the corpus/live hub-network reconciliation carry
+an older module whose regeneration onto **existing state** produces
+destroy/recreate plans, not in-place updates:
+
+- the shared subnets (GatewaySubnet, AzureBastionSubnet, DNS resolver subnets)
+  moved to a disjoint high-index address plan — each affected subnet and every
+  resource inside it is replaced;
+- the duplicate `azurerm_firewall.hub_with_policy` resource was consolidated
+  into the single `azurerm_firewall.hub` — on hubs with threat intelligence
+  enabled this **replaces the firewall (an egress outage window)**;
+- the module-embedded Log Analytics workspace was removed in favor of the
+  platform-management workspace — the old workspace is destroyed with its
+  retained data unless exported or excluded first;
+- the GatewaySubnet NSG was removed (Azure does not support that association).
+
+Newly generated repositories are unaffected (everything is create-only). For an
+existing repository, treat this upgrade as a **brownfield adoption event**:
+review the replacement plan explicitly (procedure step 8), schedule the firewall
+replacement as a maintenance window, and route state moves or imports through
+the Stage 11 adoption path rather than accepting a blind destroy/create.
+
+### Known replacement boundary: management-baseline alert rename
+
+The management-baseline metric alert was renamed from the original CPU-alert
+scaffold to the log-ingestion-volume alert it actually implements
+(`alert-cpu-<org>` → `alert-log-ingestion-<org>`). A `moved` block in the
+module preserves the Terraform state address, but Azure metric-alert names
+force replacement — so the first apply after regeneration onto **existing
+state** still replaces the alert: one delete-and-recreate, a momentary
+alerting gap while the new alert deploys, no data loss. Newly generated
+repositories are unaffected (create-only).
+
+Because a replacement plan contains a delete action, the apply workflow's
+"Refuse destructive apply" gate fails that run **by design** — the workflow
+has no override input. The sanctioned path is the separately reviewed
+break-glass process the gate's error message points to: review the plan
+explicitly (procedure step 8), confirm the only delete action is this alert
+replacement, obtain the same approval the protected environment would
+enforce, and perform the reviewed apply of that exact plan outside the
+workflow using the environment's apply identity, retaining the plan and
+approval as evidence. Do not weaken or remove the destroy-refusal gate to
+let the run pass.
+
 ## Rollback
 
 Before any apply, rollback is a branch revert and re-render. After apply,

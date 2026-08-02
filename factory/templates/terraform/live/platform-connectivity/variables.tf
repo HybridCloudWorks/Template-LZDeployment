@@ -51,17 +51,20 @@ variable "firewall_type" {
 }
 
 variable "azfw_tier" {
-  # Bound must match connectivity.firewall.azfwTier in the schema, which is an
-  # enum of Standard, Premium, Basic. Basic was absent from the live layer's
-  # implicit contract; it is accepted here so a wizard-selected Basic tier does
-  # not fail at plan time.
-  description = "Azure Firewall tier (Basic, Standard, or Premium)"
+  # Bound matches connectivity.firewall.azfwTier in the schema (contract #7:
+  # wizard ⊆ schema ⊆ terraform). Basic is deliberately NOT accepted: Azure
+  # Firewall Basic mandates a dedicated AzureFirewallManagementSubnet (/26)
+  # plus a management public IP that the hub-network module's
+  # azurerm_firewall.hub does not provision, and Basic supports threat-intel
+  # alert-only while this layer defaults to Deny. Accepting Basic here would
+  # let a plan succeed for a firewall that can never deploy.
+  description = "Azure Firewall tier (Standard or Premium)"
   type        = string
   default     = "Standard"
 
   validation {
-    condition     = contains(["Basic", "Standard", "Premium"], var.azfw_tier)
-    error_message = "Azure Firewall tier must be one of: Basic, Standard, Premium."
+    condition     = contains(["Standard", "Premium"], var.azfw_tier)
+    error_message = "Azure Firewall tier must be one of: Standard, Premium."
   }
 }
 
@@ -83,15 +86,17 @@ variable "firewall_threat_intel_mode" {
 }
 
 variable "primary_nva_trust_ip" {
-  description = "Placeholder IP for primary NVA trust interface (if using Palo/Fortinet)"
+  description = "Placeholder IP for primary NVA trust interface (if using Palo/Fortinet). Null derives the first usable host of the trust subnet."
   type        = string
-  default     = "10.0.1.4"
+  default     = null
+  nullable    = true
 }
 
 variable "dr_nva_trust_ip" {
-  description = "Placeholder IP for DR NVA trust interface (if using Palo/Fortinet)"
+  description = "Placeholder IP for DR NVA trust interface (if using Palo/Fortinet). Null derives the first usable host of the trust subnet."
   type        = string
-  default     = "10.10.1.4"
+  default     = null
+  nullable    = true
 }
 
 variable "deploy_bastion" {
@@ -107,14 +112,22 @@ variable "deploy_dns" {
 }
 
 variable "management_ip_ranges" {
-  # Not exposed by the wizard: the schema has no key for operator source
-  # ranges, so the value cannot come from lz-config.json today. The default is
-  # deliberately "*" to match the live layer's behaviour rather than silently
-  # tightening it, but "*" means every source address reaches management
-  # interfaces. Set this per landing zone before the first apply.
-  description = "IP ranges allowed to access management interfaces. '*' allows all sources."
-  type        = string
-  default     = "*"
+  # Not exposed by the wizard: the schema deliberately has no key for operator
+  # source ranges (contract #4), so the value cannot come from lz-config.json.
+  # No default: every landing zone must state which operator ranges may reach
+  # firewall management interfaces before the first apply — the rendered
+  # terraform.auto.tfvars carries a commented placeholder to uncomment, and
+  # the generated plan workflow fails fast while it is unset. Wildcards are
+  # rejected by the hub-network module as well.
+  description = "CIDR ranges allowed to access management interfaces. Wildcard sources are rejected."
+  type        = list(string)
+
+  validation {
+    condition = length(var.management_ip_ranges) > 0 && alltrue([
+      for r in var.management_ip_ranges : !contains(["*", "0.0.0.0/0"], r)
+    ])
+    error_message = "management_ip_ranges must contain at least one CIDR and must not include '*' or '0.0.0.0/0'."
+  }
 }
 
 variable "primary_availability_zones" {
@@ -131,12 +144,52 @@ variable "dr_availability_zones" {
 
 variable "log_analytics_workspace_id" {
   # Cross-layer input: platform-management owns the workspace, and the two
-  # layers keep separate state, so this is wired by the operator (or by a
-  # remote-state read added once the management layer exports it). Empty means
-  # hub diagnostics are not sent anywhere.
-  description = "Log Analytics workspace resource ID for hub diagnostics"
+  # layers keep separate state. Leave this empty and flip
+  # wire_management_workspace instead — the count-gated remote-state read then
+  # supplies the ID. An explicitly supplied value here takes precedence over
+  # the read. Empty with the gate off means hub diagnostics are not sent
+  # anywhere.
+  description = "Log Analytics workspace resource ID for hub diagnostics. Overrides the wire_management_workspace remote-state read when set."
   type        = string
   default     = ""
+}
+
+variable "wire_management_workspace" {
+  # Default false so the FIRST plan of a freshly generated repository succeeds:
+  # the generated plan workflow plans every rendered layer on every PR, and an
+  # ungated remote-state read of platform-management would fail red until that
+  # layer's first apply (try() cannot rescue a provider read — only count
+  # works). Flip to true in a PR after platform-management has been applied
+  # once; the hub diagnostics then follow the central workspace automatically.
+  description = "Read the central Log Analytics workspace ID from the platform-management layer's state. Enable after platform-management's first apply."
+  type        = bool
+  default     = false
+}
+
+variable "state_resource_group_name" {
+  # Consumed only by the azurerm form of the platform-management remote-state
+  # read (wire_management_workspace = true). Under the HCP Terraform backend
+  # the read is addressed by organization and workspace instead, and this is
+  # unused — so it must not be required.
+  description = "Terraform state resource group name (azurerm backend only)"
+  type        = string
+  default     = ""
+}
+
+variable "state_storage_account_name" {
+  description = "Terraform state storage account name (azurerm backend only)"
+  type        = string
+  default     = ""
+}
+
+variable "state_container_name" {
+  # Must match the container backend.tf writes to. Every layer shares one
+  # container and is separated by state key, so a remote-state read that
+  # assumed a container per layer would find nothing and fail with an
+  # unhelpful "no outputs" error.
+  description = "Terraform state container name (azurerm backend only)"
+  type        = string
+  default     = "tfstate"
 }
 
 variable "default_tags" {

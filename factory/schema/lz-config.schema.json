@@ -438,7 +438,11 @@
               "enum": ["azfw", "palo", "fortinet", "none"],
               "description": "Maps to the firewall_type variable already present in terraform/live/platform-connectivity."
             },
-            "azfwTier": { "enum": ["Standard", "Premium", "Basic"], "default": "Standard" },
+            "azfwTier": {
+              "enum": ["Standard", "Premium"],
+              "default": "Standard",
+              "$comment": "Basic is deliberately excluded: the hub-network module does not provision the dedicated AzureFirewallManagementSubnet (/26) and management public IP that the Basic tier mandates, and Basic only supports threat-intel alert mode while the layer defaults to Deny. A Basic selection would render a configuration that can never apply."
+            },
             "threatIntelligenceMode": {
               "enum": ["Alert", "Deny", "Off"],
               "default": "Deny",

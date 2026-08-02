@@ -300,6 +300,23 @@ function New-LzBootstrapPlan {
     # Single source of truth: the renderer's layer derivation (control AR3).
     $layers = @(Get-LzActiveLayers -Config $Config)
 
+    # Every GitHub environment is reconciled with deployment_branch_policy
+    # protected_branches=true (never custom policies). Without it, a
+    # workflow_dispatch from an arbitrary branch executes THAT branch's copy of
+    # the workflow file — one with the trusted default-branch checkout,
+    # allowlist, or destroy-refusal stripped — and reviewers approve a
+    # normal-looking run. Recorded here so plan-first mode shows the policy
+    # before anything mutates GitHub. Mirrors scripts/Start-LandingZoneBootstrap.ps1.
+    $githubEnvironments = @(foreach ($environment in $environments) {
+        [pscustomobject]@{
+            name = $environment
+            deploymentBranchPolicy = [pscustomobject]@{
+                protectedBranches = $true
+                customBranchPolicies = $false
+            }
+        }
+    })
+
     $plan = [pscustomobject]@{
         schemaVersion = '1.0.0'
         generatedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -309,6 +326,7 @@ function New-LzBootstrapPlan {
         environments = @($environments)
         layers = @($layers)
         identities = @($identities)
+        githubEnvironments = @($githubEnvironments)
         backend = $Config.backend.type
     }
     if ($identityModel -ne 'per-environment') {
@@ -481,7 +499,28 @@ function Set-LzGitHubVariable {
 function Set-LzGitHubEnvironment {
     param([object]$Config, [string]$Environment, [object[]]$Identities)
     $repo = "$($Config.github.ownerName)/$($Config.github.repositoryName)"
-    Invoke-LzNativeJson gh @('api', '--method', 'PUT', "repos/$repo/environments/$Environment") | Out-Null
+    # deployment_branch_policy protected_branches=true on EVERY environment:
+    # workflow_dispatch runs the workflow file from the dispatched ref, so an
+    # unrestricted environment lets a write-capable actor dispatch from a
+    # branch whose workflow copy strips the trusted default-branch checkout,
+    # allowlist, or destroy-refusal — and reviewers see a normal-looking run.
+    # Restricting deployments to protected branches pins runs that can mint
+    # this environment's OIDC token to workflow code that passed the branch
+    # protection gate. Matches scripts/Start-LandingZoneBootstrap.ps1.
+    $branchPolicy = [ordered]@{
+        protected_branches = $true
+        custom_branch_policies = $false
+    }
+    $environmentBody = [ordered]@{ deployment_branch_policy = $branchPolicy }
+    $temp = New-TemporaryFile
+    try {
+        $environmentBody | ConvertTo-Json -Depth 10 | Set-Content $temp -Encoding utf8
+        Invoke-LzNativeJson gh @(
+            'api', '--method', 'PUT', "repos/$repo/environments/$Environment",
+            '--input', $temp.FullName
+        ) | Out-Null
+    }
+    finally { Remove-Item $temp -Force -ErrorAction SilentlyContinue }
     $plan = Get-LzIdentityRecord -Identities $Identities -Environment $Environment -Kind 'plan'
     $apply = Get-LzIdentityRecord -Identities $Identities -Environment $Environment -Kind 'apply'
     Set-LzGitHubVariable -Repository $repo -Environment $Environment -Name 'AZURE_PLAN_CLIENT_ID' -Value $plan.appId
@@ -508,6 +547,9 @@ function Set-LzGitHubEnvironment {
             wait_timer = [int](Get-LzConfigValue $approval 'waitTimerMinutes' 0)
             prevent_self_review = [bool](Get-LzConfigValue $approval 'preventSelfReview' $true)
             reviewers = $reviewers
+            # PUT replaces the environment's protection config wholesale, so
+            # the branch policy must ride along or this call would strip it.
+            deployment_branch_policy = $branchPolicy
         }
         $temp = New-TemporaryFile
         try {
@@ -523,10 +565,17 @@ function Set-LzGitHubEnvironment {
     if (-not $verified.name -or $verified.name -ne $Environment) {
         throw "GitHub environment read-back failed for $Environment."
     }
+    # Fail closed on the branch policy too: an environment left without it
+    # silently reopens the dispatch-from-arbitrary-branch hole.
+    $verifiedPolicy = Get-LzConfigValue -Object $verified -Name 'deployment_branch_policy'
+    if (-not $verifiedPolicy -or -not [bool](Get-LzConfigValue -Object $verifiedPolicy -Name 'protected_branches' -Default $false)) {
+        throw "Deployment branch policy read-back failed for $Environment (protected_branches is not enforced)."
+    }
     return [pscustomobject]@{
         name = $verified.name
         url = $verified.url
         protectionRules = @($verified.protection_rules).Count
+        protectedBranchesOnly = $true
     }
 }
 
@@ -546,7 +595,7 @@ function Set-LzBranchProtection {
         a check that will not run. The other generated checks are deliberately
         NOT defaulted:
 
-          - 'policy' (terraform-policy-checks.yml) and 'pinning'
+          - 'policy' (policy-diff-guardrails.yml) and 'pinning'
             (action-pinning-policy.yml) are path-filtered; requiring them would
             hang docs-only pull requests on "Expected" checks that never report
             — the same failure mode as the old 'qlty check' default, which

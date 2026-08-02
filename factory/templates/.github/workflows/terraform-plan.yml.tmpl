@@ -49,13 +49,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # First-apply pre-flight. management_ip_ranges is a deliberate commented
       # operator placeholder (the wizard never collects operator network
       # ranges — contract #4, .claude/CROSS-DOMAIN-CONTRACTS.md). Left unfilled
-      # it surfaces later as a wide-open '*' default or a raw Terraform error;
-      # this step fails fast, before login and init, with an explanation.
+      # it surfaces later as a raw "No value for required variable" Terraform
+      # error; this step fails fast, before login and init, with an
+      # explanation. (The variable is required and wildcard-rejecting — the
+      # old wide-open '*' default no longer exists.)
       - name: Pre-flight connectivity operator inputs
         if: matrix.layer == 'platform-connectivity'
         working-directory: terraform/live/${{ matrix.layer }}
@@ -85,30 +87,47 @@ jobs:
             exit 1
           fi
           echo "management_ip_ranges is set in $set_in."
-          if grep -Eq '^[[:space:]]*log_analytics_workspace_id[[:space:]]*=[[:space:]]*"?<' "$set_in"; then
-            echo "::error::log_analytics_workspace_id in $set_in still contains the '<...>' placeholder text."
-            echo "This value is owned by the platform-management layer and can only be filled AFTER that"
-            echo "layer applies. Re-comment the line for now, apply platform-management, then paste its"
-            echo "log_analytics_workspace_id output here."
+
+          # Management-workspace wiring. The SUPPORTED path is the remote-state
+          # wire: after platform-management's first apply, flip
+          # wire_management_workspace = true and the layer reads the workspace
+          # ID from platform-management's state — no ID is ever pasted by hand.
+          # An explicit log_analytics_workspace_id value remains a deliberate
+          # override of the wire (e.g. an externally-owned workspace).
+          if grep -Eq '^[[:space:]]*log_analytics_workspace_id[[:space:]]*=[[:space:]]*"?<' *.tfvars; then
+            echo "::error::log_analytics_workspace_id still contains the '<...>' placeholder text."
+            echo "Do not paste workspace IDs by hand. Re-comment the line; after the platform-management"
+            echo "layer applies, set wire_management_workspace = true instead - the value is then read"
+            echo "from that layer's remote state. Only set log_analytics_workspace_id explicitly to"
+            echo "OVERRIDE the wire with an externally-owned workspace."
             exit 1
           fi
-          if ! grep -Eq '^[[:space:]]*log_analytics_workspace_id[[:space:]]*=' *.tfvars; then
-            echo "::warning::log_analytics_workspace_id is not set; hub firewall diagnostics and"
-            echo "::warning::threat-intel alerts will not be created. Expected before the first apply -"
-            echo "::warning::loop back and set it from the platform-management output once that layer applies."
+          if grep -Eq '^[[:space:]]*wire_management_workspace[[:space:]]*=[[:space:]]*true' *.tfvars; then
+            echo "wire_management_workspace = true: workspace ID is supplied by platform-management remote state."
+          elif grep -Eq '^[[:space:]]*log_analytics_workspace_id[[:space:]]*=' *.tfvars; then
+            echo "log_analytics_workspace_id set explicitly (deliberate override of the remote-state wire)."
+          else
+            echo "::warning::No management workspace is wired; hub firewall diagnostics and threat-intel"
+            echo "::warning::alerts will not be created. Expected before the first apply: once the"
+            echo "::warning::platform-management layer applies, set wire_management_workspace = true"
+            echo "::warning::(do not paste the workspace ID into tfvars)."
           fi
 
       - name: Azure login (plan identity, read-only)
-        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
         with:
           client-id: ${{ fromJSON(vars.AZURE_PLAN_CLIENT_IDS)[matrix.layer] }}
           tenant-id: {{FACTORY-RAW:azure.tenantId}}
           subscription-id: ${{ fromJSON(vars.AZURE_SUBSCRIPTION_IDS)[matrix.layer] }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: '{{FACTORY-RAW:computed.terraformVersion}}'
+          # Without this, the wrapper echoes a "[command]..." line ahead of
+          # stdout, corrupting `terraform show -json` (destroy gate) and the
+          # rendered plan.txt that gets posted to the pull request.
+          terraform_wrapper: false
 #{{IF computed.backendIsHcp}}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 #{{ENDIF}}
@@ -147,6 +166,55 @@ jobs:
             fi
             echo "::warning::Destruction acknowledged via the approved-destroy label."
           fi
+
+      - name: Render plan text
+        if: steps.plan.outcome == 'success'
+        working-directory: terraform/live/${{ matrix.layer }}
+        run: terraform show -no-color tfplan > plan.txt
+
+      - name: Upload plan artifact
+        if: steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tfplan-${{ matrix.layer }}
+          path: terraform/live/${{ matrix.layer }}/tfplan
+          retention-days: 5
+
+      # Posts the rendered plan to the pull request — the reason this job
+      # carries pull-requests: write.
+      - name: Comment PR with plan
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const planPath = 'terraform/live/${{ matrix.layer }}/plan.txt';
+            const plan = fs.existsSync(planPath)
+              ? fs.readFileSync(planPath, 'utf8')
+              : '(no plan output produced - see the Terraform plan step log)';
+            const truncatedPlan = plan.length > 65000
+              ? plan.substring(0, 65000) + '\n\n... (truncated)'
+              : plan;
+            const body = [
+              '### Terraform Plan: `${{ matrix.layer }}`',
+              '',
+              '#### Plan outcome: `${{ steps.plan.outcome }}`',
+              '',
+              '<details><summary>Show Plan</summary>',
+              '',
+              '```terraform',
+              truncatedPlan,
+              '```',
+              '',
+              '</details>',
+              '',
+              '*Pusher: @${{ github.actor }}, Workflow: `${{ github.workflow }}`*',
+            ].join('\n');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
 
       - name: Fail if plan errored
         if: steps.plan.outcome == 'failure'

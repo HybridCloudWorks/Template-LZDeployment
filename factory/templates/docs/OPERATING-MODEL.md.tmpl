@@ -17,20 +17,40 @@ landing zone. The selected model is
 | Platform engineering | {{FACTORY-RAW:operations.platformTeam.name}} | Landing-zone code, shared services, upgrades, platform incidents |
 | Application teams | Workload owners | Workload resources, application SLOs, remediation within delegated scopes |
 | Security | Security operations | Policy exceptions, threat response, privileged-access review |
+#{{IF defined finops.businessOwner.name}}
 | Finance | {{FACTORY-RAW:finops.businessOwner.name}} | Budget ownership, allocation disputes, optimization decisions |
+#{{ELSE}}
+| Finance | Not set — `finops.businessOwner.name` | Budget ownership, allocation disputes, optimization decisions |
+#{{ENDIF}}
 | Change approval | Configured approval chain | Production/environment approvals and emergency change review |
 
 ## Repository decision rights
 
 - `{{FACTORY-RAW:computed.defaultBranch}}` is the authoritative desired state.
 - Pull requests are the only normal change path.
+#{{IF defined github.branchProtection.requiredApprovals}}
 - Required approvals: {{FACTORY-NUM:github.branchProtection.requiredApprovals}}.
+#{{ELSE}}
+- Required approvals: not set — `github.branchProtection.requiredApprovals`.
+#{{ENDIF}}
+#{{IF defined github.branchProtection.requireCodeOwnerReview}}
 - Code-owner review required:
   {{FACTORY-BOOL:github.branchProtection.requireCodeOwnerReview}}.
+#{{ELSE}}
+- Code-owner review required: not set — `github.branchProtection.requireCodeOwnerReview`.
+#{{ENDIF}}
+#{{IF defined github.branchProtection.dismissStaleReviews}}
 - Stale approvals dismissed:
   {{FACTORY-BOOL:github.branchProtection.dismissStaleReviews}}.
+#{{ELSE}}
+- Stale approvals dismissed: not set — `github.branchProtection.dismissStaleReviews`.
+#{{ENDIF}}
+#{{IF defined github.branchProtection.enforceAdmins}}
 - Administrators enforced:
   {{FACTORY-BOOL:github.branchProtection.enforceAdmins}}.
+#{{ELSE}}
+- Administrators enforced: not set — `github.branchProtection.enforceAdmins`.
+#{{ENDIF}}
 - Apply jobs bind to protected GitHub environments and use a distinct write
   identity. Pull requests use read-only plan identities.
 

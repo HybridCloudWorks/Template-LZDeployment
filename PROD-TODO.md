@@ -382,8 +382,18 @@ Factory CI green (PR #53).
   at the time. A full read-only audit has since found substantially deeper,
   bidirectional drift — see the new blocker below and
   [docs/plans/corpus-live-reconciliation.md](docs/plans/corpus-live-reconciliation.md).)*
-- [ ] **[BLOCKER] The corpus `platform-management` layer never calls
-  `module "management_baseline"`** *(found 2026-08-02, read-only audit)* —
+- [x] **[BLOCKER] The corpus `platform-management` layer never calls
+  `module "management_baseline"`** *(found 2026-08-02, read-only audit;
+  **resolved 2026-08-02** — WP4 of
+  [docs/plans/corpus-live-reconciliation.md](docs/plans/corpus-live-reconciliation.md)
+  landed per [decision 0003](docs/decisions/0003-management-baseline-promotion.md):
+  the corpus layer now carries the unconditional `management_baseline` call,
+  the three variables, and the `log_analytics_workspace_id` output, so
+  generated repos deploy the management baseline and export the workspace ID;
+  the connectivity layer consumes it via the `count`-gated
+  `wire_management_workspace` remote-state read, retiring the manual
+  resource-ID paste. Renderer 206/206, drift InSync, rendered fixtures
+  validate.)* Original finding —
   `factory/templates/terraform/live/platform-management/main.tf.tmpl` declares
   only the two backup modules; its `variables.tf` lacks `org_prefix`,
   `log_retention_days`, and `alert_email_receivers`; its `outputs.tf.tmpl`
@@ -435,10 +445,13 @@ workflows (plan SP on `pull_request`, apply through protected environments,
 `azure-auth-test` verification). In this repo (dogfood/legacy):
 `010-terraform-init.yml`, `020-rbac-validation.yml`, `terraform-plan.yml`
 (authenticates as `AZURE_PLAN_CLIENT_ID`, `-lock=false`, fork-PR guards,
-per-layer change matrix), `terraform-apply.yml` (serialized, layer matrix +
-dispatch), `dogfood-instance.yml` (Render/Plan/Apply, protected environments,
-Terraform 1.9.8), `release-readiness.yml`; `terraform/backend-bootstrap/` for
-AAD-only state storage (contract #3).
+per-layer change matrix), `terraform-apply.yml` (**dispatch-only since
+2026-08-02** — merging to `main` no longer deploys; per-layer operator
+dispatch with a hard layer allowlist, saved-plan flow, destructive-plan
+refusal, and the protected environment gates), `dogfood-instance.yml`
+(Render/Plan/Apply, protected environments, Terraform 1.9.8),
+`release-readiness.yml`; `terraform/backend-bootstrap/` for AAD-only state
+storage (contract #3).
 
 **Missing / manual**
 
@@ -504,8 +517,9 @@ AAD-only state storage (contract #3).
 - Created: Azure management groups, policies, hub/spoke networks, management
   baseline, state storage + per-layer state files (or TFC workspaces).
 - Read: cross-layer remote state (AAD auth, `use_azuread_auth = true`).
-- Updated: only through PRs in the customer repo (plan on PR, apply on merge
-  through gated environments).
+- Updated: only through PRs in the customer repo (plan on PR; applies are
+  per-layer operator dispatch through gated environments — merging alone
+  deploys nothing).
 - Deleted: nothing by pipeline; destructive plans require the
   `approved-destroy` control.
 
