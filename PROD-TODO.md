@@ -352,7 +352,9 @@ Factory CI green (PR #53).
   each layer through its protected environment, preserve
   `dogfood-report.json`, and independently read back Azure, state, OIDC, and
   GitHub controls. Only then set `dogfoodInstanceAppliesGreen=true` in a
-  reviewed PR (`factory-version.json:70` is `false` today).
+  reviewed PR (`factory-version.json:70` is `false` today). *(2026-08-02:
+  execution path documented, gate by gate:
+  [docs/runbooks/stage13-dogfood-execution.md](docs/runbooks/stage13-dogfood-execution.md).)*
 - [x] **[BLOCKER] Reconcile the `spoke-network` template-corpus divergence** —
   `factory/templates/terraform/modules/spoke-network/` did not carry
   `configuration_aliases = [azurerm.hub]` (contract #5,
@@ -439,7 +441,9 @@ AAD-only state storage (contract #3).
   identity estate exists at all — no app registrations, no
   `AZURE_PLAN_CLIENT_ID` secret, no dev/prod/hub environments — so the
   prerequisite is the full Phase-2 bootstrap in the confirmed engagement
-  tenant, not credential patching. See Phase 2, first blocker.)*
+  tenant, not credential patching. See Phase 2, first blocker.)* *(2026-08-02:
+  execution path documented — Gates 3–5 of
+  [docs/runbooks/stage13-dogfood-execution.md](docs/runbooks/stage13-dogfood-execution.md).)*
 - [x] **[HARDENING] Investigate 0-second workflow failures** *(moved from
   TODO.md)* — historical runs of `010-terraform-init.yml` /
   `020-rbac-validation.yml` failed in 0 seconds. *(Investigated and resolved
@@ -471,7 +475,9 @@ AAD-only state storage (contract #3).
   readiness report, and open the separate release-gate PR only when
   `readyForPromotion=true`. Until v1.0.0 gates pass, every customer deployment
   is formally a **verification exercise** (factory v0.9.0;
-  `oidcTokenExchangeVerifiedLive` also `false`).
+  `oidcTokenExchangeVerifiedLive` also `false`). *(2026-08-02: execution path
+  documented — Gate 7 of
+  [docs/runbooks/stage13-dogfood-execution.md](docs/runbooks/stage13-dogfood-execution.md).)*
 
 **CRUD per engagement**
 - Created: Azure management groups, policies, hub/spoke networks, management

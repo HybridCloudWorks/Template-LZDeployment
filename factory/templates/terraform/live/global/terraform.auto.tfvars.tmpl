@@ -17,17 +17,17 @@ org_prefix = {{FACTORY:organization.companyShortName}}
 management_subscription_id       = {{FACTORY:azure.subscriptions.management}}
 connectivity_subscription_id     = {{FACTORY:azure.subscriptions.connectivity}}
 workload_prod_subscription_id    = {{FACTORY:azure.subscriptions.workloadProd}}
-#{{IF defined azure.subscriptions.identity}}
+#{{IF defined azure.subscriptions.identity && azure.subscriptions.identity}}
 identity_subscription_id         = {{FACTORY:azure.subscriptions.identity}}
 #{{ELSE}}
 identity_subscription_id         = ""
 #{{ENDIF}}
-#{{IF defined azure.subscriptions.workloadNonProd}}
+#{{IF defined azure.subscriptions.workloadNonProd && azure.subscriptions.workloadNonProd}}
 workload_nonprod_subscription_id = {{FACTORY:azure.subscriptions.workloadNonProd}}
 #{{ELSE}}
 workload_nonprod_subscription_id = ""
 #{{ENDIF}}
-#{{IF defined azure.subscriptions.sandbox}}
+#{{IF defined azure.subscriptions.sandbox && azure.subscriptions.sandbox}}
 sandbox_subscription_id          = {{FACTORY:azure.subscriptions.sandbox}}
 #{{ELSE}}
 sandbox_subscription_id          = ""

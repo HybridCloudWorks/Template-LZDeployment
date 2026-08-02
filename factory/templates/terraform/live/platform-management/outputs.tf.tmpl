@@ -15,7 +15,7 @@ output "backup_dr_rsv_id" {
 #{{ENDIF}}
 #{{ENDIF}}
 
-#{{IF defined azure.subscriptions.sandbox}}
+#{{IF defined azure.subscriptions.sandbox && azure.subscriptions.sandbox}}
 output "automation_account_id" {
   description = "Platform automation account ID"
   value       = azurerm_automation_account.main.id
