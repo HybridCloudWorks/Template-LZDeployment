@@ -26,6 +26,11 @@ override.tf.json
 # Ignore transient lock info files created by terraform apply
 .terraform.tfstate.lock.info
 
+# Contract #6: lock files exist only at root stacks (terraform/backend-bootstrap,
+# terraform/live/*). The template corpus never carries them — any lock file under
+# factory/templates/ is local terraform-init debris from validation runs.
+factory/templates/**/.terraform.lock.hcl
+
 # Include override files you do wish to add to version control using negated pattern
 # !example_override.tf
 
