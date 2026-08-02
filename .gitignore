@@ -39,8 +39,13 @@ terraform.rc
 # Deployment options configuration (user-specific)
 .azure/deployment-options.yaml
 
-# Bootstrap state (contains tenant/subscription IDs and app client IDs)
+# Bootstrap state (contains tenant/subscription IDs and app client IDs).
+# The legacy bootstrap writes .lz-bootloader-state.json (its -StateFile
+# default) and reports under .reports/bootstrap/ — both carry tenant,
+# subscription, and app identifiers and must never land in the repo.
 .bootstrap-state.json
+.lz-bootloader-state.json
+.reports/
 
 # Landing Zone Factory — per-company output. Never commit: contains tenant and
 # subscription identifiers, and is regenerated from the wizard on demand.
