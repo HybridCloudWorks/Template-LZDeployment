@@ -3,7 +3,13 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$site = Join-Path $repo 'site'
+# Both static pages are published to GitHub Pages (deploy-pages.yml): the
+# wizard (site/) and the legacy .tfvars generator (frontend/, zero-network
+# since PR #60). The same no-network policy governs both.
+$scanRoots = @(
+    (Join-Path $repo 'site'),
+    (Join-Path $repo 'frontend')
+)
 $findings = @()
 $patterns = [ordered]@{
     '\bfetch\s*\(' = 'fetch'
@@ -18,7 +24,9 @@ $patterns = [ordered]@{
     '<form[^>]+action\s*=\s*["'']https?://' = 'external form action'
     'url\s*\(\s*["'']?https?://' = 'external CSS asset'
 }
-foreach ($file in @(Get-ChildItem $site -Recurse -File -Include *.js,*.html,*.css)) {
+$allFiles = @($scanRoots | Where-Object { Test-Path $_ } |
+    ForEach-Object { Get-ChildItem $_ -Recurse -File -Include *.js,*.html,*.css })
+foreach ($file in $allFiles) {
     $text = Get-Content $file.FullName -Raw
     foreach ($entry in $patterns.GetEnumerator()) {
         if ($text -match $entry.Key) {

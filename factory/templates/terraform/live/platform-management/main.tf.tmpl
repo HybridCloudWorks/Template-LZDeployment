@@ -25,6 +25,20 @@ locals {
   })
 }
 
+# Management baseline — central Log Analytics workspace, automation account,
+# Application Insights, and alerting for the platform. Unconditional: a
+# central workspace is this layer's reason to exist (decision record 0003).
+module "management_baseline" {
+  source = "../../modules/management-baseline"
+
+  org_prefix            = var.org_prefix
+  location              = var.primary_region
+  region_code           = var.primary_region_code
+  log_retention_days    = var.log_retention_days
+  alert_email_receivers = var.alert_email_receivers
+  tags                  = local.common_tags
+}
+
 #{{IF security.backup.enabled}}
 module "backup_primary" {
   source = "../../modules/backup-baseline"

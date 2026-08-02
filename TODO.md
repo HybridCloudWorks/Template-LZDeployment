@@ -98,41 +98,52 @@ dogfood instance. The end-to-end customer motion is described in
   exist, so no NSG flow logs are actually collected. Needs a design decision
   first (which NSGs go into `var.nsg_ids` — the module does not auto-discover
   them — and which Log Analytics workspace receives the traffic analytics).
-- [ ] **Reconcile live ↔ corpus drift** *(full audit 2026-08-02:
-  [docs/plans/corpus-live-reconciliation.md](docs/plans/corpus-live-reconciliation.md))*
-  — module bodies, provider pins, workflow templates, and action SHAs have
-  drifted in **both** directions (the corpus apply workflow is materially
-  safer than live's, so this is not a one-way overwrite). The plan breaks the
-  work into **seven work packages** with per-package validation; WP4's design
-  is already decided in
-  [docs/decisions/0003-management-baseline-promotion.md](docs/decisions/0003-management-baseline-promotion.md).
-  Highest-impact item, tracked here explicitly: **the corpus
-  `platform-management` layer never calls `module "management_baseline"`**, so
-  **every generated repo ships with no central Log Analytics workspace** —
-  invisible to every automated check. Four decisions still need an operator:
-  the live apply model (dispatch-only recommended), the two workflow-name
-  collisions plus two dead workflow files, whether the management-baseline
-  alert rename ships with a `moved` block, and the `workloads-nonprod` parity
-  control. Cross-domain by nature — dispatch through `alz-orchestrator` so
-  the reconciliation is sequenced, not edited one side at a time.
-- [ ] **Close the action-pin drift blind spot** *(added 2026-08-02; WP5 of the
-  plan above)* — `factory/ci/Test-ActionPins.ps1:19` only asserts a reference
-  matches `@[0-9a-fA-F]{40}$`, so it proves a pin is *a* SHA, never the
-  *right* one. Corpus templates are consequently a full action generation
-  behind live (`actions/checkout` v4.2.2 vs v7.0.1, `azure/login` v2.3.0 vs
-  v3.0.0, `hashicorp/setup-terraform` v3.1.2 vs v4.0.1) with a green CI. Add
-  a canonical-SHA registry so this drift class fails CI permanently.
+- [x] **Reconcile live ↔ corpus drift** *(executed 2026-08-02 — all seven
+  work packages of
+  [docs/plans/corpus-live-reconciliation.md](docs/plans/corpus-live-reconciliation.md)
+  landed, including the WP4 platform-management promotion per
+  [decision 0003](docs/decisions/0003-management-baseline-promotion.md).
+  Remaining differences between the trees are deliberate and documented in
+  the plan; the sole module-level divergence is the corpus-only
+  `management-baseline/moved.tf` — see the open decision below.
+  Operator-visible change: `terraform-apply.yml` is dispatch-only; merging
+  to `main` no longer deploys.)*
+- [x] **Close the action-pin drift blind spot** *(done 2026-08-02, WP5 —
+  `Test-ActionPins.ps1` now enforces a canonical-SHA registry of 14 actions
+  across both trees; pin drift fails CI instead of passing as "any 40-hex
+  SHA".)*
 - [ ] **Decide the `workloads-nonprod` parity control** *(added 2026-08-02)* —
   the layer exists **only** in the corpus (the live dogfood is prod-only), so
   it has no live counterpart and no drift check can see it. Either dogfood a
   nonprod instance or add a corpus-internal template parity check.
-- [ ] **Operator sign-off: workflow name collisions and dead files** *(added
-  2026-08-02; WP5)* — collisions: live `terraform-policy-checks.yml`
-  (fmt/tflint/tfsec suite) vs the corpus `.tmpl` git-diff guardrails, and
-  `secrets-scan.yml` vs `security-scan.yml.tmpl`. Live-only dead code to
-  delete: `deploy-from-release.yml` and `generate-and-release.yml`, both
-  hard-disabled. Also: live hardcodes Terraform `1.9.0` in three workflows
-  where the corpus token resolves to the tested `1.9.8`.
+- [x] **Operator sign-off: workflow name collisions and dead files** *(signed
+  off and executed 2026-08-02, WP5 — corpus template renamed
+  `policy-diff-guardrails.yml.tmpl`, resolving the collision with live's
+  `terraform-policy-checks.yml`; `deploy-from-release.yml` and
+  `generate-and-release.yml` deleted along with their orphaned packager
+  `terraform/compose-package/`; live workflows standardized on Terraform
+  1.9.8.)*
+- [ ] **Extend `Test-LzSchemaDrift` to compare schema enums against Terraform
+  `contains([...])` validations** *(added 2026-08-02)* — the drift checker
+  compares regex patterns only, so the azfw `Basic` defect class (a schema
+  enum offering a value the Terraform validation rejects — or, as shipped, a
+  value the module cannot actually deploy) is checker-invisible. The Basic
+  case was fixed by narrowing the schema; the checker gap remains.
+- [ ] **Decide whether the corpus `management-baseline/moved.tf` should
+  mirror to live** *(added 2026-08-02)* — currently a deliberate corpus-only
+  divergence: the `moved` block preserves state addresses for the alert
+  rename in **regenerated** repos, which live state does not need. Either
+  mirror it for strict byte parity or record the divergence as permanent in
+  the reconciliation plan.
+- [ ] **Add azurerm-backend fixture coverage to the renderer suite** *(added
+  2026-08-02, final review)* — both test fixtures use `hcp-terraform`, so the
+  azurerm form of the connectivity remote-state read and the `state_*` tfvars
+  emission are never exercised by CI (verified manually: they render and
+  validate). Related fragility, pre-existing: the renderer fails closed on a
+  schema-valid config whose `backend.azurerm` omits the optional
+  `useAzureAdAuth` key (schema default `true` is not applied at render time —
+  `Unknown configuration path`); either teach the token engine schema
+  defaults or gate the four reference sites.
 
 ---
 
@@ -142,12 +153,13 @@ dogfood instance. The end-to-end customer motion is described in
 the page itself is documented as legacy in [`frontend/README.md`](frontend/README.md)
 (`site/` is the primary path).
 
-- [ ] **Host `frontend/` via the existing Pages workflow** —
-  `deploy-pages.yml` publishes `site/` only. Before adding `frontend/`:
-  the deploy needs a sibling staging layout (or link fixes) so both pages can
-  ship from one Pages site, and `Test-SiteNoNetwork.ps1` must be extended to
-  cover `frontend/` first so the no-network policy travels with it. Owner:
-  `github-actions-engineer`.
+- [x] **Host `frontend/` via the existing Pages workflow** *(done
+  2026-08-02 — `deploy-pages.yml` now stages `site/` at the Pages root and
+  `frontend/` under `/frontend/`; `Test-SiteNoNetwork.ps1` was extended to
+  cover `frontend/` first, and the page's `file:`-protocol link rewrite keeps
+  local opens working. The Pages source setting itself is still the Gate 2
+  operator prerequisite in the
+  [Stage 13 runbook](docs/runbooks/stage13-dogfood-execution.md).)*
 
 ---
 

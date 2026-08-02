@@ -5,6 +5,91 @@
 
 ---
 
+## Corpus↔live reconciliation executed — WP1–WP7 (2026-08-02)
+
+Executes [docs/plans/corpus-live-reconciliation.md](docs/plans/corpus-live-reconciliation.md)
+in full (WP7 is this documentation close-out). Validation: Factory CI 13
+runnable checks green, wizard 74/74, renderer 206/206, schema drift InSync,
+4 rendered fixtures validate 16/16.
+
+**⚠ Operator-visible behavior change: merging to `main` no longer deploys.**
+`terraform-apply.yml` is now **dispatch-only** (operator decision, WP5 — live
+adopts the corpus safety model): the push trigger is removed; deploys are
+Actions → Terraform Apply → pick a layer. The run checks out the trusted
+default branch, validates the layer against a hard allowlist, creates a saved
+plan (`plan -out=tfplan`), refuses destructive plans, and applies exactly
+that reviewed plan through the layer's protected environment gate. Root
+`permissions: {}` with per-job opt-in.
+
+**WP1/WP2/WP6 — module and live-stack sync**: the corpus modules are now
+byte-identical to `terraform/modules/` in tracked content (pins to
+`>= 1.9.0` / azurerm `~> 4.2`, policy-baseline `Indexed` modes,
+nsg-flow-logs wholesale, defender-baseline single-subscription rewrite) with
+**one deliberate divergence** — a corpus-only
+`management-baseline/moved.tf` preserving state addresses for the alert
+rename in regenerated repos. Live side: sandbox pins + 1970 sentinel tag
+dates (replacing expired hardcoded dates), new
+`terraform/live/workloads-prod/outputs.tf` (spoke-VNet outputs; the layer
+previously had none).
+
+**WP3 — hub-network**: corpus at byte parity (duplicate
+`azurerm_firewall.hub_with_policy` gone, subnet plan 12–15, GatewaySubnet
+NSG removed, derived nullable NVA trust IP); corpus connectivity
+`management_ip_ranges` is now `list(string)`, required, wildcard-rejecting,
+with the commented tfvars placeholder (contract #4); new
+`UPGRADE-GUIDE.md.tmpl` subsection documenting the regeneration impact —
+for repos generated from the older module, regeneration onto existing state
+produces destroy/recreate plans (firewall replacement = outage); route
+through the Stage 11 adoption path.
+
+**WP4 — platform-management promotion** (per
+[decision 0003](docs/decisions/0003-management-baseline-promotion.md)):
+corpus `management-baseline` synced first, then the corpus
+platform-management layer gained the unconditional `management_baseline`
+module call, the three variables (`org_prefix` — now a contract-#1 member,
+row added to the table — `log_retention_days`, `alert_email_receivers`) and
+the `log_analytics_workspace_id` output. `computed.alertEmailReceivers`
+composed in the TokenEngine from `observability.alerting.actionGroupEmails`.
+The connectivity layer carries the `count`-gated
+`wire_management_workspace` remote-state read (default `false`,
+`use_azuread_auth` per contract #3) with `effective_law_id` precedence — an
+explicitly supplied value overrides the read. Variable-map mappings added,
+including `management_ip_ranges → literal:operator-supplied`. Contract #4's
+amendment is finalized: the gated read is in the tree; the manual
+resource-ID paste is retired.
+
+**WP5 — workflows**: corpus templates bumped to live's action generation;
+live standardizes Terraform 1.9.8; the corpus plan workflow gains the PR
+plan comment + tfplan artifact; `azure-auth-test.yml` upgraded from
+informational to **enforcing** (role assertions fail the run) with a weekly
+cron; `secrets-scan.yml` gains a committed `.tfstate`/`.tfplan` check; the
+corpus `terraform-policy-checks.yml.tmpl` is renamed
+`policy-diff-guardrails.yml.tmpl` (manifest, Test-Renderer, and broker
+comment updated) resolving the name collision with live's fmt/tflint/tfsec
+suite; dead workflows `deploy-from-release.yml` and
+`generate-and-release.yml` **deleted**, along with their orphaned packager
+`terraform/compose-package/`; **`Test-ActionPins.ps1` now carries a
+canonical-SHA registry** (14 actions, enforced in both trees) so pin drift
+fails CI instead of passing as "any 40-hex SHA"; `Test-SiteNoNetwork`
+extended to `frontend/`; `deploy-pages.yml` publishes `site/` at the root
+and `frontend/` under `/frontend/` (with a file:-protocol link rewrite for
+local opens).
+
+**Doc templates**: `OBSERVABILITY.md.tmpl` / `OPERATING-MODEL.md.tmpl`
+gained leaf-level gating for optional config reads with fallbacks;
+schema-required reads stay loud.
+
+**azfw `Basic` removed from the schema enum** (Learn-verified): Basic
+requires a management NIC + `AzureFirewallManagementSubnet` the hub-network
+module does not provision, and supports threat-intel alert mode only where
+the layer defaults to Deny — a Basic selection rendered a configuration that
+could never apply. Schema `$comment` records the rationale; the wizard
+option is removed with an import guard; **both** connectivity layer
+validations are `Standard`/`Premium` (the earlier live Basic backport from
+WP6 is reverted); 7 new tests. The defect class (schema enum vs Terraform
+`contains([...])` validation) is checker-invisible today — tracked in
+TODO.md.
+
 ## TODO debt burn-down — broker fix, script cleanup, module completeness, legacy frontend (2026-08-02)
 
 Closes the bulk of the repo-internal backlog in [TODO.md](TODO.md); two new

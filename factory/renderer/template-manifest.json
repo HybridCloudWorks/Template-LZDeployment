@@ -231,8 +231,8 @@
       "description": "Credential-free repository and Terraform artifact checks."
     },
     {
-      "source": ".github/workflows/terraform-policy-checks.yml.tmpl",
-      "destination": ".github/workflows/terraform-policy-checks.yml",
+      "source": ".github/workflows/policy-diff-guardrails.yml.tmpl",
+      "destination": ".github/workflows/policy-diff-guardrails.yml",
       "mode": "render",
       "when": "always",
       "description": "Rejects policy enforcement downgrades and floating module sources."

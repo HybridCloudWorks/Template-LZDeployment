@@ -525,6 +525,13 @@ function validate() {
       err('connectivity', 'A DR region is set, so a DR NVA trust IP is required.');
     }
   }
+  if (c.firewall.type === 'azfw' && !['Standard', 'Premium'].includes(c.firewall.azfwTier)) {
+    // Guards imported/drafted configs from before Basic was removed: the
+    // hub-network module does not provision the dedicated management subnet
+    // and management public IP the Basic tier mandates, so the schema (and
+    // both connectivity layers) accept Standard and Premium only.
+    err('connectivity', `Azure Firewall tier "${c.firewall.azfwTier}" cannot be deployed — the hub-network module supports Standard and Premium only. Re-select the tier.`);
+  }
   if (c.firewall.type === 'azfw' && c.firewall.threatIntelligenceMode === 'Off') {
     warn('connectivity', 'Azure Firewall threat intelligence is Off. The secure default is Deny; this needs a recorded governance exception.');
   }

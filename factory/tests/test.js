@@ -229,5 +229,30 @@ const optionValues = Array.from(selectBlock.matchAll(/option value="([^"]+)"/g))
 ok('wizard offers exactly the schema enum values', JSON.stringify(optionValues.sort()) === JSON.stringify([...modelDecl.enum].sort()), JSON.stringify(optionValues));
 ok('wizard binds the select to identity.cicdIdentityModel', /data-path="identity\.cicdIdentityModel"/.test(selectBlock));
 
+console.log('\n== 13. Azure Firewall tier bounds (Basic cannot deploy) ==');
+// Basic mandates a dedicated AzureFirewallManagementSubnet + management public
+// IP the hub-network module does not provision, so the whole contract chain
+// (wizard, schema, both connectivity layers) is bounded to Standard|Premium.
+const tierDecl = schema.properties.connectivity.properties.firewall.properties.azfwTier;
+ok('schema azfwTier enum is exactly [Standard, Premium]', JSON.stringify(tierDecl.enum) === '["Standard","Premium"]', JSON.stringify(tierDecl.enum));
+ok('schema azfwTier default is Standard', tierDecl.default === 'Standard');
+const tierSelect = (html.match(/<select id="cn_fwTier"[\s\S]*?<\/select>/) || [''])[0];
+const tierOptions = Array.from(tierSelect.matchAll(/option value="([^"]+)"/g)).map(m => m[1]);
+ok('wizard tier options are exactly the schema enum', JSON.stringify(tierOptions.sort()) === JSON.stringify([...tierDecl.enum].sort()), JSON.stringify(tierOptions));
+// Both connectivity layers must reject Basic (contract #7 right-hand side,
+// narrowed in lockstep with the schema).
+for (const varsPath of ['../../terraform/live/platform-connectivity/variables.tf', '../templates/terraform/live/platform-connectivity/variables.tf']) {
+  const hcl = require('fs').readFileSync(require('path').resolve(__dirname, varsPath), 'utf8');
+  const tierBlock = (hcl.match(/variable "azfw_tier" \{[\s\S]*?\n\}/) || [''])[0];
+  ok(`${varsPath.includes('templates') ? 'template' : 'live'} layer validates ["Standard", "Premium"]`,
+    /contains\(\["Standard", "Premium"\], var\.azfw_tier\)/.test(tierBlock) && !/Basic/.test(tierBlock.match(/condition[^\n]*/)[0]),
+    tierBlock.split('\n').find(l => /condition/.test(l)));
+}
+// Imported/drafted configs from before the narrowing must block export.
+c.connectivity.firewall.azfwTier = 'Basic';
+ok('imported Basic tier blocks export', A.validate().errors.some(e => /Standard and Premium only/.test(e.message)));
+c.connectivity.firewall.azfwTier = 'Standard';
+ok('Standard clears the tier block', !A.validate().errors.some(e => /Standard and Premium only/.test(e.message)));
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

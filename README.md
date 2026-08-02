@@ -89,9 +89,9 @@ HCW-Demo-LZDeployment/
 │   ├── 010-terraform-init.yml       # Terraform init + workload setup
 │   ├── 020-rbac-validation.yml      # Service principal RBAC audit
 │   ├── terraform-plan.yml           # PR-based plan and validation
-│   ├── terraform-apply.yml          # Merge-based deployment
-│   ├── secrets-scan.yml             # TruffleHog + Gitleaks + tfsec
-│   ├── deploy-pages.yml             # GitHub Pages deploy of site/ (Pages source must be "GitHub Actions")
+│   ├── terraform-apply.yml          # Dispatch-only, saved-plan deployment (merging never deploys)
+│   ├── secrets-scan.yml             # TruffleHog + Gitleaks + tfsec + committed-state check
+│   ├── deploy-pages.yml             # GitHub Pages deploy: site/ at root, frontend/ under /frontend/ (Pages source must be "GitHub Actions")
 │   └── action-pinning-policy.yml    # Enforces SHA-pinned actions
 ├── bootstrap-broker.ps1          # Stage 9 non-interactive broker
 ├── bootstrap-broker.sh           # Cross-platform launcher
@@ -195,7 +195,7 @@ Once the generated repository is published, the numbered workflows take over:
 
 - `010-terraform-init.yml` initializes Terraform and validates the workload setup
 - `020-rbac-validation.yml` audits service principal RBAC (also runs weekly)
-- Subsequent pushes/PRs touching `terraform/**` trigger `terraform-plan.yml` (on PR) and `terraform-apply.yml` (on merge to `main`)
+- PRs touching `terraform/**` trigger `terraform-plan.yml`; after merge, an operator dispatches `terraform-apply.yml` per layer (**merging alone deploys nothing** — dispatch-only since 2026-08-02)
 
 Each layer under `terraform/live/` deploys independently and in dependency order: `global` → `platform-connectivity` → `platform-management` → `workloads-prod` → `sandbox`.
 
@@ -218,11 +218,11 @@ Select at deployment time via the `firewall_type` variable in the `platform-conn
 - The sandbox module (`terraform/modules/sandbox/`) is feature-toggled off by default (`create_sandbox_rg = false`)
 
 ### Governance via Azure Policy
-Policy baseline module enforces mandatory tagging, allowed locations, NSG requirements, TLS 1.2 minimum (Storage, App Service, Function Apps, MySQL, PostgreSQL — API Management coverage not yet implemented, see [TODO.md](TODO.md)), and sandbox isolation rules.
+Policy baseline module enforces mandatory tagging, allowed locations, NSG requirements, TLS 1.2 minimum (Storage, App Service, Function Apps, MySQL, PostgreSQL, and — since 2026-08-02 — API Management), and sandbox isolation rules.
 
 ### GitOps Workflow
 - PR opened against `main` touching `terraform/**` → `terraform plan` runs, posts results to the PR
-- PR merged → `terraform apply` runs per-layer, sequentially (`max-parallel: 1`)
+- After merge, an operator dispatches `terraform-apply.yml` per layer (Actions → Terraform Apply → pick layer): trusted-`main` checkout, hard layer allowlist, saved plan (`plan -out=tfplan`), destructive-plan refusal, then apply of exactly that plan — **merging to `main` never deploys** (dispatch-only since 2026-08-02)
 - Production layers use a GitHub environment gate; sandbox uses its own environment
 
 ---

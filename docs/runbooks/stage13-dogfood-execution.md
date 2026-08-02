@@ -250,10 +250,12 @@ gh run list --limit 5
 
 **Expected evidence / what green looks like**:
 
-- `azure-auth-test.yml` (manual-only, `workflow_dispatch`): the OIDC login
-  succeeds as `AZURE_PLAN_CLIENT_ID` — a `workflow_dispatch` token carries a
-  branch subject, which is bound to the plan identity. This is the live
-  token-exchange proof USER-CHECKLIST requires.
+- `azure-auth-test.yml` (`workflow_dispatch` plus a weekly cron since
+  2026-08-02, and now **enforcing** — the role assertions fail the run
+  rather than inform): the OIDC login succeeds as `AZURE_PLAN_CLIENT_ID` — a
+  `workflow_dispatch` token carries a branch subject, which is bound to the
+  plan identity. This is the live token-exchange proof USER-CHECKLIST
+  requires.
 - `020-rbac-validation.yml`: both jobs authenticate as the plan identity on
   every trigger and the audit of the apply identity's RBAC passes.
 - `010-terraform-init.yml`: all three read-only jobs log in as the plan
@@ -317,14 +319,19 @@ Finish with an `Apply`/`layer=all` run for the release-gate-eligible report.
 3. Re-plan and apply `platform-connectivity` — this second pass is what
    wires firewall diagnostics and threat-intel alerts.
 
-**Alternative / day-2 path: the PR loop** on the repo's own
-`terraform/live/` tree — open a PR touching `terraform/**`
-(`terraform-plan.yml` plans changed layers as the plan identity,
-`-lock=false`), merge, and `terraform-apply.yml` applies serially
-(`max-parallel: 1`) through the gated environments (platform layers →
-`environment: hub`, `workloads-prod` → `prod`, `sandbox` → `dev`). This is
-the ordinary GitOps path and the natural vehicle for the loop-back edits,
-but its runs do not produce Stage 13 evidence.
+**Alternative / day-2 path: PR + dispatch** on the repo's own
+`terraform/live/` tree *(updated 2026-08-02 — `terraform-apply.yml` is now
+dispatch-only; merging to `main` deploys nothing)*: open a PR touching
+`terraform/**` (`terraform-plan.yml` plans changed layers as the plan
+identity, `-lock=false`), merge, then **dispatch the apply per layer**
+(Actions → Terraform Apply → pick the layer, or
+`gh workflow run terraform-apply.yml -f layer=<layer>` — operator-run; the
+repo guardrails deny `gh workflow run` to agent sessions). The run checks
+out trusted `main`, validates the layer against a hard allowlist, creates a
+saved plan, refuses destructive plans, and applies through the layer's
+protected environment gate. This is the day-2 change path and the natural
+vehicle for the loop-back edits, but its runs do not produce Stage 13
+evidence.
 
 **Verify**: every Plan shows no unintended destroy/replace; every Apply run
 uploads `dogfood-<run-id>-*` artifacts; the final `Apply`/`all` run's

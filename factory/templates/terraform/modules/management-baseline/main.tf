@@ -48,12 +48,21 @@ resource "azurerm_monitor_action_group" "alz" {
   resource_group_name = azurerm_resource_group.management.name
   short_name          = substr("alz-${var.org_prefix}", 0, 12)
 
+  dynamic "email_receiver" {
+    for_each = { for receiver in var.alert_email_receivers : receiver.name => receiver }
+    content {
+      name                    = email_receiver.value.name
+      email_address           = email_receiver.value.email_address
+      use_common_alert_schema = true
+    }
+  }
+
   tags = var.tags
 }
 
-# Alert Rule - CPU > 80%
-resource "azurerm_monitor_metric_alert" "cpu_high" {
-  name                = "alert-cpu-${var.org_prefix}"
+# Alert Rule - workspace ingestion volume above threshold
+resource "azurerm_monitor_metric_alert" "ingestion_volume_high" {
+  name                = "alert-log-ingestion-${var.org_prefix}"
   resource_group_name = azurerm_resource_group.management.name
   scopes              = [azurerm_log_analytics_workspace.alz.id]
   description         = "Alert when workspace ingestion volume exceeds threshold"

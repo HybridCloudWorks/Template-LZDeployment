@@ -7,6 +7,24 @@
 
 connectivity_subscription_id = {{FACTORY:azure.subscriptions.connectivity}}
 
+# REQUIRED before the first plan: operator source ranges allowed to reach
+# firewall management interfaces. Deliberately not collected by the wizard
+# (contract #4) — uncomment and set your ranges. Wildcards are rejected.
+# management_ip_ranges = ["203.0.113.0/24"]
+
+# Flip to true in a PR AFTER platform-management's first apply: hub
+# diagnostics then read the central Log Analytics workspace ID from that
+# layer's state instead of requiring a hand-pasted resource ID.
+wire_management_workspace = false
+#{{IF computed.backendIsAzurerm}}
+# Addresses the platform-management state read above (azurerm backend only;
+# under HCP Terraform the read is addressed by organization and workspace and
+# these are unused).
+state_resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
+state_storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
+state_container_name       = {{FACTORY:backend.azurerm.containerName}}
+#{{ENDIF}}
+
 primary_region      = {{FACTORY:azure.primaryRegion}}
 primary_region_code = {{FACTORY:azure.primaryRegionCode}}
 #{{IF computed.hasDrRegion}}

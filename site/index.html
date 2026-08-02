@@ -498,8 +498,8 @@
           <select id="cn_fwTier" data-path="connectivity.firewall.azfwTier">
             <option value="Standard">Standard</option>
             <option value="Premium">Premium &mdash; adds IDPS and TLS inspection</option>
-            <option value="Basic">Basic</option>
           </select>
+          <p class="hint">Basic is not offered: the hub-network module does not provision the dedicated management subnet and management public IP the Basic tier requires, so a Basic selection could never apply.</p>
         </div>
         <div class="field" data-visible-when="connectivity.firewall.type=azfw">
           <label for="cn_fwTi">Threat intelligence mode</label>

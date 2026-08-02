@@ -155,11 +155,24 @@ class LegacyTfvarsGenerator {
   }
 
   init() {
+    this.fixWizardLinks();
     this.setupEventListeners();
     this.populatePolicies();
     this.setupRegionPairing();
     updateNamingExamples();
     this.showForm();
+  }
+
+  /** The wizard links default to the GitHub Pages layout, where site/ is
+   *  published at the artifact root and this page lives under /frontend/
+   *  (../index.html). In a local checkout the wizard is a sibling directory
+   *  instead (../site/index.html); the file: protocol identifies that context
+   *  deterministically. No network involved — this only rewrites an href. */
+  fixWizardLinks() {
+    if (window.location.protocol !== "file:") return;
+    document.querySelectorAll("a.wizard-link").forEach((a) => {
+      a.setAttribute("href", "../site/index.html");
+    });
   }
 
   setupEventListeners() {

@@ -1,5 +1,5 @@
 variable "root_mg_id" {
-  description = "Root management group ID"
+  description = "Root management group resource ID"
   type        = string
 }
 

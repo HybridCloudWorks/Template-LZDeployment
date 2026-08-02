@@ -25,11 +25,15 @@ environments. From there:
 - `010-terraform-init.yml` — init and workload setup
 - `020-rbac-validation.yml` — service principal RBAC audit
 - `terraform-plan.yml` — PR-triggered plan and validation
-- `terraform-apply.yml` — merge-triggered deployment
-- `secrets-scan.yml` — TruffleHog + Gitleaks + tfsec
+- `terraform-apply.yml` — **dispatch-only** saved-plan deployment (no push
+  trigger since 2026-08-02; merging to `main` never deploys)
+- `secrets-scan.yml` — TruffleHog + Gitleaks + tfsec + committed-state check
 - `action-pinning-policy.yml` — fails any unpinned action
-- `terraform-policy-checks.yml`, `azure-auth-test.yml`,
-  `generate-and-release.yml`, `deploy-from-release.yml`
+- `terraform-policy-checks.yml` (live fmt/tflint/tfsec suite; the corpus
+  template with the old identical name is now
+  `policy-diff-guardrails.yml.tmpl`), `azure-auth-test.yml` (enforcing,
+  weekly cron), `deploy-pages.yml`, `factory-ci.yml`,
+  `dogfood-instance.yml`, `release-readiness.yml`
 
 ## Skills to reach for
 

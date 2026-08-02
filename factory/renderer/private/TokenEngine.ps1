@@ -146,6 +146,27 @@ function New-LzRenderContext {
     # provider rejects only at apply.
     $map['computed.backupRedundancy'] = if ($Config.security.backup.geoRedundant) { 'GeoRedundant' } else { 'LocallyRedundant' }
 
+    # Alert receivers are a list of {name, email_address} objects in Terraform
+    # but a plain email list in the configuration. Composing them here
+    # (decision record 0003) assigns each receiver a stable index-based name
+    # and keeps the only permitted source — observability.alerting.
+    # actionGroupEmails — in one place; no other contact list may feed Azure
+    # Monitor enrollment. Optional keys are stripped from exported
+    # configurations, so the existence checks come first (StrictMode).
+    $alertReceivers = @()
+    if ((Test-LzHasProperty $Config 'observability') -and
+        (Test-LzHasProperty $Config.observability 'alerting') -and
+        (Test-LzHasProperty $Config.observability.alerting 'actionGroupEmails')) {
+        $emails = @($Config.observability.alerting.actionGroupEmails)
+        for ($n = 0; $n -lt $emails.Count; $n++) {
+            $alertReceivers += [pscustomobject]@{
+                name          = ('receiver-{0:d2}' -f ($n + 1))
+                email_address = $emails[$n]
+            }
+        }
+    }
+    $map['computed.alertEmailReceivers'] = $alertReceivers
+
     # Tag map rendered into every layer's default_tags.
     $map['computed.defaultTags'] = $Config.naming.defaultTags
 

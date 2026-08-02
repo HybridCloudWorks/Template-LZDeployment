@@ -8,23 +8,59 @@ rendered {{FACTORY-RAW:computed.generatedAt}}.
 | Capability | Value |
 |---|---|
 #{{IF defined observability.logAnalytics}}
+#{{IF defined observability.logAnalytics.sku}}
 | Log Analytics SKU | {{FACTORY-RAW:observability.logAnalytics.sku}} |
+#{{ELSE}}
+| Log Analytics SKU | Not set — `observability.logAnalytics.sku` |
+#{{ENDIF}}
+#{{IF defined observability.logAnalytics.retentionDays}}
 | Retention | {{FACTORY-NUM:observability.logAnalytics.retentionDays}} days |
+#{{ELSE}}
+| Retention | Not set — `observability.logAnalytics.retentionDays` |
+#{{ENDIF}}
+#{{IF defined observability.logAnalytics.dailyQuotaGb}}
 | Daily quota | {{FACTORY-NUM:observability.logAnalytics.dailyQuotaGb}} GB (`-1` means unlimited) |
+#{{ELSE}}
+| Daily quota | Not set — `observability.logAnalytics.dailyQuotaGb` |
+#{{ENDIF}}
 #{{ELSE}}
 | Log Analytics | Not configured — set `observability.logAnalytics` in `lz-config.json` |
 #{{ENDIF}}
 #{{IF defined observability.diagnosticSettings}}
+#{{IF defined observability.diagnosticSettings.enabled}}
 | Diagnostic settings | {{FACTORY-BOOL:observability.diagnosticSettings.enabled}} |
+#{{ELSE}}
+| Diagnostic settings | Not set — `observability.diagnosticSettings.enabled` |
+#{{ENDIF}}
+#{{IF defined observability.diagnosticSettings.sendActivityLog}}
 | Activity Log | {{FACTORY-BOOL:observability.diagnosticSettings.sendActivityLog}} |
+#{{ELSE}}
+| Activity Log | Not set — `observability.diagnosticSettings.sendActivityLog` |
+#{{ENDIF}}
+#{{IF defined observability.diagnosticSettings.sendToStorage}}
 | Archive to storage | {{FACTORY-BOOL:observability.diagnosticSettings.sendToStorage}} |
+#{{ELSE}}
+| Archive to storage | Not set — `observability.diagnosticSettings.sendToStorage` |
+#{{ENDIF}}
+#{{IF defined observability.diagnosticSettings.sendToEventHub}}
 | Stream to Event Hub | {{FACTORY-BOOL:observability.diagnosticSettings.sendToEventHub}} |
+#{{ELSE}}
+| Stream to Event Hub | Not set — `observability.diagnosticSettings.sendToEventHub` |
+#{{ENDIF}}
 #{{ELSE}}
 | Diagnostic settings | Not configured — set `observability.diagnosticSettings` in `lz-config.json` |
 #{{ENDIF}}
 #{{IF defined observability.alerting}}
+#{{IF defined observability.alerting.enablePlatformHealthAlerts}}
 | Platform health alerts | {{FACTORY-BOOL:observability.alerting.enablePlatformHealthAlerts}} |
+#{{ELSE}}
+| Platform health alerts | Not set — `observability.alerting.enablePlatformHealthAlerts` |
+#{{ENDIF}}
+#{{IF defined observability.alerting.enableDriftAlerts}}
 | Drift alerts | {{FACTORY-BOOL:observability.alerting.enableDriftAlerts}} |
+#{{ELSE}}
+| Drift alerts | Not set — `observability.alerting.enableDriftAlerts` |
+#{{ENDIF}}
 #{{ELSE}}
 | Alerting | Not configured — set `observability.alerting` in `lz-config.json` |
 #{{ENDIF}}
@@ -53,10 +89,26 @@ path.
 #{{IF defined observability.driftDetection}}
 | Setting | Value |
 |---|---|
+#{{IF defined observability.driftDetection.enabled}}
 | Enabled | {{FACTORY-BOOL:observability.driftDetection.enabled}} |
+#{{ELSE}}
+| Enabled | Not set — `observability.driftDetection.enabled` |
+#{{ENDIF}}
+#{{IF defined observability.driftDetection.schedule}}
 | Schedule | `{{FACTORY-RAW:observability.driftDetection.schedule}}` |
+#{{ELSE}}
+| Schedule | Not set — `observability.driftDetection.schedule` |
+#{{ENDIF}}
+#{{IF defined observability.driftDetection.failOnDrift}}
 | Fail on drift | {{FACTORY-BOOL:observability.driftDetection.failOnDrift}} |
+#{{ELSE}}
+| Fail on drift | Not set — `observability.driftDetection.failOnDrift` |
+#{{ENDIF}}
+#{{IF defined observability.driftDetection.openIssueOnDrift}}
 | Open issue | {{FACTORY-BOOL:observability.driftDetection.openIssueOnDrift}} |
+#{{ELSE}}
+| Open issue | Not set — `observability.driftDetection.openIssueOnDrift` |
+#{{ENDIF}}
 #{{ELSE}}
 Not configured — set `observability.driftDetection` in `lz-config.json` to
 enable scheduled drift detection.

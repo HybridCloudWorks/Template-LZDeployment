@@ -1,6 +1,27 @@
 # Plan — Corpus ↔ Live Reconciliation
 
-**Status**: PLAN — nothing in this document is implemented.
+**Status**: **EXECUTED 2026-08-02** — all seven work packages landed (WP7 was
+the documentation close-out; changes recorded in
+[CHANGELOG.md](../../CHANGELOG.md)). Deviations from the plan as written:
+
+- the `azfw_tier` "Basic" item was resolved by **narrowing the schema enum**
+  (Basic removed, with a `$comment` rationale and a wizard import guard)
+  instead of widening the module — Basic requires a management subnet/NIC the
+  hub-network module does not provision, so the WP6 live backport was
+  reverted;
+- the management-baseline alert rename ships with a **corpus-only
+  `moved.tf`** (state-address insurance for regenerated repos), a deliberate
+  divergence from byte parity — whether to mirror it to live is an open
+  TODO.md item;
+- `terraform/compose-package/` was deleted along with the two dead workflows
+  that were its only consumers.
+
+The body below is preserved as the audit of record (findings and dispositions
+as analyzed pre-execution).
+
+---
+
+**Original status**: PLAN — nothing in this document is implemented.
 **Audit date**: 2026-08-02 (read-only, against the tree at
 [`0b758f7`](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/commit/0b758f7), post-PR #60)
 **Design decisions for WP4**:

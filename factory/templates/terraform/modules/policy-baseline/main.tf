@@ -5,7 +5,7 @@
 resource "azurerm_policy_definition" "require_tags" {
   name         = "require-mandatory-tags"
   policy_type  = "Custom"
-  mode         = "All"
+  mode         = "Indexed" # Indexed: only evaluate resource types that support tags and location
   display_name = "Require mandatory tags"
   description  = "Enforces required tags: owner, application, environment, cost_center"
 
@@ -77,7 +77,7 @@ resource "azurerm_management_group_policy_assignment" "nsg_on_subnets" {
 resource "azurerm_policy_definition" "sandbox_environment_tag" {
   name         = "enforce-sandbox-environment-tag"
   policy_type  = "Custom"
-  mode         = "All"
+  mode         = "Indexed" # Indexed: only evaluate resource types that support tags and location
   display_name = "Enforce environment=sandbox in Sandbox subscription"
   description  = "Denies resources in Sandbox MG that don't have environment=sandbox"
 
@@ -109,7 +109,7 @@ resource "azurerm_management_group_policy_assignment" "sandbox_tag" {
 resource "azurerm_policy_definition" "sandbox_expiry_tag" {
   name         = "require-sandbox-expiry-tag"
   policy_type  = "Custom"
-  mode         = "All"
+  mode         = "Indexed" # Indexed: only evaluate resource types that support tags and location
   display_name = "Require expiry_date tag in Sandbox"
   description  = "Requires expiry_date tag on all Sandbox resources"
 

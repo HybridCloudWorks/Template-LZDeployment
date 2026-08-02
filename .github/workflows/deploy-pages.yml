@@ -1,10 +1,16 @@
 name: Deploy Wizard to GitHub Pages
 
-# Hosts the site/ configuration wizard on GitHub Pages so operators do not
-# have to open site/index.html from disk (PROD-TODO Phase 3, "Wizard is not
-# hosted"). The wizard is fully static and makes no network calls (enforced
-# by factory/ci/Test-SiteNoNetwork.ps1), so Pages hosting adds no data-egress
-# surface.
+# Hosts both static pages on GitHub Pages:
+#   - site/     -> published at the artifact ROOT (existing wizard URLs stay
+#                  stable: /index.html etc.)
+#   - frontend/ -> published under /frontend/ (legacy .tfvars generator,
+#                  zero-network since PR #60)
+# Both trees are enforced network-free by factory/ci/Test-SiteNoNetwork.ps1,
+# so Pages hosting adds no data-egress surface.
+#
+# Local-preview nuance: frontend/'s "../index.html" links match THIS published
+# layout; when serving the raw repo root over localhost, "../index.html" is the
+# repo root (not site/) — use the published layout or serve a staged _pages/.
 #
 # NOTE: the repository must have Pages enabled with build type
 # "GitHub Actions" (Settings > Pages > Source: GitHub Actions) before the
@@ -17,6 +23,7 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      - 'frontend/**'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
@@ -38,13 +45,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
+      - name: Stage pages layout (site at root, frontend under /frontend/)
+        run: |
+          mkdir -p _pages/frontend
+          cp -r site/. _pages/
+          cp -r frontend/. _pages/frontend/
+          echo "Staged layout:"
+          find _pages -maxdepth 2 -type f | sort
+
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
 
-      - name: Upload wizard artifact
+      - name: Upload pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
         with:
-          path: site/
+          path: _pages/
 
   deploy:
     name: Deploy to GitHub Pages

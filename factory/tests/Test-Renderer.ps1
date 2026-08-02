@@ -246,7 +246,7 @@ $expectedWorkflows = @(
     'terraform-apply.yml',
     'action-pinning-policy.yml',
     'security-scan.yml',
-    'terraform-policy-checks.yml',
+    'policy-diff-guardrails.yml',
     'azure-auth-test.yml'
 )
 foreach ($name in $expectedWorkflows) {

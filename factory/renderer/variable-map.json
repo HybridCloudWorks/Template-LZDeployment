@@ -27,9 +27,14 @@
 
     "platform-connectivity": {
       "variablesFile": "terraform/live/platform-connectivity/variables.tf",
-      "$comment": "management_ip_ranges and log_analytics_workspace_id are deliberately unmapped and surface as Info findings. The schema has no key for operator source ranges, and the workspace ID is owned by platform-management, which keeps separate state. Both are documented at their declaration.",
+      "$comment": "management_ip_ranges is deliberately schema-less (contract #4): it is operator-supplied, required, and wildcard-rejecting, so it maps to literal: — the rendered tfvars carries a commented placeholder the operator must uncomment, and the generated plan workflow fails fast while it is unset. log_analytics_workspace_id stays unmapped (Info): platform-management owns the workspace and the count-gated wire_management_workspace remote-state read supplies it after that layer's first apply. The three state_* variables feed the azurerm form of that read, mirroring workloads-prod.",
       "variables": {
         "connectivity_subscription_id": "azure.subscriptions.connectivity",
+        "management_ip_ranges": "literal:operator-supplied",
+        "wire_management_workspace": "literal:false",
+        "state_resource_group_name": "backend.azurerm.resourceGroupName",
+        "state_storage_account_name": "backend.azurerm.storageAccountName",
+        "state_container_name": "backend.azurerm.containerName",
         "primary_region": "azure.primaryRegion",
         "primary_region_code": "azure.primaryRegionCode",
         "dr_region": "azure.drRegion",
@@ -51,8 +56,12 @@
 
     "platform-management": {
       "variablesFile": "terraform/live/platform-management/variables.tf",
+      "$comment": "alert_email_receivers is composed by the renderer from observability.alerting.actionGroupEmails (decision record 0003 — enrollment must be explicit; no other contact list feeds it), hence computed. rather than a direct path.",
       "variables": {
         "management_subscription_id": "azure.subscriptions.management",
+        "org_prefix": "organization.companyShortName",
+        "log_retention_days": "observability.logAnalytics.retentionDays",
+        "alert_email_receivers": "computed.alertEmailReceivers",
         "sandbox_subscription_id": "azure.subscriptions.sandbox",
         "primary_region": "azure.primaryRegion",
         "primary_region_code": "azure.primaryRegionCode",

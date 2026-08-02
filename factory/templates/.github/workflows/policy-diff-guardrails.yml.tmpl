@@ -1,11 +1,15 @@
 # GENERATED FILE — Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}
-name: Terraform Policy Checks
+# Renamed from terraform-policy-checks.yml (2026-08-02, WP5): the live repo has
+# an unrelated fmt/tflint/tfsec workflow of that name, and a self-regeneration
+# would have overwritten it. The job id `policy` is unchanged — it is a
+# required-status-check context (broker LZ_REQUIRED_STATUS_CHECKS docs).
+name: Policy Diff Guardrails
 
 on:
   pull_request:
     paths:
       - 'terraform/**'
-      - '.github/workflows/terraform-policy-checks.yml'
+      - '.github/workflows/policy-diff-guardrails.yml'
 
 permissions: {}
 
@@ -16,7 +20,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Reject disabled policy enforcement

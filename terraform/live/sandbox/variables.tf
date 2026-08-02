@@ -55,11 +55,13 @@ variable "sandbox_tags" {
     owner        = optional(string)
   })
 
+  # 1970-01-01 sentinel (corpus pattern): the previous hardcoded real dates
+  # expired and made every default-tagged sandbox instantly cleanup-eligible.
+  # expiry_date stays unset by default — it is optional and operator-supplied.
   default = {
     environment  = "sandbox"
     lifecycle    = "temporary"
-    created_date = "2026-06-30"
-    expiry_date  = "2026-07-30"
+    created_date = "1970-01-01"
     owner        = "platform-team"
   }
 
