@@ -230,7 +230,7 @@ Policy baseline module enforces mandatory tagging, allowed locations, NSG requir
 
 See [TODO.md](TODO.md) and [PROD-TODO.md](PROD-TODO.md) for the full, current lists. Highlights as of 2026-08-01:
 
-- CI/CD pipeline has no recorded successful run yet — the code fix landed, but the live Entra federated credentials are missing for **both** service principals (the plan SP's `pull_request` subject and the Contributor SP's `ref:refs/heads/main` subject). Remediation tooling for the plan SP exists (`scripts/Add-PlanFederatedCredential.ps1`, not yet executed live); see PROD-TODO Phase 2
+- CI/CD pipeline has no recorded successful run yet — read-only live discovery (2026-08-01) found that no landing-zone identity estate exists: no app registrations, no `AZURE_PLAN_CLIENT_ID` or `TF_API_TOKEN` secret, and no dev/prod/hub environments. The remediation is running the Phase-2 bootstrap end-to-end in the confirmed engagement tenant, not credential patching; see [PROD-TODO.md](PROD-TODO.md) Phase 2
 - Backend is currently `azurerm` native storage everywhere except the bootloader and workflow `010`, which assume Terraform Cloud — migration tracked as [GitHub Issue #11](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues/11)
 - 6 of 11 Terraform modules are missing a `README.md`
 - Two modules (`keyvault-cmk`, `sentinel-siem`) are scaffold-only stubs with no real resources yet
