@@ -98,20 +98,41 @@ dogfood instance. The end-to-end customer motion is described in
   exist, so no NSG flow logs are actually collected. Needs a design decision
   first (which NSGs go into `var.nsg_ids` — the module does not auto-discover
   them — and which Log Analytics workspace receives the traffic analytics).
-- [ ] **Reconcile remaining live ↔ corpus module drift** *(added 2026-08-02)*
-  — the factory-template copies of several modules have drifted from
-  `terraform/modules/`, the same regeneration exposure the contract-#5
-  spoke-network divergence had (a repo generated today resurrects code the
-  live tree already fixed):
-  - corpus `hub-network` still carries a duplicate
-    `azurerm_firewall.hub_with_policy` resource the live tree eliminated;
-  - corpus `management-baseline` lacks `alert_email_receivers` and still
-    ships the old CPU>80% metric alert;
-  - corpus `terraform.tf` pins `~> 1.6` / azurerm `~> 4.0` where the live
-    tree requires `>= 1.9.0` / `~> 4.2`, across `backup-baseline`,
-    `management-baseline`, `management-groups`, and `policy-baseline`.
-  Cross-domain by nature — dispatch through `alz-orchestrator` so the
-  reconciliation is sequenced, not edited one side at a time.
+- [ ] **Reconcile live ↔ corpus drift** *(full audit 2026-08-02:
+  [docs/plans/corpus-live-reconciliation.md](docs/plans/corpus-live-reconciliation.md))*
+  — module bodies, provider pins, workflow templates, and action SHAs have
+  drifted in **both** directions (the corpus apply workflow is materially
+  safer than live's, so this is not a one-way overwrite). The plan breaks the
+  work into **seven work packages** with per-package validation; WP4's design
+  is already decided in
+  [docs/decisions/0003-management-baseline-promotion.md](docs/decisions/0003-management-baseline-promotion.md).
+  Highest-impact item, tracked here explicitly: **the corpus
+  `platform-management` layer never calls `module "management_baseline"`**, so
+  **every generated repo ships with no central Log Analytics workspace** —
+  invisible to every automated check. Four decisions still need an operator:
+  the live apply model (dispatch-only recommended), the two workflow-name
+  collisions plus two dead workflow files, whether the management-baseline
+  alert rename ships with a `moved` block, and the `workloads-nonprod` parity
+  control. Cross-domain by nature — dispatch through `alz-orchestrator` so
+  the reconciliation is sequenced, not edited one side at a time.
+- [ ] **Close the action-pin drift blind spot** *(added 2026-08-02; WP5 of the
+  plan above)* — `factory/ci/Test-ActionPins.ps1:19` only asserts a reference
+  matches `@[0-9a-fA-F]{40}$`, so it proves a pin is *a* SHA, never the
+  *right* one. Corpus templates are consequently a full action generation
+  behind live (`actions/checkout` v4.2.2 vs v7.0.1, `azure/login` v2.3.0 vs
+  v3.0.0, `hashicorp/setup-terraform` v3.1.2 vs v4.0.1) with a green CI. Add
+  a canonical-SHA registry so this drift class fails CI permanently.
+- [ ] **Decide the `workloads-nonprod` parity control** *(added 2026-08-02)* —
+  the layer exists **only** in the corpus (the live dogfood is prod-only), so
+  it has no live counterpart and no drift check can see it. Either dogfood a
+  nonprod instance or add a corpus-internal template parity check.
+- [ ] **Operator sign-off: workflow name collisions and dead files** *(added
+  2026-08-02; WP5)* — collisions: live `terraform-policy-checks.yml`
+  (fmt/tflint/tfsec suite) vs the corpus `.tmpl` git-diff guardrails, and
+  `secrets-scan.yml` vs `security-scan.yml.tmpl`. Live-only dead code to
+  delete: `deploy-from-release.yml` and `generate-and-release.yml`, both
+  hard-disabled. Also: live hardcodes Terraform `1.9.0` in three workflows
+  where the corpus token resolves to the tested `1.9.8`.
 
 ---
 
@@ -148,6 +169,8 @@ the page itself is documented as legacy in [`frontend/README.md`](frontend/READM
 
 - **[PROD-TODO.md](PROD-TODO.md)** — production-readiness backlog for the customer motion
 - **[CHANGELOG.md](CHANGELOG.md)** — historical record of completed work
+- **[docs/plans/](docs/plans/)** — analyses of record awaiting execution (corpus↔live reconciliation)
+- **[docs/decisions/](docs/decisions/)** — decision records; **[docs/runbooks/](docs/runbooks/)** — operator procedures
 - **[GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)** — operator guidebook ("How to Get Started") and source material (build docs, factory design and stage readiness records, webapp/static-generator docs, including [Webapp-Plan](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Webapp-Plan))
 - **[GitHub Issues](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues)** — cross-cutting or infrastructure-dependent work (e.g. TFC migration, #11)
 

@@ -378,7 +378,28 @@ Factory CI green (PR #53).
   keys — and both are internally consistent. `Test-LzSchemaDrift` reports
   InSync. The live/corpus split as a whole still ends only when Stage 13
   regenerates this repo from the factory. Sandbox location-regex item
-  operator-seeded.)*
+  operator-seeded.)* *(Scope note 2026-08-02: that fix covered the items known
+  at the time. A full read-only audit has since found substantially deeper,
+  bidirectional drift — see the new blocker below and
+  [docs/plans/corpus-live-reconciliation.md](docs/plans/corpus-live-reconciliation.md).)*
+- [ ] **[BLOCKER] The corpus `platform-management` layer never calls
+  `module "management_baseline"`** *(found 2026-08-02, read-only audit)* —
+  `factory/templates/terraform/live/platform-management/main.tf.tmpl` declares
+  only the two backup modules; its `variables.tf` lacks `org_prefix`,
+  `log_retention_days`, and `alert_email_receivers`; its `outputs.tf.tmpl`
+  lacks the `log_analytics_workspace_id` export that live
+  `terraform/live/platform-management/outputs.tf:1-4` provides. **Every repo
+  generated today ships with no central Log Analytics workspace**, while the
+  corpus connectivity layer documents that value as platform-management-owned
+  — and no automated check can see it (`Test-LzSchemaDrift` compares variable
+  declarations only). Design is decided
+  ([docs/decisions/0003-management-baseline-promotion.md](docs/decisions/0003-management-baseline-promotion.md):
+  map `observability.logAnalytics.retentionDays` and
+  `observability.alerting.actionGroupEmails`, `count`-gated remote-state read
+  replacing the manual ID paste); implementation is WP4 of
+  [the reconciliation plan](docs/plans/corpus-live-reconciliation.md) and
+  depends on the WP2 `management-baseline` module sync landing first.
+  Gates a clean Stage 13 regeneration.
 - [x] **[HARDENING] Broker's default required check assumes qlty.** The
   generated repo's branch protection defaulted to `qlty check` — an
   integration a fresh customer repo does not have, so protection waits on a
