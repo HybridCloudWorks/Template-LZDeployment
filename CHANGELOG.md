@@ -5,6 +5,81 @@
 
 ---
 
+## TODO debt burn-down — broker fix, script cleanup, module completeness, legacy frontend (2026-08-02)
+
+Closes the bulk of the repo-internal backlog in [TODO.md](TODO.md); two new
+drift items were found during the work and added there.
+
+**Broker fix**: `Get-LzEnvironmentSubscription`
+(`factory/bootstrap/LZFactory.Bootstrap.psm1`) now resolves `bootstrap`
+(anchored to the management subscription — the global layer's provider is
+pinned there; rationale in the function's comment help) and covers the full
+ten-environment schema set; the fail-closed default is preserved for unknown
+names. The broker apply path no longer throws on default wizard exports
+(whose platform environments include `bootstrap`). Test-Bootstrap: 58
+passed, 0 failed; per-environment plan byte-parity unaffected.
+
+**Script cleanup**: the 4 orphaned utilities
+(`Configure-DeploymentOptions.ps1`, `Invoke-BulkOperations.ps1`,
+`Validate-ALZDeployment.ps1`, `Verify-CostAccuracy.ps1`) were re-verified as
+having zero call sites and `git mv`-ed to `scripts/utilities/` with a README
+recording each script's purpose and wiring cost.
+`Configure-DeploymentOptions.ps1` now carries a PLANNING-ONLY notice — no
+`terraform/live/*` layer reads `.azure/deployment-options.yaml`. Path
+references fixed repo-wide (README, agent docs, the `.yaml.example`).
+
+**Module completeness**:
+
+- READMEs added for the 6 modules that lacked one (`backup-baseline`,
+  `hub-network`, `management-baseline`, `management-groups`,
+  `policy-baseline`, `spoke-network`), with byte-identical corpus mirrors,
+  matching the existing convention.
+- `Microsoft.ApiManagement` TLS policy definition added to policy-baseline's
+  TLS 1.2 initiative — the module's 6-service claim is now true. The corpus
+  mirror was synced; it had been stale and still carried the pre-fix App
+  Service alias bug. The rule hardens over the upstream Enterprise-Scale
+  `Deny-APIM-TLS` reference (verified unguarded) with a `coalesce` null guard
+  — a policy-evaluation error is an implicit deny, so absent
+  `customProperties` must fail open to allow. `APIMTLS12` ships at `Audit`
+  in the initiative for the first release (definition default stays `Deny`);
+  promote after a clean audit cycle.
+- Secure-default verdicts recorded (TODO.md): backend public access SECURE
+  (`false` default + lifecycle precondition); firewall threat-intel SECURE
+  with the caveat that the feature is opt-in
+  (`enable_firewall_threat_intel` defaults `false`, mode defaults `Alert`);
+  nsg-flow-logs retention defaults 90 days but **no live stack instantiates
+  the module** — now stated in its README and tracked as a new TODO item.
+
+**Legacy `frontend/` generator**:
+
+- The 47 catalog policy toggles reconciled against
+  `terraform/modules/policy-baseline/`: 3 map to genuinely enforced
+  baseline policies (kept; one effect corrected Deny → Audit with an
+  explanatory note), the other 44 are labeled "not yet enforced — no policy
+  definition exists" with disabled toggles; none silently removed. The
+  enforced list shows the baseline's 5 policy groups separately.
+- Module toggles labeled "available, not auto-deployed".
+- Emission rewritten to layer-accurate `terraform.auto.tfvars`
+  (`terraform/live/global`) + `connectivity.auto.tfvars`
+  (`platform-connectivity`) — the old output matched zero real variables.
+- Three page-dead bugs fixed (init TypeError, a bad reference in
+  `validate()`, CSP blocking the page's own scripts); `org_prefix`
+  validation tightened to `^[a-z0-9]{2,10}$` (contracts #1/#7 — the old
+  bound was looser than Terraform's).
+- New `frontend/README.md` declares the page's legacy status: `site/` is the
+  primary path; this page feeds only the legacy in-repo pipeline.
+
+**Repo hygiene**: the stale `agent/stage-7-workflow-corpus` remote branch no
+longer exists (verified 2026-08-02 — `git ls-remote` shows only `main`); the
+TODO carryover item is closed as moot.
+
+**New debt recorded** (TODO.md): live ↔ corpus module drift (corpus
+hub-network's duplicate `azurerm_firewall.hub_with_policy`, corpus
+management-baseline's missing `alert_email_receivers` + old CPU alert,
+`~> 1.6`/`~> 4.0` corpus pins vs live `>= 1.9.0`/`~> 4.2` across four
+modules) needing orchestrated reconciliation; and wiring `nsg-flow-logs`
+into a live stack.
+
 ## Minimal-by-default CI/CD identity estate (2026-08-02)
 
 Operator directive 2026-08-01: minimal by default, scale is the client's

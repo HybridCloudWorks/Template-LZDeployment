@@ -28,5 +28,6 @@ output "policy_definitions" {
     functionapp_tls_12 = azurerm_policy_definition.enforce_functionapp_tls_12.id
     mysql_tls_12       = azurerm_policy_definition.enforce_mysql_tls_12.id
     postgresql_tls_12  = azurerm_policy_definition.enforce_postgresql_tls_12.id
+    apim_tls_12        = azurerm_policy_definition.enforce_apim_tls_12.id
   }
 }

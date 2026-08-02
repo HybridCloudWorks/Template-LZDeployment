@@ -47,7 +47,7 @@ The generated `.tfvars` must be valid input to the root variables of the stacks 
 - When `terraform-module-engineer` changes a root variable, update the generator in
   the same change. A form that emits a variable Terraform no longer accepts fails
   at plan time with a confusing error.
-- Cost figures shown in the UI are checked by `scripts/Verify-CostAccuracy.ps1`.
+- Cost figures shown in the UI are checked by `scripts/utilities/Verify-CostAccuracy.ps1`.
   If you change how costs are presented, run it or flag `azure-cost-governance`.
 
 ## Craft rules

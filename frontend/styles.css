@@ -632,6 +632,111 @@ footer a:hover {
     padding: 4px 8px;
 }
 
+/* Implementation-status badges (reconciliation against terraform/) */
+
+.badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    padding: 1px 8px;
+    border-radius: 10px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.badge-enforced {
+    background: #e6f2e6;
+    color: var(--color-success);
+    border: 1px solid var(--color-success);
+}
+
+.badge-roadmap {
+    background: #fff8e6;
+    color: #7a5c00;
+    border: 1px solid var(--color-warning);
+    white-space: normal;
+}
+
+.badge-available {
+    background: #e8f1fa;
+    color: var(--color-primary);
+    border: 1px solid var(--color-primary);
+    white-space: normal;
+}
+
+.legacy-banner {
+    border-left: 4px solid var(--color-warning);
+    background: #fff8e6;
+    padding: calc(var(--spacing-unit) * 1.5);
+    border-radius: var(--border-radius);
+}
+
+.policy-group-note {
+    font-size: 12px;
+    color: var(--color-secondary-light);
+    margin-bottom: calc(var(--spacing-unit) * 1.5);
+    max-width: 75ch;
+}
+
+.policy-group-warning {
+    border-left: 4px solid var(--color-warning);
+    padding-left: calc(var(--spacing-unit) * 1);
+}
+
+.policy-enforced-group {
+    border-left-color: var(--color-success);
+}
+
+.policy-item-enforced {
+    grid-template-columns: auto 1fr;
+    background: #fafdf9;
+}
+
+.policy-roadmap-group {
+    border-left: 4px solid var(--color-warning);
+    padding-left: calc(var(--spacing-unit) * 1.5);
+}
+
+.policy-scope-roadmap {
+    border-left-color: var(--color-border);
+}
+
+.policy-scope-title-sub {
+    font-size: 13px;
+    color: var(--color-secondary-light);
+}
+
+.policy-item-roadmap {
+    background: #fafafa;
+}
+
+.policy-item-roadmap .policy-name {
+    color: var(--color-secondary-light);
+}
+
+.policy-note {
+    font-style: italic;
+}
+
+/* Controls that no Terraform stack consumes */
+
+.toggle-unwired .toggle-label,
+.toggle-unwired small,
+.radio-unavailable .radio-label,
+.radio-unavailable .radio-description {
+    color: var(--color-secondary-light);
+}
+
+.form-section-unwired {
+    border-left: 4px solid var(--color-warning);
+    padding-left: calc(var(--spacing-unit) * 1.5);
+}
+
+.form-section-unwired input:disabled {
+    background: var(--color-background);
+}
+
 /* Textarea */
 
 textarea {

@@ -15,24 +15,11 @@
 > Items below remain valid only where they are also confirmed by those
 > documents or by a fresh code review.
 
-**Last Updated**: August 1, 2026
+**Last Updated**: August 2, 2026
 **Status**: 🟡 IN PROGRESS
 **Completed work**: [CHANGELOG.md](CHANGELOG.md)
 **Production-readiness backlog**: [PROD-TODO.md](PROD-TODO.md)
 **External tracking**: [GitHub Issues](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues)
-
----
-
-## 🔴 Repository Consolidation Carryover
-
-PR #35 was squash-merged into `main` on 2026-07-26 as commit
-`8bb10ae6435a9f80ad639f4d7092767e1d255713`. At consolidation time there were
-no other open pull requests, and the local checkout was clean on `main`.
-
-- [ ] **Delete merged remote branch `agent/stage-7-workflow-corpus`** — the
-  approved GitHub connector can merge pull requests and update files, but does
-  not expose branch-ref deletion. Delete the branch from merged PR #35 or the
-  repository branches page, then verify it no longer resolves.
 
 ---
 
@@ -60,8 +47,9 @@ dogfood instance. The end-to-end customer motion is described in
    `020-*.yml`, ...) plus `terraform-plan.yml`/`terraform-apply.yml` deliver
    the legacy in-repo deployment against `terraform/`.
 6. **`frontend/`** is a separate, optional static HTML/JS page (no backend)
-   where a user picks deployment options and it generates a `.tfvars` file,
-   fed into the same Terraform/workflow pipeline.
+   where a user picks deployment options and it emits the legacy pipeline's
+   two variable files (`terraform.auto.tfvars`, `connectivity.auto.tfvars`) —
+   legacy status documented in [`frontend/README.md`](frontend/README.md).
 
 ---
 
@@ -78,49 +66,67 @@ dogfood instance. The end-to-end customer motion is described in
 
 ---
 
-## 🟠 Factory Bootstrap
-
-- [ ] **Fix `Get-LzEnvironmentSubscription` for the `bootstrap` environment**
-  (`factory/bootstrap/LZFactory.Bootstrap.psm1`) — the function's switch has no
-  `bootstrap` case, so it fails closed (throws
-  `Unknown environment 'bootstrap'`). Reachable in **both** identity models:
-  `Invoke-LzBootstrap -Apply` calls `Set-LzGitHubEnvironment` for every
-  `plan.environments` entry — so any broker apply against a default wizard
-  export (whose platform environments include `bootstrap`) throws.
-  Pre-existing defect found during the 2026-08-02 minimal-identity-estate
-  work; deliberately out of scope for that parity-preserving change — needs
-  its own fix.
-
----
-
 ## 🟠 Script Cleanup
 
-- [ ] **Decide fate of 4 orphaned utility scripts** — `Configure-DeploymentOptions.ps1`, `Invoke-BulkOperations.ps1`, `Validate-ALZDeployment.ps1`, `Verify-CostAccuracy.ps1` have no call site anywhere (not referenced from any workflow, other script, or doc). Either wire them into the real pipeline (e.g. `Validate-ALZDeployment.ps1` as a pre-flight check in `010-terraform-init.yml`) or move them out of `scripts/` into a clearly-labeled `scripts/utilities/` or similar so they don't read as part of the core flow.
-- [ ] **Wire `Configure-DeploymentOptions.ps1` output into Terraform** — it generates `.azure/deployment-options.yaml`, but no `terraform/live/*` layer currently reads this file to decide whether to call `defender-baseline`, `keyvault-cmk`, or `sentinel-siem`. Either add that wiring or document that it's a planning-only artifact today.
+- [ ] **Wire `Configure-DeploymentOptions.ps1` output into Terraform** — it
+  generates `.azure/deployment-options.yaml`, but no `terraform/live/*` layer
+  reads this file to decide whether to call `defender-baseline`,
+  `keyvault-cmk`, or `sentinel-siem`. *(2026-08-02: the "or document
+  planning-only" half is done — the script now carries a PLANNING-ONLY notice
+  and [`scripts/utilities/README.md`](scripts/utilities/README.md) states the
+  wiring cost. This item stays open for the actual wiring, and that README
+  references it by name — rename both together or not at all.)*
 
 ---
 
 ## 🟡 Terraform Module Completeness
 
-- [ ] Add `README.md` to the 6 modules missing one: `backup-baseline`, `hub-network`, `management-baseline`, `management-groups`, `policy-baseline`, `spoke-network` (match the pattern in `defender-baseline`, `keyvault-cmk`, `nsg-flow-logs`, `sandbox`, `sentinel-siem`: description, usage example, variable table, outputs, cost estimate)
 - [ ] Implement `keyvault-cmk` — currently scaffold-only (`check "module_not_implemented"`, zero resources)
 - [ ] Implement `sentinel-siem` — currently scaffold-only, same pattern
-- [ ] Add `Microsoft.ApiManagement` coverage to `terraform/modules/policy-baseline/policy-tls-minimum.tf` — module header claims APIM is covered by the TLS 1.2 initiative; only 5 of 6 claimed services actually have policy definitions
-- [ ] Verify variable-driven "secure by default" settings actually default secure:
-  - `terraform/backend-bootstrap/main.tf`: `public_network_access_enabled = var.allow_public_access_during_setup` — confirm default is `false`
-  - `terraform/modules/hub-network/firewall-threat-intel.tf`: `threat_intelligence_mode = var.firewall_threat_intel_mode` — confirm default is `Alert` or `Deny`
-  - `terraform/modules/nsg-flow-logs`: confirm `flow_log_retention_days` defaults to 90 at the call site, and that `terraform/live/*` passes every NSG into `var.nsg_ids` (module itself doesn't auto-discover "all" NSGs)
+- [x] Verify variable-driven "secure by default" settings actually default
+  secure *(verdicts recorded 2026-08-02)*:
+  - backend public access — **SECURE**: `allow_public_access_during_setup`
+    defaults `false` (plus a lifecycle precondition);
+  - firewall threat-intel — **SECURE with a caveat**:
+    `firewall_threat_intel_mode` defaults `Alert`, but the feature itself is
+    opt-in (`enable_firewall_threat_intel` defaults `false`);
+  - nsg-flow-logs — retention defaults to 90 days, **but no live stack
+    instantiates the module at all** (documented in its README; wiring
+    tracked below).
+- [ ] **Wire `nsg-flow-logs` into a live stack** *(added 2026-08-02)* — the
+  module exists with secure defaults, but zero `terraform/live/*` callers
+  exist, so no NSG flow logs are actually collected. Needs a design decision
+  first (which NSGs go into `var.nsg_ids` — the module does not auto-discover
+  them — and which Log Analytics workspace receives the traffic analytics).
+- [ ] **Reconcile remaining live ↔ corpus module drift** *(added 2026-08-02)*
+  — the factory-template copies of several modules have drifted from
+  `terraform/modules/`, the same regeneration exposure the contract-#5
+  spoke-network divergence had (a repo generated today resurrects code the
+  live tree already fixed):
+  - corpus `hub-network` still carries a duplicate
+    `azurerm_firewall.hub_with_policy` resource the live tree eliminated;
+  - corpus `management-baseline` lacks `alert_email_receivers` and still
+    ships the old CPU>80% metric alert;
+  - corpus `terraform.tf` pins `~> 1.6` / azurerm `~> 4.0` where the live
+    tree requires `>= 1.9.0` / `~> 4.2`, across `backup-baseline`,
+    `management-baseline`, `management-groups`, and `policy-baseline`.
+  Cross-domain by nature — dispatch through `alz-orchestrator` so the
+  reconciliation is sequenced, not edited one side at a time.
 
 ---
 
 ## 🟡 Static Config-Generator (`frontend/`)
 
-**Reference**: [Webapp-Plan (wiki)](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Webapp-Plan)
+**Reference**: [Webapp-Plan (wiki)](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Webapp-Plan) —
+the page itself is documented as legacy in [`frontend/README.md`](frontend/README.md)
+(`site/` is the primary path).
 
-- [ ] Reconcile the generator's 47 policy toggles (`frontend/app.js`) against what's actually implemented in `terraform/modules/policy-baseline/`
-- [ ] Wire or clearly label module toggles (e.g. Defender) that aren't yet connected to any `terraform/live/*` call
-- [ ] Host the page somewhere reachable (GitHub Pages) instead of requiring a local file open
-- [ ] Write a short usage guide: fill form → download `.tfvars` → where it goes
+- [ ] **Host `frontend/` via the existing Pages workflow** —
+  `deploy-pages.yml` publishes `site/` only. Before adding `frontend/`:
+  the deploy needs a sibling staging layout (or link fixes) so both pages can
+  ship from one Pages site, and `Test-SiteNoNetwork.ps1` must be extended to
+  cover `frontend/` first so the no-network policy travels with it. Owner:
+  `github-actions-engineer`.
 
 ---
 

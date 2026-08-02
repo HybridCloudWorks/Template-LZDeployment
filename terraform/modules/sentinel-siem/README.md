@@ -124,7 +124,7 @@ modules:
 
 Or run the interactive script:
 ```powershell
-.\scripts\Configure-DeploymentOptions.ps1
+.\scripts\utilities\Configure-DeploymentOptions.ps1
 ```
 
 ### 3. Deploy Module
@@ -318,4 +318,4 @@ SigninLogs
 
 ---
 
-**💡 To enable this module**: Run `.\scripts\Configure-DeploymentOptions.ps1` and set `sentinel.enabled = true`
+**💡 To enable this module**: Run `.\scripts\utilities\Configure-DeploymentOptions.ps1` and set `sentinel.enabled = true`

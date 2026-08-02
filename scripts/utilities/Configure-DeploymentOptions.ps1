@@ -11,17 +11,26 @@
     - Customer-Managed Keys / Key Vault ($250/month)
     - Azure Sentinel SIEM ($300/month)
     
-    Generates a deployment-options.yaml configuration file that controls
-    which optional modules are enabled during infrastructure deployment.
+    Generates a deployment-options.yaml configuration file that records
+    which optional modules should be enabled during infrastructure deployment.
+
+    ⚠ PLANNING-ONLY ARTIFACT (verified 2026-08-02): NO terraform/live/* layer
+    reads .azure/deployment-options.yaml today. Running this script does NOT
+    change what gets deployed — enabling defender-baseline, keyvault-cmk, or
+    sentinel-siem still requires editing the corresponding Terraform
+    variables/call sites by hand. The Terraform wiring is tracked in TODO.md
+    ("Wire Configure-DeploymentOptions.ps1 output into Terraform"); see also
+    scripts/utilities/README.md. This script has no call site anywhere in the
+    pipeline and lives in scripts/utilities/ for that reason.
 
 .EXAMPLE
     .\Configure-DeploymentOptions.ps1
-    
+
     Runs interactive configuration wizard.
 
 .EXAMPLE
     .\Configure-DeploymentOptions.ps1 -NonInteractive -EnableDefender -EnableCMK
-    
+
     Non-interactive mode with specific modules enabled.
 #>
 
