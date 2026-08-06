@@ -5,6 +5,34 @@
 
 ---
 
+## Record correction: the PR #69 squash title; azurerm 5.0 ratified permanent (2026-08-06)
+
+**The merge commit's subject line on `main` is wrong about firewalls.** PR #69
+was squash-merged as *"fix: unbreak main, migrate to azurerm 5.0, support
+firewall-less hubs, ratify decision 0004"*. That title predates the operator's
+correction mid-PR: firewall-less support was implemented, then **reversed** in
+the same PR (commit *"fix(connectivity): a landing zone requires at least one
+firewall"*, preserved in the squash body). The merged state — and the standing
+policy — is the opposite of the title: **a landing zone always deploys at
+least one firewall** (`azfw`, `palo`, or `fortinet`); `none` is rejected by
+the schema, the wizard, and both connectivity layers. `connectivity.model =
+none` remains the supported way to run no platform networking at all. The
+commit on protected `main` cannot be reworded; this entry is the correction of
+record.
+
+**azurerm `~> 5.0` is permanent** (operator-ratified 2026-08-06: "we are
+staying on azurerm 5.0"). It is no longer a migration that could be revisited:
+the canonical constraint in `factory/ci/Test-ProviderConstraints.ps1` is the
+enforcement point, and the one open consequence — the resource-provider
+registration strategy, since 5.0 defaults `resource_provider_registrations` to
+`none` — is tracked in TODO.md as a decision about *which identity registers*,
+not about the provider version. Stale references corrected in this change:
+README.md's technology-stack table claimed `~> 4.0`, and the
+`terraform-module-engineer` agent rules still described 5.0 as an upgrade to
+plan rather than the enforced present state.
+
+---
+
 ## azurerm 5.0 across both trees; firewall-less hubs supported (2026-08-06)
 
 Operator direction after the handoff review. Validation: 8 PowerShell suites,

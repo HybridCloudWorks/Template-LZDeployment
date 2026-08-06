@@ -33,14 +33,15 @@ You write the HCL that delivers the HCW landing zone. State lives in Azure Stora
 
 ## Rules for this repo
 
-- **Steer toward the AzureRM 5.0 provider.** 5.0 is GA
-  (https://www.hashicorp.com/en/blog/terraform-azurerm-provider-50-now-generally-available);
-  the repo currently pins `~> 4.2` with lock files at roots. When authoring new
-  modules or touching provider constraints, prefer 5.0-compatible patterns and
-  plan the upgrade rather than deepening 4.x dependence:
+- **The repo is ON AzureRM 5.0 — permanently.** Both trees pin `~> 5.0`
+  (migrated and provider-validated 2026-08-06; staying on 5.0 is
+  operator-ratified). The canonical constraint lives in
+  `factory/ci/Test-ProviderConstraints.ps1` and divergence fails CI, so never
+  author against 4.x patterns or propose a rollback. Standing 5.0 rules:
   - Register Resource Providers explicitly — 5.0 stops auto-registering the
-    ~60 legacy RPs, so audit `resource_provider_registrations` /
-    `resource_providers_to_register` in provider blocks before bumping.
+    ~60 legacy RPs (`resource_provider_registrations` defaults to `none`), so
+    a first apply into a fresh subscription needs RP registration handled;
+    the strategy decision is tracked in TODO.md.
   - Avoid deprecated resources 5.0 removes (legacy App Service/Function App
     resources superseded by the Linux/Windows-specific ones; storage account
     queue properties and static-website config move to dedicated resources).
