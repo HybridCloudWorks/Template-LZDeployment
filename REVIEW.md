@@ -7,7 +7,8 @@ decision, an access grant, tenant confirmation) or on an external system.
 
 **File contract (operator-defined 2026-08-06).** This is the single file of
 record for blocked work. [TODO.md](TODO.md) holds only work an engineer could
-start right now from a clone (currently: none); when an item there acquires an
+start right now from a clone (currently: two items, opened 2026-08-06 by the
+first real validation-gate run); when an item there acquires an
 operator-shaped blocker it moves *here*, and when a blocker below is lifted the
 item either gets done or moves back to TODO.md. Each entry states the specific
 blocker, who can unblock it, and the next concrete action, so "still open"
@@ -84,20 +85,42 @@ Without it, platform-management's sandbox-cleanup Contributor assignment fails
 `AuthorizationFailed` at apply. Only blocks engagements that enable the sandbox.
 **Unblocked by**: the real subscription ID, per engagement.
 
-### 7. Execute the Stage 9/10/11 test suites — and the post-render validation gate — in a provisioned toolchain
+### 7. Execute the Stage 9/10/11 test suites — and the engagement-wrapped validation gate — in a provisioned toolchain
 Broker, scaffold and import suites have never run against authenticated
 external services.
-**Scope grew 2026-08-06** ([decision
-0005](docs/decisions/0005-post-render-validation-gate.md)): the post-render
-validation gate joins this class. Its static contract suite
-(`factory/tests/Test-Validate.ps1`) runs in Factory CI, but
-`validate-render.ps1` itself has never executed against a real render — gates
-V02–V04 need `terraform` on PATH, and V07/V08 record explicit skips unless
-`tflint` and a security scanner (checkov/tfsec/trivy) are installed or strict
-mode is set. When this item runs, sequence the full engagement wrapper
-(discovery → broker → render → validate → scaffold) and install the optional
-tools so V07/V08 exercise for real; the validate leg needs only the local
-toolchain, not authenticated sessions.
+**Scope narrowed 2026-08-06.** The **standalone** post-render validation gate
+([decision 0005](docs/decisions/0005-post-render-validation-gate.md)) no
+longer belongs under this banner at all — it is **done**. `validate-render.ps1`
+executed against a real render for the first time on 2026-08-06: standalone,
+strict mode, on Linux, with **no `az`/`gh` authentication** — confirming this
+entry's earlier claim that the validate leg needs only the local toolchain.
+Record of that execution:
+
+- **Render**: fresh 96-file render from
+  `factory/tests/fixtures/azurerm-config.json` via `Invoke-LzRender` — not a
+  stale CI render. **Toolchain**: PowerShell 7.5.2, Terraform 1.13.3, tflint
+  0.58.1 (bundled ruleset; no `.tflint.hcl` in the rendered tree, so no
+  plugin download), tfsec 1.28.14.
+- **Strict run**: V01–V06 pass — V03 ran real `terraform init -backend=false`
+  in 13 directories, V04 recorded the `configuration_aliases` directories as
+  designed skips. V07 **fail** (6 real tflint
+  `terraform_unused_declarations` findings in `factory/templates/` sources)
+  and V08 **fail** (1 LOW tfsec finding, Defender security contact missing a
+  phone number; 56 checks passed). `overallStatus: fail` and the entry point
+  threw naming the gate IDs — exactly as designed. The findings are
+  template-corpus debt, now open in [TODO.md](TODO.md).
+- **Operator-skip run**: with `LZ_VALIDATE_SKIP_LINT` /
+  `LZ_VALIDATE_SKIP_SECURITY_SCAN=true`, `overallStatus: pass` with skip
+  provenance recorded per contract.
+- **Scaffold enforcement**: proven fail-closed via `Test-LzScaffoldValidation`
+  (the function `Invoke-LzScaffold` calls) — passing report with matching SHA
+  accepted; strict-fail report → `fail`; deleted report → `missing`; tampered
+  `manifestSha256` → `stale`. No apply performed.
+
+**What remains blocked here**: the broker/import/scaffold-apply suites against
+authenticated `az` and `gh` sessions, and running the validate phase inside
+the full engagement wrapper (discovery → broker → render → validate →
+scaffold) with real discovery artifacts.
 **Unblocked by**: a provisioned toolchain with real `az` and `gh` sessions.
 
 ### 8. Set GitHub Pages source to "GitHub Actions"
@@ -132,6 +155,10 @@ explicitly in the layer provider blocks.
 **Depends on**: which identity is expected to hold registration rights. Not
 chosen here because guessing wrong moves a privileged operation onto the wrong
 principal.
+**Update 2026-08-06**: the options paper now exists as
+[decision 0006 (Proposed)](docs/decisions/0006-resource-provider-registration.md)
+— the three candidates costed and a recommendation marked. **Awaiting operator
+ratification**; nothing is implemented until then.
 
 ### 11. Wire `nsg-flow-logs` into a live stack
 The module exists with secure defaults (90-day retention) but **zero
@@ -197,6 +224,10 @@ write does not.
 access (commands in the review README), or approve `add_repo` for the wiki in
 an interactive Claude session.
 
+*Noted 2026-08-06, no action needed: the two cancelled CodeQL default-setup
+runs with no logs were GitHub-side runner churn, not repo debt — default setup
+completes on the next push to `main`.*
+
 ---
 
 ## 🔗 Blocked on another item
@@ -241,7 +272,11 @@ were done. Neither blocked any deliverable.
   local filesystem mirror, and all 34 root and module directories across both
   trees were initialised and validated against the real provider. Lock files
   were left unchanged — the mirror contributes an extra `h1:` hash for its own
-  package form, which was reverted rather than committed.
+  package form, which was reverted rather than committed. The same workaround
+  suffices for the validation gate's V03: the 2026-08-06 execution (item 7)
+  resolved azurerm 5.0.1 through a packed filesystem mirror fed from
+  `releases.hashicorp.com` (`TF_CLI_CONFIG_FILE` pointing at a
+  `provider_installation` block).
 - **GitHub Actions artifact download is not available to this session**, so CI
   evidence was read from job logs rather than the uploaded `factory-ci-output`
   artifact.

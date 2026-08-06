@@ -15,7 +15,8 @@
 > annotating it in place.
 
 **Last Updated**: August 6, 2026
-**Status**: 🟢 **NO OPEN ENGINEERING DEBT**
+**Status**: 🟡 **2 OPEN ENGINEERING ITEMS** — surfaced by the first real
+execution of the post-render validation gate (2026-08-06)
 **Completed work**: [CHANGELOG.md](CHANGELOG.md)
 **Blocked work (official record)**: [REVIEW.md](REVIEW.md)
 **Production-motion backlog**: [PROD-TODO.md](PROD-TODO.md)
@@ -50,21 +51,71 @@ dogfood instance. The end-to-end customer motion is described in
    working tree only under explicit apply controls.
 5. **`brownfield-import.ps1` / `.sh`** — the Stage 11 plan-first
    classification/import artifact generator. It never runs Terraform import.
-6. **Numbered GitHub Actions workflows** (`.github/workflows/010-*.yml`,
+6. **`dogfood-instance.ps1` / `.sh`** — the Stage 13 dogfood runner. It
+   regenerates a landing-zone instance from the factory, then runs a real
+   Terraform plan — or an explicitly authorized apply — against the rendered
+   tree. No tenant identifiers, tokens, plans, or state are committed.
+7. **`release-readiness.ps1` / `.sh`** — the Stage 14 release-attestation
+   runner. It reads existing Factory CI and dogfood evidence only — it never
+   contacts Azure, GitHub, or HCP Terraform and never edits
+   `factory-version.json`; a successful report is a review input, not a
+   release declaration.
+8. **Numbered GitHub Actions workflows** (`.github/workflows/010-*.yml`,
    `020-*.yml`, ...) plus `terraform-plan.yml`/`terraform-apply.yml` deliver
    the legacy in-repo deployment against `terraform/`.
-7. **`frontend/`** is a separate, optional static HTML/JS page (no backend) —
+9. **`frontend/`** is a separate, optional static HTML/JS page (no backend) —
    the **legacy** generator; `site/` is the primary path. See
    [`frontend/README.md`](frontend/README.md).
 
 ---
 
-## 🟢 Open engineering debt
+## 🟡 Open engineering debt
 
-**None.** As of 2026-08-06 every remaining piece of work is gated on an
-operator decision, operator-held access, or an external system, and is
-recorded — with its specific blocker, who can unblock it, and the next
-concrete action — in **[REVIEW.md](REVIEW.md)**.
+Two items, both surfaced by the first real execution of `validate-render.ps1`
+against a fresh render (2026-08-06, standalone strict mode on Linux — full
+record in [REVIEW.md](REVIEW.md) §7). Both are startable right now from a
+clone.
+
+### 1. Clean the template corpus so a strict validation run passes V07/V08
+
+The strict run failed V07 with 6 real tflint `terraform_unused_declarations`
+findings and V08 with 1 LOW tfsec finding, all in `factory/templates/terraform/`
+sources:
+
+| Finding | Location (under `factory/templates/terraform/`) |
+| --- | --- |
+| unused `var.sandbox_subscription_id` | `live/platform-management/variables.tf:46` |
+| unused `var.default_tags` | `modules/defender-baseline/variables.tf:80` |
+| unused `var.log_retention_days` | `modules/hub-network/variables.tf:174` |
+| unused `var.log_retention_days` | `modules/nsg-flow-logs/variables.tf:48` |
+| unused `data "azurerm_client_config"` | `modules/management-baseline/main.tf:4` |
+| unused `var.landingzones_mg_id` | `modules/policy-baseline/variables.tf:17` |
+| `azurerm_security_center_contact` missing phone number (tfsec, LOW) | `modules/defender-baseline/` |
+
+Until these are fixed, a strict engagement run cannot pass V07/V08 without
+operator skips (`LZ_VALIDATE_SKIP_LINT` / `LZ_VALIDATE_SKIP_SECURITY_SCAN`).
+**Owner**: `terraform-module-engineer` domain.
+**Validation**: rerun `validate-render.ps1 -Strict` against a fresh render —
+V07 and V08 must pass with no skips recorded.
+
+### 2. Fix the Linux hidden-file crash in the scaffold inventory walk
+
+`Get-LzScaffoldInventory` (`factory/scaffold/LZFactory.Scaffold.psm1`) walks
+the rendered tree with `Get-ChildItem -Force` (line 95), but the per-file size
+read at line 110 — `(Get-Item $path).Length` — lacks `-Force`, so hidden leaf
+files crash the inventory on Linux. The renderer emits `.terraform-docs.yml`
+per module, so scaffold **plan and apply are both broken on Linux against real
+renders** — reproduced 2026-08-06 via plan-only `scaffold-copy.ps1`. The fix
+is one line: add `-Force` at line 110.
+Factory CI missed it because `factory/tests/Test-Scaffold.ps1` is a static
+text-matching suite that never executes the walk — close that coverage gap
+alongside the fix.
+**Owner**: `github-actions-engineer` domain (factory code).
+**Validation**: plan-only `scaffold-copy.ps1` on Linux against a real render.
+
+Everything else remains gated on an operator decision, operator-held access,
+or an external system, and is recorded — with its specific blocker, who can
+unblock it, and the next concrete action — in **[REVIEW.md](REVIEW.md)**.
 
 Consolidated out of this file on 2026-08-06 (their sole home is now REVIEW.md):
 
@@ -72,7 +123,7 @@ Consolidated out of this file on 2026-08-06 (their sole home is now REVIEW.md):
 | --- | --- | --- |
 | Wire `Configure-DeploymentOptions.ps1` into Terraform | REVIEW.md §16 | Ordered behind the `keyvault-cmk`/`sentinel-siem` scaffolds, an operator-accepted deferral |
 | Wire `nsg-flow-logs` into a live stack | REVIEW.md §11 | Needs the operator's NSG-set and cost/data-residency choice |
-| Resource-provider registration strategy (azurerm 5.0) | REVIEW.md §10 | Needs the operator to pick the mechanism; load-bearing since 5.0 is permanent |
+| Resource-provider registration strategy (azurerm 5.0) | REVIEW.md §10 | Needs the operator to pick the mechanism; load-bearing since 5.0 is permanent. Options paper: [decision 0006 (Proposed)](docs/decisions/0006-resource-provider-registration.md) |
 | Disposition of `scripts/Initialize-ClientFork.ps1` | REVIEW.md §12 | Retire-vs-retarget is the operator's call on an operator entry point |
 | Review the 11 docs migrated to the wiki | **Done 2026-08-06** | Content review complete — verdicts in [docs/wiki-review/](docs/wiki-review/README.md); only the wiki *push* remains blocked (REVIEW.md §15) |
 

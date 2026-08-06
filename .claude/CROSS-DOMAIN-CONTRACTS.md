@@ -6,7 +6,7 @@ every file that participates. If you edit **one** side of a contract, you must
 check — and usually change — the other sides, or dispatch the change through
 `alz-orchestrator` so no side is edited in isolation.
 
-All entries verified against the repo on 2026-08-02.
+All entries verified against the repo on 2026-08-06.
 
 ---
 
