@@ -38,15 +38,22 @@ dogfood instance. The end-to-end customer motion is described in
    point. It consumes config/discovery artifacts, plans by default, and
    reconciles Entra, RBAC, GitHub, and backend prerequisites in apply mode.
    Operator activities are in [USER-CHECKLIST.md](USER-CHECKLIST.md).
-3. **`scaffold-copy.ps1` / `.sh`** — the Stage 10 plan-first scaffold entry
+3. **`validate-render.ps1` / `.sh`** — the post-render validation gate between
+   the renderer and the scaffold (added 2026-08-06). It runs eight read-only
+   gates (inventory integrity, fmt, init, validate, workflow pinning,
+   provider constraints, lint, security scan) against the rendered tree and
+   writes `validate-report.json`; scaffold apply refuses a missing, failed,
+   or stale report. See
+   [docs/decisions/0005-post-render-validation-gate.md](docs/decisions/0005-post-render-validation-gate.md).
+4. **`scaffold-copy.ps1` / `.sh`** — the Stage 10 plan-first scaffold entry
    point. It verifies the exact renderer inventory and publishes the generated
    working tree only under explicit apply controls.
-4. **`brownfield-import.ps1` / `.sh`** — the Stage 11 plan-first
+5. **`brownfield-import.ps1` / `.sh`** — the Stage 11 plan-first
    classification/import artifact generator. It never runs Terraform import.
-5. **Numbered GitHub Actions workflows** (`.github/workflows/010-*.yml`,
+6. **Numbered GitHub Actions workflows** (`.github/workflows/010-*.yml`,
    `020-*.yml`, ...) plus `terraform-plan.yml`/`terraform-apply.yml` deliver
    the legacy in-repo deployment against `terraform/`.
-6. **`frontend/`** is a separate, optional static HTML/JS page (no backend) —
+7. **`frontend/`** is a separate, optional static HTML/JS page (no backend) —
    the **legacy** generator; `site/` is the primary path. See
    [`frontend/README.md`](frontend/README.md).
 

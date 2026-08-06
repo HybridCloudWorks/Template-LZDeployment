@@ -156,7 +156,7 @@ After touching any side of a contract, run:
 ```bash
 node factory/tests/test.js
 pwsh -File factory/tests/Test-Renderer.ps1
-pwsh -File factory/ci/Invoke-FactoryCI.ps1   # 13 checks; shellcheck is CI-runner-only
+pwsh -File factory/ci/Invoke-FactoryCI.ps1   # full check suite; shellcheck is CI-runner-only
 terraform fmt -check -recursive terraform/
 ```
 
