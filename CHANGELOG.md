@@ -5,6 +5,39 @@
 
 ---
 
+## Validation gate executed against a real render; RP-registration options paper proposed (2026-08-06)
+
+**`validate-render.ps1` ran against a real render for the first time** —
+standalone, strict mode, on Linux, with no `az`/`gh` authentication,
+confirming REVIEW.md §7's claim that the validate leg needs only the local
+toolchain. A fresh 96-file render from
+`factory/tests/fixtures/azurerm-config.json` (PowerShell 7.5.2, Terraform
+1.13.3, tflint 0.58.1, tfsec 1.28.14) passed V01–V06 — V03 ran real
+`terraform init -backend=false` in 13 directories — and failed V07/V08 on 7
+real template-corpus findings; `overallStatus: fail` and the entry point threw
+naming the gate IDs, as designed. A second run with the documented operator
+skips passed with skip provenance recorded per contract. Scaffold enforcement
+proved fail-closed via `Test-LzScaffoldValidation`: pass, fail, missing, and
+stale (tampered `manifestSha256`) all classified correctly; no apply
+performed. Full record: [REVIEW.md](REVIEW.md) §7.
+
+**Two engineering items opened in [TODO.md](TODO.md)**, ending its "no open
+engineering debt" status: (1) the 6 tflint + 1 tfsec template-corpus findings,
+which block a skip-free strict run; (2) a Linux hidden-file crash in
+`Get-LzScaffoldInventory` (`LZFactory.Scaffold.psm1:110` lacks `-Force`) that
+breaks scaffold plan and apply on Linux against real renders — missed by
+Factory CI because `Test-Scaffold.ps1` is a static text-matching suite that
+never executes the walk.
+
+**Decision 0006 proposed.** The resource-provider registration strategy under
+azurerm 5.0 (REVIEW.md §10) now has its options paper:
+[docs/decisions/0006-resource-provider-registration.md](docs/decisions/0006-resource-provider-registration.md)
+costs the three candidates and recommends broker-time registration
+complemented by a read-only preflight finding. Status **Proposed** — awaiting
+operator ratification; nothing is implemented.
+
+---
+
 ## Post-render validation gate: scaffold apply refuses unvalidated renders (2026-08-06)
 
 **The gap.** Nothing between the renderer (Stage 5) and the scaffold (Stage
