@@ -220,3 +220,9 @@ After deployment, existing resources must be migrated:
 ---
 
 **💡 To enable this module**: Run `.\scripts\utilities\Configure-DeploymentOptions.ps1` and set `cmk.enabled = true`
+
+## Variables
+
+| Name | Description | Type | Default | Required |
+|---|---|---|---|---|
+| `enable_module` | Safety gate for scaffold-only module. Must remain false until implementation is complete. | `bool` | `false` | no |

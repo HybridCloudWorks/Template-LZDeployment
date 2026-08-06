@@ -181,6 +181,21 @@ cost, so the current state is documented rather than misleading.
 
 ---
 
+## ✋ Cannot be automated
+
+### 17. Cost estimates in module READMEs
+`factory/ci/Test-ModuleDocs.ps1` now enforces that every module README's
+**variable table** matches `variables.tf`, in both directions. The **cost
+estimates** in those same READMEs cannot be checked the same way: they are not
+derivable from the HCL, and they go stale against Azure list prices rather
+than against the repo.
+**Needs**: periodic human review against current Azure pricing, ideally at
+release time. The `azure-cost-governance` capability and the `azure-cost`
+skill exist for exactly this, but the figures still need a human to accept
+them.
+
+---
+
 ## Environment limitations encountered
 
 Recorded because they shaped *how* things were verified, not *whether* they

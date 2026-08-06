@@ -231,6 +231,15 @@ terraform -chdir=terraform/live/sandbox plan -out=tfplan
 terraform -chdir=terraform/live/sandbox apply tfplan
 ```
 
+## Variables
+
+| Name | Description | Type | Default | Required |
+|---|---|---|---|---|
+| `create_sandbox_rg` | Whether to create the sandbox resource group | `bool` | `false` | no |
+| `resource_group_name` | Name of the sandbox resource group | `string` | — | yes |
+| `location` | Azure region for the sandbox resource group | `string` | — | yes |
+| `sandbox_tags` | Tags for the sandbox resource group. Required: `environment`, `lifecycle` (`temporary` or `permanent`, validated), `created_date` (ISO 8601). Optional: `expiry_date` (ISO 8601), `owner`. | `object({ environment, lifecycle, created_date, optional(expiry_date), optional(owner) })` | — | yes |
+
 ## Outputs
 
 | Output | Description |

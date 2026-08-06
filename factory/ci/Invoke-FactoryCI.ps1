@@ -152,6 +152,9 @@ if (-not $result.InSync) { exit 1 }
     # `terraform init` long before any plan. Runs in the 'policy' category so
     # it still reports when LZ_FACTORY_CI_SKIP_TERRAFORM is set.
     Invoke-LzFactoryCheck 'Provider constraints' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ProviderConstraints.ps1') -Category 'policy' | Out-Null
+    # Module READMEs are the interface documentation that ships into customer
+    # repositories, so a stale variable table is a customer-facing defect.
+    Invoke-LzFactoryCheck 'Module docs' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ModuleDocs.ps1') -Category 'contract' | Out-Null
 
     # Parse sweep: every PowerShell file in the repository must parse cleanly.
     # This runs unconditionally (unlike PSScriptAnalyzer) because it needs no

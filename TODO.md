@@ -228,7 +228,20 @@ the page itself is documented as legacy in [`frontend/README.md`](frontend/READM
   `Static-Generator-Implementation`, `Testing-Static-Generator` — the
   2026-08-01 wiki restructure filed them under "Source Material" with
   historical labels; content-level review/consolidation is still owed.
-- [ ] Confirm every `terraform/modules/*/README.md` variable table and cost estimate stays in sync as modules change (no tooling currently enforces this beyond manual review)
+- [x] **Enforce `terraform/modules/*/README.md` variable tables** *(done
+  2026-08-06)* — this was previously "no tooling currently enforces this
+  beyond manual review", and it had drifted: five of eleven modules
+  (`defender-baseline`, `nsg-flow-logs`, `sandbox`, `keyvault-cmk`,
+  `sentinel-siem`) had **no Variables section at all** while declaring 41
+  variables between them. Tables were generated from each module's own
+  `description`/`type`/`default` fields rather than invented, mirrored to the
+  corpus, and `factory/ci/Test-ModuleDocs.ps1` now fails CI in both directions
+  — an undocumented variable is one nobody can discover without reading HCL, a
+  stale row is one an operator sets and Terraform silently ignores. Scoped to
+  variable names on purpose: a check that fails on a reworded description
+  trains people to ignore it.
+  *(Cost estimates in those READMEs are still manual — they cannot be derived
+  from the HCL. Tracked in [REVIEW.md](REVIEW.md).)*
 
 ---
 

@@ -303,3 +303,21 @@ terraform destroy -target=module.defender_baseline
 **Last Updated**: May 28, 2026  
 **Status**: Ready for optional deployment  
 **Phase 1 Task**: 5.5 (OPTIONAL - DEFERRED)
+
+## Variables
+
+| Name | Description | Type | Default | Required |
+|---|---|---|---|---|
+| `defender_tier` | Defender pricing tier applied to every enabled plan (Standard or Free) | `string` | `"Standard"` | no |
+| `security_contact_email` | Email address for security alerts and notifications | `string` | — | yes |
+| `security_contact_phone` | Phone number for security contact (optional) | `string` | `""` | no |
+| `enable_defender_for_servers` | Enable Defender for Servers | `bool` | `true` | no |
+| `enable_defender_for_app_services` | Enable Defender for App Services | `bool` | `true` | no |
+| `enable_defender_for_storage` | Enable Defender for Storage | `bool` | `true` | no |
+| `enable_defender_for_sql` | Enable Defender for SQL | `bool` | `true` | no |
+| `enable_defender_for_containers` | Enable Defender for Containers (includes AKS) | `bool` | `true` | no |
+| `enable_defender_for_key_vault` | Enable Defender for Key Vault | `bool` | `true` | no |
+| `enable_defender_for_resource_manager` | Enable Defender for Azure Resource Manager | `bool` | `true` | no |
+| `enable_defender_for_dns` | Enable Defender for DNS | `bool` | `true` | no |
+| `log_analytics_workspace_id` | Log Analytics workspace ID for Defender data export | `string` | — | yes |
+| `default_tags` | Default tags to apply to resources | `map(string)` | `{}` | no |

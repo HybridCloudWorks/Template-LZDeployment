@@ -287,6 +287,33 @@ AzureNetworkAnalytics_CL
 | **PCI-DSS** | 90 days minimum |
 | **GDPR** | As needed, typically 90-180 days |
 
+## Variables
+
+| Name | Description | Type | Default | Required |
+|---|---|---|---|---|
+| `location` | Azure region | `string` | — | yes |
+| `region_code` | Short region code (e.g., scus, ncus) | `string` | — | yes |
+| `environment` | Environment name (e.g., prod, dev) | `string` | — | yes |
+| `resource_group_name` | Resource group name for flow log resources | `string` | — | yes |
+| `nsg_ids` | Map of NSG names to NSG resource IDs to enable flow logs on | `map(string)` | `{}` | no |
+| `log_analytics_workspace_id` | Log Analytics workspace ID (short format) | `string` | — | yes |
+| `log_analytics_workspace_resource_id` | Log Analytics workspace resource ID (full ARM format) | `string` | — | yes |
+| `log_analytics_workspace_region` | Log Analytics workspace region | `string` | — | yes |
+| `flow_log_retention_days` | Number of days to retain flow logs in storage | `number` | `90` | no |
+| `log_retention_days` | Number of days to retain diagnostic logs | `number` | `90` | no |
+| `enable_traffic_analytics` | Enable Traffic Analytics for flow logs | `bool` | `true` | no |
+| `traffic_analytics_interval` | Traffic Analytics processing interval in minutes (10 or 60) | `number` | `60` | no |
+| `enable_private_endpoint` | Enable private endpoint for flow logs storage account | `bool` | `true` | no |
+| `private_endpoint_subnet_id` | Subnet ID for private endpoint (required if enable_private_endpoint = true) | `string` | `""` | no |
+| `private_dns_zone_ids` | Private DNS zone IDs for blob storage private endpoint | `list(string)` | `[]` | no |
+| `allowed_subnet_ids` | Subnet IDs allowed to access flow logs storage account | `list(string)` | `[]` | no |
+| `allowed_ip_cidrs` | Public IPv4 CIDR ranges allowed through the flow-logs storage account firewall. Entries that fail to parse are dropped (fail closed). | `list(string)` | `[]` | no |
+| `enable_traffic_alerts` | Enable alerts for unusual traffic patterns | `bool` | `true` | no |
+| `action_group_ids` | Action Group IDs for traffic alerts | `list(string)` | `[]` | no |
+| `high_traffic_threshold_gb` | Threshold in GB for high traffic alert | `number` | `100` | no |
+| `denied_traffic_threshold` | Threshold for denied traffic flows to trigger alert | `number` | `1000` | no |
+| `tags` | Tags to apply to all resources | `map(string)` | `{}` | no |
+
 ## Outputs
 
 - `storage_account_id` - Flow logs storage account resource ID
