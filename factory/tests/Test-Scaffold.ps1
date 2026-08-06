@@ -35,6 +35,16 @@ ok 'plan and audit evidence emitted' (
 ok 'user checklist documents scaffold variables' (
     $checklist -match 'LZ_SCAFFOLD_APPLY' -and $checklist -match 'LZ_SCAFFOLD_FORCE'
 )
+ok 'apply requires the post-render validation report' (
+    $module -match 'ValidationReportPath' -and $module -match 'Run \./validate-render\.ps1'
+)
+ok 'stale validation evidence is rejected' (
+    $module -match "'stale'" -and $module -match 'manifestSha256Match'
+)
+ok 'validation override env is explicit and documented' (
+    $module -match 'LZ_SCAFFOLD_ALLOW_UNVALIDATED' -and
+    $checklist -match 'LZ_SCAFFOLD_ALLOW_UNVALIDATED'
+)
 
 Write-Host "`n$pass passed, $fail failed`n" -ForegroundColor $(if ($fail) { 'Red' } else { 'Green' })
 exit $(if ($fail) { 1 } else { 0 })

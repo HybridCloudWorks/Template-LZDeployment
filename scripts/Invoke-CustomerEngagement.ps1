@@ -1,15 +1,16 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Single wrapper for one customer engagement: discovery -> broker -> render -> scaffold.
+    Single wrapper for one customer engagement: discovery -> broker -> render -> validate -> scaffold.
 
 .DESCRIPTION
-    Sequences the four factory stages with per-phase gates, calling each stage's
+    Sequences the five factory phases with per-phase gates, calling each phase's
     real entry point:
 
       discovery   factory/discovery/Invoke-Discovery.ps1   (read-only)
       broker      bootstrap-broker.ps1                     (plan-first, -Apply-gated)
       render      Invoke-LzRender (factory/renderer)       (staging-only)
+      validate    validate-render.ps1                      (read-only gate, always)
       scaffold    scaffold-copy.ps1                        (plan-first, -Apply-gated)
 
     Phase-gating semantics:
@@ -19,8 +20,10 @@
         design, the broker and scaffold emit plan/audit evidence without
         touching Entra, RBAC, GitHub, or the backend, and the renderer writes
         only to its staging directory (it has no apply concept).
-      - -Apply propagates to the broker and the scaffold ONLY. Discovery and
-        render never mutate external systems regardless.
+      - -Apply propagates to the broker and the scaffold ONLY. Discovery,
+        render, and validate never mutate external systems regardless: the
+        validate phase is always read-only against the rendered tree (its
+        terraform init runs in an isolated scratch copy).
       - Discovery readiness gates an apply run: when -Apply is given (and
         -AllowNotReady is not) discovery runs with -FailOnNotReady, so a tenant
         with blocking findings stops the engagement before the broker. In plan
@@ -30,9 +33,10 @@
 
     Environment variables of the underlying tools are honored where the tool
     genuinely reads them: the wrapper resolves LZ_BOOTSTRAP_OUTPUT,
-    LZ_RENDERED_PATH, LZ_SCAFFOLD_TARGET, and LZ_SCAFFOLD_EVIDENCE the same way
-    the tools do and passes the resolved value through, so the evidence
-    locations it prints are the locations the tools used. Apply-mode variables
+    LZ_RENDERED_PATH, LZ_VALIDATE_EVIDENCE, LZ_SCAFFOLD_TARGET, and
+    LZ_SCAFFOLD_EVIDENCE the same way the tools do and passes the resolved
+    value through, so the evidence locations it prints are the locations the
+    tools used. Apply-mode variables
     (LZ_BOOTSTRAP_APPLY, LZ_SCAFFOLD_APPLY) keep their native behavior inside
     each tool.
 
@@ -48,7 +52,8 @@
     Path to the wizard-exported lz-config.json. Required.
 
 .PARAMETER Phase
-    Which phase to run: discovery, broker, render, scaffold, or all (default).
+    Which phase to run: discovery, broker, render, validate, scaffold, or all
+    (default).
 
 .PARAMETER Apply
     Propagated to the broker and the scaffold. Without it, every phase is
@@ -66,7 +71,8 @@
     ./scripts/Invoke-CustomerEngagement.ps1 -ConfigPath ./generated-output/contoso/lz-config.json
 
     Plan-first end-to-end run: discovery report, bootstrap plan, rendered
-    staging tree, scaffold plan. Nothing external is modified.
+    staging tree, validation report, scaffold plan. Nothing external is
+    modified.
 
 .EXAMPLE
     ./scripts/Invoke-CustomerEngagement.ps1 -ConfigPath ./generated-output/contoso/lz-config.json -Phase broker -Apply
@@ -80,7 +86,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ConfigPath,
-    [ValidateSet('discovery', 'broker', 'render', 'scaffold', 'all')]
+    [ValidateSet('discovery', 'broker', 'render', 'validate', 'scaffold', 'all')]
     [string]$Phase = 'all',
     [switch]$Apply,
     [switch]$AllowNotReady,
@@ -126,10 +132,11 @@ if ($env:LZ_DISCOVERY_PATH) {
 }
 $bootstrapOutput = if ($env:LZ_BOOTSTRAP_OUTPUT) { $env:LZ_BOOTSTRAP_OUTPUT } else { './bootstrap-output' }
 $renderedPath = if ($env:LZ_RENDERED_PATH) { $env:LZ_RENDERED_PATH } else { './rendered-output' }
+$validateEvidence = if ($env:LZ_VALIDATE_EVIDENCE) { $env:LZ_VALIDATE_EVIDENCE } else { './validate-evidence' }
 $scaffoldTarget = if ($env:LZ_SCAFFOLD_TARGET) { $env:LZ_SCAFFOLD_TARGET } else { './scaffold-output' }
 $scaffoldEvidence = if ($env:LZ_SCAFFOLD_EVIDENCE) { $env:LZ_SCAFFOLD_EVIDENCE } else { './scaffold-evidence' }
 
-$phaseSequence = if ($Phase -eq 'all') { @('discovery', 'broker', 'render', 'scaffold') } else { @($Phase) }
+$phaseSequence = if ($Phase -eq 'all') { @('discovery', 'broker', 'render', 'validate', 'scaffold') } else { @($Phase) }
 $mode = if ($Apply) { 'apply (broker + scaffold)' } else { 'plan-first (no -Apply)' }
 Write-LzEngagementEvent INFO "Engagement run: phases [$($phaseSequence -join ' -> ')], mode: $mode"
 Write-LzEngagementEvent INFO "Configuration: $configFullPath"
@@ -183,6 +190,21 @@ function Invoke-EngagementRender {
     $evidence['render'] = @((Join-Path $renderedPath 'render-manifest.json'))
 }
 
+function Invoke-EngagementValidate {
+    $renderManifest = Join-Path $renderedPath 'render-manifest.json'
+    if (-not (Test-Path $renderManifest -PathType Leaf)) {
+        throw "Renderer inventory not found: $renderManifest. Run the 'render' phase first (or set LZ_RENDERED_PATH)."
+    }
+    # Validation is always read-only; -Apply is deliberately not propagated.
+    # Strict/skip behavior comes from the entry point's own environment
+    # variables (LZ_VALIDATE_STRICT, LZ_VALIDATE_SKIP_SECURITY_SCAN,
+    # LZ_VALIDATE_SKIP_LINT).
+    & (Join-Path $repoRoot 'validate-render.ps1') `
+        -RenderedDirectory $renderedPath `
+        -EvidenceDirectory $validateEvidence | Out-Null
+    $evidence['validate'] = @((Join-Path $validateEvidence 'validate-report.json'))
+}
+
 function Invoke-EngagementScaffold {
     $renderManifest = Join-Path $renderedPath 'render-manifest.json'
     if (-not (Test-Path $renderManifest -PathType Leaf)) {
@@ -193,6 +215,7 @@ function Invoke-EngagementScaffold {
         -RenderedDirectory $renderedPath `
         -TargetDirectory $scaffoldTarget `
         -EvidenceDirectory $scaffoldEvidence `
+        -ValidationReportPath (Join-Path $validateEvidence 'validate-report.json') `
         -Apply:$Apply `
         -Force:$Force | Out-Null
     $evidence['scaffold'] = @(
@@ -218,6 +241,7 @@ foreach ($currentPhase in $phaseSequence) {
             'discovery' { Invoke-EngagementDiscovery }
             'broker' { Invoke-EngagementBroker }
             'render' { Invoke-EngagementRender }
+            'validate' { Invoke-EngagementValidate }
             'scaffold' { Invoke-EngagementScaffold }
         }
         Write-LzEngagementEvent OK "Phase '$currentPhase' completed."

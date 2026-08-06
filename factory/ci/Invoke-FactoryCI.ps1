@@ -130,6 +130,7 @@ try {
         'Test-Renderer.ps1',
         'Test-Bootstrap.ps1',
         'Test-Scaffold.ps1',
+        'Test-Validate.ps1',
         'Test-Import.ps1',
         'Test-CI.ps1',
         'Test-Dogfood.ps1',
