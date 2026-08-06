@@ -29,8 +29,14 @@ Consequences that are routinely gotten wrong:
   target under this model. Do not lead with it.
 - The real first step of a client run is toolchain + authentication + confirming
   the target tenant, then the `site/` wizard.
+- **The client runs it, on their own machine** (operator-ratified 2026-08-06),
+  so the tenant-confirmation step is load-bearing: it is the client's own `gh`
+  and `az` sessions that create the estate.
+- **Never assume the copy is a fork.** The operator's position is "forks (or
+  clones, whatever is better)" — the motion must work from a plain clone or a
+  downloaded archive with no GitHub-side representation at all.
 
-Full record and open questions:
+Full record, ratification, and the one remaining open question:
 [docs/decisions/0004-factory-copy-is-a-disposable-installer.md](docs/decisions/0004-factory-copy-is-a-disposable-installer.md).
 
 ## 1. Semantic capability matching

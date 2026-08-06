@@ -8,25 +8,56 @@ Step-by-step operator guidebook: the wiki's
 [How to Get Started](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)
 section.
 
-## The motion (operator-defined, 2026-08-01)
+## The motion (operator-defined 2026-08-01, **corrected 2026-08-06**)
 
-CBTS forks this repo to a client; **the client owns that fork**. The client
-clones the fork and runs the initiation process (bootloading, authentication,
-authorization, OIDC). They run the `site/` wizard, which creates their unique
-variables; those are saved, stored, and copied into the locations the clone's
-tooling uses to deploy the landing zone **into a new repository**. The landing
-zone is stored and managed from that new repo thereafter, and the clone is
-deleted. Rinse and repeat per customer. Every component in this repo is
-Created/Read/Updated/Deleted per engagement — **this repo is the factory, not
-the long-lived deployment**.
+> **Correction.** The description below originally read "CBTS forks this repo
+> to a client; **the client owns that fork**", and treated that fork as a
+> governed, long-lived client asset. That is wrong, and it is the single
+> mistake this file most reliably propagated into downstream work. See
+> [decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)
+> (operator-ratified 2026-08-06).
+
+The client takes a copy of this repo — **fork or clone, whichever is more
+convenient; nothing may depend on which** — onto a local machine. They run the
+initiation process (bootloading, authentication, authorization, OIDC) and the
+`site/` wizard, which produces their unique variables.
+
+The tooling then **creates a new, separate repository** and fills it with the
+Terraform, handshakes, loaders, and workflows for **exactly one** client's
+landing zone. That new repository is the deliverable and the client's source
+control from then on.
+
+**The copy is then deleted.** Its lifespan is hours. It is an installer, not
+an asset: it is never hardened, never merged into, and never maintained. The
+repository that gets branch protection, required checks, and environments is
+the *generated* one, and the broker already does that
+(`factory/bootstrap/LZFactory.Bootstrap.psm1`).
+
+Rinse and repeat per customer — **this repo is the factory, not the
+long-lived deployment**.
+
+Two consequences that change how items in this file are read:
+
+- **"Harden the fork" items are wrong-target.** Where they remain useful they
+  have been retargeted at the *upstream* factory repository (this one, which
+  genuinely is long-lived and governed). They are **not** per-engagement work
+  and must not be repeated per client.
+- **The client runs the tooling on their own machine**, so it is the client's
+  `gh` and `az` sessions that create the estate. That is what makes the
+  confirm-the-tenant gate in Phase 2 load-bearing rather than ceremonial.
 
 **Tags**
 - `[BLOCKER]` — the motion cannot complete for a real customer until this is done.
 - `[HARDENING]` — the motion completes, but this step is risky, manual, or misleading.
 
-Artifacts per engagement: **upstream repo** (CBTS-owned factory) → **client
-fork** (client-owned factory instance) → **local clone** (disposable working
-copy) → **generated customer repo** (long-lived landing-zone home).
+Artifacts per engagement: **upstream repo** (CBTS-owned factory; the only
+long-lived, governed repository in the chain) → **client copy** (fork, clone,
+or archive — disposable, unhardened, deleted at the end of the engagement) →
+**generated customer repo** (long-lived landing-zone home, hardened by the
+broker).
+
+The former "client fork (client-owned factory instance)" and "local clone"
+were two names for one disposable thing; decision 0004 collapses them.
 
 ---
 
@@ -60,15 +91,31 @@ SHA-pinned and travel with the fork.
   Actions, configures branch protection with required checks and ≥1 required
   approval, reads back secret-scanning state, and verifies every setting via
   GitHub API read-back.)*
+  **Superseded 2026-08-06 for the client motion** — decision 0004: none of
+  this applies to a repository that is deleted within hours, and the checklist
+  it was built from ("forks do not inherit Actions, protection, secrets…") is
+  reasoning about a governed asset. The script is retained because
+  `-CreatePrivateCopy` is still the documented way to *obtain* a private copy;
+  its hardening stages are planning-only for client engagements. Disposition
+  tracked in [TODO.md](TODO.md).
 - [ ] **[BLOCKER] Enable and verify required `main` status checks** *(moved
   from TODO.md)* — `main` currently has **no** `required_status_checks`;
   Terraform Plan/Apply, secrets-scan, and action-pinning exist in the repo
   while being advisory in GitHub settings, so a green merge proves nothing. Run
   Factory CI at least once, then configure branch protection/rulesets using the
   stable check names and confirm required contexts plus enforcement by GitHub
-  API read-back. Requires repository administration. Must be repeated on every
-  client fork (protection does not inherit) — fold into the fork-init script
-  above. *(Corrected 2026-08-01: GitHub records the Factory CI check context
+  API read-back. Requires repository administration.
+  *(Retargeted 2026-08-06 per [decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md):
+  this applies to the **upstream factory repository only**. It previously read
+  "must be repeated on every client fork (protection does not inherit) — fold
+  into the fork-init script above", which is wrong-target work on a repository
+  that is deleted within hours. Client copies are not hardened; the generated
+  customer repo is, by the broker.)*
+  **Why this is not cosmetic**: with no required checks, six dependabot PRs
+  merged red on 2026-08-02 and left `main` unable to `terraform init` on four
+  of five live stacks (see CHANGELOG, 2026-08-06). A green merge here still
+  proves nothing until this is done.
+  *(Corrected 2026-08-01: GitHub records the Factory CI check context
   as `Factory CI` — the job-level name — not `Factory CI / Factory CI` as this
   item previously claimed. Tooling shipped (this PR):
   `scripts/Initialize-ClientFork.ps1` wires the default required checks
@@ -89,17 +136,27 @@ SHA-pinned and travel with the fork.
 - [ ] **[HARDENING] Verify GitHub repo settings not checkable from a local
   clone** *(moved from TODO.md)* — secret scanning enabled, required PR
   approval count (currently 0 — branch protection exists but does not require
-  human review). Same read-back applies to each client fork. *(2026-08-01:
+  human review). *(Retargeted 2026-08-06 per decision 0004: upstream factory
+  repository only. Previously read "same read-back applies to each client
+  fork" — it does not; client copies are disposable and ungoverned.)*
+  *(2026-08-01:
   Tooling shipped (this PR): `scripts/Initialize-ClientFork.ps1` performs the
   full API read-back including secret-scanning state and required approvals —
   operator execution pending.)*
 
 **CRUD per engagement**
-- Created: the client fork (client-owned; retained as the client's factory
-  instance or retired after the customer repo takes over — Phase 6 decision).
+- Created: the client's disposable copy of the factory (fork, clone, or
+  archive). *(2026-08-06: this entry previously said "retained as the client's
+  factory instance **or** retired after the customer repo takes over — Phase 6
+  decision". That ambiguity is resolved — it is **always** deleted. See
+  [decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md).)*
 - Read: upstream factory code, wiki guidebook.
-- Updated: fork settings (Actions on, protection, integrations).
-- Deleted: nothing at this phase.
+- Updated: **nothing.** The copy is not configured, hardened, or governed. The
+  settings work that used to live here (Actions enablement, branch protection,
+  required checks, environments, secrets) belongs to the generated customer
+  repo and is performed by the broker in Phase 4.
+- Deleted: the copy itself, at Phase 6. Not "optionally" — it is the defined
+  end of every engagement.
 
 ---
 
