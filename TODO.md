@@ -15,7 +15,7 @@
 > Items below remain valid only where they are also confirmed by those
 > documents or by a fresh code review.
 
-**Last Updated**: August 2, 2026
+**Last Updated**: August 6, 2026
 **Status**: 🟡 IN PROGRESS
 **Completed work**: [CHANGELOG.md](CHANGELOG.md)
 **Production-readiness backlog**: [PROD-TODO.md](PROD-TODO.md)
@@ -55,7 +55,8 @@ dogfood instance. The end-to-end customer motion is described in
 
 ## 🔴 CI/CD Hygiene
 
-- [ ] **Mark the GitGuardian incident a false positive** —
+- [ ] 🚧 **ROADBLOCKED (external, not fixable in-repo)** — **Mark the
+  GitGuardian incident a false positive** —
   `factory/tests/Test-Discovery.ps1:85` holds the canonical jwt.io sample token
   (header `{"alg":"HS256"}`, payload `{"sub":"1234567890"}`) solely to prove
   `Protect-LzSecretText` redacts JWT-shaped strings. It is not a credential;
@@ -68,7 +69,11 @@ dogfood instance. The end-to-end customer motion is described in
 
 ## 🟠 Script Cleanup
 
-- [ ] **Wire `Configure-DeploymentOptions.ps1` output into Terraform** — it
+- [ ] **Wire `Configure-DeploymentOptions.ps1` output into Terraform**
+  *(blocked, 2026-08-06: two of the three modules it would gate —
+  `keyvault-cmk` and `sentinel-siem` — are scaffold-only and render-blocked,
+  so there is nothing to wire them to yet. Only `defender-baseline` is real.
+  Sequence this after those modules exist.)* — it
   generates `.azure/deployment-options.yaml`, but no `terraform/live/*` layer
   reads this file to decide whether to call `defender-baseline`,
   `keyvault-cmk`, or `sentinel-siem`. *(2026-08-02: the "or document
@@ -81,8 +86,16 @@ dogfood instance. The end-to-end customer motion is described in
 
 ## 🟡 Terraform Module Completeness
 
-- [ ] Implement `keyvault-cmk` — currently scaffold-only (`check "module_not_implemented"`, zero resources)
-- [ ] Implement `sentinel-siem` — currently scaffold-only, same pattern
+- [ ] **Implement `keyvault-cmk`** — currently scaffold-only
+  (`check "module_not_implemented"`, zero resources). Deliberately left
+  scaffolded rather than guessed at: both modules are customer-facing
+  infrastructure needing an architecture decision first (key hierarchy and
+  rotation policy, which vaults are in scope, purge-protection and soft-delete
+  posture, HSM vs software keys), and the renderer already blocks scaffold-only
+  modules from rendering, so the current state is safe rather than broken.
+- [ ] **Implement `sentinel-siem`** — currently scaffold-only, same pattern
+  and the same prerequisite (which data connectors, retention split between
+  analytics and archive tiers, and which workspace).
 - [x] Verify variable-driven "secure by default" settings actually default
   secure *(verdicts recorded 2026-08-02)*:
   - backend public access — **SECURE**: `allow_public_access_during_setup`
@@ -123,12 +136,19 @@ dogfood instance. The end-to-end customer motion is described in
   `generate-and-release.yml` deleted along with their orphaned packager
   `terraform/compose-package/`; live workflows standardized on Terraform
   1.9.8.)*
-- [ ] **Extend `Test-LzSchemaDrift` to compare schema enums against Terraform
-  `contains([...])` validations** *(added 2026-08-02)* — the drift checker
-  compares regex patterns only, so the azfw `Basic` defect class (a schema
-  enum offering a value the Terraform validation rejects — or, as shipped, a
-  value the module cannot actually deploy) is checker-invisible. The Basic
-  case was fixed by narrowing the schema; the checker gap remains.
+- [x] **Extend `Test-LzSchemaDrift` to compare schema enums against Terraform
+  `contains([...])` validations** *(done 2026-08-06)* — `contains([...],
+  var.<name>)` lists are now extracted alongside validation regexes, a new
+  `Get-LzSchemaEnum` reads the schema side, and direction 2c compares them as
+  a set difference (so every offending value is named, not just one
+  counterexample). Negated element-wise tests such as
+  `!contains(["*", "0.0.0.0/0"], r)` are deny lists, not allowed-value sets,
+  and are excluded — tested.
+  **It found a live defect on its first run**: the schema offered
+  `connectivity.firewall.type = "none"`, the wizard offered it as a menu
+  option and only warned, and export emitted `firewall_type = "none"`, which
+  the connectivity layer rejects. Fixed by narrowing, per the Basic
+  precedent. See the new item below for supporting it properly.
 - [ ] **Decide whether the corpus `management-baseline/moved.tf` should
   mirror to live** *(added 2026-08-02)* — currently a deliberate corpus-only
   divergence: the `moved` block preserves state addresses for the alert
@@ -136,16 +156,62 @@ dogfood instance. The end-to-end customer motion is described in
   mirror it for strict byte parity or record the divergence as permanent in
   the reconciliation plan.
 - [ ] **Add azurerm-backend fixture coverage to the renderer suite** *(added
-  2026-08-02, final review)* — both test fixtures use `hcp-terraform`, so the
-  azurerm form of the connectivity remote-state read and the `state_*` tfvars
-  emission are never exercised by CI (verified manually: they render and
-  validate). Related fragility, pre-existing: the renderer fails closed on a
-  schema-valid config whose `backend.azurerm` omits the optional
-  `useAzureAdAuth` key (schema default `true` is not applied at render time —
-  `Unknown configuration path`); either teach the token engine schema
-  defaults or gate the four reference sites.
+  2026-08-02, final review; partially closed 2026-08-06)* — both test
+  fixtures use `hcp-terraform`, so the azurerm form of the connectivity
+  remote-state read and the `state_*` tfvars emission are still never
+  exercised end-to-end by CI (verified manually: they render and validate).
+  A full azurerm fixture plus expected-output baseline is the remaining work.
+  *(The related fragility recorded here is **fixed**: the renderer no longer
+  fails closed on a schema-valid config whose `backend.azurerm` omits the
+  optional `useAzureAdAuth`. `New-LzRenderContext -SchemaPath` seeds schema
+  defaults for absent optional keys — the "teach the token engine schema
+  defaults" option, chosen over gating the four reference sites because
+  gating fixes one key and leaves the class open. Config values always win,
+  and an absent parent block seeds no phantom children.)*
 
 ---
+
+- [ ] **Complete the azurerm provider 5.x migration** *(added 2026-08-06)* —
+  dependabot's half-applied bump was reverted to restore a working `main`
+  (see CHANGELOG), so the tree is coherent at `~> 4.2` with
+  `terraform/backend-bootstrap` the one reasoned exception at `~> 5.0`. Moving
+  the rest is still worth doing, but it is a major version bump that also
+  rewrites the customer-facing template corpus, so it needs provider
+  resolution and plan-level validation — neither of which was available in the
+  session that found the breakage (`registry.terraform.io` is not on the
+  egress allowlist there). Doing it: bump `$CANONICAL_CONSTRAINTS` in
+  `factory/ci/Test-ProviderConstraints.ps1`, every declaration in both trees
+  including the four `.tf.tmpl` roots dependabot cannot see, re-lock each root,
+  then read the 5.x upgrade guide for the resources these modules actually use.
+  The constraint check keeps CI red until all of that agrees.
+- [ ] **Add `terraform` to `LZ_FACTORY_CI_TERRAFORM_ROOTS`** *(added
+  2026-08-06)* — Factory CI now triggers on `terraform/**`, but its default
+  roots are still `factory/templates/terraform` only, so the live tree gets the
+  static provider-constraint check and not `terraform init`/`validate`. Adding
+  it would have caught the dependabot breakage directly rather than by proxy.
+  Not changed blind: it needs one CI run to confirm the live tree validates
+  clean first, since a pre-existing validate failure there would turn Factory
+  CI red for an unrelated reason.
+- [ ] **Decide whether a firewall-less hub is supported** *(added 2026-08-06)*
+  — `connectivity.firewall.type = "none"` was removed because it could not
+  deploy: the connectivity layer rejects the value and `hub-network` treats
+  every non-azfw value as an NVA (`count = var.firewall_type != "azfw" ? 1
+  : 0`), so it would provision NVA subnets and route tables with no trust IP.
+  Supporting it properly means making roughly ten `!= "azfw"` conditions
+  three-way across `hub-network` in both trees. Until then, "no firewall" is
+  only expressible as `connectivity.model = none`, which drops platform
+  networking entirely — a coarser choice than some clients will want.
+- [ ] **Decide the disposition of `scripts/Initialize-ClientFork.ps1`**
+  *(added 2026-08-06)* — under
+  [decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)
+  its hardening stages (Actions enablement, branch protection, required checks,
+  required approvals, secret-scanning read-back) target the **disposable**
+  copy and are not part of a client run; the broker already does that class of
+  work on the surviving generated repo. Its `-CreatePrivateCopy` mirror
+  mechanic is still the documented way to obtain a private copy. Retire the
+  hardening stages, or retarget the script at the generated repo and reconcile
+  the overlap with the broker. Operator call — an entry point is not deleted
+  by a cleanup pass.
 
 ## 🟡 Static Config-Generator (`frontend/`)
 
@@ -165,7 +231,9 @@ the page itself is documented as legacy in [`frontend/README.md`](frontend/READM
 
 ## 🟢 Documentation & Repo Hygiene
 
-- [ ] Review the single-purpose docs migrated from `docs/` to the wiki on
+- [ ] 🚧 **ROADBLOCKED from a clone** (the wiki is a separate repository and
+  is not checked out here; needs wiki access to verify) — Review the
+  single-purpose docs migrated from `docs/` to the wiki on
   2026-08-01 and not yet individually verified against current repo state:
   `Build-Critical-Path`, `Build-README`, `Build-Standards-Reference`,
   `Build-Verification-Report`, `Deployment-Flow`, `Expanded-Scope`,
@@ -176,6 +244,24 @@ the page itself is documented as legacy in [`frontend/README.md`](frontend/READM
 - [ ] Confirm every `terraform/modules/*/README.md` variable table and cost estimate stays in sync as modules change (no tooling currently enforces this beyond manual review)
 
 ---
+
+---
+
+## 🧭 Why the remaining items are still open
+
+Nothing below is open for lack of attention. As of 2026-08-06 every remaining
+item falls into one of four classes, and the class is stated on each item:
+
+| Class | Meaning | Items |
+| --- | --- | --- |
+| 🚧 **External** | Cannot be done from the repository at all | GitGuardian false-positive (dashboard UI), wiki doc review (separate repo) |
+| 🎯 **Needs a design decision** | The implementation is blocked on a choice nobody has made | `keyvault-cmk`, `sentinel-siem`, `nsg-flow-logs` wiring, firewall-less hub, `workloads-nonprod` parity, `management-baseline/moved.tf` |
+| 🔗 **Blocked on another item** | Ordering, not difficulty | `Configure-DeploymentOptions` wiring (waits on the two scaffold modules) |
+| ✅ **Needs one verification run** | Correct but unproven in this environment | azurerm 5.x migration and `LZ_FACTORY_CI_TERRAFORM_ROOTS` (both need provider resolution, which the session that found the breakage could not reach) |
+
+Operator- and Azure-dependent work is not here — it lives in
+[PROD-TODO.md](PROD-TODO.md), which is gated on engagement-owner confirmation
+of the target tenant.
 
 ## 📚 Key Documents
 
