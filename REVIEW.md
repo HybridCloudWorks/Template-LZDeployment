@@ -26,10 +26,17 @@ kinds:
 
 ---
 
-## 🔐 Requires Azure or GitHub access
+## 🔐 Requires Azure or GitHub access — **OUT OF SCOPE THIS PHASE**
 
-These are the largest group and they share one root cause: **no landing-zone
-identity estate exists**, and the engagement tenant has not been confirmed.
+> **Phase scoping (operator, 2026-08-06).** Items 1–9 are the **go-live
+> chain**, and go-live is explicitly out of scope for the current phase. They
+> are recorded here so they are not re-derived, but they are **deferred, not
+> pending**: do not treat tenant confirmation, the identity estate, required
+> status checks, or the Stage 13/14 gates as next steps until the operator
+> opens the go-live phase.
+
+These items share one root cause: **no landing-zone identity estate exists**,
+and the engagement tenant has not been confirmed.
 Read-only discovery on 2026-08-01 found no landing-zone app registrations at
 all, no `AZURE_PLAN_CLIENT_ID` secret, and no `dev`/`prod`/`hub` environments.
 
