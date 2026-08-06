@@ -7,10 +7,20 @@ on:
     paths:
       - '.github/workflows/020-*.yml'
       - '.lz-bootloader-state.json'
-      - 'docs/RBAC-REQUIREMENTS.md'
+      - 'docs/decisions/0002-minimal-identity-estate.md'
+  # Mirrors the push filter above. Without it this workflow ran on every PR,
+  # including documentation-only ones, and failed at `azure/login` because
+  # AZURE_PLAN_CLIENT_ID does not exist yet (PROD-TODO Phase 2 blocker) — so
+  # every PR was red for a reason unrelated to its own diff. An RBAC audit
+  # only has something to say when RBAC inputs change; the weekly schedule
+  # below still catches drift made outside the repo.
   pull_request:
     branches:
       - main
+    paths:
+      - '.github/workflows/020-*.yml'
+      - '.lz-bootloader-state.json'
+      - 'docs/decisions/0002-minimal-identity-estate.md'
   workflow_dispatch:
     inputs:
       full_audit:
@@ -458,20 +468,18 @@ jobs:
           echo "=== RBAC Requirements Documentation Check ==="
           echo ""
 
-          if [ ! -f "docs/RBAC-REQUIREMENTS.md" ]; then
-            echo "⚠  WARNING: docs/RBAC-REQUIREMENTS.md not found"
-            echo "   Recommendation: Create this file to document required permissions"
-            echo ""
-            echo "   This file should contain:"
-            echo "   - Required roles per layer (Main, Dev, Prod, Global)"
-            echo "   - Subscription scope for each role"
-            echo "   - Justification for each role"
-            echo "   - Audit trail of RBAC changes"
+          RBAC_DOC="docs/decisions/0002-minimal-identity-estate.md"
+
+          if [ ! -f "$RBAC_DOC" ]; then
+            echo "⚠  WARNING: $RBAC_DOC not found"
+            echo "   This decision record is the authority for the identity"
+            echo "   estate: which principals exist, their roles, the scope of"
+            echo "   each grant, and the justification for it."
           else
-            echo "✓ docs/RBAC-REQUIREMENTS.md exists"
+            echo "✓ $RBAC_DOC exists"
             echo ""
             echo "Contents:"
-            head -50 docs/RBAC-REQUIREMENTS.md
+            head -50 "$RBAC_DOC"
           fi
 
       - name: Validate Against Best Practices
@@ -520,7 +528,7 @@ jobs:
               '',
               '**View full audit report in Actions tab**',
               '',
-              'For RBAC requirements and documentation, see: `docs/RBAC-REQUIREMENTS.md`',
+              'For the identity estate, its roles and their justification, see: `docs/decisions/0002-minimal-identity-estate.md`',
             ].join('\n');
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -559,7 +567,7 @@ jobs:
           □ Task 1.1b: Verify Contributor-only roles
           □ Task 1.1c: Create separate SPs per layer
           □ Task 1.1d: Update GitHub Actions secrets
-          □ Task 1.1e: Document in RBAC-REQUIREMENTS.md
+          □ Task 1.1e: Record the estate in docs/decisions/
           □ Task 1.1f: Add workflow-level validation
 
           AUDIT REPORTS:
@@ -583,7 +591,7 @@ jobs:
           For issues, check:
           - GitHub Actions logs
           - Azure Portal (RBAC assignments)
-          - docs/RBAC-REQUIREMENTS.md (documentation)
+          - docs/decisions/0002-minimal-identity-estate.md (identity estate of record)
 
           ╚════════════════════════════════════════════════════════════════════════╝
           EOF
