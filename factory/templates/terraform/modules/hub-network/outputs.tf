@@ -14,13 +14,13 @@ output "resource_group_name" {
 }
 
 output "firewall_private_ip" {
-  description = "Firewall private IP for routing; null when firewall_type is \"none\""
+  description = "Firewall private IP for routing"
   value       = local.firewall_private_ip
 }
 
 output "route_table_id" {
-  description = "Route table ID for spoke associations; null when firewall_type is \"none\""
-  value       = one(azurerm_route_table.to_firewall[*].id)
+  description = "Route table ID for spoke associations"
+  value       = azurerm_route_table.to_firewall.id
 }
 
 output "gateway_subnet_id" {

@@ -18,11 +18,13 @@
 #   firewall_type, so no deployed pair of subnets overlaps.
 
 locals {
-  # firewall_type is three-way, not azfw/not-azfw. Treating "not azfw" as
-  # "NVA" would provision NVA subnets, an NVA NSG, and a default route to a
-  # trust IP that is only ever collected for palo/fortinet.
-  has_nva      = contains(["palo", "fortinet"], var.firewall_type)
-  has_firewall = var.firewall_type != "none"
+  # Membership, not "not azfw". A landing zone always deploys exactly one
+  # firewall (operator decision 2026-08-06), and the connectivity layer bounds
+  # firewall_type to azfw|palo|fortinet — but expressing the NVA case as
+  # negation is what previously let an out-of-set value be silently treated as
+  # an NVA, provisioning NVA subnets and a route to a trust IP that is only
+  # collected for palo/fortinet.
+  has_nva = contains(["palo", "fortinet"], var.firewall_type)
 
   # NVA trust interface IP: first usable host (offset 4 - Azure reserves the
   # first three usable addresses) in the trust subnet, unless the caller
@@ -203,21 +205,14 @@ resource "azurerm_firewall" "hub" {
 # Placeholder outputs for NVA (Palo/Fortinet) - will be populated when NVA deployed
 # These are used by spoke UDRs
 locals {
-  # null when there is no firewall: there is no appliance to send traffic to,
-  # and emitting the NVA trust IP here would hand spokes a next hop pointing
-  # at an address nothing listens on.
-  firewall_private_ip = local.has_firewall ? (
-    var.firewall_type == "azfw" ? (
-      length(azurerm_firewall.hub) > 0 ? azurerm_firewall.hub[0].ip_configuration[0].private_ip_address : local.nva_trust_ip
-    ) : local.nva_trust_ip
-  ) : null
+  firewall_private_ip = var.firewall_type == "azfw" ? (
+    length(azurerm_firewall.hub) > 0 ? azurerm_firewall.hub[0].ip_configuration[0].private_ip_address : local.nva_trust_ip
+  ) : local.nva_trust_ip
 }
 
-# Route table for spoke default route to firewall. Absent when firewall_type is
-# "none" — spokes then use Azure's own default routing rather than being
-# forced through an appliance that was never deployed.
+# Route table for spoke default route to firewall. Unconditional: every hub
+# deploys a firewall, so there is always an appliance to default-route to.
 resource "azurerm_route_table" "to_firewall" {
-  count               = local.has_firewall ? 1 : 0
   name                = "udr-to-firewall-${var.region_code}-${var.environment}-01"
   resource_group_name = azurerm_resource_group.hub.name
   location            = azurerm_resource_group.hub.location
