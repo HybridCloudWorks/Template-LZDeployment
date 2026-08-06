@@ -192,6 +192,44 @@ ok 'reads a schema enum'          ((@(Get-LzSchemaEnum -Schema $liveSchema -Path
 ok 'enum absent returns null'     ($null -eq (Get-LzSchemaEnum -Schema $liveSchema -Path 'naming.orgPrefix'))
 ok 'unknown path returns null'    ($null -eq (Get-LzSchemaEnum -Schema $liveSchema -Path 'connectivity.nope.nothere'))
 
+Write-Host "`n== 12c. Schema defaults seed the render context ==" -ForegroundColor Cyan
+# A schema-valid config that omits an OPTIONAL key with a declared default used
+# to fail the render closed with "Unknown configuration path" — the observed
+# case being backend.azurerm without useAzureAdAuth, which four templates
+# reference.
+$schemaFile = "$repo/factory/schema/lz-config.schema.json"
+# Built from the real fixture so the context's computed.* stage has everything
+# it needs; only the backend block varies.
+$azurermBase = { param($extra)
+    $clone = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 30
+    $az = [pscustomobject]@{ resourceGroupName = 'rg'; storageAccountName = 'sa'; containerName = 'tfstate' }
+    if ($extra) { $az | Add-Member -NotePropertyName useAzureAdAuth -NotePropertyValue $extra.Value }
+    $clone.backend = [pscustomobject]@{ type = 'azurerm'; azurerm = $az }
+    $clone
+}
+$ctxSeeded = New-LzRenderContext -Config (& $azurermBase $null) -SchemaPath $schemaFile
+ok 'omitted optional key takes the schema default' ((Get-LzTokenValue -Context $ctxSeeded -Path 'backend.azurerm.useAzureAdAuth') -eq $true)
+
+# Seeding must never overwrite an explicit choice — disabling Entra auth is a
+# deliberate, security-relevant setting (contract #3).
+$ctxExplicit = New-LzRenderContext -Config (& $azurermBase @{ Value = $false }) -SchemaPath $schemaFile
+ok 'explicit config value beats the default'       ((Get-LzTokenValue -Context $ctxExplicit -Path 'backend.azurerm.useAzureAdAuth') -eq $false)
+
+# An absent parent block must not materialise its children.
+# The sample fixture is an hcp-terraform config, so it carries no azurerm
+# block at all — exactly the absent-parent case.
+$ctxNoAzurerm = New-LzRenderContext -Config $cfg -SchemaPath $schemaFile
+$phantom = $true
+try { $null = Get-LzTokenValue -Context $ctxNoAzurerm -Path 'backend.azurerm.useAzureAdAuth' } catch { $phantom = $false }
+ok 'absent parent block seeds no phantom child'    (-not $phantom)
+
+# Omitting the schema keeps the old behaviour, so callers that pass no schema
+# are unaffected.
+$ctxNoSchema = New-LzRenderContext -Config (& $azurermBase $null)
+$unresolved = $false
+try { $null = Get-LzTokenValue -Context $ctxNoSchema -Path 'backend.azurerm.useAzureAdAuth' } catch { $unresolved = $true }
+ok 'no schema supplied: behaviour unchanged'       ($unresolved)
+
 Write-Host "`n== 13. HCL formatting helpers ==" -ForegroundColor Cyan
 ok 'string escaping'   ((ConvertTo-LzHclString 'a"b') -eq '"a\"b"')
 ok 'null string'       ((ConvertTo-LzHclString $null) -eq '""')
