@@ -174,14 +174,12 @@ dogfood instance. The end-to-end customer motion is described in
   them to `Test-LzFirstApplyPreflight`, or set `resource_providers_to_register`
   explicitly in the layer provider blocks. Not chosen here — the right answer
   depends on which identity is expected to hold registration rights.
-- [ ] **Add `terraform` to `LZ_FACTORY_CI_TERRAFORM_ROOTS`** *(added
-  2026-08-06)* — Factory CI now triggers on `terraform/**`, but its default
-  roots are still `factory/templates/terraform` only, so the live tree gets the
-  static provider-constraint check and not `terraform init`/`validate`. Adding
-  it would have caught the dependabot breakage directly rather than by proxy.
-  Not changed blind: it needs one CI run to confirm the live tree validates
-  clean first, since a pre-existing validate failure there would turn Factory
-  CI red for an unrelated reason.
+- [x] **Add `terraform` to `LZ_FACTORY_CI_TERRAFORM_ROOTS`** *(done
+  2026-08-06)* — the default is now `factory/templates/terraform,terraform`,
+  so Factory CI runs `terraform init` and `validate` over the live tree as
+  well as the corpus. This is the check that would have caught the dependabot
+  provider split-brain directly: the live tree was previously invisible to the
+  only workflow that runs credential-free.
 - [x] **Decide whether a firewall-less hub is supported** *(decided and
   implemented 2026-08-06 — operator: a landing zone need not be deployed with
   a firewall)* — `connectivity.firewall.type = "none"` is supported end to
@@ -238,14 +236,13 @@ the page itself is documented as legacy in [`frontend/README.md`](frontend/READM
 ## 🧭 Why the remaining items are still open
 
 Nothing below is open for lack of attention. As of 2026-08-06 every remaining
-item falls into one of five classes, and the class is stated on each item:
+item falls into one of four classes, and the class is stated on each item:
 
 | Class | Meaning | Items |
 | --- | --- | --- |
 | 🚧 **External** | Cannot be done from the repository at all | wiki doc review (separate repo) |
 | 🎯 **Needs a design decision** | Blocked on a choice nobody has made | `nsg-flow-logs` wiring, `workloads-nonprod` parity, `management-baseline/moved.tf`, RP-registration strategy under azurerm 5.0 |
 | 🔗 **Blocked on another item** | Ordering, not difficulty | `Configure-DeploymentOptions` wiring (waits on the two scaffold modules, which are an accepted deferral) |
-| ✅ **Needs one verification run** | Correct but unproven in this environment | `LZ_FACTORY_CI_TERRAFORM_ROOTS` (needs provider resolution, which this environment's egress policy blocks) |
 | 🧹 **Ordinary remaining work** | Just needs doing | azurerm-backend fixture coverage, module README sync, `Initialize-ClientFork.ps1` disposition |
 
 Decided and closed on 2026-08-06 by operator direction: the azurerm 5.0

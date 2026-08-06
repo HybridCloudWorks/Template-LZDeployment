@@ -26,7 +26,11 @@ $skipStaticRequested = $SkipStatic -or $env:LZ_FACTORY_CI_SKIP_STATIC -eq 'true'
 $terraformRoots = if ($env:LZ_FACTORY_CI_TERRAFORM_ROOTS) {
     @($env:LZ_FACTORY_CI_TERRAFORM_ROOTS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 } else {
-    @('factory/templates/terraform')
+    # Both trees. The live tree was left out originally, which is why the
+    # dependabot provider split-brain reached `main` without any terraform
+    # check objecting to it: the only workflow that runs credential-free
+    # simply did not look at terraform/.
+    @('factory/templates/terraform', 'terraform')
 }
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
