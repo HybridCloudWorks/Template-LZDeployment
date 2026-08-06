@@ -5,6 +5,53 @@
 
 ---
 
+## Post-render validation gate: scaffold apply refuses unvalidated renders (2026-08-06)
+
+**The gap.** Nothing between the renderer (Stage 5) and the scaffold (Stage
+10) ran `terraform init`/`validate`, a blocking format check, lint, or a
+security scan against the tree a specific configuration actually produced —
+the renderer's `terraform fmt` pass only warns, and Factory CI validates the
+source corpus, not a render. An undeployable or non-compliant render could
+therefore reach the customer repository. Decision record:
+[docs/decisions/0005-post-render-validation-gate.md](docs/decisions/0005-post-render-validation-gate.md).
+
+**The gate.** New `factory/validate/LZFactory.Validate.psm1` with entry points
+`validate-render.ps1` / `validate-render.sh` runs eight gates — V01
+inventory-integrity, V02 format-verification, V03 dependency-integrity
+(`terraform init -backend=false` per rendered `*.tf` directory), V04
+terraform-validate (with the Factory CI `configuration_aliases` skip rule),
+V05 workflow-pinning-policy, V06 provider-constraint-integrity, V07 lint
+(tflint), V08 security-scan (checkov/tfsec/trivy) — runs ALL of them even
+after a failure, writes `validate-report.json` plus per-gate logs under
+`LZ_VALIDATE_EVIDENCE`, and throws naming the failing gate IDs. Tool-driven
+gates run against a scratch copy under the system temp directory so
+`terraform init`'s `.terraform/` directories never poison the scaffold's
+exact-inventory check; the rendered tree stays byte-identical. Missing
+`terraform` fails V02–V04 closed; missing optional tools record explicit
+skips, or fail under `-Strict` / `LZ_VALIDATE_STRICT=true`; `-SkipLint` /
+`-SkipSecurityScan` record deliberate operator skips.
+
+**Enforcement.** `Invoke-LzScaffold -Apply` now classifies the report
+(`pass`/`fail`/`missing`/`stale` — stale meaning `manifestSha256` does not
+match the current `render-manifest.json`) before any tree mutation, records
+`validation` in `scaffold-audit.json`, and refuses to publish unless the
+report passes — `LZ_SCAFFOLD_ALLOW_UNVALIDATED=true` is the loud, audited
+override, mirroring the `-AllowNotReady` precedent.
+`scripts/Invoke-CustomerEngagement.ps1` gains the `validate` phase between
+render and scaffold (always read-only; `-Apply` never propagates to it).
+
+**Registration and docs.** `factory/tests/Test-Validate.ps1` added and wired
+into `factory/ci/Invoke-FactoryCI.ps1` (and the Test-CI suite-list contract);
+Test-Scaffold extended with the apply-gate assertions; `.gitignore` covers
+`/validate-evidence/`; USER-CHECKLIST documents the validation variables and
+run; README lists the new entry points. `factory-version.json` stays at 0.9.0:
+bumping it forces the wizard `FACTORY_VERSION` constant, four test fixtures,
+and the pending Stage 14 v0.9.0 evidence-selection instructions
+(USER-CHECKLIST/PROD-TODO/REVIEW) to move in lock-step, which is an
+operator-record change, not part of this gate.
+
+---
+
 ## Wiki source material reviewed; backlog consolidated into TODO/REVIEW roles (2026-08-06)
 
 **Wiki review (closes the last open TODO.md engineering item).** The 11

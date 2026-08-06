@@ -5,7 +5,12 @@
 This repository is the Landing Zone Factory. It renders a self-contained landing
 zone repository from `lz-config.json`, discovers existing tenant state, and uses
 the Stage 9 broker to reconcile external prerequisites before the Stage 10
-scaffold builder publishes the generated repository. Brownfield configurations
+scaffold builder publishes the generated repository. Between render and
+scaffold, the post-render validation gate (`validate-render.ps1` / `.sh`)
+proves the rendered tree is deployable — terraform validate, formatting,
+workflow SHA pinning, provider-constraint integrity, lint, and security
+scanning — and scaffold apply refuses a render without passing, current
+validation evidence. Brownfield configurations
 use the Stage 11 generator to create reviewable import artifacts without
 executing Terraform import. Stage 12 provides the credential-free Factory CI
 gate, and Stage 13 provides the protected HCW dogfood render/plan/apply path.
@@ -49,7 +54,7 @@ promotion proposal.
 HCW-Demo-LZDeployment/
 ├── scripts/
 │   ├── Initialize-ClientFork.ps1          # Plan-first fork/private-copy init (Actions, protection, read-back)
-│   ├── Invoke-CustomerEngagement.ps1      # Plan-first wrapper: discovery → broker → render → scaffold
+│   ├── Invoke-CustomerEngagement.ps1      # Plan-first wrapper: discovery → broker → render → validate → scaffold
 │   ├── New-BackendConfig.ps1              # Plan-first per-layer backend.hcl generator (AAD auth enforced)
 │   ├── Add-PlanFederatedCredential.ps1    # Plan-first AADSTS700213 remediation for the plan SP
 │   ├── Dispose-Engagement.ps1             # Plan-first engagement disposal (archive, then delete)
@@ -95,10 +100,13 @@ HCW-Demo-LZDeployment/
 │   └── action-pinning-policy.yml    # Enforces SHA-pinned actions
 ├── bootstrap-broker.ps1          # Stage 9 non-interactive broker
 ├── bootstrap-broker.sh           # Cross-platform launcher
+├── validate-render.ps1           # Post-render validation gate (fmt, init, validate, pinning, lint, scan)
+├── validate-render.sh            # Cross-platform launcher
 ├── scaffold-copy.ps1             # Stage 10 plan-first scaffold builder
 ├── scaffold-copy.sh              # Cross-platform launcher
 ├── brownfield-import.ps1         # Stage 11 brownfield import generator
 ├── brownfield-import.sh          # Cross-platform launcher
+├── factory/validate/             # Post-render validation gate module
 ├── factory/ci/                   # Stage 12 CI runner and source policies
 ├── factory/dogfood/              # Stage 13 dogfood orchestration and evidence
 ├── factory/release/              # Stage 14 attestation and promotion planning

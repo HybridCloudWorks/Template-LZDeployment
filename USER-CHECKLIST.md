@@ -19,6 +19,9 @@ a render, Terraform plan/apply, Azure login, OIDC exchange, or state operation.
 The Stage 14 release-readiness workflow and evaluator were implemented without
 downloading or validating live evidence in this environment.
 
+The post-render validation gate (`validate-render.ps1`) is implemented as
+code; no customer render was validated or published while building it.
+
 ## Required variables and authentication
 
 - [ ] Export `LZ_CONFIG_PATH` with the path to the approved `lz-config.json`.
@@ -82,6 +85,37 @@ downloading or validating live evidence in this environment.
 - Client secrets.
 - Storage account keys.
 
+## Post-render validation gate variables
+
+- [ ] Export `LZ_RENDERED_PATH` with the renderer output directory to
+  validate (shared with the Stage 10 scaffold).
+- [ ] Export `LZ_VALIDATE_EVIDENCE` to a protected evidence directory outside
+  the rendered tree; `validate-report.json` and the per-gate logs are written
+  there.
+- [ ] Set `LZ_VALIDATE_STRICT=true` for engagement runs so a missing optional
+  tool (tflint; checkov/tfsec/trivy) fails the gate instead of recording a
+  skip.
+- [ ] Use `LZ_VALIDATE_SKIP_LINT=true` or `LZ_VALIDATE_SKIP_SECURITY_SCAN=true`
+  only with a documented owner-approved exception; the explicit operator skip
+  is recorded in `validate-report.json`.
+- [ ] Use `LZ_SCAFFOLD_ALLOW_UNVALIDATED=true` only with a documented
+  owner-approved exception; scaffold apply otherwise refuses a missing,
+  failed, or stale `validate-report.json` and the override is recorded in
+  `scaffold-audit.json`.
+
+## Post-render validation run
+
+- [ ] Run `pwsh ./validate-render.ps1` (or `./validate-render.sh`) after every
+  render and before scaffold apply. The gate is read-only against the rendered
+  tree: `terraform init` runs in an isolated scratch copy so the tree stays
+  byte-identical for the scaffold's inventory verification.
+- [ ] Ensure `terraform` (>= 1.9.0 per `factory-version.json`) is on PATH and
+  the registry is reachable; V02–V04 fail closed without it.
+- [ ] Confirm `validate-report.json` records `overallStatus: pass`, and review
+  the reason for every skipped gate before proceeding.
+- [ ] Preserve `validate-report.json` and the `logs/` directory as engagement
+  evidence beside the scaffold plan/audit files.
+
 ## Stage 10 scaffold variables
 
 - [ ] Export `LZ_RENDERED_PATH` with the reviewed renderer output directory.
@@ -102,6 +136,9 @@ downloading or validating live evidence in this environment.
 
 - [ ] Run `pwsh ./scaffold-copy.ps1` without `-Apply`; it is plan-only by
   default.
+- [ ] Run `./validate-render.ps1` against `LZ_RENDERED_PATH` before apply;
+  scaffold apply requires a passing `validate-report.json` whose
+  `manifestSha256` matches the current render.
 - [ ] Review `scaffold-plan.json`, including repository slug, visibility,
   branch, manifest SHA-256, exact file inventory, and remote URL.
 - [ ] Confirm the rendered tree contains exactly the files declared by

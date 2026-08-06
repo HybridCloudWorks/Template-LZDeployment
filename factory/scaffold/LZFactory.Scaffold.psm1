@@ -170,7 +170,9 @@ function Copy-LzScaffoldTree {
     }
 
     $targetExists = Test-Path $target
-    $targetEntries = if ($targetExists) { @(Get-ChildItem $target -Force -ErrorAction SilentlyContinue) } else { @() }
+    # @() must wrap the whole if-expression: a branch that emits an empty array
+    # assigns $null, and $null.Count throws under Set-StrictMode Latest.
+    $targetEntries = @(if ($targetExists) { Get-ChildItem $target -Force -ErrorAction SilentlyContinue })
     if ($targetEntries.Count -gt 0 -and -not $Force) {
         throw "Target directory is not empty: $target. Re-run with -Force only after reviewing scaffold-plan.json."
     }
@@ -315,6 +317,37 @@ function Publish-LzScaffoldRepository {
     }
 }
 
+function Test-LzScaffoldValidation {
+    # Apply-time gate for the post-render validation stage: classifies the
+    # validate-render.ps1 evidence for THIS render. 'missing' covers an absent
+    # or unparseable report, 'stale' a report whose manifestSha256 does not
+    # match the inventory just computed (evidence for a different render), and
+    # 'fail'/'pass' mirror the report's own overallStatus. The caller decides
+    # whether a non-pass status throws or is overridden.
+    param(
+        [Parameter(Mandatory)][string]$ReportPath,
+        [Parameter(Mandatory)][string]$ManifestSha256
+    )
+    $status = 'missing'
+    $manifestMatch = $false
+    if (Test-Path $ReportPath -PathType Leaf) {
+        $report = $null
+        try { $report = Get-Content $ReportPath -Raw | ConvertFrom-Json -Depth 30 }
+        catch { $report = $null }
+        if ($null -ne $report) {
+            $manifestMatch = "$(Get-LzScaffoldProperty $report 'manifestSha256' '')" -eq $ManifestSha256
+            if (-not $manifestMatch) { $status = 'stale' }
+            elseif ("$(Get-LzScaffoldProperty $report 'overallStatus' '')" -eq 'pass') { $status = 'pass' }
+            else { $status = 'fail' }
+        }
+    }
+    return [pscustomobject]@{
+        reportPath = $ReportPath
+        status = $status
+        manifestSha256Match = $manifestMatch
+    }
+}
+
 function Invoke-LzScaffold {
     [CmdletBinding()]
     param(
@@ -325,7 +358,8 @@ function Invoke-LzScaffold {
         [switch]$Apply,
         [switch]$Force,
         [bool]$CreateRepository = $true,
-        [bool]$Push = $true
+        [bool]$Push = $true,
+        [string]$ValidationReportPath = ''
     )
 
     if (-not (Test-Path $ConfigPath -PathType Leaf)) { throw "Config not found: $ConfigPath" }
@@ -363,12 +397,41 @@ function Invoke-LzScaffold {
         pullRequestUrl = $null
         repositoryCreated = $false
         backupDirectory = $null
+        validation = $null
         pendingUserActivities = @()
         error = $null
     }
 
     if ($Apply) {
         try {
+            # Post-render validation gate: apply refuses a render that has not
+            # passed validate-render.ps1, or whose evidence describes another
+            # render. Same fallback resolution as the validate entry point, so
+            # a direct module call and the entry points agree on the location.
+            if (-not $ValidationReportPath) {
+                $ValidationReportPath = Join-Path (Get-LzScaffoldEnv 'LZ_VALIDATE_EVIDENCE' './validate-evidence') 'validate-report.json'
+            }
+            $validationCheck = Test-LzScaffoldValidation -ReportPath $ValidationReportPath -ManifestSha256 $inventory.manifestSha256
+            $audit.validation = @{
+                reportPath = $validationCheck.reportPath
+                status = $validationCheck.status
+                manifestSha256Match = $validationCheck.manifestSha256Match
+                overridden = $false
+            }
+            if ($validationCheck.status -ne 'pass') {
+                if ((Get-LzScaffoldEnv 'LZ_SCAFFOLD_ALLOW_UNVALIDATED' 'false') -eq 'true') {
+                    $audit.validation.overridden = $true
+                    Write-LzScaffoldEvent WARN "Post-render validation gate OVERRIDDEN (LZ_SCAFFOLD_ALLOW_UNVALIDATED=true): status '$($validationCheck.status)' for $ValidationReportPath. Publishing an unvalidated render requires a documented owner-approved exception; the override is recorded in scaffold-audit.json."
+                }
+                else {
+                    $validationDetail = switch ($validationCheck.status) {
+                        'stale' { "describes a different render (manifestSha256 mismatch against $($inventory.manifestSha256))" }
+                        'fail' { 'does not record overallStatus pass - resolve every failing gate it lists' }
+                        default { 'is missing or unreadable' }
+                    }
+                    throw "Post-render validation gate: report $ValidationReportPath $validationDetail. Run ./validate-render.ps1 against $($plan.renderedDirectory) and re-run the scaffold. Set LZ_SCAFFOLD_ALLOW_UNVALIDATED=true only with a documented owner-approved exception."
+                }
+            }
             $audit.backupDirectory = Copy-LzScaffoldTree -Plan $plan -Inventory $inventory -Force:$Force
             $audit.applied = $true
             $publication = Publish-LzScaffoldRepository -Plan $plan -Config $config
@@ -392,6 +455,7 @@ function Invoke-LzScaffold {
     else {
         $audit.pendingUserActivities = @(
             'Review scaffold-plan.json and set LZ_SCAFFOLD_APPLY=true to create/update and publish the target repository.'
+            'Run ./validate-render.ps1 against the rendered tree before apply; apply refuses a missing, failed, or stale validate-report.json unless LZ_SCAFFOLD_ALLOW_UNVALIDATED=true is set with an approved exception.'
         )
         Write-LzScaffoldEvent OK "Plan complete: $planPath"
         Write-LzScaffoldEvent WARN 'No target or repository mutation was performed.'
@@ -405,5 +469,6 @@ function Invoke-LzScaffold {
 Export-ModuleMember -Function @(
     'Get-LzScaffoldInventory'
     'New-LzScaffoldPlan'
+    'Test-LzScaffoldValidation'
     'Invoke-LzScaffold'
 )

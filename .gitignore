@@ -62,6 +62,7 @@ generated-output/
 /discovery-inventory.json
 /bootstrap-output/
 /rendered-output/
+/validate-evidence/
 /scaffold-output/
 /scaffold-evidence/
 /brownfield-classifications.json
