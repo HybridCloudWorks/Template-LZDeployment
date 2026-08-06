@@ -41,7 +41,7 @@ $ErrorActionPreference = 'Stop'
 # ── Canonical provider registry ──────────────────────────────────────────────
 # One constraint per provider across the entire repository (live + corpus).
 $CANONICAL_CONSTRAINTS = [ordered]@{
-    'hashicorp/azurerm' = '~> 4.2'
+    'hashicorp/azurerm' = '~> 5.0'
     'hashicorp/random'  = '~> 3.6'
 }
 
@@ -49,14 +49,7 @@ $CANONICAL_CONSTRAINTS = [ordered]@{
 # A root may pin differently ONLY when it shares no modules with the rest of
 # the tree, so it cannot create a constraint conflict. Each entry needs a
 # reason; unused entries are reported so this table cannot rot.
-$EXCEPTIONS = @(
-    [pscustomobject]@{
-        Path     = 'terraform/backend-bootstrap/main.tf'
-        Provider = 'hashicorp/azurerm'
-        Version  = '~> 5.0'
-        Reason   = 'Standalone bootstrap root: no module calls, own lock already at 5.0.1, so it cannot conflict with the shared module tree.'
-    }
-)
+$EXCEPTIONS = @()
 # ─────────────────────────────────────────────────────────────────────────────
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
