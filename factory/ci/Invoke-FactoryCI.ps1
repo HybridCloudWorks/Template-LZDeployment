@@ -143,6 +143,11 @@ if (-not $result.InSync) { exit 1 }
     Invoke-LzFactoryCheck 'Schema variable drift' pwsh @('-NoLogo', '-NoProfile', '-Command', $driftCommand) -Category 'contract' | Out-Null
     Invoke-LzFactoryCheck 'Site no network' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-SiteNoNetwork.ps1') -Category 'policy' | Out-Null
     Invoke-LzFactoryCheck 'Action pinning' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ActionPins.ps1') -Category 'policy' | Out-Null
+    # Static, credential-free and network-free: catches a provider constraint
+    # that diverges between a root stack and a module it calls, which fails at
+    # `terraform init` long before any plan. Runs in the 'policy' category so
+    # it still reports when LZ_FACTORY_CI_SKIP_TERRAFORM is set.
+    Invoke-LzFactoryCheck 'Provider constraints' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ProviderConstraints.ps1') -Category 'policy' | Out-Null
 
     # Parse sweep: every PowerShell file in the repository must parse cleanly.
     # This runs unconditionally (unlike PSScriptAnalyzer) because it needs no
