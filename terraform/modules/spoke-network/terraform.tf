@@ -4,7 +4,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 5.0"
+      version = "~> 4.2"
 
       # azurerm.hub targets the connectivity subscription that owns the hub
       # VNet; the hub side of the peering must be created there, not in the
