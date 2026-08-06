@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/saulpatinojr/HCW-Plan_LZDeployment/factory/release/release-attestation.schema.json",
+  "$id": "https://github.com/HybridCloudWorks/Template-LZDeployment/factory/release/release-attestation.schema.json",
   "title": "Landing Zone Factory release evidence attestation",
   "type": "object",
   "additionalProperties": false,

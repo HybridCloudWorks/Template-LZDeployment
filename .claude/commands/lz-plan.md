@@ -8,7 +8,7 @@ Plan the following landing-zone change: **$ARGUMENTS**
 Use the `alz-orchestrator` agent to drive this. Before proposing anything:
 
 1. Read `TODO.md`, `.claude/CROSS-DOMAIN-CONTRACTS.md`, and the relevant page(s) on
-   the [wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki) — the
+   the [wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki) — the
    current phase constrains what is safe to change now.
 2. Identify which scopes are affected: `terraform/live/global`,
    `platform-connectivity`, `platform-management`, `workloads-prod`, `sandbox`.

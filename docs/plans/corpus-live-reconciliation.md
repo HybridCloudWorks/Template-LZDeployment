@@ -29,7 +29,7 @@ as analyzed pre-execution).
 
 **Original status**: PLAN — nothing in this document is implemented.
 **Audit date**: 2026-08-02 (read-only, against the tree at
-[`0b758f7`](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/commit/0b758f7), post-PR #60)
+[`0b758f7`](https://github.com/HybridCloudWorks/Template-LZDeployment/commit/0b758f7), post-PR #60)
 **Design decisions for WP4**:
 [docs/decisions/0003-management-baseline-promotion.md](../decisions/0003-management-baseline-promotion.md)
 **Backlog entry**: [TODO.md](../../TODO.md) → "Reconcile live ↔ corpus drift"

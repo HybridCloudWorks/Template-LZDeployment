@@ -17,9 +17,9 @@ instead of changing one side alone.
 `styles.css`. **No backend, no build step, no framework, no bundler.** A user opens
 it, picks deployment options, and it generates a `.tfvars` file that feeds the same
 Terraform pipeline as everything else. See the wiki pages
-[Webapp-Plan](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Webapp-Plan)
+[Webapp-Plan](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki/Webapp-Plan)
 and
-[Static-Generator-Design](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Static-Generator-Design)
+[Static-Generator-Design](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki/Static-Generator-Design)
 for the intended behaviour.
 
 Preserve those constraints. Do not introduce npm, a framework, a CDN dependency, or

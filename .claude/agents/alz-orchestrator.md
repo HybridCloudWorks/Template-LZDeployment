@@ -20,7 +20,7 @@ its original self-deploying landing zone into a reusable Landing Zone Factory.
 Stages 1–14 are implemented in code; live release evidence remains
 operator-owned. Read `CHANGELOG.md` (completed stages and archived decisions),
 `TODO.md` (the open backlog), and the relevant stage readiness page on the
-[GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)
+[GitHub wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki)
 before routing work. The legacy `terraform/` and `.github/workflows/` still
 represent this repository's live deployment, while `factory/templates/` is the
 source corpus for generated customer repositories.
@@ -57,7 +57,7 @@ source corpus for generated customer repositories.
 
 1. **Read before routing.** Check `CHANGELOG.md` and `TODO.md`, then the
    current stage readiness page and design record on the
-   [wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)
+   [wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki)
    (`Factory-Design`, `Factory-Stage-N-Readiness`). `TODO.md` carries the whole
    open backlog — legacy deployment debt plus factory runtime work; completed
    stage status lives in `CHANGELOG.md` and the wiki readiness pages.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/saulpatinojr/HCW-Plan_LZDeployment/factory/schema/lz-config.schema.json",
+  "$id": "https://github.com/HybridCloudWorks/Template-LZDeployment/factory/schema/lz-config.schema.json",
   "title": "Azure Landing Zone Factory — Configuration Contract",
   "description": "The single contract read by the wizard (site/), the renderer (factory/renderer/), the bootstrap broker, the scaffold builder, and every generated Terraform layer. Any key emitted by the wizard that is not declared here is a build-breaking error; any Terraform variable in factory/templates/**/variables.tf with no corresponding key here is likewise an error. This bidirectional check is what prevents the wizard/Terraform drift recorded in TODO.md.",
   "type": "object",

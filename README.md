@@ -203,7 +203,7 @@ Each layer under `terraform/live/` deploys independently and in dependency order
 
 ## Optional Static Configuration Generator
 
-`frontend/` is a standalone static page for the **legacy in-repo pipeline** — open `frontend/index.html` in a browser, no server required (`site/` is the primary path for customer engagements). It lets you pick org name, region, network topology, and options, then emits two layer-accurate variable files: `terraform.auto.tfvars` (for `terraform/live/global`) and `connectivity.auto.tfvars` (for `terraform/live/platform-connectivity`). Policy toggles are presented honestly: the baseline's enforced policies are listed separately from catalog entries marked "not yet enforced". Usage and placement: [frontend/README.md](frontend/README.md); background: [Webapp-Plan on the wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Webapp-Plan).
+`frontend/` is a standalone static page for the **legacy in-repo pipeline** — open `frontend/index.html` in a browser, no server required (`site/` is the primary path for customer engagements). It lets you pick org name, region, network topology, and options, then emits two layer-accurate variable files: `terraform.auto.tfvars` (for `terraform/live/global`) and `connectivity.auto.tfvars` (for `terraform/live/platform-connectivity`). Policy toggles are presented honestly: the baseline's enforced policies are listed separately from catalog entries marked "not yet enforced". Usage and placement: [frontend/README.md](frontend/README.md); background: [Webapp-Plan on the wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki/Webapp-Plan).
 
 ---
 
@@ -232,7 +232,7 @@ Policy baseline module enforces mandatory tagging, allowed locations, NSG requir
 See [TODO.md](TODO.md) and [PROD-TODO.md](PROD-TODO.md) for the full, current lists. Highlights as of 2026-08-01:
 
 - CI/CD pipeline has no recorded successful run yet — read-only live discovery (2026-08-01) found that no landing-zone identity estate exists: no app registrations, no `AZURE_PLAN_CLIENT_ID` or `TF_API_TOKEN` secret, and no dev/prod/hub environments. The remediation is running the Phase-2 bootstrap end-to-end in the confirmed engagement tenant, not credential patching; see [PROD-TODO.md](PROD-TODO.md) Phase 2
-- Backend is currently `azurerm` native storage everywhere except the bootloader and workflow `010`, which assume Terraform Cloud — migration tracked as [GitHub Issue #11](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues/11)
+- Backend is currently `azurerm` native storage everywhere except the bootloader and workflow `010`, which assume Terraform Cloud — migration tracked as [GitHub Issue #11](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/11)
 - Two modules (`keyvault-cmk`, `sentinel-siem`) are scaffold-only stubs with no real resources yet
 - 4 utility scripts (`Configure-DeploymentOptions.ps1`, `Invoke-BulkOperations.ps1`, `Validate-ALZDeployment.ps1`, `Verify-CostAccuracy.ps1`) aren't called from anywhere in the pipeline — they now live in [`scripts/utilities/`](scripts/utilities/README.md), clearly separated from the core flow; wiring any of them in is tracked in [TODO.md](TODO.md)
 
@@ -253,7 +253,7 @@ See [TODO.md](TODO.md) and [PROD-TODO.md](PROD-TODO.md) for the full, current li
 
 ## Documentation
 
-- **[GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)** — build docs, factory design and Stage 7–14 readiness records, and the webapp/static-generator docs (migrated from `docs/` on 2026-08-01)
+- **[GitHub wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki)** — build docs, factory design and Stage 7–14 readiness records, and the webapp/static-generator docs (migrated from `docs/` on 2026-08-01)
 - **[TODO.md](TODO.md)** — the open backlog (legacy deployment debt plus factory runtime work)
 - **[CHANGELOG.md](CHANGELOG.md)** — completed work history, with verification notes and the archived `HANDOFF.md` decisions
 - **[USER-CHECKLIST.md](USER-CHECKLIST.md)** — operator authentication, publication, and verification activities
