@@ -52,7 +52,7 @@ report renders blocked probes explicitly and states that the inventory is
 incomplete rather than presenting a partial list as a complete one.
 
 This implements control **BR2** in the factory design record —
-[Factory-Design on the wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Factory-Design).
+[Factory-Design on the wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki/Factory-Design).
 
 ---
 

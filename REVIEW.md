@@ -1,12 +1,18 @@
-# REVIEW — work that could not be completed, and why
+# REVIEW — the official record of blocked work
 
-**Created**: August 6, 2026
-**Scope**: every task reached during the handoff-completion work that was *not*
-finished, with the specific reason and what would unblock it.
+**Created**: August 6, 2026 · **Promoted to official root file**: August 6, 2026
+(operator direction)
+**Scope**: every open piece of work that is blocked on the operator (a
+decision, an access grant, tenant confirmation) or on an external system.
 
-This file exists so that "still open" never has to be re-derived. Each entry
-says who can unblock it and what the next concrete action is. Anything not
-listed here was completed — see [CHANGELOG.md](CHANGELOG.md).
+**File contract (operator-defined 2026-08-06).** This is the single file of
+record for blocked work. [TODO.md](TODO.md) holds only work an engineer could
+start right now from a clone (currently: none); when an item there acquires an
+operator-shaped blocker it moves *here*, and when a blocker below is lifted the
+item either gets done or moves back to TODO.md. Each entry states the specific
+blocker, who can unblock it, and the next concrete action, so "still open"
+never has to be re-derived. Anything in neither file was completed — see
+[CHANGELOG.md](CHANGELOG.md).
 
 **Nothing here is blocked on effort or difficulty.** The blockers are of four
 kinds:
@@ -156,14 +162,22 @@ tiers, and which workspace.
 
 ## 🚧 Outside this repository
 
-### 15. Review the docs migrated to the GitHub wiki
-Eleven single-purpose documents were moved from `docs/` to the wiki on
-2026-08-01 under "Source Material" with historical labels, and have not been
-individually verified against current repo state.
-**Blocked**: the wiki is a separate Git repository and is not checked out in
-this environment, so its content cannot be read or edited from here.
-**Unblocked by**: cloning the `.wiki.git` repository, or doing the review in
-the GitHub wiki UI.
+### 15. Publish the prepared wiki review edits
+The content review this entry used to track is **complete** (2026-08-06):
+all 11 migrated docs were verified against the repository, verdicts are
+recorded in [docs/wiki-review/README.md](docs/wiki-review/README.md), and the
+wiki edits — a HISTORICAL banner per page plus corrected `Home.md` section
+labels (the Build and generator sets were mislabeled "(reference)") — are
+authored and preserved as
+[docs/wiki-review/2026-08-06-historical-banners.patch](docs/wiki-review/2026-08-06-historical-banners.patch).
+**Blocked**: pushing to `Template-LZDeployment.wiki` — the git proxy injects
+credentials only for the session's authorized repository set, the wiki is not
+in it, and adding it (`add_repo`) requires interactive approval an autonomous
+session cannot grant. Read access works (that is how the review was done);
+write does not.
+**Unblocked by**: `git am` the patch and push from any machine with wiki write
+access (commands in the review README), or approve `add_repo` for the wiki in
+an interactive Claude session.
 
 ---
 

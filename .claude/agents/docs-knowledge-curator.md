@@ -25,7 +25,7 @@ A stale doc here is a deployment hazard, not a cosmetic issue.
 - `docs/` — only `CROSS-DOMAIN-CONTRACTS.md` remains in-repo (agents read it from
   disk). Build standards, phase plans, deployment flow, static generator design,
   verification reports, and factory stage readiness records were migrated to the
-  [GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)
+  [GitHub wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki)
   (2026-08-01).
 - `USER-CHECKLIST.md` — operator activities; stays in the repo root because the
   factory test suites read and assert against it.

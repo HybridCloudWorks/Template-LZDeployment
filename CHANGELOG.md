@@ -5,6 +5,42 @@
 
 ---
 
+## Wiki source material reviewed; backlog consolidated into TODO/REVIEW roles (2026-08-06)
+
+**Wiki review (closes the last open TODO.md engineering item).** The 11
+documents migrated from `docs/` to the wiki on 2026-08-01 were content-reviewed
+against the repository at `main`. Verdict: all 11 are historical planning
+material, not reference — the Build set describes a June 2026 React + Node.js
++ Bicep initiative superseded by the factory conversion before it started
+(the repo contains no React, no Node backend, no Bicep); the generator set
+describes `frontend/`, the legacy page (no MSAL survives; the CSV premise of
+Static-Generator-Design never shipped). The wiki `Home.md` index mislabeled
+both sets "(reference)". Per-doc verdicts:
+[docs/wiki-review/README.md](docs/wiki-review/README.md). The corrective wiki
+edits (HISTORICAL banner per page, index relabels) are authored and preserved
+as a patch in the same directory; pushing them is blocked on wiki write
+access and tracked as REVIEW.md §15.
+
+**Backlog consolidation (operator direction).** [TODO.md](TODO.md) now holds
+only completable engineering work — currently **none** — and
+[REVIEW.md](REVIEW.md) is promoted to the **official root file of record** for
+everything blocked on the operator or an external system. The four
+operator-gated items formerly open in TODO.md (Configure-DeploymentOptions
+wiring, nsg-flow-logs wiring, RP-registration strategy,
+Initialize-ClientFork disposition) now live solely in REVIEW.md §§10–12/16.
+PROD-TODO.md keeps the phase-structured motion with a tracking note pointing
+at REVIEW.md.
+
+**Repository-slug hygiene.** The transfer to `HybridCloudWorks/
+Template-LZDeployment` left ~50 links and live operator commands pointing at
+the old `saulpatinojr/HCW-Plan_LZDeployment` slug across 14 files (READMEs,
+both TODO files, the Stage 13 runbook's `gh` commands, both JSON schema `$id`s,
+agent configs). All current-instruction references now use the real slug;
+verbatim historical quotes (the AADSTS700213 subject in PROD-TODO, past
+CHANGELOG entries) are intentionally unchanged.
+
+---
+
 ## Record correction: the PR #69 squash title; azurerm 5.0 ratified permanent (2026-08-06)
 
 **The merge commit's subject line on `main` is wrong about firewalls.** PR #69
@@ -481,7 +517,7 @@ contracts #3 and #5 updated in
 
 - Migrated the contents of `docs/` (build docs, factory design and stage
   readiness records, webapp/static-generator docs) to the
-  [GitHub wiki](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki).
+  [GitHub wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki).
   Two exceptions stay in the repository because code and agents read them from
   disk: `.claude/CROSS-DOMAIN-CONTRACTS.md` (moved from docs/ later the same day; linked by `CLAUDE.md` and all
   `.claude/agents/*.md`) and root `USER-CHECKLIST.md` (read by the
@@ -563,10 +599,10 @@ mechanics generalize):
 
 | PR | Outcome |
 |---|---|
-| [#31](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/31) | Merged into `feat/lz-factory-…` — rescued the three test suites (48 wizard, 60 discovery, 100 renderer at the time) that previously existed only in a session-scoped temp directory |
-| [#28](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/28) | Squash-merged into `main` as `11f09cd` — carried everything |
-| [#30](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/30) | Closed as **superseded**, not abandoned — its commit `0040033` reached `main` inside #28 via a real merge (shared SHA), so squashing it separately would have minted a duplicate |
-| [#32](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/pull/32) | Squash-merged as `7568bc3` — agent git/gh permissions (merged by a human; an agent cannot widen its own permissions) |
+| [#31](https://github.com/HybridCloudWorks/Template-LZDeployment/pull/31) | Merged into `feat/lz-factory-…` — rescued the three test suites (48 wizard, 60 discovery, 100 renderer at the time) that previously existed only in a session-scoped temp directory |
+| [#28](https://github.com/HybridCloudWorks/Template-LZDeployment/pull/28) | Squash-merged into `main` as `11f09cd` — carried everything |
+| [#30](https://github.com/HybridCloudWorks/Template-LZDeployment/pull/30) | Closed as **superseded**, not abandoned — its commit `0040033` reached `main` inside #28 via a real merge (shared SHA), so squashing it separately would have minted a duplicate |
+| [#32](https://github.com/HybridCloudWorks/Template-LZDeployment/pull/32) | Squash-merged as `7568bc3` — agent git/gh permissions (merged by a human; an agent cannot widen its own permissions) |
 | #33 | `d219174` — post-merge handoff correction |
 
 Branch protection on `main`: `enforce_admins: true` (direct push rejected for
@@ -708,7 +744,7 @@ must run inside the repository or with `--repo`.
   Terraform corpus, live workflows, workflow proof template, and repository
   orchestration before beginning Stage 7.
 - Added `docs/factory/STAGE-7-READINESS.md` (since migrated to the wiki as
-  [Factory-Stage-7-Readiness](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Factory-Stage-7-Readiness))
+  [Factory-Stage-7-Readiness](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki/Factory-Stage-7-Readiness))
   with the workflow-corpus decisions, invariants, implementation sequence, and
   definition of done.
 - Reconciled stale handoff, design, renderer, TODO, and orchestration claims with
@@ -736,7 +772,7 @@ must run inside the repository or with `--repo`.
 - ✅ Fixed stale `.azure/deployment-options.yaml` reference in `keyvault-cmk` and `sentinel-siem` module READMEs — only `.azure/deployment-options.yaml.example` exists; READMEs now say to copy it first.
 
 **What Was Found But Deferred** (see [TODO.md](TODO.md)):
-- 🟦 Backend inconsistency: bootloader/workflow-010 reference Terraform Cloud, but `terraform-plan.yml`/`terraform-apply.yml`/all `terraform/live/*/backend.hcl` use native `azurerm` backend. Decision: adopt TFC — tracked as [GitHub Issue #11](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues/11), blocked on interactive TFC org/workspace/token setup.
+- 🟦 Backend inconsistency: bootloader/workflow-010 reference Terraform Cloud, but `terraform-plan.yml`/`terraform-apply.yml`/all `terraform/live/*/backend.hcl` use native `azurerm` backend. Decision: adopt TFC — tracked as [GitHub Issue #11](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/11), blocked on interactive TFC org/workspace/token setup.
 - 🟦 `Microsoft.ApiManagement` claimed but not implemented in the TLS 1.2 policy initiative (5 of 6 claimed services actually covered).
 - 🟦 6 of 11 Terraform modules missing README.md.
 - 🟦 `keyvault-cmk` and `sentinel-siem` modules are scaffold-only stubs (zero real resources), not implemented despite being referenced as available optional modules in some docs.

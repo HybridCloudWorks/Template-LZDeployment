@@ -90,7 +90,7 @@ was preserved in the 2026-08-01 session scratchpad as
 gone):
 
 ```bash
-gh api -X PUT repos/saulpatinojr/HCW-Plan_LZDeployment/branches/main/protection \
+gh api -X PUT repos/HybridCloudWorks/Template-LZDeployment/branches/main/protection \
   --input protection-main.json
 ```
 
@@ -99,7 +99,7 @@ or run the packaged script (parameter names verified against
 
 ```powershell
 pwsh -File scripts/Initialize-ClientFork.ps1 `
-  -Repository saulpatinojr/HCW-Plan_LZDeployment -Apply
+  -Repository HybridCloudWorks/Template-LZDeployment -Apply
 ```
 
 Caveat: the script enforces a required-approvals **≥ 1** floor, which
@@ -111,13 +111,13 @@ which deliberately does not automate it): Settings → Pages → Source
 **"GitHub Actions"**, or the REST equivalent:
 
 ```bash
-gh api -X POST repos/saulpatinojr/HCW-Plan_LZDeployment/pages \
+gh api -X POST repos/HybridCloudWorks/Template-LZDeployment/pages \
   -f build_type=workflow
 ```
 
-**Expected evidence / verify**: `gh api repos/saulpatinojr/HCW-Plan_LZDeployment/branches/main/protection`
+**Expected evidence / verify**: `gh api repos/HybridCloudWorks/Template-LZDeployment/branches/main/protection`
 returns the required contexts (Gate 5 lists them) with `strict: true`;
-`gh api repos/saulpatinojr/HCW-Plan_LZDeployment/pages` returns
+`gh api repos/HybridCloudWorks/Template-LZDeployment/pages` returns
 `"build_type": "workflow"`. `Initialize-ClientFork.ps1` prints its own API
 read-back verification table.
 
@@ -135,7 +135,7 @@ phase-4 `CREATE` confirmation and the final `Create PR? [y/N]`):
 ```powershell
 "CREATE", "N" | pwsh -NoProfile -File scripts/Start-LandingZoneBootstrap.ps1 `
   -ConfigPath generated-output/dogfood/lz-config.json `
-  -Repository saulpatinojr/HCW-Plan_LZDeployment `
+  -Repository HybridCloudWorks/Template-LZDeployment `
   -Backend azurerm `
   -SkipSandboxRbac
 ```
@@ -177,8 +177,8 @@ commands only — the script never deletes identities itself.
 ```bash
 az ad app federated-credential list --id <plan-app-id> --query "[].subject"
 az ad app federated-credential list --id <apply-app-id> --query "[].subject"
-gh secret list --repo saulpatinojr/HCW-Plan_LZDeployment
-gh api repos/saulpatinojr/HCW-Plan_LZDeployment/environments --jq '.environments[].name'
+gh secret list --repo HybridCloudWorks/Template-LZDeployment
+gh api repos/HybridCloudWorks/Template-LZDeployment/environments --jq '.environments[].name'
 ```
 
 Subjects must match the table exactly — no wildcards.

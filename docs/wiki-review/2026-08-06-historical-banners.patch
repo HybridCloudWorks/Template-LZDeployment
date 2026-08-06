@@ -1,0 +1,190 @@
+From 52ebc10ee39fb8c0c13522ee2df6dd880dd5b535 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 6 Aug 2026 15:39:12 +0000
+Subject: [PATCH] Content-review the migrated build and generator docs; banner
+ and relabel
+
+Closes the TODO.md review item for the 11 docs migrated 2026-08-01. Verified
+against the repository: no React/Node backend, no Bicep, no MSAL, no CSV
+output exist in the shipped system, so the build set and generator set are
+historical planning material, not reference. Each page now carries a banner
+stating its verdict and what supersedes it; Home.md section labels corrected
+from (reference) to (historical).
+---
+ Build-Critical-Path.md             | 2 ++
+ Build-README.md                    | 2 ++
+ Build-Standards-Reference.md       | 2 ++
+ Build-Verification-Report.md       | 2 ++
+ Deployment-Flow.md                 | 2 ++
+ Expanded-Scope.md                  | 2 ++
+ Fix-Login-Error.md                 | 2 ++
+ Home.md                            | 6 +++---
+ Quick-Start.md                     | 2 ++
+ Static-Generator-Design.md         | 2 ++
+ Static-Generator-Implementation.md | 2 ++
+ Testing-Static-Generator.md        | 2 ++
+ 12 files changed, 25 insertions(+), 3 deletions(-)
+
+diff --git a/Build-Critical-Path.md b/Build-Critical-Path.md
+index e17ef0a..142a27d 100644
+--- a/Build-Critical-Path.md
++++ b/Build-Critical-Path.md
+@@ -1,5 +1,7 @@
+ # Build Critical Path & Timeline
+ 
++> **⚠ HISTORICAL — reviewed against the repository 2026-08-06.** The critical path and timeline for the June 2026 build initiative, which was superseded by the Landing Zone Factory conversion before execution. Dates, effort estimates, and decision gates here were never carried out as written.
++
+ **Document Purpose**: Track critical path dependencies, blockers, and decision gates before executing any build work.
+ 
+ **Current Date**: 2026-06-30  
+diff --git a/Build-README.md b/Build-README.md
+index 0476754..46b34ca 100644
+--- a/Build-README.md
++++ b/Build-README.md
+@@ -1,5 +1,7 @@
+ # HCW Landing Zone Platform — Build Documentation
+ 
++> **⚠ HISTORICAL — reviewed against the repository 2026-08-06.** Describes a June 2026 build plan (React + Node.js webapp, Bicep, 6-week schedule) that was superseded by the Landing Zone Factory conversion before it started — the repository contains no React, no Node backend, and no Bicep. Kept as planning history; do not follow as instructions. Current model: the repo README.md.
++
+ ## Overview
+ 
+ This directory contains comprehensive build documentation for the HCW Landing Zone Platform, a 6-week, 155-195 hour initiative spanning infrastructure-as-code (Terraform + Bicep), web application development (React + Node.js), and security hardening.
+diff --git a/Build-Standards-Reference.md b/Build-Standards-Reference.md
+index 66efb63..cd9802e 100644
+--- a/Build-Standards-Reference.md
++++ b/Build-Standards-Reference.md
+@@ -1,5 +1,7 @@
+ # HCW Build Standards Reference
+ 
++> **⚠ PARTIALLY HISTORICAL — reviewed against the repository 2026-08-06.** The Terraform/AVM half remains a usable reference. Every Bicep section is inapplicable: the repository is Terraform-only, pinned azurerm `~> 5.0` (see repo `factory/ci/Test-ProviderConstraints.ps1`).
++
+ **Purpose**: Quick reference for Terraform (AVM) and Bicep (Microsoft Learn) standards when implementing Phases 1-5.
+ 
+ ---
+diff --git a/Build-Verification-Report.md b/Build-Verification-Report.md
+index 30f4c70..ba7bf28 100644
+--- a/Build-Verification-Report.md
++++ b/Build-Verification-Report.md
+@@ -1,5 +1,7 @@
+ # Build Verification & Next Steps - HCW Landing Zone Platform
+ 
++> **⚠ HISTORICAL — reviewed against the repository 2026-08-06.** A 2026-06-30 pre-build snapshot of a TODO structure that no longer exists; the phases it assesses were superseded by the factory conversion. Kept as history.
++
+ **Date**: 2026-06-30  
+ **Status**: Pre-Build Assessment  
+ **Scope**: Review TODO phases and verified module/infrastructure requirements
+diff --git a/Deployment-Flow.md b/Deployment-Flow.md
+index cc4f254..99ecd19 100644
+--- a/Deployment-Flow.md
++++ b/Deployment-Flow.md
+@@ -1,5 +1,7 @@
+ # HCW Landing Zone — Deployment Flow Architecture
+ 
++> **⚠ HISTORICAL — reviewed against the repository 2026-08-06.** The "65% implemented / backend missing" framing describes a planned backend that was deliberately never built. The shipped flow is: `site/` wizard → discovery → broker → renderer → scaffold, generating a per-customer repository (repo README.md, PROD-TODO.md).
++
+ **Purpose**: Map the complete flow from user selection to deployed landing zone.
+ 
+ **Current Status**: 65% implemented (frontend UI + GitHub workflow exist, backend missing)
+diff --git a/Expanded-Scope.md b/Expanded-Scope.md
+index 2b59c54..6f659da 100644
+--- a/Expanded-Scope.md
++++ b/Expanded-Scope.md
+@@ -1,5 +1,7 @@
+ # Expanded Scope: Full Configuration Generator
+ 
++> **⚠ HISTORICAL — reviewed against the repository 2026-08-06.** Describes scope growth of `frontend/`, the legacy generator. `site/` is the primary path; `frontend/` is retained as legacy (see repo `frontend/README.md`).
++
+ **You were right!** The generator now covers much more than just modules.
+ 
+ ---
+diff --git a/Fix-Login-Error.md b/Fix-Login-Error.md
+index f7d4c03..e0b347c 100644
+--- a/Fix-Login-Error.md
++++ b/Fix-Login-Error.md
+@@ -1,5 +1,7 @@
+ # Fix: Login Error
+ 
++> **⚠ HISTORICAL — reviewed against the repository 2026-08-06.** The MSAL code this fix made optional was later removed entirely — `frontend/` today contains no authentication code at all. Nothing here applies to the current page.
++
+ **Issue**: "Error: Login failed: Cannot read properties of undefined (reading 'loginPopup')"
+ 
+ **Root Cause**: MSAL authentication was failing during initialization, blocking access to the form.
+diff --git a/Home.md b/Home.md
+index dd29ae8..93f4eef 100644
+--- a/Home.md
++++ b/Home.md
+@@ -72,7 +72,7 @@ not follow them as instructions.
+ - **[Cross-Domain-Contracts](Cross-Domain-Contracts)** — load-bearing
+   cross-file contracts (canonical: repo `.claude/CROSS-DOMAIN-CONTRACTS.md`).
+ 
+-### Build documentation (reference)
++### Build documentation (historical — June 2026 plan superseded by the factory conversion before execution; reviewed 2026-08-06)
+ 
+ - **[Build-README](Build-README)** — index of the build documentation set.
+ - **[Build-Critical-Path](Build-Critical-Path)** — build critical path and timeline.
+@@ -80,7 +80,7 @@ not follow them as instructions.
+ - **[Build-Verification-Report](Build-Verification-Report)** — verification report and next steps.
+ - **[Deployment-Flow](Deployment-Flow)** — deployment flow architecture.
+ 
+-### Webapp / static config generator (reference; describes `frontend/` and the `site/` wizard's ancestry)
++### Webapp / static config generator (historical — describes `frontend/`, the legacy generator, and the `site/` wizard's ancestry; reviewed 2026-08-06)
+ 
+ - **[Webapp-Plan](Webapp-Plan)** — static configuration generator build plan.
+ - **[Quick-Start](Quick-Start)** — quick start for the static `.tfvars` generator.
+@@ -142,4 +142,4 @@ not follow them as instructions.
+ - **Microsoft CAF:** [Cloud Adoption Framework — Landing Zones](https://learn.microsoft.com/azure/cloud-adoption-framework/ready/landing-zone/)
+ - **Azure Verified Modules:** [AVM Terraform requirements](https://azure.github.io/Azure-Verified-Modules/indexes/terraform/)
+ 
+-**Last Updated:** 2026-08-01 (wiki restructured into How to Get Started + Source Material)
++**Last Updated:** 2026-08-06 (build and generator source material content-reviewed against the repository and bannered)
+diff --git a/Quick-Start.md b/Quick-Start.md
+index 88976d7..50cce67 100644
+--- a/Quick-Start.md
++++ b/Quick-Start.md
+@@ -1,5 +1,7 @@
+ # Quick Start: Static .tfvars Generator
+ 
++> **⚠ HISTORICAL — reviewed against the repository 2026-08-06.** This quick start covers `frontend/`, the legacy generator. For the current, primary path open `site/index.html` — the 15-step factory wizard (repo README.md).
++
+ **What you have**: A fully functional HTML/JavaScript tool that generates Terraform configuration files.
+ 
+ **Time to test**: 5 minutes
+diff --git a/Static-Generator-Design.md b/Static-Generator-Design.md
+index 07f5614..1625a34 100644
+--- a/Static-Generator-Design.md
++++ b/Static-Generator-Design.md
+@@ -1,5 +1,7 @@
+ # HCW Landing Zone — Static HTML CSV Generator
+ 
++> **⚠ HISTORICAL — reviewed against the repository 2026-08-06.** The core premise here — CSV output — never shipped; the generator emits `.tfvars` files, and `site/` has since become the primary path. Kept as design ancestry.
++
+ **Purpose**: One-shot CLI-like tool: user fills form in browser → downloads CSV → passes to Terraform/GitHub Actions
+ 
+ **Architecture**: Pure HTML/CSS/JavaScript (no backend needed)  
+diff --git a/Static-Generator-Implementation.md b/Static-Generator-Implementation.md
+index 36c4765..8f69ce0 100644
+--- a/Static-Generator-Implementation.md
++++ b/Static-Generator-Implementation.md
+@@ -1,5 +1,7 @@
+ # Static Generator — Implementation Guide
+ 
++> **⚠ HISTORICAL — reviewed against the repository 2026-08-06.** Implementation guide for `frontend/`, the legacy generator, as originally built. `site/` is the primary path (repo `frontend/README.md`).
++
+ **What to build**: Pure HTML/JavaScript configuration generator (no backend)  
+ **Effort**: 6-8 hours  
+ **Output**: `.tfvars` file that user downloads and feeds to Terraform
+diff --git a/Testing-Static-Generator.md b/Testing-Static-Generator.md
+index f23e547..16ded98 100644
+--- a/Testing-Static-Generator.md
++++ b/Testing-Static-Generator.md
+@@ -1,5 +1,7 @@
+ # Testing the Static Generator
+ 
++> **⚠ HISTORICAL — reviewed against the repository 2026-08-06.** Testing guide for `frontend/`, the legacy generator. The current wizard (`site/`) has an automated suite: `factory/tests/test.js`.
++
+ **What was built**: Static HTML/JavaScript configuration generator that creates `.tfvars` files in-browser (no backend needed).
+ 
+ ---
+-- 
+2.43.0
+

@@ -5,7 +5,7 @@
 customer. Repo-internal engineering debt that does not gate the motion stays in
 [TODO.md](TODO.md). Per-stage operator activities: [USER-CHECKLIST.md](USER-CHECKLIST.md).
 Step-by-step operator guidebook: the wiki's
-[How to Get Started](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki)
+[How to Get Started](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki)
 section.
 
 ## The motion (operator-defined 2026-08-01, **corrected 2026-08-06**)
@@ -45,6 +45,13 @@ Two consequences that change how items in this file are read:
 - **The client runs the tooling on their own machine**, so it is the client's
   `gh` and `az` sessions that create the estate. That is what makes the
   confirm-the-tenant gate in Phase 2 load-bearing rather than ceremonial.
+
+> **Tracking note (2026-08-06).** Every open item below is operator-gated
+> (tenant confirmation, repository administration, credentials, or an
+> engagement decision). The **official consolidated record of blocked work is
+> [REVIEW.md](REVIEW.md)** — each open item here is mirrored there with its
+> specific blocker and unblock action. This file remains the phase-structured
+> description of the motion itself.
 
 **Tags**
 - `[BLOCKER]` — the motion cannot complete for a real customer until this is done.
@@ -130,7 +137,7 @@ SHA-pinned and travel with the fork.
   plan-verified against the live repo — preserved in the session scratchpad
   as `protection-main.json` — but the mutation needs interactive operator
   approval: apply it, or run `scripts/Initialize-ClientFork.ps1 -Repository
-  saulpatinojr/HCW-Plan_LZDeployment -Apply`, accepting its required-approvals
+  HybridCloudWorks/Template-LZDeployment -Apply`, accepting its required-approvals
   ≥ 1 floor. Single-owner caveat: required approvals ≥ 1 deadlocks
   self-merges — this repo has one owner today.)*
 - [ ] **[HARDENING] Verify GitHub repo settings not checkable from a local
@@ -295,7 +302,7 @@ SHA-pinned and travel with the fork.
   first customer use.
 - [ ] **[HARDENING] Resolve the backend duality** *(moved from TODO.md;
   migration itself tracked as
-  [GitHub Issue #11](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/issues/11),
+  [GitHub Issue #11](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/11),
   blocked on interactive TFC org/workspace/token setup)* — HCP Terraform is the
   recorded default backend decision (CHANGELOG), the wizard exports either
   backend, `terraform/live/*/backend.hcl` is azurerm, and the legacy bootstrap
