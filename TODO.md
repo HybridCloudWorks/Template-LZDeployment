@@ -53,20 +53,6 @@ dogfood instance. The end-to-end customer motion is described in
 
 ---
 
-## 🔴 CI/CD Hygiene
-
-- [ ] 🚧 **ROADBLOCKED (external, not fixable in-repo)** — **Mark the
-  GitGuardian incident a false positive** —
-  `factory/tests/Test-Discovery.ps1:85` holds the canonical jwt.io sample token
-  (header `{"alg":"HS256"}`, payload `{"sub":"1234567890"}`) solely to prove
-  `Protect-LzSecretText` redacts JWT-shaped strings. It is not a credential;
-  nothing to revoke or rotate. The check keeps failing until the incident is
-  marked a false positive in the GitGuardian dashboard (a UI action outside the
-  repository). Do **not** "fix" it by deleting the test or splitting the
-  literal — the first removes real coverage, the second evades a scanner.
-
----
-
 ## 🟠 Script Cleanup
 
 - [ ] **Wire `Configure-DeploymentOptions.ps1` output into Terraform**
@@ -86,16 +72,17 @@ dogfood instance. The end-to-end customer motion is described in
 
 ## 🟡 Terraform Module Completeness
 
-- [ ] **Implement `keyvault-cmk`** — currently scaffold-only
-  (`check "module_not_implemented"`, zero resources). Deliberately left
-  scaffolded rather than guessed at: both modules are customer-facing
-  infrastructure needing an architecture decision first (key hierarchy and
-  rotation policy, which vaults are in scope, purge-protection and soft-delete
-  posture, HSM vs software keys), and the renderer already blocks scaffold-only
-  modules from rendering, so the current state is safe rather than broken.
-- [ ] **Implement `sentinel-siem`** — currently scaffold-only, same pattern
-  and the same prerequisite (which data connectors, retention split between
-  analytics and archive tiers, and which workspace).
+- [x] **`keyvault-cmk` and `sentinel-siem` stay scaffolds** *(operator
+  decision 2026-08-06: "leave those key vault and sentinel options")* — both
+  remain `check "module_not_implemented"` with zero resources. This is a
+  deliberate accepted state, not outstanding work: the renderer blocks
+  scaffold-only modules from rendering (guards G02/G03), the wizard labels
+  them scaffold-only, and PROD-TODO already forbids describing them as live
+  capabilities in engagement collateral. Implementing either needs an
+  architecture decision first (key hierarchy and rotation, vault scope,
+  purge-protection posture; data connectors, retention tiers, workspace), so
+  re-open this deliberately rather than by drift.
+
 - [x] Verify variable-driven "secure by default" settings actually default
   secure *(verdicts recorded 2026-08-02)*:
   - backend public access — **SECURE**: `allow_public_access_during_setup`
@@ -171,19 +158,22 @@ dogfood instance. The end-to-end customer motion is described in
 
 ---
 
-- [ ] **Complete the azurerm provider 5.x migration** *(added 2026-08-06)* —
-  dependabot's half-applied bump was reverted to restore a working `main`
-  (see CHANGELOG), so the tree is coherent at `~> 4.2` with
-  `terraform/backend-bootstrap` the one reasoned exception at `~> 5.0`. Moving
-  the rest is still worth doing, but it is a major version bump that also
-  rewrites the customer-facing template corpus, so it needs provider
-  resolution and plan-level validation — neither of which was available in the
-  session that found the breakage (`registry.terraform.io` is not on the
-  egress allowlist there). Doing it: bump `$CANONICAL_CONSTRAINTS` in
-  `factory/ci/Test-ProviderConstraints.ps1`, every declaration in both trees
-  including the four `.tf.tmpl` roots dependabot cannot see, re-lock each root,
-  then read the 5.x upgrade guide for the resources these modules actually use.
-  The constraint check keeps CI red until all of that agrees.
+- [x] **Complete the azurerm provider 5.x migration** *(done 2026-08-06)* —
+  all 33 declarations across both trees are at `~> 5.0`, the five live lock
+  files carry the resolved 5.0.1 entry, and the canonical registry moved with
+  them. Every 5.0 breaking change was audited against what these modules
+  declare; none required a resource-level change.
+- [ ] **Decide the resource-provider registration strategy under azurerm 5.0**
+  *(added 2026-08-06)* — 5.0 changes `resource_provider_registrations` from
+  `legacy` to `none`, so the provider no longer auto-registers ~60 resource
+  providers. That suits the privilege split (the Reader plan identity should
+  never attempt a registration), but it makes RP registration an explicit
+  prerequisite for applying into a **fresh** subscription: the first apply
+  will otherwise fail with "The subscription is not registered to use
+  namespace 'Microsoft.…'". Either register them in the bootstrap/broker, add
+  them to `Test-LzFirstApplyPreflight`, or set `resource_providers_to_register`
+  explicitly in the layer provider blocks. Not chosen here — the right answer
+  depends on which identity is expected to hold registration rights.
 - [ ] **Add `terraform` to `LZ_FACTORY_CI_TERRAFORM_ROOTS`** *(added
   2026-08-06)* — Factory CI now triggers on `terraform/**`, but its default
   roots are still `factory/templates/terraform` only, so the live tree gets the
@@ -192,15 +182,13 @@ dogfood instance. The end-to-end customer motion is described in
   Not changed blind: it needs one CI run to confirm the live tree validates
   clean first, since a pre-existing validate failure there would turn Factory
   CI red for an unrelated reason.
-- [ ] **Decide whether a firewall-less hub is supported** *(added 2026-08-06)*
-  — `connectivity.firewall.type = "none"` was removed because it could not
-  deploy: the connectivity layer rejects the value and `hub-network` treats
-  every non-azfw value as an NVA (`count = var.firewall_type != "azfw" ? 1
-  : 0`), so it would provision NVA subnets and route tables with no trust IP.
-  Supporting it properly means making roughly ten `!= "azfw"` conditions
-  three-way across `hub-network` in both trees. Until then, "no firewall" is
-  only expressible as `connectivity.model = none`, which drops platform
-  networking entirely — a coarser choice than some clients will want.
+- [x] **Decide whether a firewall-less hub is supported** *(decided and
+  implemented 2026-08-06 — operator: a landing zone need not be deployed with
+  a firewall)* — `connectivity.firewall.type = "none"` is supported end to
+  end. `hub-network` gates NVA resources on `contains(["palo", "fortinet"])`
+  instead of `!= "azfw"`, the to-firewall route table is absent under "none",
+  and `spoke-network` fails at plan if `enable_forced_tunneling` is left true
+  with no appliance to tunnel to.
 - [ ] **Decide the disposition of `scripts/Initialize-ClientFork.ps1`**
   *(added 2026-08-06)* — under
   [decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)
@@ -250,14 +238,20 @@ the page itself is documented as legacy in [`frontend/README.md`](frontend/READM
 ## 🧭 Why the remaining items are still open
 
 Nothing below is open for lack of attention. As of 2026-08-06 every remaining
-item falls into one of four classes, and the class is stated on each item:
+item falls into one of five classes, and the class is stated on each item:
 
 | Class | Meaning | Items |
 | --- | --- | --- |
-| 🚧 **External** | Cannot be done from the repository at all | GitGuardian false-positive (dashboard UI), wiki doc review (separate repo) |
-| 🎯 **Needs a design decision** | The implementation is blocked on a choice nobody has made | `keyvault-cmk`, `sentinel-siem`, `nsg-flow-logs` wiring, firewall-less hub, `workloads-nonprod` parity, `management-baseline/moved.tf` |
-| 🔗 **Blocked on another item** | Ordering, not difficulty | `Configure-DeploymentOptions` wiring (waits on the two scaffold modules) |
-| ✅ **Needs one verification run** | Correct but unproven in this environment | azurerm 5.x migration and `LZ_FACTORY_CI_TERRAFORM_ROOTS` (both need provider resolution, which the session that found the breakage could not reach) |
+| 🚧 **External** | Cannot be done from the repository at all | wiki doc review (separate repo) |
+| 🎯 **Needs a design decision** | Blocked on a choice nobody has made | `nsg-flow-logs` wiring, `workloads-nonprod` parity, `management-baseline/moved.tf`, RP-registration strategy under azurerm 5.0 |
+| 🔗 **Blocked on another item** | Ordering, not difficulty | `Configure-DeploymentOptions` wiring (waits on the two scaffold modules, which are an accepted deferral) |
+| ✅ **Needs one verification run** | Correct but unproven in this environment | `LZ_FACTORY_CI_TERRAFORM_ROOTS` (needs provider resolution, which this environment's egress policy blocks) |
+| 🧹 **Ordinary remaining work** | Just needs doing | azurerm-backend fixture coverage, module README sync, `Initialize-ClientFork.ps1` disposition |
+
+Decided and closed on 2026-08-06 by operator direction: the azurerm 5.0
+migration (done), firewall-less hub support (implemented), the GitGuardian
+incident (dropped from this list), and the `keyvault-cmk`/`sentinel-siem`
+scaffolds (accepted as-is).
 
 Operator- and Azure-dependent work is not here — it lives in
 [PROD-TODO.md](PROD-TODO.md), which is gated on engagement-owner confirmation

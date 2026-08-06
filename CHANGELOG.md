@@ -5,6 +5,44 @@
 
 ---
 
+## azurerm 5.0 across both trees; firewall-less hubs supported (2026-08-06)
+
+Operator direction after the handoff review. Validation: 8 PowerShell suites,
+wizard 89/89, renderer 216/216, action pinning, site no-network, provider
+constraints, schema drift InSync, `terraform fmt` clean, module parity across
+both trees — all green locally.
+
+**azurerm 5.0.** All 33 constraint declarations across `terraform/` and
+`factory/templates/terraform/` move to `~> 5.0`, including the four `.tf.tmpl`
+roots dependabot cannot parse. The five live lock files carry the resolved
+5.0.1 entry, propagated from the one backend-bootstrap already had — lock
+hashes are a property of the provider version, not the consuming directory,
+which is what made this possible without registry access. Every 5.0 breaking
+change was audited against what these modules actually declare and **none
+required a resource-level change**: the flow log already used
+`target_resource_id`, no `address_space` is indexed, and
+`service_endpoints` / the removed Log Analytics and Recovery Services
+properties / `queue_properties` / `static_website` / `skip_provider_registration`
+are all unused. One behavioural consequence is tracked in TODO.md:
+`resource_provider_registrations` now defaults to `none`, so RP registration
+becomes an explicit prerequisite for a first apply into a fresh subscription.
+
+**Firewall-less hubs.** `connectivity.firewall.type = "none"` is supported
+rather than removed. `hub-network` treated firewall_type as azfw-versus-NVA
+(`count = var.firewall_type != "azfw" ? 1 : 0`), so "none" would have built
+NVA subnets, an NVA NSG, and a default route to a trust IP collected only for
+palo/fortinet. Five gates now test membership; the to-firewall route table is
+absent under "none" and spokes use Azure default routing;
+`firewall_private_ip` is null and `route_table_id` uses `one(...)`. The single
+new failure mode — forced tunnelling with nothing to tunnel to — fails at plan
+via a `spoke-network` precondition rather than mid-apply.
+
+**Backlog decisions.** `keyvault-cmk` and `sentinel-siem` are recorded as an
+accepted deferral rather than open work (renderer guards G02/G03 already block
+them from rendering). The GitGuardian item is dropped from TODO.md.
+
+---
+
 ## `main` unbroken, provider drift made a CI failure, operator model ratified (2026-08-06)
 
 Colleague-handoff completion. Validation: 8 PowerShell suites, wizard 81/81
