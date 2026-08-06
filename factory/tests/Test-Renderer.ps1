@@ -329,6 +329,45 @@ ok 'state_container_name set'      ($azTfvarsText -match 'state_container_name\s
 $hcpConn = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/main.tf') -Raw
 ok 'hcp render omits azurerm read' ($hcpConn -notmatch 'backend\s*=\s*"azurerm"')
 
+Write-Host "`n== 15c. workloads-nonprod parity control ==" -ForegroundColor Cyan
+# workloads-nonprod exists ONLY in the corpus — the live dogfood is prod-only —
+# so it has no live counterpart and Test-LzSchemaDrift's live-vs-corpus
+# comparison can never see it. The risk is that it silently falls behind
+# workloads-prod whenever prod changes. This is the corpus-internal substitute:
+# assert the two sibling layers agree on everything that is not
+# environment-specific.
+$prodVars = Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/live/workloads-prod/variables.tf"
+$nonprodVars = Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/live/workloads-nonprod/variables.tf"
+$prodNames = @($prodVars | ForEach-Object { $_.Name })
+$nonprodNames = @($nonprodVars | ForEach-Object { $_.Name })
+
+# Layer-agnostic variables: everything except the per-environment CIDR pairs
+# and each layer's own subscription id.
+$sharedExpected = @(
+    'connectivity_subscription_id', 'default_tags',
+    'primary_region', 'primary_region_code', 'dr_region', 'dr_region_code',
+    'state_container_name', 'state_resource_group_name', 'state_storage_account_name'
+)
+$missingFromProd = @($sharedExpected | Where-Object { $_ -notin $prodNames })
+$missingFromNonprod = @($sharedExpected | Where-Object { $_ -notin $nonprodNames })
+ok 'prod declares the shared set'    ($missingFromProd.Count -eq 0) ($missingFromProd -join ',')
+ok 'nonprod declares the shared set' ($missingFromNonprod.Count -eq 0) ($missingFromNonprod -join ',')
+
+# Each layer owns exactly one subscription variable, and they must differ.
+ok 'prod owns workload_prod_subscription_id'       ('workload_prod_subscription_id' -in $prodNames)
+ok 'nonprod owns workload_nonprod_subscription_id' ('workload_nonprod_subscription_id' -in $nonprodNames)
+ok 'neither layer claims the other subscription'   (('workload_nonprod_subscription_id' -notin $prodNames) -and ('workload_prod_subscription_id' -notin $nonprodNames))
+
+# Contract #5: spoke-network declares configuration_aliases, so every caller
+# must inject a providers map carrying azurerm.hub. Contract #3: the
+# remote-state read must use AAD auth.
+foreach ($layer in @('workloads-prod', 'workloads-nonprod')) {
+    $tmpl = Get-Content "$repo/factory/templates/terraform/live/$layer/main.tf.tmpl" -Raw
+    ok "$layer injects azurerm.hub (contract 5)" ($tmpl -match 'azurerm\.hub\s*=\s*azurerm')
+    ok "$layer reads state with AAD (contract 3)" ($tmpl -match 'use_azuread_auth')
+    ok "$layer calls spoke-network"               ($tmpl -match 'source\s*=\s*"\.\./\.\./modules/spoke-network"')
+}
+
 Write-Host "`n== 16. Guard violation stops the render ==" -ForegroundColor Cyan
 $badCfgPath = Join-Path $PSScriptRoot '.out/bad-config.json'
 $bad = Clone $cfg; $bad.connectivity.model = 'virtual-wan'

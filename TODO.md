@@ -112,17 +112,16 @@ dogfood instance. The end-to-end customer motion is described in
   `Test-ActionPins.ps1` now enforces a canonical-SHA registry of 14 actions
   across both trees; pin drift fails CI instead of passing as "any 40-hex
   SHA".)*
-- [ ] **Decide the `workloads-nonprod` parity control** *(added 2026-08-02)* —
-  the layer exists **only** in the corpus (the live dogfood is prod-only), so
-  it has no live counterpart and no drift check can see it. Either dogfood a
-  nonprod instance or add a corpus-internal template parity check.
-- [x] **Operator sign-off: workflow name collisions and dead files** *(signed
-  off and executed 2026-08-02, WP5 — corpus template renamed
-  `policy-diff-guardrails.yml.tmpl`, resolving the collision with live's
-  `terraform-policy-checks.yml`; `deploy-from-release.yml` and
-  `generate-and-release.yml` deleted along with their orphaned packager
-  `terraform/compose-package/`; live workflows standardized on Terraform
-  1.9.8.)*
+- [x] **Decide the `workloads-nonprod` parity control** *(done 2026-08-06 —
+  corpus-internal check, not a nonprod dogfood)* — the layer exists only in
+  the corpus, so no live-vs-corpus drift check can see it and the risk is that
+  it silently falls behind `workloads-prod`. Renderer section 15c now asserts
+  the two sibling layers agree on the layer-agnostic variable set, that each
+  owns exactly one subscription variable and neither claims the other's, and
+  that both honour contract #5 (inject `azurerm.hub` into `spoke-network`,
+  which declares `configuration_aliases`) and contract #3 (remote-state read
+  uses AAD auth). Dogfooding a real nonprod instance remains the stronger
+  proof, but it needs Azure access — see [REVIEW.md](REVIEW.md).
 - [x] **Extend `Test-LzSchemaDrift` to compare schema enums against Terraform
   `contains([...])` validations** *(done 2026-08-06)* — `contains([...],
   var.<name>)` lists are now extracted alongside validation regexes, a new
@@ -136,12 +135,14 @@ dogfood instance. The end-to-end customer motion is described in
   option and only warned, and export emitted `firewall_type = "none"`, which
   the connectivity layer rejects. Fixed by narrowing, per the Basic
   precedent. See the new item below for supporting it properly.
-- [ ] **Decide whether the corpus `management-baseline/moved.tf` should
-  mirror to live** *(added 2026-08-02)* — currently a deliberate corpus-only
-  divergence: the `moved` block preserves state addresses for the alert
-  rename in **regenerated** repos, which live state does not need. Either
-  mirror it for strict byte parity or record the divergence as permanent in
-  the reconciliation plan.
+- [x] **Decide whether the corpus `management-baseline/moved.tf` should
+  mirror to live** *(decided 2026-08-06: no — the divergence is permanent)* —
+  a `moved` block rewrites a state address. Live performed the alert rename
+  directly and has never held state under
+  `azurerm_monitor_metric_alert.cpu_high`, so mirroring it would add a block
+  that can never match anything: parity for its own sake, implying a migration
+  that does not apply to this tree. Recorded as permanent in
+  [docs/plans/corpus-live-reconciliation.md](docs/plans/corpus-live-reconciliation.md).
 - [x] **Add azurerm-backend fixture coverage to the renderer suite** *(done
   2026-08-06)* — new `factory/tests/fixtures/azurerm-config.json`, differing
   from `sample-config.json` **only** in its backend block so a diff between
