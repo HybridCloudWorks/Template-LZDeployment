@@ -142,22 +142,20 @@ dogfood instance. The end-to-end customer motion is described in
   rename in **regenerated** repos, which live state does not need. Either
   mirror it for strict byte parity or record the divergence as permanent in
   the reconciliation plan.
-- [ ] **Add azurerm-backend fixture coverage to the renderer suite** *(added
-  2026-08-02, final review; partially closed 2026-08-06)* — both test
-  fixtures use `hcp-terraform`, so the azurerm form of the connectivity
-  remote-state read and the `state_*` tfvars emission are still never
-  exercised end-to-end by CI (verified manually: they render and validate).
-  A full azurerm fixture plus expected-output baseline is the remaining work.
-  *(The related fragility recorded here is **fixed**: the renderer no longer
-  fails closed on a schema-valid config whose `backend.azurerm` omits the
-  optional `useAzureAdAuth`. `New-LzRenderContext -SchemaPath` seeds schema
-  defaults for absent optional keys — the "teach the token engine schema
-  defaults" option, chosen over gating the four reference sites because
-  gating fixes one key and leaves the class open. Config values always win,
-  and an absent parent block seeds no phantom children.)*
-
----
-
+- [x] **Add azurerm-backend fixture coverage to the renderer suite** *(done
+  2026-08-06)* — new `factory/tests/fixtures/azurerm-config.json`, differing
+  from `sample-config.json` **only** in its backend block so a diff between
+  the two shows exactly this surface. Twelve assertions cover the azurerm
+  branch end to end: `backend.tf` selects azurerm and forces
+  `use_azuread_auth`, the connectivity layer's remote-state read takes the
+  azurerm branch rather than the hcp one and also sets AAD auth (contract #3 —
+  the state account disables shared keys, so the read would 403 at init), and
+  the three `state_*` tfvars that feed those reads are emitted. The converse is
+  asserted too: the hcp fixture must not emit the azurerm surface, or the
+  branch is not actually conditional. The fixture omits the optional
+  `useAzureAdAuth` key on purpose, so it doubles as a regression test for the
+  schema-default seeding fix. All four rendered layers validate against the
+  real azurerm 5.0.1 provider.
 - [x] **Complete the azurerm provider 5.x migration** *(done 2026-08-06)* —
   all 33 declarations across both trees are at `~> 5.0`, the five live lock
   files carry the resolved 5.0.1 entry, and the canonical registry moved with

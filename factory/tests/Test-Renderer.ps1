@@ -286,6 +286,49 @@ ok 'dev DR CIDR rendered'          ($nonprodTfvars -match '10\.12\.0\.0/16')
 ok 'refuses non-empty output'      (throws { Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/sample-config.json" -OutputDirectory $out -Quiet })
 ok 'overwrites with -Force'        (-not (throws { Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/sample-config.json" -OutputDirectory $out -Force -Quiet }))
 
+Write-Host "`n== 15b. azurerm backend render path ==" -ForegroundColor Cyan
+# Both original fixtures use hcp-terraform, so the azurerm form of the
+# connectivity remote-state read and the state_* tfvars emission were never
+# exercised by CI. The fixture differs from sample-config.json ONLY in its
+# backend block, so a diff between the two shows exactly this surface.
+#
+# It also omits the optional useAzureAdAuth key on purpose: it carries a schema
+# default of true, and its absence used to fail the render closed with
+# "Unknown configuration path".
+$azOut = Join-Path $PSScriptRoot '.out/render-azurerm-out'
+if (Test-Path $azOut) { Remove-Item $azOut -Recurse -Force }
+$azRes = Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/azurerm-config.json" -OutputDirectory $azOut -Quiet
+ok 'azurerm config renders'        ($azRes.Emitted.Count -ge 11) $azRes.Emitted.Count
+ok 'no tokens left in output'      (@(Get-ChildItem $azOut -Recurse -File | Where-Object { (Get-Content $_.FullName -Raw) -match '\{\{FACTORY' }).Count -eq 0)
+
+$azBackend = Get-Content (Join-Path $azOut 'terraform/live/global/backend.tf') -Raw
+ok 'backend.tf selects azurerm'    ($azBackend -match 'backend\s+"azurerm"')
+ok 'backend.tf carries the account' ($azBackend -match 'stchgtfstateabcd')
+ok 'backend.tf forces AAD auth'    ($azBackend -match 'use_azuread_auth\s*=\s*true')
+
+# The connectivity layer reads platform-management state remotely. Under
+# azurerm that read must take the azurerm branch AND set use_azuread_auth,
+# because the state account disables shared keys (contract #3) and the read
+# would otherwise 403 at init.
+$azConn = Get-Content (Join-Path $azOut 'terraform/live/platform-connectivity/main.tf') -Raw
+ok 'remote state uses azurerm'     ($azConn -match 'backend\s*=\s*"azurerm"')
+ok 'remote state is not hcp'       ($azConn -notmatch 'backend\s*=\s*"remote"')
+ok 'remote state sets AAD auth'    ($azConn -match 'use_azuread_auth\s*=\s*true')
+
+# state_* tfvars are what feed those reads; emitting the backend block without
+# them renders a config that cannot init.
+$azTfvars = Get-ChildItem (Join-Path $azOut 'terraform/live') -Recurse -Filter '*.auto.tfvars' |
+    ForEach-Object { Get-Content $_.FullName -Raw }
+$azTfvarsText = ($azTfvars -join "`n")
+ok 'state_resource_group_name set' ($azTfvarsText -match 'state_resource_group_name\s*=\s*"rg-tfstate-scus-prod-01"')
+ok 'state_storage_account_name set' ($azTfvarsText -match 'state_storage_account_name\s*=\s*"stchgtfstateabcd"')
+ok 'state_container_name set'      ($azTfvarsText -match 'state_container_name\s*=\s*"tfstate"')
+
+# Converse: the hcp fixture must NOT emit the azurerm surface, or the branch
+# is not actually conditional.
+$hcpConn = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/main.tf') -Raw
+ok 'hcp render omits azurerm read' ($hcpConn -notmatch 'backend\s*=\s*"azurerm"')
+
 Write-Host "`n== 16. Guard violation stops the render ==" -ForegroundColor Cyan
 $badCfgPath = Join-Path $PSScriptRoot '.out/bad-config.json'
 $bad = Clone $cfg; $bad.connectivity.model = 'virtual-wan'
