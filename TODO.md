@@ -180,13 +180,15 @@ dogfood instance. The end-to-end customer motion is described in
   well as the corpus. This is the check that would have caught the dependabot
   provider split-brain directly: the live tree was previously invisible to the
   only workflow that runs credential-free.
-- [x] **Decide whether a firewall-less hub is supported** *(decided and
-  implemented 2026-08-06 — operator: a landing zone need not be deployed with
-  a firewall)* — `connectivity.firewall.type = "none"` is supported end to
-  end. `hub-network` gates NVA resources on `contains(["palo", "fortinet"])`
-  instead of `!= "azfw"`, the to-firewall route table is absent under "none",
-  and `spoke-network` fails at plan if `enable_forced_tunneling` is left true
-  with no appliance to tunnel to.
+- [x] **Decide whether a firewall-less hub is supported** *(decided
+  2026-08-06 — operator: a landing zone NEEDS at least one firewall)* —
+  `connectivity.firewall.type = "none"` is rejected. The bound is enforced in
+  three places that must move together: the schema enum, the wizard menu, and
+  the `contains([...])` validation in both platform-connectivity layers.
+  `hub-network` keeps membership-based NVA gating (`contains(["palo",
+  "fortinet"])` rather than `!= "azfw"`) because the negation is what let an
+  out-of-set value be treated as an NVA. Running without platform networking
+  entirely remains available as `connectivity.model = none`.
 - [ ] **Decide the disposition of `scripts/Initialize-ClientFork.ps1`**
   *(added 2026-08-06)* — under
   [decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)
@@ -253,6 +255,10 @@ scaffolds (accepted as-is).
 Operator- and Azure-dependent work is not here — it lives in
 [PROD-TODO.md](PROD-TODO.md), which is gated on engagement-owner confirmation
 of the target tenant.
+
+**Every item that cannot currently be completed — from this file and from
+PROD-TODO.md — is consolidated in [REVIEW.md](REVIEW.md)**, with the specific
+blocker, who can unblock it, and the next concrete action.
 
 ## 📚 Key Documents
 
