@@ -40,12 +40,12 @@ variable "dr_hub_address_space" {
 }
 
 variable "firewall_type" {
-  description = "Firewall type: azfw, palo, or fortinet"
+  description = "Firewall type: azfw, palo, or fortinet. A landing zone always deploys at least one firewall."
   type        = string
 
   validation {
     condition     = contains(["azfw", "palo", "fortinet"], var.firewall_type)
-    error_message = "Firewall type must be one of: azfw, palo, fortinet."
+    error_message = "Firewall type must be one of: azfw, palo, fortinet. A landing zone always deploys at least one firewall."
   }
 }
 

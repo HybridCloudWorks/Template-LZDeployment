@@ -1,7 +1,115 @@
 # CHANGELOG - Completed Work
 
 **Purpose**: Historical record of all completed tasks and deliverables  
-**Last Updated**: August 2, 2026
+**Last Updated**: August 6, 2026
+
+---
+
+## azurerm 5.0 across both trees; firewall-less hubs supported (2026-08-06)
+
+Operator direction after the handoff review. Validation: 8 PowerShell suites,
+wizard 89/89, renderer 216/216, action pinning, site no-network, provider
+constraints, schema drift InSync, `terraform fmt` clean, module parity across
+both trees — all green locally.
+
+**azurerm 5.0.** All 33 constraint declarations across `terraform/` and
+`factory/templates/terraform/` move to `~> 5.0`, including the four `.tf.tmpl`
+roots dependabot cannot parse. The five live lock files carry the resolved
+5.0.1 entry, propagated from the one backend-bootstrap already had — lock
+hashes are a property of the provider version, not the consuming directory,
+which is what made this possible without registry access. Every 5.0 breaking
+change was audited against what these modules actually declare and **none
+required a resource-level change**: the flow log already used
+`target_resource_id`, no `address_space` is indexed, and
+`service_endpoints` / the removed Log Analytics and Recovery Services
+properties / `queue_properties` / `static_website` / `skip_provider_registration`
+are all unused. One behavioural consequence is tracked in TODO.md:
+`resource_provider_registrations` now defaults to `none`, so RP registration
+becomes an explicit prerequisite for a first apply into a fresh subscription.
+
+**Firewall-less hubs.** `connectivity.firewall.type = "none"` is supported
+rather than removed. `hub-network` treated firewall_type as azfw-versus-NVA
+(`count = var.firewall_type != "azfw" ? 1 : 0`), so "none" would have built
+NVA subnets, an NVA NSG, and a default route to a trust IP collected only for
+palo/fortinet. Five gates now test membership; the to-firewall route table is
+absent under "none" and spokes use Azure default routing;
+`firewall_private_ip` is null and `route_table_id` uses `one(...)`. The single
+new failure mode — forced tunnelling with nothing to tunnel to — fails at plan
+via a `spoke-network` precondition rather than mid-apply.
+
+**Backlog decisions.** `keyvault-cmk` and `sentinel-siem` are recorded as an
+accepted deferral rather than open work (renderer guards G02/G03 already block
+them from rendering). The GitGuardian item is dropped from TODO.md.
+
+---
+
+## `main` unbroken, provider drift made a CI failure, operator model ratified (2026-08-06)
+
+Colleague-handoff completion. Validation: 8 PowerShell suites, wizard 81/81
+(was 74), renderer 216/216 (was 205), action pinning, site no-network, schema
+drift InSync, PowerShell parse sweep — all green locally.
+
+**⚠ `main` was broken and is now fixed.** Dependabot PRs #63–#68 bumped
+azurerm `~> 4.2` → `~> 5.0` in the six directories `.github/dependabot.yml`
+watched. The same constraint is declared in ~35 files, so the bump landed
+half-applied and `~> 4.2` (>= 4.2, < 5.0) met `~> 5.0` (>= 5.0, < 6.0) in the
+same graph — no intersection. Four of five live stacks (`global`,
+`platform-connectivity`, `platform-management`, `workloads-prod`) failed at
+`terraform init`, before any plan. Restored at `~> 4.2`, matching every live
+root, the whole template corpus, and the 4.79.0 in all five live lock files.
+`terraform/backend-bootstrap` keeps `~> 5.0` — standalone root, no module
+calls, own lock at 5.0.1. The 5.x migration is tracked in TODO.md rather than
+guessed at.
+
+**Why nothing caught it.** Factory CI — the only workflow that runs without
+Azure credentials, and so the only one that reports today — did not list
+`terraform/**` in its path filter. The workflows that do watch `terraform/**`
+fail at `azure/login` on the missing identity estate. And `main` has no
+required status checks, so six red PRs merged and the redness meant nothing.
+Fixed: new `factory/ci/Test-ProviderConstraints.ps1` (canonical registry, same
+shape as the action-pin registry; static, credential-free, network-free, with
+a reasoned-exception table checked for staleness), `terraform/**` added to
+Factory CI's path filter, and dependabot's six per-directory terraform entries
+collapsed into one grouped entry so a bump lands whole or not at all.
+
+**Enum constraint drift is now detectable — and it found a live defect.**
+`Test-LzSchemaDrift` compared validation regexes only, so a schema enum
+offering a value `contains([...])` rejects was invisible. It now extracts
+`contains([...], var.<name>)` lists (excluding negated element-wise deny
+lists) and compares them against schema enums as a set difference. First run
+found `connectivity.firewall.type = "none"`: offered by the wizard, only
+warned, exported as `firewall_type = "none"`, rejected by the connectivity
+layer — and `hub-network` would have treated it as an NVA with no trust IP.
+Narrowed out of the schema and the wizard per the `Basic` precedent, with a
+blocking guard for configs drafted earlier. No platform networking at all
+remains available as `connectivity.model = none`.
+
+**Renderer no longer fails closed on valid configs.** A schema-valid config
+omitting an optional key with a schema default raised `Unknown configuration
+path` (observed: `backend.azurerm.useAzureAdAuth`, referenced by four
+templates). `New-LzRenderContext` takes an optional `-SchemaPath` and seeds
+defaults for absent paths; config values always win, and an absent parent
+block seeds no phantom children.
+
+**Operator model ratified.** [Decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)
+— the factory copy is a disposable installer, not a client asset — is
+confirmed by the operator in their own words and quoted in the record. It
+settles that the copy mechanic is an indifference point (so nothing may assume
+a fork), that the *client* runs the tooling, and that the new repository is
+created before the landing-zone files. PROD-TODO.md is reconciled: the motion
+description no longer describes a governed client-owned fork, the
+"client fork"/"local clone" pair is collapsed into one disposable copy, and
+both Phase 1 GitHub-settings items are retargeted at the upstream factory repo
+instead of "every client fork". Open question 3 narrowed on inspection —
+`github.ownershipModel`/`ownerName` are required schema fields, so org-owned
+landing zones are already supported; what is open is engagement policy.
+
+**Also**: `020-rbac-validation.yml` had a path filter on `push` but not
+`pull_request`, so it ran on documentation-only PRs and failed at
+`azure/login`; mirrored the filter. Its `docs/RBAC-REQUIREMENTS.md` references
+pointed at a file that has never existed in the repository's history —
+retargeted at `docs/decisions/0002-minimal-identity-estate.md`, which actually
+records the estate.
 
 ---
 

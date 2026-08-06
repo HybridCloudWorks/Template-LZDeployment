@@ -435,8 +435,9 @@
           "additionalProperties": false,
           "properties": {
             "type": {
-              "enum": ["azfw", "palo", "fortinet", "none"],
-              "description": "Maps to the firewall_type variable already present in terraform/live/platform-connectivity."
+              "enum": ["azfw", "palo", "fortinet"],
+              "description": "Maps to the firewall_type variable already present in terraform/live/platform-connectivity. A landing zone always deploys at least one firewall.",
+              "$comment": "none is deliberately excluded (operator decision 2026-08-06: a landing zone NEEDS at least one firewall). This is a policy bound, not a technical one, and it is enforced in three places that must move together: this enum, the wizard menu, and the contains([...]) validation in both platform-connectivity layers. Choosing to run no platform networking at all remains available as connectivity.model = none, which drops the whole layer rather than leaving a hub with unfiltered egress."
             },
             "azfwTier": {
               "enum": ["Standard", "Premium"],

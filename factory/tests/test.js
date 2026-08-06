@@ -254,5 +254,44 @@ ok('imported Basic tier blocks export', A.validate().errors.some(e => /Standard 
 c.connectivity.firewall.azfwTier = 'Standard';
 ok('Standard clears the tier block', !A.validate().errors.some(e => /Standard and Premium only/.test(e.message)));
 
+console.log('\n== 14. A landing zone requires a firewall ==');
+// Operator decision 2026-08-06: at least one firewall is mandatory. This is a
+// policy bound enforced in three places that must agree, and "none" was
+// briefly offered in the wizard while the connectivity layer rejected it — a
+// clean export that failed at plan. Assert all three together.
+const fwDecl = schema.properties.connectivity.properties.firewall.properties.type;
+ok('schema firewall enum excludes none',
+  JSON.stringify(fwDecl.enum) === '["azfw","palo","fortinet"]', JSON.stringify(fwDecl.enum));
+const fwSelect = (html.match(/<select id="cn_fwType"[\s\S]*?<\/select>/) || [''])[0];
+const fwOptions = Array.from(fwSelect.matchAll(/option value="([^"]+)"/g)).map(m => m[1]);
+ok('wizard firewall options are exactly the schema enum',
+  JSON.stringify(fwOptions.sort()) === JSON.stringify([...fwDecl.enum].sort()), JSON.stringify(fwOptions));
+// Topology keeps its own "none" — that drops the whole layer and is a
+// different, supported choice from a hub with unfiltered egress.
+const modelSelect = (html.match(/<select id="cn_model"[\s\S]*?<\/select>/) || [''])[0];
+ok('topology None survives (it drops the layer entirely)', /option value="none"/.test(modelSelect));
+for (const varsPath of ['../../terraform/live/platform-connectivity/variables.tf', '../templates/terraform/live/platform-connectivity/variables.tf']) {
+  const hcl = require('fs').readFileSync(require('path').resolve(__dirname, varsPath), 'utf8');
+  const fwBlock = (hcl.match(/variable "firewall_type" \{[\s\S]*?\n\}/) || [''])[0];
+  ok(`${varsPath.includes('templates') ? 'template' : 'live'} layer rejects none`,
+    /contains\(\["azfw", "palo", "fortinet"\], var\.firewall_type\)/.test(fwBlock) && !/"none"/.test(fwBlock),
+    fwBlock.split('\n').find(l => /condition/.test(l)));
+}
+// hub-network must still gate NVA resources on membership rather than on
+// "not azfw": with the enum bounded the two are equivalent today, but the
+// negation is what let an out-of-set value be treated as an NVA.
+for (const modPath of ['../../terraform/modules/hub-network/main.tf', '../templates/terraform/modules/hub-network/main.tf']) {
+  const hcl = require('fs').readFileSync(require('path').resolve(__dirname, modPath), 'utf8');
+  const tree = modPath.includes('templates') ? 'template' : 'live';
+  ok(`${tree} hub gates NVA on membership`, /has_nva\s*=\s*contains\(\["palo", "fortinet"\], var\.firewall_type\)/.test(hcl));
+  ok(`${tree} hub has no "!= azfw" gate`, !/var\.firewall_type != "azfw"/.test(hcl));
+  ok(`${tree} hub route table is unconditional`, !/resource "azurerm_route_table" "to_firewall" \{\s*\n\s*count/.test(hcl));
+}
+// Imported/drafted configs from while "none" was offered must block export.
+c.connectivity.firewall.type = 'none';
+ok('imported firewall "none" blocks export', A.validate().errors.some(e => /requires at least one firewall/.test(e.message)));
+c.connectivity.firewall.type = 'azfw';
+ok('azfw clears the firewall block', !A.validate().errors.some(e => /requires at least one firewall/.test(e.message)));
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

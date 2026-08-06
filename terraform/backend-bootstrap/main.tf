@@ -140,12 +140,15 @@ resource "azurerm_private_dns_zone" "blob" {
 
 # Link Private DNS Zone to Management VNet
 resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
-  count                 = var.enable_private_endpoint && var.management_vnet_id != "" ? 1 : 0
-  name                  = "link-${var.org_prefix}-tfstate-to-mgmt-vnet"
-  resource_group_name   = azurerm_resource_group.state.name
-  private_dns_zone_name = azurerm_private_dns_zone.blob[0].name
-  virtual_network_id    = var.management_vnet_id
-  registration_enabled  = false
+  count = var.enable_private_endpoint && var.management_vnet_id != "" ? 1 : 0
+  name  = "link-${var.org_prefix}-tfstate-to-mgmt-vnet"
+  # azurerm 5.0 replaced resource_group_name + private_dns_zone_name with a
+  # single private_dns_zone_id. The old pair is not merely deprecated here —
+  # both are rejected as unsupported arguments and private_dns_zone_id is
+  # required, so the 5.0 bump made this root fail `terraform validate`.
+  private_dns_zone_id  = azurerm_private_dns_zone.blob[0].id
+  virtual_network_id   = var.management_vnet_id
+  registration_enabled = false
 
   tags = var.default_tags
 }

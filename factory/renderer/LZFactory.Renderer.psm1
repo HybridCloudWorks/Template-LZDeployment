@@ -48,6 +48,7 @@ Export-ModuleMember -Function @(
     'Get-LzTerraformVariables'
     'Get-LzSchemaPaths'
     'Get-LzSchemaPattern'
+    'Get-LzSchemaEnum'
     'Get-LzConstraintCounterexample'
     'Test-LzRendererCidrOverlap'
     'New-LzGuardViolation'

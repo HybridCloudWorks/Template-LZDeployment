@@ -182,6 +182,17 @@ resource "azurerm_route_table" "app" {
     next_hop_type          = "VirtualAppliance"
     next_hop_in_ip_address = var.firewall_private_ip
   }
+
+  # A VirtualAppliance route with no next hop is rejected by Azure at apply,
+  # after the rest of the spoke has already been created. The hub always
+  # deploys a firewall, so an empty value here means the caller failed to wire
+  # the hub output through — fail at plan, where it is cheap to fix.
+  lifecycle {
+    precondition {
+      condition     = var.firewall_private_ip != null && var.firewall_private_ip != ""
+      error_message = "enable_forced_tunneling is true but firewall_private_ip is empty. Wire the hub-network module's firewall_private_ip output into this module, or set enable_forced_tunneling = false."
+    }
+  }
 }
 
 resource "azurerm_subnet_route_table_association" "app" {
@@ -204,6 +215,17 @@ resource "azurerm_route_table" "data" {
     address_prefix         = "0.0.0.0/0"
     next_hop_type          = "VirtualAppliance"
     next_hop_in_ip_address = var.firewall_private_ip
+  }
+
+  # A VirtualAppliance route with no next hop is rejected by Azure at apply,
+  # after the rest of the spoke has already been created. The hub always
+  # deploys a firewall, so an empty value here means the caller failed to wire
+  # the hub output through — fail at plan, where it is cheap to fix.
+  lifecycle {
+    precondition {
+      condition     = var.firewall_private_ip != null && var.firewall_private_ip != ""
+      error_message = "enable_forced_tunneling is true but firewall_private_ip is empty. Wire the hub-network module's firewall_private_ip output into this module, or set enable_forced_tunneling = false."
+    }
   }
 }
 

@@ -5,6 +5,40 @@ This repository ships its own agents, skills, slash commands, and MCP servers un
 inventory. This file governs **when** those capabilities get used and **how** usage
 is reported.
 
+## 0. What this repo IS — read before answering any "how do I run this" question
+
+**This repo is a disposable installer. It is not a landing zone, and a client's
+copy of it is not an asset anyone governs.**
+
+A client copies this repo to a local machine, runs the tooling once, and deletes
+it. The tooling's job is to **create a new, separate repository** and fill it with
+the Terraform, OIDC federation, loaders, and workflows for exactly one client's
+landing zone. That generated repo is the deliverable and the client's source
+control from then on. The factory copy's lifespan is hours.
+
+Consequences that are routinely gotten wrong:
+
+- **Never** open a "first run" answer with hardening the factory copy — branch
+  protection, required checks, required approvals, Actions enablement, or
+  getting Factory CI green. Those protect long-lived repos. This one is deleted.
+  Factory CI is *upstream's* development gate, not part of a client run.
+- The **generated** repo is the one that gets hardened, and the broker already
+  does it (`factory/bootstrap/LZFactory.Bootstrap.psm1`, ~line 585: branch
+  protection, required checks, environments, secrets, plus API read-back).
+- `scripts/Initialize-ClientFork.ps1` hardens the *disposable* copy — the wrong
+  target under this model. Do not lead with it.
+- The real first step of a client run is toolchain + authentication + confirming
+  the target tenant, then the `site/` wizard.
+- **The client runs it, on their own machine** (operator-ratified 2026-08-06),
+  so the tenant-confirmation step is load-bearing: it is the client's own `gh`
+  and `az` sessions that create the estate.
+- **Never assume the copy is a fork.** The operator's position is "forks (or
+  clones, whatever is better)" — the motion must work from a plain clone or a
+  downloaded archive with no GitHub-side representation at all.
+
+Full record, ratification, and the one remaining open question:
+[docs/decisions/0004-factory-copy-is-a-disposable-installer.md](docs/decisions/0004-factory-copy-is-a-disposable-installer.md).
+
 ## 1. Semantic capability matching
 
 Route on **intent**, not on keywords. A request never has to contain the words

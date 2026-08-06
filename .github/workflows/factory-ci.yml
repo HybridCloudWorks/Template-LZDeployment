@@ -7,6 +7,7 @@ on:
       - '.github/workflows/factory-ci.yml'
       - 'factory/**'
       - 'site/**'
+      - 'terraform/**'
       - '*.ps1'
       - '*.sh'
       - 'factory-version.json'
@@ -16,6 +17,7 @@ on:
       - '.github/workflows/factory-ci.yml'
       - 'factory/**'
       - 'site/**'
+      - 'terraform/**'
       - '*.ps1'
       - '*.sh'
       - 'factory-version.json'
@@ -38,7 +40,7 @@ jobs:
       LZ_FACTORY_CI_FAIL_FAST: ${{ vars.LZ_FACTORY_CI_FAIL_FAST || 'false' }}
       LZ_FACTORY_CI_SKIP_TERRAFORM: ${{ vars.LZ_FACTORY_CI_SKIP_TERRAFORM || 'false' }}
       LZ_FACTORY_CI_SKIP_STATIC: ${{ vars.LZ_FACTORY_CI_SKIP_STATIC || 'false' }}
-      LZ_FACTORY_CI_TERRAFORM_ROOTS: ${{ vars.LZ_FACTORY_CI_TERRAFORM_ROOTS || 'factory/templates/terraform' }}
+      LZ_FACTORY_CI_TERRAFORM_ROOTS: ${{ vars.LZ_FACTORY_CI_TERRAFORM_ROOTS || 'factory/templates/terraform,terraform' }}
       LZ_PSSCRIPTANALYZER_VERSION: ${{ vars.LZ_PSSCRIPTANALYZER_VERSION || '1.24.0' }}
     steps:
       - name: Checkout

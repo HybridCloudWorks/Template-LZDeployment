@@ -11,8 +11,14 @@ the documentation close-out; changes recorded in
   reverted;
 - the management-baseline alert rename ships with a **corpus-only
   `moved.tf`** (state-address insurance for regenerated repos), a deliberate
-  divergence from byte parity — whether to mirror it to live is an open
-  TODO.md item;
+  divergence from byte parity. **Resolved 2026-08-06: this divergence is
+  PERMANENT and must not be mirrored to live.** A `moved` block rewrites a
+  state address; live performed the rename directly and has never held state
+  under `azurerm_monitor_metric_alert.cpu_high`, so mirroring it would add a
+  block that can never match anything — cargo-culted parity that implies a
+  migration which does not apply to this tree. The module's own header already
+  states the reasoning; the two trees are byte-identical in tracked content
+  apart from this one file, and that is the intended end state;
 - `terraform/compose-package/` was deleted along with the two dead workflows
   that were its only consumers.
 

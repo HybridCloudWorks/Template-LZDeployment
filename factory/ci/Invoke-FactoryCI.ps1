@@ -26,7 +26,11 @@ $skipStaticRequested = $SkipStatic -or $env:LZ_FACTORY_CI_SKIP_STATIC -eq 'true'
 $terraformRoots = if ($env:LZ_FACTORY_CI_TERRAFORM_ROOTS) {
     @($env:LZ_FACTORY_CI_TERRAFORM_ROOTS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 } else {
-    @('factory/templates/terraform')
+    # Both trees. The live tree was left out originally, which is why the
+    # dependabot provider split-brain reached `main` without any terraform
+    # check objecting to it: the only workflow that runs credential-free
+    # simply did not look at terraform/.
+    @('factory/templates/terraform', 'terraform')
 }
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -143,6 +147,14 @@ if (-not $result.InSync) { exit 1 }
     Invoke-LzFactoryCheck 'Schema variable drift' pwsh @('-NoLogo', '-NoProfile', '-Command', $driftCommand) -Category 'contract' | Out-Null
     Invoke-LzFactoryCheck 'Site no network' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-SiteNoNetwork.ps1') -Category 'policy' | Out-Null
     Invoke-LzFactoryCheck 'Action pinning' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ActionPins.ps1') -Category 'policy' | Out-Null
+    # Static, credential-free and network-free: catches a provider constraint
+    # that diverges between a root stack and a module it calls, which fails at
+    # `terraform init` long before any plan. Runs in the 'policy' category so
+    # it still reports when LZ_FACTORY_CI_SKIP_TERRAFORM is set.
+    Invoke-LzFactoryCheck 'Provider constraints' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ProviderConstraints.ps1') -Category 'policy' | Out-Null
+    # Module READMEs are the interface documentation that ships into customer
+    # repositories, so a stale variable table is a customer-facing defect.
+    Invoke-LzFactoryCheck 'Module docs' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ModuleDocs.ps1') -Category 'contract' | Out-Null
 
     # Parse sweep: every PowerShell file in the repository must parse cleanly.
     # This runs unconditionally (unlike PSScriptAnalyzer) because it needs no

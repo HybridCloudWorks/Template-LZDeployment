@@ -23,9 +23,28 @@ updates:
         patterns:
           - "*"
 
-  # Terraform dependency updates
+  # Terraform dependency updates.
+  #
+  # ONE grouped entry, not one entry per directory. The previous config listed
+  # six directories separately, which meant six independent PRs against a tree
+  # that declares the same azurerm constraint in ~35 files. Merging a subset
+  # left a root stack on `~> 4.2` while a module it calls moved to `~> 5.0` —
+  # mutually exclusive constraints that fail at `terraform init`. That is
+  # exactly how PRs #63-#68 broke `main`.
+  #
+  # `directories` (plural) with globs keeps every root and shared module in a
+  # single PR, so the live tree moves together or not at all.
+  #
+  # factory/templates/terraform is deliberately NOT listed. Four of its root
+  # stacks are `.tf.tmpl` files that dependabot cannot parse, so including the
+  # corpus would guarantee a partial update. The corpus is updated by hand in
+  # the same change, and factory/ci/Test-ProviderConstraints.ps1 fails CI until
+  # it is — including on dependabot's own PRs.
   - package-ecosystem: "terraform"
-    directory: "/terraform/backend-bootstrap"
+    directories:
+      - "/terraform/backend-bootstrap"
+      - "/terraform/live/*"
+      - "/terraform/modules/*"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -40,79 +59,7 @@ updates:
     commit-message:
       prefix: "chore(terraform)"
       include: "scope"
-
-  - package-ecosystem: "terraform"
-    directory: "/terraform/modules/hub-network"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "02:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "saulpatinojr"
-    labels:
-      - "dependencies"
-      - "terraform"
-      - "infrastructure"
-    commit-message:
-      prefix: "chore(terraform)"
-
-  - package-ecosystem: "terraform"
-    directory: "/terraform/modules/spoke-network"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "02:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "saulpatinojr"
-    labels:
-      - "dependencies"
-      - "terraform"
-    commit-message:
-      prefix: "chore(terraform)"
-
-  - package-ecosystem: "terraform"
-    directory: "/terraform/modules/management-groups"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "02:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "saulpatinojr"
-    labels:
-      - "dependencies"
-      - "terraform"
-    commit-message:
-      prefix: "chore(terraform)"
-
-  - package-ecosystem: "terraform"
-    directory: "/terraform/modules/policy-baseline"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "02:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "saulpatinojr"
-    labels:
-      - "dependencies"
-      - "terraform"
-    commit-message:
-      prefix: "chore(terraform)"
-
-  - package-ecosystem: "terraform"
-    directory: "/terraform/modules/backup-baseline"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "02:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "saulpatinojr"
-    labels:
-      - "dependencies"
-      - "terraform"
-    commit-message:
-      prefix: "chore(terraform)"
+    groups:
+      terraform-providers:
+        patterns:
+          - "*"

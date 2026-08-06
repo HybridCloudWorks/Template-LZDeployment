@@ -78,13 +78,22 @@ function New-LzRenderContext {
     param(
         [Parameter(Mandatory)][object]$Config,
         [object]$Discovery = $null,
-        [object]$FactoryVersion = $null
+        [object]$FactoryVersion = $null,
+        [string]$SchemaPath = $null
     )
 
     $map = [ordered]@{}
 
     # Flatten the configuration itself.
     Add-LzFlattenedObject -Target $map -Object $Config -Prefix ''
+
+    # Then fill in schema defaults for optional keys the document omits, so a
+    # schema-valid configuration cannot fail the render with "Unknown
+    # configuration path". Config values always win: seeding never overwrites.
+    if ($SchemaPath -and (Test-Path $SchemaPath)) {
+        $schemaDocument = Get-Content $SchemaPath -Raw | ConvertFrom-Json -Depth 30
+        Add-LzSchemaDefault -Target $map -Node $schemaDocument -Prefix '' -Root $schemaDocument
+    }
 
     # ── Computed values ──────────────────────────────────────────────────────
     $short = $Config.organization.companyShortName
@@ -262,6 +271,62 @@ function Test-LzHasProperty {
     #>
     param([AllowNull()][object]$Value, [Parameter(Mandatory)][string]$Name)
     return ((Get-LzPropertyNames $Value) -contains $Name)
+}
+
+function Add-LzSchemaDefault {
+    <#
+    .SYNOPSIS
+        Seed schema-declared defaults for optional keys the configuration omits.
+    .DESCRIPTION
+        The flattener can only produce paths the configuration document
+        actually contains, so an OPTIONAL key with a schema `default` resolved
+        to "Unknown configuration path" and the render failed closed — on a
+        configuration the schema itself considers valid. The observed case was
+        a `backend.azurerm` block without `useAzureAdAuth` (schema default
+        true), which four templates reference.
+
+        Gating the reference sites individually would have fixed that one key
+        and left the class open for the next optional-with-default key anyone
+        adds. Seeding here fixes it once, for every such key.
+
+        A default is only seeded when its PARENT path already resolves. Without
+        that guard, an absent `backend.azurerm` block would still materialise
+        `backend.azurerm.useAzureAdAuth`, inventing a path for a block the
+        configuration never selected.
+    #>
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Target,
+        [Parameter(Mandatory)][object]$Node,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Prefix,
+        [Parameter(Mandatory)][object]$Root
+    )
+
+    if (-not ($Node.PSObject.Properties.Name -contains 'properties')) { return }
+
+    foreach ($property in $Node.properties.PSObject.Properties) {
+        $path = if ($Prefix) { "$Prefix.$($property.Name)" } else { $property.Name }
+        $child = $property.Value
+
+        # Resolve $ref so shared definitions carry their defaults too.
+        if ($child.PSObject.Properties.Name -contains '$ref') {
+            $refName = ($child.'$ref' -replace '^#/\$defs/', '')
+            if ($Root.PSObject.Properties.Name -contains '$defs' -and
+                $Root.'$defs'.PSObject.Properties.Name -contains $refName) {
+                $child = $Root.'$defs'.$refName
+            }
+        }
+
+        if (-not $Target.Contains($path)) {
+            $parentResolves = (-not $Prefix) -or $Target.Contains($Prefix)
+            if ($parentResolves -and ($child.PSObject.Properties.Name -contains 'default')) {
+                $Target[$path] = $child.default
+            }
+        }
+
+        if ($child.PSObject.Properties.Name -contains 'properties') {
+            Add-LzSchemaDefault -Target $Target -Node $child -Prefix $path -Root $Root
+        }
+    }
 }
 
 function Add-LzFlattenedObject {

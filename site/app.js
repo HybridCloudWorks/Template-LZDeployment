@@ -535,8 +535,13 @@ function validate() {
   if (c.firewall.type === 'azfw' && c.firewall.threatIntelligenceMode === 'Off') {
     warn('connectivity', 'Azure Firewall threat intelligence is Off. The secure default is Deny; this needs a recorded governance exception.');
   }
-  if (c.firewall.type === 'none') {
-    warn('connectivity', 'No firewall selected. Egress from spokes will be unfiltered unless you provide filtering another way.');
+  if (!['azfw', 'palo', 'fortinet'].includes(c.firewall.type)) {
+    // A landing zone always deploys at least one firewall (operator decision
+    // 2026-08-06). This also guards configs drafted while "none" was briefly
+    // offered here: it exported firewall_type = "none", which the connectivity
+    // layer rejects. To run without platform networking at all, set Topology
+    // to None — that drops the layer rather than leaving egress unfiltered.
+    err('connectivity', `Firewall type "${c.firewall.type}" cannot be deployed — a landing zone requires at least one firewall (azfw, palo or fortinet). To deploy without platform networking entirely, set Topology to None.`);
   }
   if (c.expressRoute.enabled && !c.expressRoute.peeringLocation.trim()) {
     err('connectivity', 'ExpressRoute is enabled but no peering location was given.');

@@ -173,6 +173,63 @@ ok 'narrower Terraform regex caught' ($null -ne $ce)
 ok 'counterexample is real'          ($ce -and [regex]::IsMatch($ce,'^[a-z0-9]{2,10}$') -and -not [regex]::IsMatch($ce,'^[a-z]{2,4}$')) $ce
 ok 'wider Terraform regex: no finding' ($null -eq (Get-LzConstraintCounterexample -SchemaPattern '^[a-z]{2,4}$' -TerraformPattern '^[a-z0-9]{2,10}$'))
 
+Write-Host "`n== 12b. Enum constraint compatibility ==" -ForegroundColor Cyan
+# The regex comparison above is blind to discrete value sets, which is how a
+# schema enum offering a value `contains([...])` rejects stayed invisible.
+$cnVars = Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/live/platform-connectivity/variables.tf"
+$fwDecl = @($cnVars | Where-Object { $_.Name -eq 'firewall_type' })[0]
+ok 'extracts contains() allowed values' ((($fwDecl.ValidationAllowedValues) -join ',') -eq 'azfw,palo,fortinet') (($fwDecl.ValidationAllowedValues) -join ',')
+$tierDecl = @($cnVars | Where-Object { $_.Name -eq 'azfw_tier' })[0]
+ok 'extracts a second contains() list' ((($tierDecl.ValidationAllowedValues) -join ',') -eq 'Standard,Premium') (($tierDecl.ValidationAllowedValues) -join ',')
+# A negated membership test over collection ELEMENTS is a deny list, not the
+# set of values the variable accepts. Reading it as allowed values would invert
+# its meaning, so it must not be picked up.
+$ipDecl = @($cnVars | Where-Object { $_.Name -eq 'management_ip_ranges' })[0]
+ok 'ignores negated element-wise contains' (@($ipDecl.ValidationAllowedValues).Count -eq 0) (@($ipDecl.ValidationAllowedValues) -join ',')
+
+$liveSchema = Get-Content "$repo/factory/schema/lz-config.schema.json" -Raw | ConvertFrom-Json -Depth 30
+ok 'reads a schema enum'          ((@(Get-LzSchemaEnum -Schema $liveSchema -Path 'connectivity.firewall.type') -join ',') -eq 'azfw,palo,fortinet')
+ok 'enum absent returns null'     ($null -eq (Get-LzSchemaEnum -Schema $liveSchema -Path 'naming.orgPrefix'))
+ok 'unknown path returns null'    ($null -eq (Get-LzSchemaEnum -Schema $liveSchema -Path 'connectivity.nope.nothere'))
+
+Write-Host "`n== 12c. Schema defaults seed the render context ==" -ForegroundColor Cyan
+# A schema-valid config that omits an OPTIONAL key with a declared default used
+# to fail the render closed with "Unknown configuration path" — the observed
+# case being backend.azurerm without useAzureAdAuth, which four templates
+# reference.
+$schemaFile = "$repo/factory/schema/lz-config.schema.json"
+# Built from the real fixture so the context's computed.* stage has everything
+# it needs; only the backend block varies.
+$azurermBase = { param($extra)
+    $clone = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 30
+    $az = [pscustomobject]@{ resourceGroupName = 'rg'; storageAccountName = 'sa'; containerName = 'tfstate' }
+    if ($extra) { $az | Add-Member -NotePropertyName useAzureAdAuth -NotePropertyValue $extra.Value }
+    $clone.backend = [pscustomobject]@{ type = 'azurerm'; azurerm = $az }
+    $clone
+}
+$ctxSeeded = New-LzRenderContext -Config (& $azurermBase $null) -SchemaPath $schemaFile
+ok 'omitted optional key takes the schema default' ((Get-LzTokenValue -Context $ctxSeeded -Path 'backend.azurerm.useAzureAdAuth') -eq $true)
+
+# Seeding must never overwrite an explicit choice — disabling Entra auth is a
+# deliberate, security-relevant setting (contract #3).
+$ctxExplicit = New-LzRenderContext -Config (& $azurermBase @{ Value = $false }) -SchemaPath $schemaFile
+ok 'explicit config value beats the default'       ((Get-LzTokenValue -Context $ctxExplicit -Path 'backend.azurerm.useAzureAdAuth') -eq $false)
+
+# An absent parent block must not materialise its children.
+# The sample fixture is an hcp-terraform config, so it carries no azurerm
+# block at all — exactly the absent-parent case.
+$ctxNoAzurerm = New-LzRenderContext -Config $cfg -SchemaPath $schemaFile
+$phantom = $true
+try { $null = Get-LzTokenValue -Context $ctxNoAzurerm -Path 'backend.azurerm.useAzureAdAuth' } catch { $phantom = $false }
+ok 'absent parent block seeds no phantom child'    (-not $phantom)
+
+# Omitting the schema keeps the old behaviour, so callers that pass no schema
+# are unaffected.
+$ctxNoSchema = New-LzRenderContext -Config (& $azurermBase $null)
+$unresolved = $false
+try { $null = Get-LzTokenValue -Context $ctxNoSchema -Path 'backend.azurerm.useAzureAdAuth' } catch { $unresolved = $true }
+ok 'no schema supplied: behaviour unchanged'       ($unresolved)
+
 Write-Host "`n== 13. HCL formatting helpers ==" -ForegroundColor Cyan
 ok 'string escaping'   ((ConvertTo-LzHclString 'a"b') -eq '"a\"b"')
 ok 'null string'       ((ConvertTo-LzHclString $null) -eq '""')
@@ -228,6 +285,88 @@ ok 'dev DR CIDR rendered'          ($nonprodTfvars -match '10\.12\.0\.0/16')
 # Refuses to overwrite without -Force.
 ok 'refuses non-empty output'      (throws { Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/sample-config.json" -OutputDirectory $out -Quiet })
 ok 'overwrites with -Force'        (-not (throws { Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/sample-config.json" -OutputDirectory $out -Force -Quiet }))
+
+Write-Host "`n== 15b. azurerm backend render path ==" -ForegroundColor Cyan
+# Both original fixtures use hcp-terraform, so the azurerm form of the
+# connectivity remote-state read and the state_* tfvars emission were never
+# exercised by CI. The fixture differs from sample-config.json ONLY in its
+# backend block, so a diff between the two shows exactly this surface.
+#
+# It also omits the optional useAzureAdAuth key on purpose: it carries a schema
+# default of true, and its absence used to fail the render closed with
+# "Unknown configuration path".
+$azOut = Join-Path $PSScriptRoot '.out/render-azurerm-out'
+if (Test-Path $azOut) { Remove-Item $azOut -Recurse -Force }
+$azRes = Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/azurerm-config.json" -OutputDirectory $azOut -Quiet
+ok 'azurerm config renders'        ($azRes.Emitted.Count -ge 11) $azRes.Emitted.Count
+ok 'no tokens left in output'      (@(Get-ChildItem $azOut -Recurse -File | Where-Object { (Get-Content $_.FullName -Raw) -match '\{\{FACTORY' }).Count -eq 0)
+
+$azBackend = Get-Content (Join-Path $azOut 'terraform/live/global/backend.tf') -Raw
+ok 'backend.tf selects azurerm'    ($azBackend -match 'backend\s+"azurerm"')
+ok 'backend.tf carries the account' ($azBackend -match 'stchgtfstateabcd')
+ok 'backend.tf forces AAD auth'    ($azBackend -match 'use_azuread_auth\s*=\s*true')
+
+# The connectivity layer reads platform-management state remotely. Under
+# azurerm that read must take the azurerm branch AND set use_azuread_auth,
+# because the state account disables shared keys (contract #3) and the read
+# would otherwise 403 at init.
+$azConn = Get-Content (Join-Path $azOut 'terraform/live/platform-connectivity/main.tf') -Raw
+ok 'remote state uses azurerm'     ($azConn -match 'backend\s*=\s*"azurerm"')
+ok 'remote state is not hcp'       ($azConn -notmatch 'backend\s*=\s*"remote"')
+ok 'remote state sets AAD auth'    ($azConn -match 'use_azuread_auth\s*=\s*true')
+
+# state_* tfvars are what feed those reads; emitting the backend block without
+# them renders a config that cannot init.
+$azTfvars = Get-ChildItem (Join-Path $azOut 'terraform/live') -Recurse -Filter '*.auto.tfvars' |
+    ForEach-Object { Get-Content $_.FullName -Raw }
+$azTfvarsText = ($azTfvars -join "`n")
+ok 'state_resource_group_name set' ($azTfvarsText -match 'state_resource_group_name\s*=\s*"rg-tfstate-scus-prod-01"')
+ok 'state_storage_account_name set' ($azTfvarsText -match 'state_storage_account_name\s*=\s*"stchgtfstateabcd"')
+ok 'state_container_name set'      ($azTfvarsText -match 'state_container_name\s*=\s*"tfstate"')
+
+# Converse: the hcp fixture must NOT emit the azurerm surface, or the branch
+# is not actually conditional.
+$hcpConn = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/main.tf') -Raw
+ok 'hcp render omits azurerm read' ($hcpConn -notmatch 'backend\s*=\s*"azurerm"')
+
+Write-Host "`n== 15c. workloads-nonprod parity control ==" -ForegroundColor Cyan
+# workloads-nonprod exists ONLY in the corpus — the live dogfood is prod-only —
+# so it has no live counterpart and Test-LzSchemaDrift's live-vs-corpus
+# comparison can never see it. The risk is that it silently falls behind
+# workloads-prod whenever prod changes. This is the corpus-internal substitute:
+# assert the two sibling layers agree on everything that is not
+# environment-specific.
+$prodVars = Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/live/workloads-prod/variables.tf"
+$nonprodVars = Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/live/workloads-nonprod/variables.tf"
+$prodNames = @($prodVars | ForEach-Object { $_.Name })
+$nonprodNames = @($nonprodVars | ForEach-Object { $_.Name })
+
+# Layer-agnostic variables: everything except the per-environment CIDR pairs
+# and each layer's own subscription id.
+$sharedExpected = @(
+    'connectivity_subscription_id', 'default_tags',
+    'primary_region', 'primary_region_code', 'dr_region', 'dr_region_code',
+    'state_container_name', 'state_resource_group_name', 'state_storage_account_name'
+)
+$missingFromProd = @($sharedExpected | Where-Object { $_ -notin $prodNames })
+$missingFromNonprod = @($sharedExpected | Where-Object { $_ -notin $nonprodNames })
+ok 'prod declares the shared set'    ($missingFromProd.Count -eq 0) ($missingFromProd -join ',')
+ok 'nonprod declares the shared set' ($missingFromNonprod.Count -eq 0) ($missingFromNonprod -join ',')
+
+# Each layer owns exactly one subscription variable, and they must differ.
+ok 'prod owns workload_prod_subscription_id'       ('workload_prod_subscription_id' -in $prodNames)
+ok 'nonprod owns workload_nonprod_subscription_id' ('workload_nonprod_subscription_id' -in $nonprodNames)
+ok 'neither layer claims the other subscription'   (('workload_nonprod_subscription_id' -notin $prodNames) -and ('workload_prod_subscription_id' -notin $nonprodNames))
+
+# Contract #5: spoke-network declares configuration_aliases, so every caller
+# must inject a providers map carrying azurerm.hub. Contract #3: the
+# remote-state read must use AAD auth.
+foreach ($layer in @('workloads-prod', 'workloads-nonprod')) {
+    $tmpl = Get-Content "$repo/factory/templates/terraform/live/$layer/main.tf.tmpl" -Raw
+    ok "$layer injects azurerm.hub (contract 5)" ($tmpl -match 'azurerm\.hub\s*=\s*azurerm')
+    ok "$layer reads state with AAD (contract 3)" ($tmpl -match 'use_azuread_auth')
+    ok "$layer calls spoke-network"               ($tmpl -match 'source\s*=\s*"\.\./\.\./modules/spoke-network"')
+}
 
 Write-Host "`n== 16. Guard violation stops the render ==" -ForegroundColor Cyan
 $badCfgPath = Join-Path $PSScriptRoot '.out/bad-config.json'
