@@ -94,7 +94,8 @@ Implementation is straightforward once the choice is made. Each entry states
 exactly what has to be decided.
 
 ### 10. Resource-provider registration strategy under azurerm 5.0
-**New, introduced by this work.** azurerm 5.0 changes
+**New, introduced by this work — and now load-bearing: staying on 5.0 is
+operator-ratified (2026-08-06), so this cannot be sidestepped by a rollback.** azurerm 5.0 changes
 `resource_provider_registrations` from `legacy` to `none`, so the provider no
 longer auto-registers ~60 resource providers. This suits the privilege split —
 the Reader plan identity should never attempt a registration — but it makes RP

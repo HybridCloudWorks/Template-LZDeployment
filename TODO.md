@@ -163,7 +163,8 @@ dogfood instance. The end-to-end customer motion is described in
   them. Every 5.0 breaking change was audited against what these modules
   declare; none required a resource-level change.
 - [ ] **Decide the resource-provider registration strategy under azurerm 5.0**
-  *(added 2026-08-06)* — 5.0 changes `resource_provider_registrations` from
+  *(added 2026-08-06; staying on 5.0 is operator-ratified the same day, so this
+  decision is now load-bearing rather than contingent on the migration)* — 5.0 changes `resource_provider_registrations` from
   `legacy` to `none`, so the provider no longer auto-registers ~60 resource
   providers. That suits the privilege split (the Reader plan identity should
   never attempt a registration), but it makes RP registration an explicit

@@ -243,7 +243,7 @@ See [TODO.md](TODO.md) and [PROD-TODO.md](PROD-TODO.md) for the full, current li
 | Component | Technology | Version |
 |---|---|---|
 | IaC | Terraform | 1.9+ |
-| Cloud Provider | Azure | azurerm provider ~> 4.0 |
+| Cloud Provider | Azure | azurerm provider ~> 5.0 (operator-ratified 2026-08-06; enforced by `factory/ci/Test-ProviderConstraints.ps1`) |
 | CI/CD | GitHub Actions | OIDC-authenticated |
 | State Backend | Azure Storage (native), migrating to Terraform Cloud | — |
 | Governance | Azure Policy | Built-in + custom policy definitions |
