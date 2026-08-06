@@ -435,9 +435,9 @@
           "additionalProperties": false,
           "properties": {
             "type": {
-              "enum": ["azfw", "palo", "fortinet"],
-              "description": "Maps to the firewall_type variable already present in terraform/live/platform-connectivity.",
-              "$comment": "none is deliberately excluded, for the same reason Basic is excluded from azfwTier: it is a value the module cannot deploy. The connectivity layer rejects it (contains([\"azfw\", \"palo\", \"fortinet\"], var.firewall_type)), and hub-network treats every non-azfw value as an NVA (count = var.firewall_type != \"azfw\" ? 1 : 0), so none would provision NVA subnets and route tables whose next hop is a trust IP the wizard only collects for palo/fortinet. Supporting a firewall-less hub means making those conditions three-way first; tracked in TODO.md. Selecting no platform networking at all is connectivity.model = none, which drops the layer entirely."
+              "enum": ["azfw", "palo", "fortinet", "none"],
+              "description": "Maps to the firewall_type variable already present in terraform/live/platform-connectivity. none deploys the hub with no egress appliance.",
+              "$comment": "none is supported as of 2026-08-06 (operator decision: a landing zone need not ship a firewall). hub-network gates NVA subnets on contains([\"palo\",\"fortinet\"]) rather than != \"azfw\", and omits the to-firewall route table entirely, so spokes fall back to Azure's default routing. Note the interaction with forced tunnelling: firewall_private_ip is null under none, and spoke-network fails at plan via a precondition if enable_forced_tunneling is left true. This is distinct from connectivity.model = none, which drops the whole networking layer rather than just the appliance."
             },
             "azfwTier": {
               "enum": ["Standard", "Premium"],

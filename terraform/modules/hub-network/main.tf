@@ -18,6 +18,12 @@
 #   firewall_type, so no deployed pair of subnets overlaps.
 
 locals {
+  # firewall_type is three-way, not azfw/not-azfw. Treating "not azfw" as
+  # "NVA" would provision NVA subnets, an NVA NSG, and a default route to a
+  # trust IP that is only ever collected for palo/fortinet.
+  has_nva      = contains(["palo", "fortinet"], var.firewall_type)
+  has_firewall = var.firewall_type != "none"
+
   # NVA trust interface IP: first usable host (offset 4 - Azure reserves the
   # first three usable addresses) in the trust subnet, unless the caller
   # supplies an explicit address.
@@ -54,7 +60,7 @@ resource "azurerm_subnet" "azfw" {
 
 # Firewall Management subnet (for Palo/Fortinet)
 resource "azurerm_subnet" "fw_mgmt" {
-  count                = var.firewall_type != "azfw" ? 1 : 0
+  count                = local.has_nva ? 1 : 0
   name                 = "snet-fw-mgmt-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
   virtual_network_name = azurerm_virtual_network.hub.name
@@ -63,7 +69,7 @@ resource "azurerm_subnet" "fw_mgmt" {
 
 # Firewall Trust (internal) subnet (for Palo/Fortinet)
 resource "azurerm_subnet" "fw_trust" {
-  count                = var.firewall_type != "azfw" ? 1 : 0
+  count                = local.has_nva ? 1 : 0
   name                 = "snet-fw-trust-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
   virtual_network_name = azurerm_virtual_network.hub.name
@@ -72,7 +78,7 @@ resource "azurerm_subnet" "fw_trust" {
 
 # Firewall Untrust (external) subnet (for Palo/Fortinet)
 resource "azurerm_subnet" "fw_untrust" {
-  count                = var.firewall_type != "azfw" ? 1 : 0
+  count                = local.has_nva ? 1 : 0
   name                 = "snet-fw-untrust-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
   virtual_network_name = azurerm_virtual_network.hub.name
@@ -132,7 +138,7 @@ resource "azurerm_subnet" "dns_outbound" {
 
 # NSG for the NVA management subnet
 resource "azurerm_network_security_group" "fw_mgmt" {
-  count               = var.firewall_type != "azfw" ? 1 : 0
+  count               = local.has_nva ? 1 : 0
   name                = "nsg-fw-mgmt-${var.region_code}-${var.environment}-01"
   resource_group_name = azurerm_resource_group.hub.name
   location            = azurerm_resource_group.hub.location
@@ -152,7 +158,7 @@ resource "azurerm_network_security_group" "fw_mgmt" {
 }
 
 resource "azurerm_subnet_network_security_group_association" "fw_mgmt" {
-  count                     = var.firewall_type != "azfw" ? 1 : 0
+  count                     = local.has_nva ? 1 : 0
   subnet_id                 = azurerm_subnet.fw_mgmt[0].id
   network_security_group_id = azurerm_network_security_group.fw_mgmt[0].id
 }
@@ -197,13 +203,21 @@ resource "azurerm_firewall" "hub" {
 # Placeholder outputs for NVA (Palo/Fortinet) - will be populated when NVA deployed
 # These are used by spoke UDRs
 locals {
-  firewall_private_ip = var.firewall_type == "azfw" ? (
-    length(azurerm_firewall.hub) > 0 ? azurerm_firewall.hub[0].ip_configuration[0].private_ip_address : local.nva_trust_ip
-  ) : local.nva_trust_ip
+  # null when there is no firewall: there is no appliance to send traffic to,
+  # and emitting the NVA trust IP here would hand spokes a next hop pointing
+  # at an address nothing listens on.
+  firewall_private_ip = local.has_firewall ? (
+    var.firewall_type == "azfw" ? (
+      length(azurerm_firewall.hub) > 0 ? azurerm_firewall.hub[0].ip_configuration[0].private_ip_address : local.nva_trust_ip
+    ) : local.nva_trust_ip
+  ) : null
 }
 
-# Route table for spoke default route to firewall
+# Route table for spoke default route to firewall. Absent when firewall_type is
+# "none" — spokes then use Azure's own default routing rather than being
+# forced through an appliance that was never deployed.
 resource "azurerm_route_table" "to_firewall" {
+  count               = local.has_firewall ? 1 : 0
   name                = "udr-to-firewall-${var.region_code}-${var.environment}-01"
   resource_group_name = azurerm_resource_group.hub.name
   location            = azurerm_resource_group.hub.location

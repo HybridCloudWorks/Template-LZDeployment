@@ -41,12 +41,12 @@ variable "dr_hub_address_space" {
 }
 
 variable "firewall_type" {
-  description = "Firewall type: azfw, palo, or fortinet"
+  description = "Firewall type: azfw, palo, fortinet, or none (no egress appliance in the hub)"
   type        = string
 
   validation {
-    condition     = contains(["azfw", "palo", "fortinet"], var.firewall_type)
-    error_message = "Firewall type must be one of: azfw, palo, fortinet."
+    condition     = contains(["azfw", "palo", "fortinet", "none"], var.firewall_type)
+    error_message = "Firewall type must be one of: azfw, palo, fortinet, none."
   }
 }
 

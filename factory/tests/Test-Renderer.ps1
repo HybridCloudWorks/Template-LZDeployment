@@ -178,7 +178,7 @@ Write-Host "`n== 12b. Enum constraint compatibility ==" -ForegroundColor Cyan
 # schema enum offering a value `contains([...])` rejects stayed invisible.
 $cnVars = Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/live/platform-connectivity/variables.tf"
 $fwDecl = @($cnVars | Where-Object { $_.Name -eq 'firewall_type' })[0]
-ok 'extracts contains() allowed values' ((($fwDecl.ValidationAllowedValues) -join ',') -eq 'azfw,palo,fortinet') (($fwDecl.ValidationAllowedValues) -join ',')
+ok 'extracts contains() allowed values' ((($fwDecl.ValidationAllowedValues) -join ',') -eq 'azfw,palo,fortinet,none') (($fwDecl.ValidationAllowedValues) -join ',')
 $tierDecl = @($cnVars | Where-Object { $_.Name -eq 'azfw_tier' })[0]
 ok 'extracts a second contains() list' ((($tierDecl.ValidationAllowedValues) -join ',') -eq 'Standard,Premium') (($tierDecl.ValidationAllowedValues) -join ',')
 # A negated membership test over collection ELEMENTS is a deny list, not the
@@ -188,7 +188,7 @@ $ipDecl = @($cnVars | Where-Object { $_.Name -eq 'management_ip_ranges' })[0]
 ok 'ignores negated element-wise contains' (@($ipDecl.ValidationAllowedValues).Count -eq 0) (@($ipDecl.ValidationAllowedValues) -join ',')
 
 $liveSchema = Get-Content "$repo/factory/schema/lz-config.schema.json" -Raw | ConvertFrom-Json -Depth 30
-ok 'reads a schema enum'          ((@(Get-LzSchemaEnum -Schema $liveSchema -Path 'connectivity.firewall.type') -join ',') -eq 'azfw,palo,fortinet')
+ok 'reads a schema enum'          ((@(Get-LzSchemaEnum -Schema $liveSchema -Path 'connectivity.firewall.type') -join ',') -eq 'azfw,palo,fortinet,none')
 ok 'enum absent returns null'     ($null -eq (Get-LzSchemaEnum -Schema $liveSchema -Path 'naming.orgPrefix'))
 ok 'unknown path returns null'    ($null -eq (Get-LzSchemaEnum -Schema $liveSchema -Path 'connectivity.nope.nothere'))
 
