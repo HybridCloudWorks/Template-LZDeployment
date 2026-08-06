@@ -84,9 +84,20 @@ Without it, platform-management's sandbox-cleanup Contributor assignment fails
 `AuthorizationFailed` at apply. Only blocks engagements that enable the sandbox.
 **Unblocked by**: the real subscription ID, per engagement.
 
-### 7. Execute the Stage 9/10/11 test suites in a provisioned toolchain
+### 7. Execute the Stage 9/10/11 test suites — and the post-render validation gate — in a provisioned toolchain
 Broker, scaffold and import suites have never run against authenticated
 external services.
+**Scope grew 2026-08-06** ([decision
+0005](docs/decisions/0005-post-render-validation-gate.md)): the post-render
+validation gate joins this class. Its static contract suite
+(`factory/tests/Test-Validate.ps1`) runs in Factory CI, but
+`validate-render.ps1` itself has never executed against a real render — gates
+V02–V04 need `terraform` on PATH, and V07/V08 record explicit skips unless
+`tflint` and a security scanner (checkov/tfsec/trivy) are installed or strict
+mode is set. When this item runs, sequence the full engagement wrapper
+(discovery → broker → render → validate → scaffold) and install the optional
+tools so V07/V08 exercise for real; the validate leg needs only the local
+toolchain, not authenticated sessions.
 **Unblocked by**: a provisioned toolchain with real `az` and `gh` sessions.
 
 ### 8. Set GitHub Pages source to "GitHub Actions"
