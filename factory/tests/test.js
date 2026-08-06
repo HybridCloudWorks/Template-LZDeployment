@@ -254,5 +254,38 @@ ok('imported Basic tier blocks export', A.validate().errors.some(e => /Standard 
 c.connectivity.firewall.azfwTier = 'Standard';
 ok('Standard clears the tier block', !A.validate().errors.some(e => /Standard and Premium only/.test(e.message)));
 
+console.log('\n== 14. Firewall type bounds ("none" cannot deploy) ==');
+// Same defect class as Basic, and it shipped: "none" was offered by the
+// wizard, only warned, and exported firewall_type = "none" into
+// connectivity.auto.tfvars. The connectivity layer rejects that value, and
+// hub-network treats every non-azfw value as an NVA, so it would have
+// provisioned NVA route tables whose next hop is a trust IP collected only
+// for palo/fortinet. No platform networking at all is connectivity.model =
+// none, which drops the layer.
+const fwDecl = schema.properties.connectivity.properties.firewall.properties.type;
+ok('schema firewall type enum is exactly [azfw, palo, fortinet]',
+  JSON.stringify(fwDecl.enum) === '["azfw","palo","fortinet"]', JSON.stringify(fwDecl.enum));
+const fwSelect = (html.match(/<select id="cn_fwType"[\s\S]*?<\/select>/) || [''])[0];
+const fwOptions = Array.from(fwSelect.matchAll(/option value="([^"]+)"/g)).map(m => m[1]);
+ok('wizard firewall options are exactly the schema enum',
+  JSON.stringify(fwOptions.sort()) === JSON.stringify([...fwDecl.enum].sort()), JSON.stringify(fwOptions));
+// Topology keeps its own "none" — that path drops the connectivity layer and
+// is a different, supported choice.
+const modelSelect = (html.match(/<select id="cn_model"[\s\S]*?<\/select>/) || [''])[0];
+ok('topology None survives (it drops the layer, it does not misconfigure it)',
+  /option value="none"/.test(modelSelect));
+for (const varsPath of ['../../terraform/live/platform-connectivity/variables.tf', '../templates/terraform/live/platform-connectivity/variables.tf']) {
+  const hcl = require('fs').readFileSync(require('path').resolve(__dirname, varsPath), 'utf8');
+  const fwBlock = (hcl.match(/variable "firewall_type" \{[\s\S]*?\n\}/) || [''])[0];
+  ok(`${varsPath.includes('templates') ? 'template' : 'live'} layer validates ["azfw", "palo", "fortinet"]`,
+    /contains\(\["azfw", "palo", "fortinet"\], var\.firewall_type\)/.test(fwBlock),
+    fwBlock.split('\n').find(l => /condition/.test(l)));
+}
+// Imported/drafted configs from before the narrowing must block export.
+c.connectivity.firewall.type = 'none';
+ok('imported firewall "none" blocks export', A.validate().errors.some(e => /azfw, palo and fortinet only/.test(e.message)));
+c.connectivity.firewall.type = 'azfw';
+ok('azfw clears the firewall block', !A.validate().errors.some(e => /azfw, palo and fortinet only/.test(e.message)));
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

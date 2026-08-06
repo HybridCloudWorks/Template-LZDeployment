@@ -535,8 +535,15 @@ function validate() {
   if (c.firewall.type === 'azfw' && c.firewall.threatIntelligenceMode === 'Off') {
     warn('connectivity', 'Azure Firewall threat intelligence is Off. The secure default is Deny; this needs a recorded governance exception.');
   }
-  if (c.firewall.type === 'none') {
-    warn('connectivity', 'No firewall selected. Egress from spokes will be unfiltered unless you provide filtering another way.');
+  if (!['azfw', 'palo', 'fortinet'].includes(c.firewall.type)) {
+    // Guards imported/drafted configs from before "none" was removed, exactly
+    // as the azfwTier guard above does for Basic. "none" used to be offered
+    // here and only warned, so it exported a config that rendered cleanly and
+    // then failed terraform plan: the connectivity layer rejects the value,
+    // and hub-network would have treated it as an NVA with no trust IP. Choose
+    // no platform networking with Topology = None instead, which drops the
+    // whole connectivity layer.
+    err('connectivity', `Firewall type "${c.firewall.type}" cannot be deployed — the connectivity layer supports azfw, palo and fortinet only. For a landing zone with no platform networking, set Topology to None instead.`);
   }
   if (c.expressRoute.enabled && !c.expressRoute.peeringLocation.trim()) {
     err('connectivity', 'ExpressRoute is enabled but no peering location was given.');

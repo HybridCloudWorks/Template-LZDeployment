@@ -173,6 +173,25 @@ ok 'narrower Terraform regex caught' ($null -ne $ce)
 ok 'counterexample is real'          ($ce -and [regex]::IsMatch($ce,'^[a-z0-9]{2,10}$') -and -not [regex]::IsMatch($ce,'^[a-z]{2,4}$')) $ce
 ok 'wider Terraform regex: no finding' ($null -eq (Get-LzConstraintCounterexample -SchemaPattern '^[a-z]{2,4}$' -TerraformPattern '^[a-z0-9]{2,10}$'))
 
+Write-Host "`n== 12b. Enum constraint compatibility ==" -ForegroundColor Cyan
+# The regex comparison above is blind to discrete value sets, which is how a
+# schema enum offering a value `contains([...])` rejects stayed invisible.
+$cnVars = Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/live/platform-connectivity/variables.tf"
+$fwDecl = @($cnVars | Where-Object { $_.Name -eq 'firewall_type' })[0]
+ok 'extracts contains() allowed values' ((($fwDecl.ValidationAllowedValues) -join ',') -eq 'azfw,palo,fortinet') (($fwDecl.ValidationAllowedValues) -join ',')
+$tierDecl = @($cnVars | Where-Object { $_.Name -eq 'azfw_tier' })[0]
+ok 'extracts a second contains() list' ((($tierDecl.ValidationAllowedValues) -join ',') -eq 'Standard,Premium') (($tierDecl.ValidationAllowedValues) -join ',')
+# A negated membership test over collection ELEMENTS is a deny list, not the
+# set of values the variable accepts. Reading it as allowed values would invert
+# its meaning, so it must not be picked up.
+$ipDecl = @($cnVars | Where-Object { $_.Name -eq 'management_ip_ranges' })[0]
+ok 'ignores negated element-wise contains' (@($ipDecl.ValidationAllowedValues).Count -eq 0) (@($ipDecl.ValidationAllowedValues) -join ',')
+
+$liveSchema = Get-Content "$repo/factory/schema/lz-config.schema.json" -Raw | ConvertFrom-Json -Depth 30
+ok 'reads a schema enum'          ((@(Get-LzSchemaEnum -Schema $liveSchema -Path 'connectivity.firewall.type') -join ',') -eq 'azfw,palo,fortinet')
+ok 'enum absent returns null'     ($null -eq (Get-LzSchemaEnum -Schema $liveSchema -Path 'naming.orgPrefix'))
+ok 'unknown path returns null'    ($null -eq (Get-LzSchemaEnum -Schema $liveSchema -Path 'connectivity.nope.nothere'))
+
 Write-Host "`n== 13. HCL formatting helpers ==" -ForegroundColor Cyan
 ok 'string escaping'   ((ConvertTo-LzHclString 'a"b') -eq '"a\"b"')
 ok 'null string'       ((ConvertTo-LzHclString $null) -eq '""')

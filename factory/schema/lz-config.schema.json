@@ -435,8 +435,9 @@
           "additionalProperties": false,
           "properties": {
             "type": {
-              "enum": ["azfw", "palo", "fortinet", "none"],
-              "description": "Maps to the firewall_type variable already present in terraform/live/platform-connectivity."
+              "enum": ["azfw", "palo", "fortinet"],
+              "description": "Maps to the firewall_type variable already present in terraform/live/platform-connectivity.",
+              "$comment": "none is deliberately excluded, for the same reason Basic is excluded from azfwTier: it is a value the module cannot deploy. The connectivity layer rejects it (contains([\"azfw\", \"palo\", \"fortinet\"], var.firewall_type)), and hub-network treats every non-azfw value as an NVA (count = var.firewall_type != \"azfw\" ? 1 : 0), so none would provision NVA subnets and route tables whose next hop is a trust IP the wizard only collects for palo/fortinet. Supporting a firewall-less hub means making those conditions three-way first; tracked in TODO.md. Selecting no platform networking at all is connectivity.model = none, which drops the layer entirely."
             },
             "azfwTier": {
               "enum": ["Standard", "Premium"],

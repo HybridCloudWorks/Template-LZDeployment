@@ -67,12 +67,34 @@ function Get-LzTerraformVariables {
         $validationRegex = ''
         if ($body -match 'can\(\s*regex\(\s*"(?<re>(?:[^"\\]|\\.)*)"') { $validationRegex = $Matches['re'] }
 
+        # Enum-style validations are the other half of constraint compatibility,
+        # and the regex reader above is blind to them. A schema enum offering a
+        # value that `contains([...])` rejects renders cleanly and then fails at
+        # plan time — the azfw `Basic` defect class.
+        #
+        # The list is bound to `var.<thisName>` deliberately. A variables file
+        # also contains negated membership tests over collection elements, e.g.
+        #   for r in var.management_ip_ranges : !contains(["*", "0.0.0.0/0"], r)
+        # where the bracketed list is a DENY list over `r`, not the set of
+        # allowed values for the variable. Requiring the `, var.<name>)` tail
+        # excludes those instead of inverting their meaning.
+        $validationAllowedValues = @()
+        $containsPattern = 'contains\(\s*\[(?<list>[^\]]*)\]\s*,\s*var\.{0}\s*\)' -f [regex]::Escape($name)
+        $containsMatch = [regex]::Match($body, $containsPattern)
+        if ($containsMatch.Success) {
+            $validationAllowedValues = @(
+                [regex]::Matches($containsMatch.Groups['list'].Value, '"(?<v>(?:[^"\\]|\\.)*)"') |
+                    ForEach-Object { $_.Groups['v'].Value }
+            )
+        }
+
         $results += [pscustomobject]@{
-            Name            = $name
-            HasDefault      = [bool]($body -match '(?m)^\s*default\s*=')
-            Type            = $type
-            ValidationRegex = $validationRegex
-            File            = $Path
+            Name                    = $name
+            HasDefault              = [bool]($body -match '(?m)^\s*default\s*=')
+            Type                    = $type
+            ValidationRegex         = $validationRegex
+            ValidationAllowedValues = $validationAllowedValues
+            File                    = $Path
         }
     }
     return $results
@@ -175,6 +197,25 @@ function Test-LzSchemaDrift {
                             }
                         }
                     }
+
+                    # Direction 2c: enum compatibility. Same failure as 2b, but
+                    # for discrete value sets, which the regex comparison cannot
+                    # see at all. Unlike regex equivalence this is decidable —
+                    # it is a set difference — so every offending value is
+                    # reported, not just one counterexample.
+                    if ($decl.Count -gt 0 -and $decl[0].ValidationAllowedValues.Count -gt 0) {
+                        $schemaEnum = Get-LzSchemaEnum -Schema $schema -Path $normalized
+                        if ($schemaEnum -and $schemaEnum.Count -gt 0) {
+                            $rejected = @($schemaEnum | Where-Object { $_ -cnotin $decl[0].ValidationAllowedValues })
+                            if ($rejected.Count -gt 0) {
+                                $findings += [pscustomobject]@{
+                                    Layer = $layerName; Kind = 'ConstraintMismatch'
+                                    Detail = "Schema enum for '$configPath' offers value(s) [$($rejected -join ', ')] that Terraform variable '$tfVar' rejects. Terraform accepts [$($decl[0].ValidationAllowedValues -join ', ')]. Selecting a rejected value in the wizard renders cleanly and then fails terraform plan."
+                                    Severity = 'Block'
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -245,6 +286,51 @@ function Get-LzSchemaPattern {
     }
 
     if ($node.PSObject.Properties.Name -contains 'pattern') { return $node.pattern }
+    return $null
+}
+
+function Get-LzSchemaEnum {
+    <#
+    .SYNOPSIS
+        Retrieve the `enum` constraint declared for a schema path, if any.
+    .DESCRIPTION
+        Deliberately mirrors Get-LzSchemaPattern, including the $ref resolution
+        into $defs, so enum-constrained and pattern-constrained paths are read
+        the same way. Kept as a sibling rather than folded into one accessor
+        because Get-LzSchemaPattern is exported and unit-tested against its
+        current signature.
+    .OUTPUTS
+        The array of permitted values, or $null when the path declares no enum.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Schema,
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    $node = $Schema
+    foreach ($segment in ($Path -split '\.')) {
+        if (-not ($node.PSObject.Properties.Name -contains 'properties')) { return $null }
+        if (-not ($node.properties.PSObject.Properties.Name -contains $segment)) { return $null }
+        $node = $node.properties.$segment
+    }
+
+    if ($node.PSObject.Properties.Name -contains '$ref') {
+        $refName = ($node.'$ref' -replace '^#/\$defs/', '')
+        if ($Schema.PSObject.Properties.Name -contains '$defs' -and
+            $Schema.'$defs'.PSObject.Properties.Name -contains $refName) {
+            $node = $Schema.'$defs'.$refName
+        }
+    }
+
+    # An array-typed config key constrains its ELEMENTS, so the enum that a
+    # per-element `contains()` validation must agree with lives under `items`.
+    if ($node.PSObject.Properties.Name -contains 'items' -and
+        -not ($node.PSObject.Properties.Name -contains 'enum')) {
+        $node = $node.items
+    }
+
+    if ($node.PSObject.Properties.Name -contains 'enum') { return @($node.enum) }
     return $null
 }
 
