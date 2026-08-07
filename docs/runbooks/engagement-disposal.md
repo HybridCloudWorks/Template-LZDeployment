@@ -2,8 +2,10 @@
 
 **Scope**: disposing of the local factory clone at the end of a customer
 engagement. Execution tool: [`scripts/Dispose-Engagement.ps1`](../../scripts/Dispose-Engagement.ps1)
-(plan-first; nothing is deleted without `-Apply`). Backlog context:
-[PROD-TODO.md Phase 6](../../PROD-TODO.md).
+(plan-first; nothing is deleted without `-Apply`). Model:
+[decision 0004](../decisions/0004-factory-copy-is-a-disposable-installer.md)
+(the copy is a disposable installer; disposal is the defined end of every
+engagement).
 
 **The one rule**: **archive, then delete.** Every archived copy is verified by
 SHA-256 against its source before anything is removed; disposal hard-fails if

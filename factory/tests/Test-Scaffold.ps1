@@ -8,7 +8,7 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $entry = Get-Content (Join-Path $repo 'scaffold-copy.ps1') -Raw
 $shell = Get-Content (Join-Path $repo 'scaffold-copy.sh') -Raw
 $module = Get-Content (Join-Path $repo 'factory/scaffold/LZFactory.Scaffold.psm1') -Raw
-$checklist = Get-Content (Join-Path $repo 'USER-CHECKLIST.md') -Raw
+$checklist = Get-Content (Join-Path $repo 'docs/USER-CHECKLIST.md') -Raw
 
 $pass = 0; $fail = 0
 function ok($name, $condition) {

@@ -5,15 +5,13 @@
 **Scope**: every open piece of work that is blocked on the operator (a
 decision, an access grant, tenant confirmation) or on an external system.
 
-**File contract (operator-defined 2026-08-06).** This is the single file of
-record for blocked work. [TODO.md](TODO.md) holds only work an engineer could
-start right now from a clone (currently: two items, opened 2026-08-06 by the
-first real validation-gate run); when an item there acquires an
-operator-shaped blocker it moves *here*, and when a blocker below is lifted the
-item either gets done or moves back to TODO.md. Each entry states the specific
-blocker, who can unblock it, and the next concrete action, so "still open"
-never has to be re-derived. Anything in neither file was completed — see
-[CHANGELOG.md](CHANGELOG.md).
+**File contract (operator-defined 2026-08-07, supersedes 2026-08-06).** This
+file holds **only blockers a human-in-the-loop can resolve** — the registry of
+who can unblock each item and the next concrete action, so "still open" never
+has to be re-derived. [TODO.md](TODO.md) holds **all** action items repo-wide,
+phased for handoff; its gated items reference the entries here instead of
+duplicating them (the §-references below map to TODO.md phases). Anything in
+neither file was completed — see [CHANGELOG.md](CHANGELOG.md).
 
 **Nothing here is blocked on effort or difficulty.** The blockers are of four
 kinds:
@@ -45,7 +43,7 @@ The reachable tenant belongs to a **regulated-industry client**. Creating
 identities there without engagement-owner confirmation is prohibited, so this
 is a hard stop rather than a task anyone can pick up.
 
-### 1. Create the live identity estate (PROD-TODO Phase 2, `[BLOCKER]`)
+### 1. Create the live identity estate (TODO.md item 4.1, `[BLOCKER]`)
 Every PR fails `azure/login` because `AZURE_PLAN_CLIENT_ID` does not exist.
 This is the single upstream cause of the two permanently-red checks on every
 pull request.
@@ -53,7 +51,7 @@ pull request.
 `Start-LandingZoneBootstrap.ps1` or the broker end to end. Needs Entra
 application-administrator and management-group-root rights.
 
-### 2. Enable required status checks on `main` (PROD-TODO Phase 1, `[BLOCKER]`)
+### 2. Enable required status checks on `main` (TODO.md item 4.2, `[BLOCKER]`)
 `main` has **no** `required_status_checks`. This is not theoretical: it is
 precisely why dependabot PRs #63–#68 merged while red and left `main` unable
 to `terraform init` on four of five live stacks.
@@ -65,22 +63,22 @@ self-merges, and this repo has one owner today.
 [decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)
 client copies are disposable and are never hardened.
 
-### 3. Verify the pipeline runs green end to end (PROD-TODO Phase 5, `[BLOCKER]`)
+### 3. Verify the pipeline runs green end to end (TODO.md item 4.5, `[BLOCKER]`)
 No recorded successful run of `010-terraform-init.yml`,
 `020-rbac-validation.yml`, `terraform-plan.yml` or `terraform-apply.yml`.
 **Unblocked by**: item 1. The PR leg stays red until the identity estate exists.
 
-### 4. Execute and accept the Stage 13 dogfood instance (PROD-TODO Phase 4, `[BLOCKER]`)
+### 4. Execute and accept the Stage 13 dogfood instance (TODO.md item 4.7, `[BLOCKER]`)
 `factory-version.json` still carries `dogfoodInstanceAppliesGreen = false`.
 **Unblocked by**: items 1–3, then the gate-by-gate runbook at
 [docs/runbooks/stage13-dogfood-execution.md](docs/runbooks/stage13-dogfood-execution.md).
 
-### 5. Run Stage 14 release attestation (PROD-TODO Phase 5, `[BLOCKER]`)
+### 5. Run Stage 14 release attestation (TODO.md item 5.1, `[BLOCKER]`)
 **Unblocked by**: item 4. Until this passes, every customer deployment is
 formally a verification exercise (factory v0.9.0,
 `oidcTokenExchangeVerifiedLive = false`).
 
-### 6. Supply `-SandboxSubscriptionId` at bootstrap (PROD-TODO Phase 2, `[BLOCKER]`)
+### 6. Supply `-SandboxSubscriptionId` at bootstrap (TODO.md item 4.4, `[BLOCKER]`)
 Without it, platform-management's sandbox-cleanup Contributor assignment fails
 `AuthorizationFailed` at apply. Only blocks engagements that enable the sandbox.
 **Unblocked by**: the real subscription ID, per engagement.
@@ -287,6 +285,5 @@ were done. Neither blocked any deliverable.
 ---
 
 **Owner**: Platform Engineering
-**See also**: [TODO.md](TODO.md) (repo-internal backlog),
-[PROD-TODO.md](PROD-TODO.md) (production motion),
+**See also**: [TODO.md](TODO.md) (all action items, phased for handoff),
 [CHANGELOG.md](CHANGELOG.md) (completed work)

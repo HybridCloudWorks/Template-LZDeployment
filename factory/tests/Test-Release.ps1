@@ -8,7 +8,7 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $workflow = Get-Content (Join-Path $repo '.github/workflows/release-readiness.yml') -Raw
 $runner = Get-Content (Join-Path $repo 'factory/release/Invoke-ReleaseReadiness.ps1') -Raw
 $schema = Get-Content (Join-Path $repo 'factory/release/release-attestation.schema.json') -Raw
-$checklist = Get-Content (Join-Path $repo 'USER-CHECKLIST.md') -Raw
+$checklist = Get-Content (Join-Path $repo 'docs/USER-CHECKLIST.md') -Raw
 $pass = 0; $fail = 0
 function ok($name, $condition) {
     if ($condition) { $script:pass++; Write-Host "  PASS $name" -ForegroundColor Green }

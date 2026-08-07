@@ -23,5 +23,6 @@ review — do not add call sites as a side effect of unrelated work.
 `terraform/live/*` layer reads this file today** — enabling
 `defender-baseline`, `keyvault-cmk`, or `sentinel-siem` still requires editing
 the corresponding Terraform variables/call sites by hand. The YAML is a
-planning and documentation artifact until the wiring tracked in TODO.md
-("Wire `Configure-DeploymentOptions.ps1` output into Terraform") lands.
+planning and documentation artifact until the wiring tracked in REVIEW.md
+§16 / TODO.md item 2.5 ("Wire `Configure-DeploymentOptions.ps1` output into
+Terraform") lands.

@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $workflow = Get-Content (Join-Path $repo '.github/workflows/dogfood-instance.yml') -Raw
 $runner = Get-Content (Join-Path $repo 'factory/dogfood/Invoke-Dogfood.ps1') -Raw
-$checklist = Get-Content (Join-Path $repo 'USER-CHECKLIST.md') -Raw
+$checklist = Get-Content (Join-Path $repo 'docs/USER-CHECKLIST.md') -Raw
 $version = Get-Content (Join-Path $repo 'factory-version.json') -Raw | ConvertFrom-Json
 $pass = 0; $fail = 0
 function ok($name, $condition) {

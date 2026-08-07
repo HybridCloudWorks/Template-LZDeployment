@@ -12,7 +12,7 @@ $module = Get-Content (Join-Path $repo 'factory/validate/LZFactory.Validate.psm1
 $scaffoldModule = Get-Content (Join-Path $repo 'factory/scaffold/LZFactory.Scaffold.psm1') -Raw
 $scaffoldEntry = Get-Content (Join-Path $repo 'scaffold-copy.ps1') -Raw
 $wrapper = Get-Content (Join-Path $repo 'scripts/Invoke-CustomerEngagement.ps1') -Raw
-$checklist = Get-Content (Join-Path $repo 'USER-CHECKLIST.md') -Raw
+$checklist = Get-Content (Join-Path $repo 'docs/USER-CHECKLIST.md') -Raw
 $gitignore = Get-Content (Join-Path $repo '.gitignore') -Raw
 
 $pass = 0; $fail = 0

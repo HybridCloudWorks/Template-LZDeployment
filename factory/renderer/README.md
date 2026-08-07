@@ -166,7 +166,7 @@ Test-LzSchemaDrift -SchemaPath ./factory/schema/lz-config.schema.json `
                    -TemplateRoot ./factory/templates
 ```
 
-This is the mechanism that fixes the defect recorded in `TODO.md`, where the
+This is the mechanism that fixes a defect recorded in the 2026-era backlog, where the
 static generator's 47 policy toggles were never reconciled against what
 `policy-baseline` actually implements.
 
