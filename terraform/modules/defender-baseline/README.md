@@ -104,7 +104,7 @@ subscriptions = {
 }
 
 security_contact_email = "security@yourcompany.com"
-security_contact_phone = "+1-555-123-4567"  # Optional
+security_contact_phone = "+15551234567"  # Required — Defender security contacts need a reachable phone number
 
 # Defender plans (all enabled by default)
 enable_defender_for_servers         = true
@@ -140,7 +140,6 @@ module "defender_baseline" {
   enable_defender_for_resource_manager = var.enable_defender_for_resource_manager
   enable_defender_for_dns         = var.enable_defender_for_dns
   log_analytics_workspace_id      = var.defender_log_analytics_workspace_id
-  default_tags                    = var.default_tags
 }
 ```
 
@@ -166,9 +165,10 @@ variable "defender_security_contact_email" {
 }
 
 variable "defender_security_contact_phone" {
-  description = "Phone for security contact"
+  # No default: the module requires a non-empty phone number for the
+  # Defender security contact.
+  description = "Phone for security contact (E.164 format)"
   type        = string
-  default     = ""
 }
 
 variable "enable_defender_for_servers" {
@@ -310,7 +310,7 @@ terraform destroy -target=module.defender_baseline
 |---|---|---|---|---|
 | `defender_tier` | Defender pricing tier applied to every enabled plan (Standard or Free) | `string` | `"Standard"` | no |
 | `security_contact_email` | Email address for security alerts and notifications | `string` | — | yes |
-| `security_contact_phone` | Phone number for security contact (optional) | `string` | `""` | no |
+| `security_contact_phone` | Phone number for security alerts and notifications (E.164 format) | `string` | — | yes |
 | `enable_defender_for_servers` | Enable Defender for Servers | `bool` | `true` | no |
 | `enable_defender_for_app_services` | Enable Defender for App Services | `bool` | `true` | no |
 | `enable_defender_for_storage` | Enable Defender for Storage | `bool` | `true` | no |
@@ -320,4 +320,3 @@ terraform destroy -target=module.defender_baseline
 | `enable_defender_for_resource_manager` | Enable Defender for Azure Resource Manager | `bool` | `true` | no |
 | `enable_defender_for_dns` | Enable Defender for DNS | `bool` | `true` | no |
 | `log_analytics_workspace_id` | Log Analytics workspace ID for Defender data export | `string` | — | yes |
-| `default_tags` | Default tags to apply to resources | `map(string)` | `{}` | no |

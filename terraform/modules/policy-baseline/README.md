@@ -46,11 +46,10 @@ From `terraform/live/global/main.tf`:
 module "policy_baseline" {
   source = "../../modules/policy-baseline"
 
-  root_mg_id         = module.management_groups.root_mg_id
-  platform_mg_id     = module.management_groups.platform_mg_id
-  landingzones_mg_id = module.management_groups.landingzones_mg_id
-  sandbox_mg_id      = module.management_groups.sandbox_mg_id
-  allowed_locations  = var.allowed_locations
+  root_mg_id        = module.management_groups.root_mg_id
+  platform_mg_id    = module.management_groups.platform_mg_id
+  sandbox_mg_id     = module.management_groups.sandbox_mg_id
+  allowed_locations = var.allowed_locations
 
   depends_on = [module.management_groups]
 }
@@ -62,7 +61,6 @@ module "policy_baseline" {
 |---|---|---|---|---|
 | `root_mg_id` | Root management group resource ID | `string` | — | yes |
 | `platform_mg_id` | Platform management group ID | `string` | — | yes |
-| `landingzones_mg_id` | Landing Zones management group ID | `string` | — | yes |
 | `sandbox_mg_id` | Sandbox management group ID | `string` | — | yes |
 | `location` | Azure region for the policy assignment managed identity | `string` | `"southcentralus"` | no |
 | `allowed_locations` | List of allowed Azure regions | `list(string)` | `["southcentralus", "northcentralus"]` | no |

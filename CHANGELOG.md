@@ -7,6 +7,81 @@ entries below are history and are not rewritten.
 
 ---
 
+## Dot-folder contract text updated to the 2026-08-07 file contract (2026-08-07)
+
+TODO item 2.7, closed in PR #77 after the operator approved dot-folder edits
+in-session. `.claude/agents/docs-knowledge-curator.md`'s "What lives where"
+section now states the four-file root contract (README, TODO, REVIEW,
+CHANGELOG), the `docs/USER-CHECKLIST.md` location with its code-referenced
+consumers, and the actual homes of decisions, runbooks, wiki-review evidence,
+and `.claude/CROSS-DOMAIN-CONTRACTS.md`. The
+`.github/workflows/020-rbac-validation.yml` trigger comment now cites the
+live blocker (REVIEW.md §1) instead of the retired "PROD-TODO Phase 2".
+Validation: `grep -rn "PROD-TODO" .github/ .claude/` returns no
+live-instruction references.
+
+## TODO Phase 1 shipped — skip-free strict corpus, Linux scaffold fix, drift-check proven (2026-08-07)
+
+PR #77 closes the three startable engineering items (TODO.md Phase 1, items
+1.1–1.3) opened by the 2026-08-06 strict validation run, plus the live-tree
+mirror of the corpus cleanup. Suites after the work: node 87 passed / 0
+failed, Test-Scaffold 16/0 (was 13), Test-Renderer 245/0 (was 239), Factory
+CI 16/16 (terraform and static legs remain pipeline-side).
+
+**1.1 — template corpus cleaned for strict V07/V08** (the [REVIEW.md](REVIEW.md)
+§7 findings). The 6 tflint `terraform_unused_declarations` findings and the
+LOW tfsec finding are resolved at source in `factory/templates/terraform/`:
+unused `var.default_tags` (defender-baseline), `var.log_retention_days`
+(hub-network, nsg-flow-logs), `var.landingzones_mg_id` (policy-baseline,
+including its caller argument), and the unused `azurerm_client_config` data
+source (management-baseline) removed, with README variable tables and usage
+examples updated in lock-step. `sandbox_subscription_id` is kept with the
+corpus's only `tflint-ignore`: it is consumed by `main.tf.tmpl` inside the
+sandbox renderer conditional while `variables.tf` is copied verbatim into
+every render, so sandbox-less renders legitimately leave it unreferenced.
+`security_contact_phone` (defender-baseline) is now **required with a
+non-empty validation**, mirroring `security_contact_email`, instead of
+shipping a non-compliant empty-string default. **Caveat**: the item's
+validation criterion — `validate-render.ps1 -Strict` passing V07/V08 with no
+skips — is **not yet confirmed**; tflint/tfsec were unavailable in the
+sandbox, so confirmation travels with the TODO.md item 3.1
+authenticated-toolchain execution.
+
+**1.2 — scaffold plan/apply works on Linux against real renders.**
+`Get-LzScaffoldInventory` walked with `Get-ChildItem -Force` but the per-file
+size read used `Get-Item` without `-Force`, so hidden leaf files — the
+renderer emits `.terraform-docs.yml` per module — crashed scaffold plan and
+apply on Linux (reproduced 2026-08-06). Fixed with `-Force`; an audit of the
+rest of the walk/copy path found no other latent instance. The coverage gap
+that let Factory CI miss it is closed: `Test-Scaffold.ps1` now actually
+executes the walk (a real-module run over a temp tree with a hidden
+`.terraform-docs.yml` leaf), proven by revert-run-restore — with the fix
+reverted the new cases fail on the genuine error.
+
+**1.3 — the enum/`contains` drift check is proven end to end.** The item was
+partially stale: the production checker gap was already closed by 435845e
+(#69, 2026-08-05) after the item was written (2026-08-02), and the 2026-08-06
+consolidation missed it — `Test-LzSchemaDrift` already reports a blocking
+`ConstraintMismatch`, wired into Factory CI. No production change was made;
+the deliverable became the missing proof. Test-Renderer now replays the azfw
+worked example through the **real** checker: a seed corpus whose schema enum
+carries `Basic` while `variables.tf` accepts only `Standard`/`Premium` must
+fail with a single blocking `ConstraintMismatch` naming the field, the
+variable, and the rejected value; a second pass widens the Terraform list to
+a superset and must stay `InSync`, pinning contract #7's
+wizard-⊂-schema-⊂-terraform directionality.
+
+**Live-tree mirror.** The same cleanups are mirrored into `terraform/` (the
+Stage 13 dogfood tree, hand-synced per the contract-#1 known gap), restoring
+byte parity on the nine touched module files. Two deliberate divergences from
+a blind mirror: `sandbox_subscription_id` is untouched in the live tree — the
+concrete platform-management stack genuinely uses it twice — and the
+`security_contact_phone` requirement is safe because **no live stack
+instantiates `defender-baseline`**; the first wiring must supply an E.164
+value by design.
+
+---
+
 ## Validation gate executed against a real render; RP-registration options paper proposed (2026-08-06)
 
 **`validate-render.ps1` ran against a real render for the first time** —

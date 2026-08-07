@@ -14,11 +14,6 @@ variable "platform_mg_id" {
   type        = string
 }
 
-variable "landingzones_mg_id" {
-  description = "Landing Zones management group ID"
-  type        = string
-}
-
 variable "sandbox_mg_id" {
   description = "Sandbox management group ID"
   type        = string

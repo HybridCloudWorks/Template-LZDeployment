@@ -105,8 +105,10 @@ Record of that execution:
   `terraform_unused_declarations` findings in `factory/templates/` sources)
   and V08 **fail** (1 LOW tfsec finding, Defender security contact missing a
   phone number; 56 checks passed). `overallStatus: fail` and the entry point
-  threw naming the gate IDs — exactly as designed. The findings are
-  template-corpus debt, now open in [TODO.md](TODO.md).
+  threw naming the gate IDs — exactly as designed. The findings were
+  template-corpus debt, fixed 2026-08-07 (PR #77 — record in
+  [CHANGELOG.md](CHANGELOG.md)); the skip-free strict pass they blocked is
+  not yet re-confirmed, see below.
 - **Operator-skip run**: with `LZ_VALIDATE_SKIP_LINT` /
   `LZ_VALIDATE_SKIP_SECURITY_SCAN=true`, `overallStatus: pass` with skip
   provenance recorded per contract.
@@ -116,9 +118,12 @@ Record of that execution:
   `manifestSha256` → `stale`. No apply performed.
 
 **What remains blocked here**: the broker/import/scaffold-apply suites against
-authenticated `az` and `gh` sessions, and running the validate phase inside
+authenticated `az` and `gh` sessions; running the validate phase inside
 the full engagement wrapper (discovery → broker → render → validate →
-scaffold) with real discovery artifacts.
+scaffold) with real discovery artifacts; and the strict re-run confirming
+V07/V08 pass with real tflint/tfsec and **no skips recorded** now that the
+corpus is clean (the tools were unavailable where the 2026-08-07 fixes were
+made). Tracked as [TODO.md](TODO.md) item 3.1.
 **Unblocked by**: a provisioned toolchain with real `az` and `gh` sessions.
 
 ### 8. Set GitHub Pages source to "GitHub Actions"

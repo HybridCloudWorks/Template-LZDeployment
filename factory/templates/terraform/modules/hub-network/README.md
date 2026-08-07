@@ -91,7 +91,6 @@ module "hub_primary" {
 | `firewall_enable_tls_inspection` | TLS inspection (Premium only) | `bool` | `false` | no |
 | `firewall_tls_certificate_key_vault_secret_id` | Key Vault secret for TLS inspection cert | `string` | `""` | no |
 | `log_analytics_workspace_id` | Workspace for diagnostics; empty disables diagnostics/alerts | `string` | `""` | no |
-| `log_retention_days` | Days to retain logs | `number` | `90` | no |
 | `enable_threat_intel_alerts` | Alert on threat-intelligence hits | `bool` | `true` | no |
 | `security_action_group_ids` | Action Groups for security alerts | `list(string)` | `[]` | no |
 

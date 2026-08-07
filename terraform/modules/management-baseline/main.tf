@@ -1,8 +1,6 @@
 # Management Baseline Module
 # Provides Log Analytics, Automation Account, and monitoring foundations
 
-data "azurerm_client_config" "current" {}
-
 # Management Resource Group
 resource "azurerm_resource_group" "management" {
   name     = "rg-${var.org_prefix}-management"

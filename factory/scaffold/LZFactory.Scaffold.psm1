@@ -107,7 +107,11 @@ function Get-LzScaffoldInventory {
         [pscustomobject]@{
             path = $_
             sha256 = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
-            bytes = (Get-Item $path).Length
+            # -Force: the walk above uses Get-ChildItem -Force, so hidden leaf
+            # files (the renderer emits .terraform-docs.yml per module) are in
+            # the inventory. Without -Force this Get-Item cannot see them on
+            # Linux and the whole inventory — plan AND apply — crashes.
+            bytes = (Get-Item $path -Force).Length
         }
     })
     $manifestHash = (Get-FileHash $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()

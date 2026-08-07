@@ -19,9 +19,17 @@ variable "security_contact_email" {
 }
 
 variable "security_contact_phone" {
-  description = "Phone number for security contact (optional)"
+  # Required, like security_contact_email: Azure security-contact guidance
+  # (and the tfsec check azure-security-center-set-required-contact-details)
+  # expects a reachable phone number, so an empty default would ship a
+  # non-compliant contact silently.
+  description = "Phone number for security alerts and notifications (E.164 format, e.g. +15555550100)"
   type        = string
-  default     = ""
+
+  validation {
+    condition     = length(trimspace(var.security_contact_phone)) > 0
+    error_message = "A security contact phone number is required."
+  }
 }
 
 variable "enable_defender_for_servers" {
@@ -75,10 +83,4 @@ variable "enable_defender_for_dns" {
 variable "log_analytics_workspace_id" {
   description = "Log Analytics workspace ID for Defender data export"
   type        = string
-}
-
-variable "default_tags" {
-  description = "Default tags to apply to resources"
-  type        = map(string)
-  default     = {}
 }

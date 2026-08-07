@@ -43,11 +43,20 @@ variable "alert_email_receivers" {
   default = []
 }
 
+# tflint-ignore: terraform_unused_declarations
 variable "sandbox_subscription_id" {
   # Defaulted rather than required. A sandbox subscription is optional in the
   # schema, and the sandbox-cleanup automation is omitted entirely when none is
   # configured. Leaving this required would stall apply on a landing zone that
   # deliberately has no sandbox.
+  #
+  # tflint-ignore rationale: the consumers (the sandbox-cleanup runbook wiring
+  # in main.tf) are emitted by the renderer only when a sandbox subscription is
+  # configured, while this file is copied verbatim into every render — it is
+  # the contract the schema-drift check validates against and must never be
+  # templated (template-manifest.json). In a sandbox-less render the variable
+  # is therefore declared but unreferenced, which tflint cannot know is
+  # intentional.
   description = "Sandbox subscription ID for cleanup automation. Empty when no sandbox subscription exists."
   type        = string
   default     = ""

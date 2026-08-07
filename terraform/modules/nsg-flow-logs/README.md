@@ -300,7 +300,6 @@ AzureNetworkAnalytics_CL
 | `log_analytics_workspace_resource_id` | Log Analytics workspace resource ID (full ARM format) | `string` | — | yes |
 | `log_analytics_workspace_region` | Log Analytics workspace region | `string` | — | yes |
 | `flow_log_retention_days` | Number of days to retain flow logs in storage | `number` | `90` | no |
-| `log_retention_days` | Number of days to retain diagnostic logs | `number` | `90` | no |
 | `enable_traffic_analytics` | Enable Traffic Analytics for flow logs | `bool` | `true` | no |
 | `traffic_analytics_interval` | Traffic Analytics processing interval in minutes (10 or 60) | `number` | `60` | no |
 | `enable_private_endpoint` | Enable private endpoint for flow logs storage account | `bool` | `true` | no |

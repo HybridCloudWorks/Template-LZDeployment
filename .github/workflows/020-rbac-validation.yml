@@ -10,7 +10,7 @@ on:
       - 'docs/decisions/0002-minimal-identity-estate.md'
   # Mirrors the push filter above. Without it this workflow ran on every PR,
   # including documentation-only ones, and failed at `azure/login` because
-  # AZURE_PLAN_CLIENT_ID does not exist yet (PROD-TODO Phase 2 blocker) — so
+  # AZURE_PLAN_CLIENT_ID does not exist yet (REVIEW.md §1 blocker) — so
   # every PR was red for a reason unrelated to its own diff. An RBAC audit
   # only has something to say when RBAC inputs change; the weekly schedule
   # below still catches drift made outside the repo.
