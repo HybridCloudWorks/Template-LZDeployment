@@ -15,14 +15,18 @@ terraform {
 
 provider "azurerm" {
   features {}
-  subscription_id = var.workload_prod_subscription_id
+  # Stated 5.0 default (decision 0006): the provider registers no resource
+  # providers — the broker registers the required namespaces at bootstrap.
+  subscription_id                 = var.workload_prod_subscription_id
+  resource_provider_registrations = "none"
 }
 
 # The hub side of each VNet peering must be created in the connectivity
 # subscription that owns the hub VNet, not in the workload subscription.
 provider "azurerm" {
-  alias           = "hub"
-  subscription_id = var.connectivity_subscription_id
+  alias                           = "hub"
+  subscription_id                 = var.connectivity_subscription_id
+  resource_provider_registrations = "none"
   features {}
 }
 

@@ -60,6 +60,235 @@ function Assert-LzBrokerPrerequisites {
     }
 }
 
+# ---------------------------------------------------------------------------
+# Resource-provider registration (decision 0006, operator-ratified 2026-08-07):
+# azurerm ~> 5.0 defaults resource_provider_registrations to 'none', so the
+# first apply into a fresh subscription 409s with
+# MissingSubscriptionRegistration. Registration is broker-time (Option A): it
+# runs here, once, under the client's interactive az session — the only
+# identity in the motion that already holds */register/action (decision 0004).
+# The CI identities never register anything (contract #2), and Option C
+# (resource_providers_to_register in provider blocks) is ratified AGAINST.
+#
+# THIS is the single authoritative namespace list. The PF-D preflight finding
+# and factory/ci/Test-ResourceProviderCoverage.ps1 both read it from here —
+# never maintain a second copy.
+# ---------------------------------------------------------------------------
+
+function Get-LzRequiredResourceProviders {
+    <#
+    .SYNOPSIS
+        The resource-provider namespaces every target subscription needs.
+    .DESCRIPTION
+        `required` is decision 0006's table verbatim (11 namespaces). It is a
+        superset of what the CURRENT template corpus emits: Microsoft.KeyVault
+        has no corpus resource type yet (keyvault-cmk is a render-blocked
+        scaffold) but is registered proactively per the decision, so
+        implementing the scaffold later needs no broker change.
+
+        `excluded` are namespaces the corpus maps to that are registered by
+        default in every subscription and must NOT be registered here:
+        Microsoft.Authorization (role assignments, policy definitions — the
+        decision's explicit exclusion) and Microsoft.Resources (resource
+        groups; on Azure's registered-by-default list alongside it).
+    #>
+    [CmdletBinding()]
+    param()
+    return [pscustomobject]@{
+        required = @(
+            'Microsoft.Automation'
+            'Microsoft.DataProtection'
+            'Microsoft.Insights'
+            'Microsoft.KeyVault'
+            'Microsoft.Management'
+            'Microsoft.Network'
+            'Microsoft.OperationalInsights'
+            'Microsoft.PolicyInsights'
+            'Microsoft.RecoveryServices'
+            'Microsoft.Security'
+            'Microsoft.Storage'
+        )
+        excluded = @(
+            'Microsoft.Authorization'
+            'Microsoft.Resources'
+        )
+    }
+}
+
+function Resolve-LzResourceTypeNamespace {
+    <#
+    .SYNOPSIS
+        Map an azurerm_* resource/data-source type to its ARM provider namespace.
+    .DESCRIPTION
+        Consumed by factory/ci/Test-ResourceProviderCoverage.ps1 to diff the
+        template corpus against Get-LzRequiredResourceProviders. The namespace
+        is NOT always Microsoft.<second-token>, hence the explicit tables:
+        monitor_* is Microsoft.Insights, log_analytics_* is
+        Microsoft.OperationalInsights, management_group* is
+        Microsoft.Management, and so on.
+
+        Returns $null for types that need no registration at all (provider
+        context data sources). Throws for an unknown type: an unmapped type
+        must fail Factory CI loudly, not silently skip registration and fail
+        at a client site mid-first-apply.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ResourceType)
+
+    $exactMap = @{
+        # Provider-context data source; reads token claims, no ARM namespace.
+        'azurerm_client_config'                      = $null
+        # The assignment object lives under Microsoft.Authorization (always
+        # registered), but evaluating assignment compliance requires
+        # Microsoft.PolicyInsights registered in the target subscriptions —
+        # decision 0006's "policy compliance surfaces" row.
+        'azurerm_management_group_policy_assignment' = 'Microsoft.PolicyInsights'
+        'azurerm_role_assignment'                    = 'Microsoft.Authorization'
+        'azurerm_policy_definition'                  = 'Microsoft.Authorization'
+        'azurerm_policy_set_definition'              = 'Microsoft.Authorization'
+        'azurerm_resource_group'                     = 'Microsoft.Resources'
+    }
+    if ($exactMap.ContainsKey($ResourceType)) { return $exactMap[$ResourceType] }
+
+    # Ordered: first match wins, so the more specific prefix precedes the
+    # generic one (log_analytics_ before any hypothetical log_ rule, and
+    # management_group after its exact-map policy-assignment override above).
+    $prefixRules = @(
+        @{ Prefix = 'azurerm_log_analytics_';       Namespace = 'Microsoft.OperationalInsights' }
+        @{ Prefix = 'azurerm_monitor_';             Namespace = 'Microsoft.Insights' }
+        @{ Prefix = 'azurerm_application_insights'; Namespace = 'Microsoft.Insights' }
+        @{ Prefix = 'azurerm_management_group';     Namespace = 'Microsoft.Management' }
+        @{ Prefix = 'azurerm_automation_';          Namespace = 'Microsoft.Automation' }
+        @{ Prefix = 'azurerm_recovery_services_';   Namespace = 'Microsoft.RecoveryServices' }
+        @{ Prefix = 'azurerm_data_protection_';     Namespace = 'Microsoft.DataProtection' }
+        @{ Prefix = 'azurerm_security_center_';     Namespace = 'Microsoft.Security' }
+        @{ Prefix = 'azurerm_key_vault';            Namespace = 'Microsoft.KeyVault' }
+        @{ Prefix = 'azurerm_storage_';             Namespace = 'Microsoft.Storage' }
+        @{ Prefix = 'azurerm_network_';             Namespace = 'Microsoft.Network' }
+        @{ Prefix = 'azurerm_virtual_network';      Namespace = 'Microsoft.Network' }
+        @{ Prefix = 'azurerm_subnet';               Namespace = 'Microsoft.Network' }
+        @{ Prefix = 'azurerm_route_table';          Namespace = 'Microsoft.Network' }
+        @{ Prefix = 'azurerm_public_ip';            Namespace = 'Microsoft.Network' }
+        @{ Prefix = 'azurerm_private_endpoint';     Namespace = 'Microsoft.Network' }
+        @{ Prefix = 'azurerm_private_dns_';         Namespace = 'Microsoft.Network' }
+        @{ Prefix = 'azurerm_firewall';             Namespace = 'Microsoft.Network' }
+    )
+    foreach ($rule in $prefixRules) {
+        if ($ResourceType.StartsWith($rule.Prefix)) { return $rule.Namespace }
+    }
+    throw ("No resource-provider namespace mapping for '$ResourceType'. " +
+        'Extend Resolve-LzResourceTypeNamespace in factory/bootstrap/LZFactory.Bootstrap.psm1; ' +
+        'if the type introduces a NEW namespace, also add it to Get-LzRequiredResourceProviders ' +
+        'and record the extension against decision 0006 (docs/decisions/0006-resource-provider-registration.md).')
+}
+
+function Get-LzTargetSubscriptions {
+    <#
+    .SYNOPSIS
+        Distinct Azure subscriptions the engagement provisions into.
+    .DESCRIPTION
+        Every configured environment's subscription (via the same
+        Get-LzEnvironmentSubscription resolution the apply path uses) plus the
+        azurerm state backend subscription — the broker creates the state
+        storage account there, which itself needs Microsoft.Storage.
+    #>
+    param([Parameter(Mandatory)][object]$Config)
+    $environments = @($Config.environments.platform) + @($Config.environments.application) |
+        Select-Object -Unique
+    $subscriptions = @()
+    foreach ($environment in $environments) {
+        $subscriptions += Get-LzEnvironmentSubscription -Config $Config -Environment $environment
+    }
+    if ($Config.backend.type -eq 'azurerm') {
+        $subscriptions += Get-LzConfigValue $Config.backend.azurerm 'subscriptionId' $Config.azure.subscriptions.management
+    }
+    return @($subscriptions | Where-Object { $_ } | Select-Object -Unique)
+}
+
+function Register-LzResourceProviders {
+    <#
+    .SYNOPSIS
+        Register the required namespaces in every target subscription.
+    .DESCRIPTION
+        Idempotent like every other broker mutation: already-Registered is a
+        recorded no-op; Registering is polled without re-issuing the register
+        call. Registration is asynchronous (typically seconds to a few
+        minutes), so the read-back poll is BOUNDED: anything not Registered at
+        the deadline is recorded as 'pending' rather than hanging the broker —
+        registration continues server-side and needs no re-run.
+    .OUTPUTS
+        An audit fragment: status ('reconciled' | 'pending-registration'),
+        requiredNamespaces, and per-subscription per-namespace outcomes
+        ('already-registered' | 'registered' | 'pending').
+    #>
+    param(
+        [Parameter(Mandatory)][object]$Config,
+        [int]$TimeoutSeconds = $(if ($env:LZ_RP_REGISTRATION_TIMEOUT_SECONDS) { [int]$env:LZ_RP_REGISTRATION_TIMEOUT_SECONDS } else { 300 }),
+        [int]$PollIntervalSeconds = 10
+    )
+    $required = @((Get-LzRequiredResourceProviders).required)
+    $subscriptionResults = @()
+    $anyPending = $false
+    foreach ($subscription in @(Get-LzTargetSubscriptions -Config $Config)) {
+        Write-LzBrokerEvent INFO "Reconciling resource providers in subscription $subscription"
+        $states = @{}
+        foreach ($entry in @(Invoke-LzNativeJson az @(
+            'provider', 'list', '--subscription', $subscription,
+            '--query', '[].{namespace:namespace,state:registrationState}', '--output', 'json'
+        ))) { $states[$entry.namespace] = $entry.state }
+
+        $records = [ordered]@{}
+        $waiting = @()
+        foreach ($namespace in $required) {
+            if ($states[$namespace] -eq 'Registered') {
+                $records[$namespace] = 'already-registered'
+                continue
+            }
+            if ($states[$namespace] -ne 'Registering') {
+                & az provider register --namespace $namespace --subscription $subscription --output none
+                if ($LASTEXITCODE -ne 0) { throw "az provider register failed for $namespace in subscription $subscription." }
+            }
+            $records[$namespace] = 'pending'
+            $waiting += $namespace
+        }
+
+        $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+        while ($waiting.Count -gt 0 -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds $PollIntervalSeconds
+            $current = @{}
+            foreach ($entry in @(Invoke-LzNativeJson az @(
+                'provider', 'list', '--subscription', $subscription,
+                '--query', '[].{namespace:namespace,state:registrationState}', '--output', 'json'
+            ))) { $current[$entry.namespace] = $entry.state }
+            $waiting = @($waiting | Where-Object {
+                if ($current[$_] -eq 'Registered') { $records[$_] = 'registered'; return $false }
+                return $true
+            })
+        }
+        foreach ($namespace in $waiting) {
+            $anyPending = $true
+            Write-LzBrokerEvent WARN "Registration of $namespace in $subscription still pending after ${TimeoutSeconds}s; recorded as pending (it completes server-side; no re-run needed)."
+        }
+        $registeredNow = @($records.Keys | Where-Object { $records[$_] -eq 'registered' })
+        Write-LzBrokerEvent OK ("Subscription {0}: {1} already registered, {2} registered now, {3} pending." -f `
+            $subscription,
+            @($records.Keys | Where-Object { $records[$_] -eq 'already-registered' }).Count,
+            $registeredNow.Count,
+            $waiting.Count)
+        $subscriptionResults += [pscustomobject]@{
+            subscriptionId = $subscription
+            namespaces = @(foreach ($namespace in $required) {
+                [pscustomobject]@{ namespace = $namespace; status = $records[$namespace] }
+            })
+        }
+    }
+    return [pscustomobject]@{
+        status = if ($anyPending) { 'pending-registration' } else { 'reconciled' }
+        requiredNamespaces = @($required)
+        subscriptions = @($subscriptionResults)
+    }
+}
+
 function Get-LzEnvironmentSubscription {
     <#
     .SYNOPSIS
@@ -742,7 +971,7 @@ function Get-LzLayerEnvironment {
 function Test-LzFirstApplyPreflight {
     <#
     .SYNOPSIS
-        Pre-flight the three known first-apply traps and return findings.
+        Pre-flight the known first-apply traps and return findings.
     .DESCRIPTION
         These traps otherwise surface as raw Terraform/Azure errors long after
         the broker has finished:
@@ -759,6 +988,14 @@ function Test-LzFirstApplyPreflight {
               azure.subscriptions.sandbox falls back to the management
               subscription, so no role assignment lands on the real sandbox
               subscription and the first sandbox apply fails AuthorizationFailed.
+        PF-D: unregistered resource providers (decision 0006). azurerm 5.0
+              registers nothing (resource_provider_registrations = "none"), so
+              a fresh subscription missing a required namespace 409s
+              MissingSubscriptionRegistration mid-first-apply. The check is a
+              READ (az provider list — Reader suffices) against the same
+              authoritative list the broker registers
+              (Get-LzRequiredResourceProviders); the broker apply step is the
+              remediation, this finding is the early warning.
 
         The commented placeholders themselves are deliberate (contract #4 in
         .claude/CROSS-DOMAIN-CONTRACTS.md): the wizard never collects operator
@@ -771,6 +1008,13 @@ function Test-LzFirstApplyPreflight {
         connectivity.auto.tfvars is looked for beside it.
     .PARAMETER Layers
         Active layers from the renderer's derivation (New-LzBootstrapPlan).
+    .PARAMETER ProviderStateReader
+        PF-D seam: a scriptblock taking a subscription ID and returning
+        @( @{ namespace; state } ) records, or $null when the state cannot be
+        read. Defaults to the real read-only az CLI query; tests inject fakes.
+        When the reader returns $null (az absent, unauthenticated, or the call
+        fails) PF-D degrades to an INFO "could not verify" finding — never an
+        error, because the preflight also runs in unauthenticated plan mode.
     .NOTES
         The connectivity tfvars is searched for, in order: the
         LZ_CONNECTIVITY_TFVARS environment variable, connectivity.auto.tfvars
@@ -780,7 +1024,8 @@ function Test-LzFirstApplyPreflight {
     param(
         [Parameter(Mandatory)][object]$Config,
         [Parameter(Mandatory)][string]$ConfigPath,
-        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Layers
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Layers,
+        [scriptblock]$ProviderStateReader
     )
     $findings = @()
 
@@ -851,6 +1096,48 @@ function Test-LzFirstApplyPreflight {
         }
     }
 
+    # PF-D: read-only resource-provider verification per target subscription,
+    # against the SAME list the broker registers (decision 0006 — one list,
+    # never two). Detection only: the broker apply step is the remediation.
+    if (-not $ProviderStateReader) {
+        $ProviderStateReader = {
+            param([string]$SubscriptionId)
+            if (-not (Get-Command az -ErrorAction SilentlyContinue)) { return $null }
+            Invoke-LzNativeJson az @(
+                'provider', 'list', '--subscription', $SubscriptionId,
+                '--query', '[].{namespace:namespace,state:registrationState}', '--output', 'json'
+            ) -AllowFailure
+        }
+    }
+    $requiredNamespaces = @((Get-LzRequiredResourceProviders).required)
+    $unverifiedSubscriptions = @()
+    foreach ($subscription in @(Get-LzTargetSubscriptions -Config $Config)) {
+        $providerStates = & $ProviderStateReader $subscription
+        if ($null -eq $providerStates) {
+            $unverifiedSubscriptions += $subscription
+            continue
+        }
+        $registered = @(@($providerStates) | Where-Object { $_.state -eq 'Registered' } | ForEach-Object namespace)
+        $missing = @($requiredNamespaces | Where-Object { $_ -notin $registered })
+        if ($missing.Count -gt 0) {
+            $findings += [pscustomobject]@{
+                id = 'PF-D1'
+                severity = 'WARN'
+                message = "Subscription $subscription has unregistered required resource-provider namespace(s): $($missing -join ', '). Under azurerm 5.0 (resource_provider_registrations = `"none`") the first apply there fails with MissingSubscriptionRegistration (decision 0006)."
+                remediation = 'The broker apply step registers these automatically (idempotent). To register manually instead: ' +
+                    (@($missing | ForEach-Object { "az provider register --namespace $_ --subscription $subscription" }) -join '; ') + '.'
+            }
+        }
+    }
+    if ($unverifiedSubscriptions.Count -gt 0) {
+        $findings += [pscustomobject]@{
+            id = 'PF-D0'
+            severity = 'INFO'
+            message = "Resource-provider registration could not be verified for subscription(s): $($unverifiedSubscriptions -join ', ') (az unavailable, unauthenticated, or the read failed)."
+            remediation = 'No action strictly required: the broker apply step registers the required namespaces regardless (decision 0006 Option A). Authenticate az and re-run to pre-verify.'
+        }
+    }
+
     return @($findings)
 }
 
@@ -896,6 +1183,16 @@ function Invoke-LzBootstrap {
         repository = $plan.repository
         discoveryFailCount = $failCount
         preflight = @($preflight)
+        # Decision 0006: broker-time registration. Plan mode records the
+        # intent (which namespaces, which subscriptions); apply replaces this
+        # with per-subscription per-namespace outcomes. Deliberately NOT in
+        # bootstrap-plan.json: the per-environment plan output is under a
+        # byte-parity contract with pre-change fixtures.
+        resourceProviders = [ordered]@{
+            status = 'planned'
+            requiredNamespaces = @((Get-LzRequiredResourceProviders).required)
+            subscriptions = @(Get-LzTargetSubscriptions -Config $config)
+        }
         identities = @()
         environments = @()
         backend = @{ type = $config.backend.type; status = 'planned' }
@@ -909,6 +1206,12 @@ function Invoke-LzBootstrap {
     try {
         if ($Apply) {
             Assert-LzBrokerPrerequisites -Config $config
+            # Resource providers FIRST (decision 0006): the state storage
+            # account below needs Microsoft.Storage, and everything Terraform
+            # later applies needs the rest. Runs under the client's interactive
+            # az session — the only identity in the motion holding
+            # */register/action; the CI identities never register (contract #2).
+            $audit.resourceProviders = Register-LzResourceProviders -Config $config
             if ($config.backend.type -eq 'azurerm') {
                 # State storage is reconciled BEFORE the identities: the identity
                 # records carry Storage Blob Data Reader/Contributor grants scoped
@@ -968,6 +1271,20 @@ function Invoke-LzBootstrap {
                 }
             }
             $audit.backend.status = if ($audit.pendingUserActivities.Count) { 'pending-user-activity' } else { 'reconciled' }
+            # Registration pendings are appended AFTER backend.status so a
+            # reconciled backend is not mislabeled by a slow (server-side,
+            # self-completing) provider registration. They still flow into the
+            # overall status below.
+            if ($audit.resourceProviders.status -eq 'pending-registration') {
+                $pendingRegistrations = @(foreach ($subscriptionEntry in @($audit.resourceProviders.subscriptions)) {
+                    foreach ($namespaceEntry in @($subscriptionEntry.namespaces)) {
+                        if ($namespaceEntry.status -eq 'pending') { "$($namespaceEntry.namespace) in $($subscriptionEntry.subscriptionId)" }
+                    }
+                })
+                $audit.pendingUserActivities += ("Resource-provider registration still pending (completes server-side, no re-run needed): " +
+                    ($pendingRegistrations -join '; ') +
+                    ". Before the first terraform apply, confirm 'az provider show --namespace <namespace> --subscription <id> --query registrationState' returns Registered.")
+            }
             $audit.status = if ($audit.pendingUserActivities.Count) { 'completed-with-user-activities' } else { 'completed' }
         }
     }
@@ -988,4 +1305,4 @@ function Invoke-LzBootstrap {
     return [pscustomobject]@{ PlanPath = $planPath; AuditPath = $auditPath; Applied = [bool]$Apply }
 }
 
-Export-ModuleMember -Function Invoke-LzBootstrap, New-LzBootstrapPlan, Test-LzFirstApplyPreflight
+Export-ModuleMember -Function Invoke-LzBootstrap, New-LzBootstrapPlan, Test-LzFirstApplyPreflight, Get-LzRequiredResourceProviders, Resolve-LzResourceTypeNamespace

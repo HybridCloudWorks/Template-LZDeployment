@@ -1,11 +1,11 @@
 # Decision 0006 — Resource-provider registration strategy under azurerm 5.0
 
-- **Status**: Proposed — **awaiting operator ratification**. The choice of
-  option is the operator's call; this record costs the options and marks a
-  recommendation, nothing more. Nothing below is implemented.
-- **Date**: 2026-08-06
-- **Deciders**: operator (ratifies); `azure-platform-architect` (authored the
-  options paper)
+- **Status**: Accepted — operator-ratified in-session 2026-08-07: **Option A
+  (broker-time registration) complemented by Option B's read-only PF-D
+  preflight finding; Option C ratified against, even as belt-and-braces.**
+- **Date**: 2026-08-06 (authored); 2026-08-07 (ratified)
+- **Deciders**: operator (ratified 2026-08-07); `azure-platform-architect`
+  (authored the options paper)
 - **Technical depth**: L300 (implementation)
 
 ## Context and Problem Statement

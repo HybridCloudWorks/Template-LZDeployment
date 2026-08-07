@@ -162,6 +162,23 @@ principal.
 [decision 0006 (Proposed)](docs/decisions/0006-resource-provider-registration.md)
 — the three candidates costed and a recommendation marked. **Awaiting operator
 ratification**; nothing is implemented until then.
+**Update 2026-08-07 — ratified and implemented; no longer awaiting a
+decision.** The operator ratified
+[decision 0006](docs/decisions/0006-resource-provider-registration.md)
+in-session: Option A (broker-time registration) complemented by Option B's
+read-only PF-D preflight finding; Option C ruled out even as belt-and-braces
+(any `resource_providers_to_register` value makes the Reader plan SP attempt
+a write). Implemented the same day (TODO item 2.1, closed): the broker
+registers the 11-namespace list in every target subscription with a bounded
+poll and per-subscription per-namespace audit entries; preflight PF-D
+verifies read-only with exact `az provider register` remediations; Factory
+CI's "Resource provider coverage" check fails when the template corpus needs
+a namespace the broker does not register; the rendered provider blocks state
+`resource_provider_registrations = "none"` explicitly (live tree mirrored).
+**What remains and who holds it**: the end-to-end proof — a broker apply
+against a real estate and a first apply into a fresh subscription with no
+`MissingSubscriptionRegistration` — is toolchain/estate-gated and carried in
+[TODO.md](TODO.md) item 3.1; the operator holds that gate (§7 toolchain).
 
 ### 11. Wire `nsg-flow-logs` into a live stack
 The module exists with secure defaults (90-day retention) but **zero

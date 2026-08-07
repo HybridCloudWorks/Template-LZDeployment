@@ -59,17 +59,21 @@ Implementation is straightforward once the named decision is ratified. The
 decision itself — who can make it and what has to be chosen — is recorded in
 the referenced REVIEW.md entry; do not start the work before the gate lifts.
 
-### 2.1 Implement the resource-provider registration strategy (decision 0006)
+### 2.1 Implement the resource-provider registration strategy (decision 0006) — CLOSED
 
-azurerm 5.0 registers no resource providers, so the first apply into a fresh
-subscription fails. The options paper
-([decision 0006](docs/decisions/0006-resource-provider-registration.md),
-Proposed) costs three candidates and recommends broker-time registration plus
-a read-only preflight finding.
-**Owner**: `alz-orchestrator` (spans broker, preflight, provider blocks).
-**Gate**: operator ratification of decision 0006 — [REVIEW.md](REVIEW.md) §10.
-**Validation**: `pwsh -File factory/tests/Test-Bootstrap.ps1` green; first
-apply into a fresh subscription no longer fails on unregistered namespaces.
+Closed 2026-08-07: the gate lifted when the operator ratified
+[decision 0006](docs/decisions/0006-resource-provider-registration.md)
+in-session (Option A broker-time registration + Option B's PF-D preflight
+finding; Option C ratified against). Shipped: broker registration step with
+bounded polling and per-subscription per-namespace audit entries, read-only
+PF-D findings, the Factory CI "Resource provider coverage" corpus↔broker
+drift check, and explicit `resource_provider_registrations = "none"` in the
+rendered (and mirrored live) provider blocks. **Criterion split**: the
+`Test-Bootstrap.ps1`-green criterion is verified (85/0); the "first apply
+into a fresh subscription no longer fails" criterion is estate-gated and
+folds into item 3.1's authenticated-toolchain run, the same way item 1.1's
+strict-validation residual did. Item number retained so cross-references
+stay stable; record in [CHANGELOG.md](CHANGELOG.md).
 
 ### 2.2 Disposition of `scripts/Initialize-ClientFork.ps1`
 
@@ -149,6 +153,12 @@ Carried forward from item 1.1 (closed 2026-08-07 with this criterion unmet):
 the strict run must confirm V07/V08 pass with real tflint/tfsec and **no
 skips recorded** — the corpus cleanup shipped, but the tools were unavailable
 in the sandbox, so the skip-free pass is unproven.
+Carried forward from item 2.1 (closed 2026-08-07): confirm against a real
+estate that a broker apply registers the decision-0006 namespaces (audit
+entries `registered`/`already-registered`, none left `pending`) and that the
+first apply into a fresh subscription no longer fails
+`MissingSubscriptionRegistration` — the code path is test-covered, but the
+end-to-end proof needs authenticated `az` and a fresh subscription.
 **Owner**: `alz-orchestrator` (multi-stage execution).
 **Gate**: provisioned, authenticated toolchain — [REVIEW.md](REVIEW.md) §7.
 **Validation**: suite runs recorded with plan/audit evidence files; wrapper

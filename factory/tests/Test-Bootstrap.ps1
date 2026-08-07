@@ -414,5 +414,207 @@ try { & $module $resolveSubscription $cfgFull 'hub' | Out-Null }
 catch { $unknownThrew = $true }
 ok 'unknown environment still fails closed' $unknownThrew
 
+# ---------------------------------------------------------------------------
+# decision 0006 (operator-ratified 2026-08-07): broker-time resource-provider
+# registration. One authoritative namespace list (Get-LzRequiredResourceProviders)
+# consumed by the broker apply step, the PF-D preflight finding, and the
+# Factory CI coverage check — these tests pin the list, the type->namespace
+# mapping edge cases, target-subscription derivation, PF-D behavior through an
+# injected read seam, and the CI check's pass/fail branches against the real
+# corpus and seeded corpora (item-1.3 seeded-failure precedent).
+# ---------------------------------------------------------------------------
+$providerSpec = Get-LzRequiredResourceProviders
+$expectedRequired = @(
+    'Microsoft.Automation', 'Microsoft.DataProtection', 'Microsoft.Insights',
+    'Microsoft.KeyVault', 'Microsoft.Management', 'Microsoft.Network',
+    'Microsoft.OperationalInsights', 'Microsoft.PolicyInsights',
+    'Microsoft.RecoveryServices', 'Microsoft.Security', 'Microsoft.Storage'
+)
+ok 'RP list is exactly decision 0006''s 11 namespaces' (
+    (@($providerSpec.required | Sort-Object) -join ',') -eq ($expectedRequired -join ',')
+) (@($providerSpec.required) -join ', ')
+ok 'RP exclusions are explicit: Authorization and Resources only' (
+    (@($providerSpec.excluded | Sort-Object) -join ',') -eq 'Microsoft.Authorization,Microsoft.Resources'
+)
+ok 'RP required and excluded sets are disjoint' (
+    @($providerSpec.required | Where-Object { $_ -in @($providerSpec.excluded) }).Count -eq 0
+)
+
+# Mapping edge cases — the namespaces that are NOT Microsoft.<second-token>,
+# plus one representative per straightforward family.
+$mappingCases = @(
+    @{ Type = 'azurerm_monitor_metric_alert';                       Namespace = 'Microsoft.Insights' }
+    @{ Type = 'azurerm_application_insights';                       Namespace = 'Microsoft.Insights' }
+    @{ Type = 'azurerm_log_analytics_workspace';                    Namespace = 'Microsoft.OperationalInsights' }
+    @{ Type = 'azurerm_management_group';                           Namespace = 'Microsoft.Management' }
+    @{ Type = 'azurerm_management_group_subscription_association';  Namespace = 'Microsoft.Management' }
+    @{ Type = 'azurerm_management_group_policy_assignment';         Namespace = 'Microsoft.PolicyInsights' }
+    @{ Type = 'azurerm_role_assignment';                            Namespace = 'Microsoft.Authorization' }
+    @{ Type = 'azurerm_policy_definition';                          Namespace = 'Microsoft.Authorization' }
+    @{ Type = 'azurerm_policy_set_definition';                      Namespace = 'Microsoft.Authorization' }
+    @{ Type = 'azurerm_resource_group';                             Namespace = 'Microsoft.Resources' }
+    @{ Type = 'azurerm_network_watcher_flow_log';                   Namespace = 'Microsoft.Network' }
+    @{ Type = 'azurerm_firewall_policy';                            Namespace = 'Microsoft.Network' }
+    @{ Type = 'azurerm_virtual_network_peering';                    Namespace = 'Microsoft.Network' }
+    @{ Type = 'azurerm_private_dns_zone';                           Namespace = 'Microsoft.Network' }
+    @{ Type = 'azurerm_storage_account';                            Namespace = 'Microsoft.Storage' }
+    @{ Type = 'azurerm_key_vault';                                  Namespace = 'Microsoft.KeyVault' }
+    @{ Type = 'azurerm_data_protection_backup_vault';               Namespace = 'Microsoft.DataProtection' }
+    @{ Type = 'azurerm_recovery_services_vault';                    Namespace = 'Microsoft.RecoveryServices' }
+    @{ Type = 'azurerm_security_center_subscription_pricing';       Namespace = 'Microsoft.Security' }
+    @{ Type = 'azurerm_automation_runbook';                         Namespace = 'Microsoft.Automation' }
+)
+$mappingMisses = @(foreach ($case in $mappingCases) {
+    $resolved = Resolve-LzResourceTypeNamespace -ResourceType $case.Type
+    if ($resolved -ne $case.Namespace) { "$($case.Type) -> $resolved (expected $($case.Namespace))" }
+})
+ok 'type->namespace mapping resolves every edge case' ($mappingMisses.Count -eq 0) ($mappingMisses -join '; ')
+ok 'client_config is a provider-context data source with no namespace' (
+    $null -eq (Resolve-LzResourceTypeNamespace -ResourceType 'azurerm_client_config')
+)
+$unknownMessage = $null
+try { Resolve-LzResourceTypeNamespace -ResourceType 'azurerm_kusto_cluster' | Out-Null }
+catch { $unknownMessage = $_.Exception.Message }
+ok 'unknown type fails closed with the extension pointer' (
+    $unknownMessage -match 'azurerm_kusto_cluster' -and
+    $unknownMessage -match 'Resolve-LzResourceTypeNamespace' -and
+    $unknownMessage -match 'Get-LzRequiredResourceProviders' -and
+    $unknownMessage -match 'decision 0006'
+) $unknownMessage
+
+# Target subscriptions: distinct across configured environments, plus the
+# azurerm state backend subscription, deduplicated.
+$resolveTargets = { param($Config) Get-LzTargetSubscriptions -Config $Config }
+$targetsHcp = @(& $module $resolveTargets (Get-SampleConfig))
+ok 'targets: fixture yields the 3 distinct subscriptions (bootstrap dedups into management)' (
+    $targetsHcp.Count -eq 3 -and
+    $targetsHcp -contains 'aaaaaaaa-0000-0000-0000-000000000001' -and
+    $targetsHcp -contains 'aaaaaaaa-0000-0000-0000-000000000002' -and
+    $targetsHcp -contains 'aaaaaaaa-0000-0000-0000-000000000003'
+) ($targetsHcp -join ', ')
+$targetsAzurerm = @(& $module $resolveTargets (ConvertTo-AzurermBackendConfig (Get-SampleConfig)))
+ok 'targets: azurerm state backend subscription dedups into the same 3' ($targetsAzurerm.Count -eq 3)
+$cfgTargetsSandbox = Add-SandboxSubscription (Get-SampleConfig)
+$cfgTargetsSandbox.environments.application = @('prod', 'sandbox')
+$targetsSandbox = @(& $module $resolveTargets $cfgTargetsSandbox)
+ok 'targets: a sandbox environment adds its dedicated subscription' (
+    $targetsSandbox.Count -eq 4 -and $targetsSandbox -contains $sandboxSub
+) ($targetsSandbox -join ', ')
+
+# PF-D through the injected read seam. Layers=@() isolates PF-D from PF-A..C.
+$sampleConfigPath = "$PSScriptRoot/fixtures/sample-config.json"
+$allRegisteredReader = {
+    param([string]$SubscriptionId)
+    @($expectedRequired | ForEach-Object { [pscustomobject]@{ namespace = $_; state = 'Registered' } })
+}
+$pfdClean = @(Test-LzFirstApplyPreflight -Config (Get-SampleConfig) -ConfigPath $sampleConfigPath -Layers @() -ProviderStateReader $allRegisteredReader)
+ok 'PF-D: fully registered subscriptions yield no findings' (
+    @($pfdClean | Where-Object { $_.id -like 'PF-D*' }).Count -eq 0
+) ($pfdClean | ConvertTo-Json -Compress)
+
+$partialReader = {
+    param([string]$SubscriptionId)
+    @($expectedRequired | ForEach-Object {
+        $state = if ($_ -eq 'Microsoft.Network' -and $SubscriptionId -eq 'aaaaaaaa-0000-0000-0000-000000000002') { 'NotRegistered' } else { 'Registered' }
+        [pscustomobject]@{ namespace = $_; state = $state }
+    })
+}
+$pfdPartial = @(Test-LzFirstApplyPreflight -Config (Get-SampleConfig) -ConfigPath $sampleConfigPath -Layers @() -ProviderStateReader $partialReader)
+$pfdWarnings = @($pfdPartial | Where-Object id -eq 'PF-D1')
+ok 'PF-D: one WARN per subscription with unregistered namespaces' (
+    $pfdWarnings.Count -eq 1 -and $pfdWarnings[0].severity -eq 'WARN'
+) ($pfdPartial | ConvertTo-Json -Compress)
+ok 'PF-D: finding names the subscription, the namespace, and the failure mode' (
+    $pfdWarnings.Count -eq 1 -and
+    $pfdWarnings[0].message -match 'aaaaaaaa-0000-0000-0000-000000000002' -and
+    $pfdWarnings[0].message -match 'Microsoft\.Network' -and
+    $pfdWarnings[0].message -match 'MissingSubscriptionRegistration'
+)
+ok 'PF-D: remediation carries the exact az provider register command' (
+    $pfdWarnings.Count -eq 1 -and
+    $pfdWarnings[0].remediation -match [regex]::Escape('az provider register --namespace Microsoft.Network --subscription aaaaaaaa-0000-0000-0000-000000000002')
+)
+
+$unreadableReader = { param([string]$SubscriptionId) $null }
+$pfdUnverified = @(Test-LzFirstApplyPreflight -Config (Get-SampleConfig) -ConfigPath $sampleConfigPath -Layers @() -ProviderStateReader $unreadableReader)
+$pfdSkips = @($pfdUnverified | Where-Object id -eq 'PF-D0')
+ok 'PF-D: unreadable provider state degrades to a single INFO finding, never an error' (
+    $pfdSkips.Count -eq 1 -and $pfdSkips[0].severity -eq 'INFO' -and
+    @($pfdUnverified | Where-Object id -eq 'PF-D1').Count -eq 0
+)
+ok 'PF-D: the skip finding lists every unverified subscription and points at the broker step' (
+    $pfdSkips.Count -eq 1 -and
+    @($targetsHcp | Where-Object { $pfdSkips[0].message -notmatch [regex]::Escape($_) }).Count -eq 0 -and
+    $pfdSkips[0].remediation -match 'broker'
+)
+
+# Plan-mode broker run end to end (no az, no gh): the audit file must record
+# the registration INTENT — status planned, the 11 namespaces, the target
+# subscriptions — and the preflight array must carry the PF-D0 degradation
+# (az is unavailable in this environment; that absence is the test).
+$planModeOut = Join-Path $PSScriptRoot '.out/rp-plan-mode'
+if (Test-Path $planModeOut) { Remove-Item $planModeOut -Recurse -Force }
+New-Item -ItemType Directory -Path $planModeOut -Force | Out-Null
+@'
+{ "readOnly": true, "readiness": { "failCount": 0 } }
+'@ | Set-Content (Join-Path $planModeOut 'discovery.json') -Encoding utf8
+$bootstrapResult = Invoke-LzBootstrap -ConfigPath $sampleConfigPath -DiscoveryPath (Join-Path $planModeOut 'discovery.json') -OutputDirectory $planModeOut
+$auditRecord = Get-Content $bootstrapResult.AuditPath -Raw | ConvertFrom-Json -Depth 40
+ok 'plan-mode audit records registration intent as planned' (
+    $auditRecord.resourceProviders.status -eq 'planned'
+)
+ok 'plan-mode audit intent carries the full namespace list and target subscriptions' (
+    (@($auditRecord.resourceProviders.requiredNamespaces | Sort-Object) -join ',') -eq ($expectedRequired -join ',') -and
+    @($auditRecord.resourceProviders.subscriptions).Count -eq 3
+)
+ok 'plan-mode audit preflight degrades PF-D to the unverified INFO finding' (
+    @($auditRecord.preflight | Where-Object { $_.id -eq 'PF-D0' }).Count -eq 1
+)
+ok 'plan mode stays non-mutating (mode recorded as plan)' ($auditRecord.mode -eq 'plan')
+
+# Factory CI coverage check: green against the REAL corpus, and the seeded
+# failure modes fire (item-1.3 precedent: prove the check fails, do not trust
+# a check that has only ever passed).
+$coverageScript = "$repo/factory/ci/Test-ResourceProviderCoverage.ps1"
+$coverageOutput = @(& $coverageScript *>&1 | ForEach-Object { "$_" })
+$coverageExit = $LASTEXITCODE
+ok 'coverage check passes on the real template corpus' ($coverageExit -eq 0) ($coverageOutput -join ' | ')
+ok 'coverage check names KeyVault as a deliberate broker look-ahead, not drift' (
+    ($coverageOutput -join ' ') -match 'ahead of the corpus' -and ($coverageOutput -join ' ') -match 'Microsoft\.KeyVault'
+)
+
+$coverageSeed = Join-Path $PSScriptRoot '.out/rp-coverage-seed'
+if (Test-Path $coverageSeed) { Remove-Item $coverageSeed -Recurse -Force }
+New-Item -ItemType Directory -Path $coverageSeed -Force | Out-Null
+@'
+resource "azurerm_storage_account" "seeded" {
+  name = "seed"
+}
+'@ | Set-Content (Join-Path $coverageSeed 'seed.tf') -Encoding utf8
+$seededOutput = @(& $coverageScript -TemplateRoot $coverageSeed -RequiredNamespaces @('Microsoft.Network') *>&1 | ForEach-Object { "$_" })
+$seededExit = $LASTEXITCODE
+ok 'seeded mismatch fails the coverage check' ($seededExit -eq 1) ($seededOutput -join ' | ')
+ok 'mismatch finding names the type, the namespace, and the extension point' (
+    ($seededOutput -join ' ') -match 'azurerm_storage_account' -and
+    ($seededOutput -join ' ') -match 'Microsoft\.Storage' -and
+    ($seededOutput -join ' ') -match 'Get-LzRequiredResourceProviders'
+)
+
+$unmappedSeed = Join-Path $PSScriptRoot '.out/rp-unmapped-seed'
+if (Test-Path $unmappedSeed) { Remove-Item $unmappedSeed -Recurse -Force }
+New-Item -ItemType Directory -Path $unmappedSeed -Force | Out-Null
+@'
+resource "azurerm_kusto_cluster" "seeded" {
+  name = "seed"
+}
+'@ | Set-Content (Join-Path $unmappedSeed 'seed.tf.tmpl') -Encoding utf8
+$unmappedOutput = @(& $coverageScript -TemplateRoot $unmappedSeed *>&1 | ForEach-Object { "$_" })
+$unmappedExit = $LASTEXITCODE
+ok 'an unmapped type (in a .tf.tmpl) fails the coverage check' ($unmappedExit -eq 1) ($unmappedOutput -join ' | ')
+ok 'unmapped finding tells the author where to extend the mapping' (
+    ($unmappedOutput -join ' ') -match 'azurerm_kusto_cluster' -and
+    ($unmappedOutput -join ' ') -match 'Resolve-LzResourceTypeNamespace'
+)
+
 Write-Host "$pass passed, $fail failed"
 exit $(if ($fail) { 1 } else { 0 })
