@@ -56,9 +56,12 @@ application-administrator and management-group-root rights.
 precisely why dependabot PRs #63–#68 merged while red and left `main` unable
 to `terraform init` on four of five live stacks.
 **Unblocked by**: repository administration. Apply the prepared protection
-payload, or run `scripts/Initialize-ClientFork.ps1 -Repository <owner/repo>
--Apply`. Note the single-owner caveat — required approvals ≥ 1 deadlocks
-self-merges, and this repo has one owner today.
+payload (`gh api -X PUT repos/<owner/repo>/branches/main/protection --input
+<payload>` — the script route was retired 2026-08-07 by
+[decision 0007](docs/decisions/0007-retire-client-copy-hardening.md)). Note
+the single-owner caveat — required approvals ≥ 1 deadlocks self-merges, and
+this repo has one owner today, so keep approvals at 0 in the payload while
+solo operation continues.
 **Retarget note**: this applies to the **upstream factory repo only**. Under
 [decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)
 client copies are disposable and are never hardened.
@@ -200,6 +203,19 @@ private copy.
 generated repo and reconcile the overlap with the broker.
 **Not done here**: deleting an operator entry point is the operator's call, not
 a cleanup pass's.
+**Update 2026-08-07 — ratified and implemented; no longer awaiting a
+decision.** The operator ratified
+[decision 0007](docs/decisions/0007-retire-client-copy-hardening.md)
+in-session: retire the hardening stages; keep `-CreatePrivateCopy` as the
+documented private-copy mechanic; retargeting ruled out because the broker
+is already the sole, tested hardening owner for generated repos.
+Implemented the same day (TODO item 2.2, closed): the script is now only
+the private-copy mechanic (create + mirror push + visibility read-back),
+its help cites decision 0007, the four hardening-only parameters are gone,
+and every live instruction that pointed operators at the hardening stages
+was updated — including §2 above, whose script route is replaced by the
+payload route. Nothing remains open; the script file itself survives by
+design (decision 0001's rationale is unchanged).
 
 ### 13. Ownership policy for the generated repository
 The *mechanism* is settled and needs no change — `github.ownershipModel` and

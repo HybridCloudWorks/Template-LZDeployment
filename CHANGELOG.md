@@ -7,6 +7,33 @@ entries below are history and are not rewritten.
 
 ---
 
+## `Initialize-ClientFork.ps1` hardening stages retired — private-copy mechanic survives (2026-08-07)
+
+TODO item 2.2, closed the day the operator ratified
+[decision 0007](docs/decisions/0007-retire-client-copy-hardening.md)
+in-session (retire, not retarget; `-CreatePrivateCopy` survives). Under
+[decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)
+the factory copy is a disposable installer that is never hardened, so the
+script's Actions-enablement, branch-protection, secret-scanning, and
+hardening read-back stages were wrong-target; the broker
+(`factory/bootstrap/LZFactory.Bootstrap.psm1`) remains the sole hardening
+owner for the surviving generated repository. The script is now only the
+private-copy mechanic: create + mirror push (with the bootstrap-branch
+residue warning), public-visibility warning, and visibility read-back —
+plan-first as before. The hardening-only parameters (`-Branch`,
+`-RequiredApprovals`, `-RequiredChecks`, `-EnforceAdmins`) are removed and
+the comment-based help rewritten to the surviving purpose, citing decision
+0007 — including a latent fix: a blank line now separates `#Requires` from
+the help block, without which PowerShell never associated the help and
+`Get-Help` showed only auto-generated syntax. Live instructions swept in the same change: README structure comment,
+CLAUDE.md §0, USER-CHECKLIST Stage 12, REVIEW.md §2, the Stage 13 runbook
+(Gate 2a is payload-route only, with approvals 0 for the single-owner
+caveat), and the engagement-lifecycle runbook; decision records retained as
+history (0004's open question 2 annotated as resolved). No factory test
+referenced the script or its retired parameters. Suites after the work:
+Factory CI 17/17, node 87/0, Test-Bootstrap 85/0, Test-Renderer 245/0,
+Test-CI 12/0.
+
 ## Resource-provider registration shipped — broker-time, PF-D verified, CI drift-guarded (2026-08-07)
 
 TODO item 2.1, closed the day the operator ratified

@@ -20,8 +20,9 @@ There are exactly two, and they are different mechanisms:
 The client copy is a private copy, not a fork, so GitHub's fork-sync is
 unavailable. Sync by **mirror push** from a fresh upstream clone (the same
 mechanic `Initialize-ClientFork.ps1 -CreatePrivateCopy` uses), or retire and
-**re-copy**. After either, re-verify the settings that copies do not carry
-(`Initialize-ClientFork.ps1` read-back).
+**re-copy**. Nothing needs re-hardening after either: the client copy is
+disposable and never hardened (decisions 0004/0007) — only its **private**
+visibility matters, which the script's read-back reports.
 
 ### Customer repo ← factory corpus
 

@@ -25,8 +25,11 @@ Consequences that are routinely gotten wrong:
 - The **generated** repo is the one that gets hardened, and the broker already
   does it (`factory/bootstrap/LZFactory.Bootstrap.psm1`, ~line 585: branch
   protection, required checks, environments, secrets, plus API read-back).
-- `scripts/Initialize-ClientFork.ps1` hardens the *disposable* copy — the wrong
-  target under this model. Do not lead with it.
+- `scripts/Initialize-ClientFork.ps1` no longer hardens anything: its hardening
+  stages were retired 2026-08-07 for exactly this wrong-target reason
+  ([decision 0007](docs/decisions/0007-retire-client-copy-hardening.md)). It
+  survives only as the `-CreatePrivateCopy` private-copy mechanic. Still not a
+  first step.
 - The real first step of a client run is toolchain + authentication + confirming
   the target tenant, then the `site/` wizard.
 - **The client runs it, on their own machine** (operator-ratified 2026-08-06),
