@@ -84,27 +84,24 @@ interactive operator approval, and the repo guardrails
 Both were **plan-verified read-only** on 2026-08-01/02; only the write is
 outstanding.
 
-**2a. Branch protection on `main`.** Either apply the prepared payload (it
+**2a. Branch protection on `main`.** Apply the prepared payload (it
 was preserved in the 2026-08-01 session scratchpad as
 `protection-main.json` — session-scoped, so regenerate it if that session is
-gone):
+gone; the required contexts are listed in Gate 5):
 
 ```bash
 gh api -X PUT repos/HybridCloudWorks/Template-LZDeployment/branches/main/protection \
   --input protection-main.json
 ```
 
-or run the packaged script (parameter names verified against
-`scripts/Initialize-ClientFork.ps1`):
-
-```powershell
-pwsh -File scripts/Initialize-ClientFork.ps1 `
-  -Repository HybridCloudWorks/Template-LZDeployment -Apply
-```
-
-Caveat: the script enforces a required-approvals **≥ 1** floor, which
-deadlocks self-merges in this single-owner repo — use the payload route if
-solo operation must continue.
+This is the only route since 2026-08-07: the packaged script's hardening
+stages were retired by
+[decision 0007](../decisions/0007-retire-client-copy-hardening.md) —
+`Initialize-ClientFork.ps1` is now only the private-copy mechanic. Note this
+Gate targets the **upstream factory repo only**; client copies are never
+hardened (decision 0004). Caveat: keep `required_approving_review_count` at
+**0** in the payload — a ≥ 1 floor deadlocks self-merges in this
+single-owner repo.
 
 **2b. GitHub Pages** (prerequisite of `.github/workflows/deploy-pages.yml`,
 which deliberately does not automate it): Settings → Pages → Source
@@ -118,8 +115,7 @@ gh api -X POST repos/HybridCloudWorks/Template-LZDeployment/pages \
 **Expected evidence / verify**: `gh api repos/HybridCloudWorks/Template-LZDeployment/branches/main/protection`
 returns the required contexts (Gate 5 lists them) with `strict: true`;
 `gh api repos/HybridCloudWorks/Template-LZDeployment/pages` returns
-`"build_type": "workflow"`. `Initialize-ClientFork.ps1` prints its own API
-read-back verification table.
+`"build_type": "workflow"`.
 
 ## Gate 3 — Bootstrap the identity estate
 
@@ -264,7 +260,7 @@ gh run list --limit 5
   leases).
 
 **Verify**: with these runs green, the Gate 2 required checks can all report.
-The protection set (defaults read from `Initialize-ClientFork.ps1`):
+The protection set (the contexts for the Gate 2a payload):
 `Factory CI`, `Enforce Immutable Action Refs`, `TruffleHog Secret Scan`,
 `Gitleaks Secret Detection`, `Terraform Security Scan`. Caveat: the first
 two are **path-filtered** — a PR touching none of their paths waits forever
@@ -374,6 +370,6 @@ in [USER-CHECKLIST.md](../USER-CHECKLIST.md) Stage 13/14):
 | Connectivity plan fails on `management_ip_ranges` | Contract #4: the wizard never collects it; validation rejects empty/wildcard | Gate 6 loop-back step 1. The generated corpus and the broker fail fast with instructions; this repo's root plan workflow does not — expect the raw variable-validation error here |
 | Firewall diagnostics silently absent after connectivity apply | `log_analytics_workspace_id` never looped back after platform-management | Gate 6 loop-back steps 2–3; nothing else warns about this |
 | `az role assignment create` fails right after SP creation | Entra replication lag — the script already passes `--assignee-principal-type ServicePrincipal` and sleeps 5 s after SP creation, but lag can exceed that | Re-run the bootstrap (idempotent); it re-attempts only what is missing |
-| A PR waits forever on an "Expected" check | `Factory CI` and `Enforce Immutable Action Refs` are path-filtered; a docs-only PR never triggers them | Trigger the workflow manually, or scope required checks per PR content (`-RequiredChecks` override on `Initialize-ClientFork.ps1`) |
+| A PR waits forever on an "Expected" check | `Factory CI` and `Enforce Immutable Action Refs` are path-filtered; a docs-only PR never triggers them | Trigger the workflow manually, or narrow the `contexts` list in the Gate 2a protection payload and re-apply it |
 | `AuthorizationFailed` on sandbox cleanup at platform-management apply | Sandbox subscription enabled without the RBAC grant | **N/A for this dogfood** — sandbox is disabled in the config. In real engagements: supply the sandbox subscription in `lz-config.json` and do not pass `-SkipSandboxRbac` |
-| Self-merge blocked after Gate 2 | `Initialize-ClientFork.ps1` enforces required approvals ≥ 1 | Single-owner caveat: use the payload route with approvals 0, or add a second reviewer |
+| Self-merge blocked after Gate 2 | The applied protection payload set `required_approving_review_count` ≥ 1 | Single-owner caveat: re-apply the Gate 2a payload with approvals 0, or add a second reviewer |

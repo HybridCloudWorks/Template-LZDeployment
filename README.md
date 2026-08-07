@@ -53,7 +53,7 @@ promotion proposal.
 ```
 HCW-Demo-LZDeployment/
 ├── scripts/
-│   ├── Initialize-ClientFork.ps1          # Plan-first fork/private-copy init (Actions, protection, read-back)
+│   ├── Initialize-ClientFork.ps1          # Plan-first private-copy creation (mirror push + visibility read-back; hardening retired, decision 0007)
 │   ├── Invoke-CustomerEngagement.ps1      # Plan-first wrapper: discovery → broker → render → validate → scaffold
 │   ├── New-BackendConfig.ps1              # Plan-first per-layer backend.hcl generator (AAD auth enforced)
 │   ├── Add-PlanFederatedCredential.ps1    # Plan-first AADSTS700213 remediation for the plan SP

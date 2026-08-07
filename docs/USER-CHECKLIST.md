@@ -224,8 +224,10 @@ code; no customer render was validated or published while building it.
   in `.github/workflows/factory-ci.yml`.
 - [ ] Add the exact `Factory CI` context (GitHub records the job-level check
   name, not `Factory CI / Factory CI`) to required `main` status checks after
-  its first successful run. `scripts/Initialize-ClientFork.ps1` scripts this
-  configuration and its API read-back.
+  its first successful run, via the branch-protection API
+  (`gh api -X PUT repos/<owner/repo>/branches/main/protection --input
+  <payload>`) — upstream factory repo only; client copies are never hardened
+  (decisions 0004/0007) — and read the setting back the same way.
 - [ ] Confirm the workflow has only `contents: read` permission and receives no
   Azure, GitHub administration, HCP, backend, or customer credentials.
 - [ ] Review the uploaded `factory-ci-<run-id>` artifact and

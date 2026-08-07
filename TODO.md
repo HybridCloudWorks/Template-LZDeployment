@@ -75,16 +75,24 @@ folds into item 3.1's authenticated-toolchain run, the same way item 1.1's
 strict-validation residual did. Item number retained so cross-references
 stay stable; record in [CHANGELOG.md](CHANGELOG.md).
 
-### 2.2 Disposition of `scripts/Initialize-ClientFork.ps1`
+### 2.2 Disposition of `scripts/Initialize-ClientFork.ps1` — CLOSED
 
-Its hardening stages target the disposable copy — wrong-target under decision
-0004. Retire them, or retarget the script at the generated repo and reconcile
-the overlap with the broker. `-CreatePrivateCopy` remains the documented
-private-copy mechanic either way.
-**Owner**: `github-actions-engineer`.
-**Gate**: operator retire-vs-retarget decision — [REVIEW.md](REVIEW.md) §12.
-**Validation**: script help/behavior matches the decision;
-`grep -rn Initialize-ClientFork` shows no stale instructions.
+Closed 2026-08-07: the gate lifted when the operator ratified
+[decision 0007](docs/decisions/0007-retire-client-copy-hardening.md)
+in-session (retire the hardening stages; keep `-CreatePrivateCopy` as the
+documented private-copy mechanic; retargeting at the generated repo ruled
+out — the broker is the sole hardening owner there). Shipped: the script
+stripped to the private-copy mechanic with visibility read-back, its
+comment-based help rewritten to the surviving purpose, the retired
+parameters (`-Branch`, `-RequiredApprovals`, `-RequiredChecks`,
+`-EnforceAdmins`) removed, and every live instruction that pointed at the
+hardening stages updated (README, CLAUDE.md, USER-CHECKLIST, REVIEW.md §2,
+the Stage 13 runbook's Gate 2/Gate 5/troubleshooting rows, the
+engagement-lifecycle runbook). Both validation criteria verified:
+`grep -rn Initialize-ClientFork` shows no stale live instructions
+(decision-record and CHANGELOG history retained as history), and
+`Get-Help` parses the rewritten help cleanly. Item number retained so
+cross-references stay stable; record in [CHANGELOG.md](CHANGELOG.md).
 
 ### 2.3 Wire `nsg-flow-logs` into a live stack
 

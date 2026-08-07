@@ -113,6 +113,11 @@ The sequence is:
    documentation change's. It is marked PLANNING-ONLY for the client motion
    and tracked in TODO.md for disposition.
 
+   *Update 2026-08-07*: disposition resolved by
+   [decision 0007](0007-retire-client-copy-hardening.md) — the hardening
+   stages are retired; the script survives as the `-CreatePrivateCopy`
+   mechanic only.
+
 4. **Who physically runs the local machine?** The **client**. Their `gh` and
    `az` sessions therefore create the estate, which is what makes the
    confirm-the-tenant step (PROD-TODO Phase 2) load-bearing rather than
