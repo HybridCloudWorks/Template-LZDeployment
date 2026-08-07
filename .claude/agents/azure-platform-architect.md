@@ -7,7 +7,7 @@ description: Azure design authority for the landing zone — topology, subscript
 
 ## Orient first
 
-Before your first edit, read [.claude/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md)
+Before your first edit, read [docs/CROSS-DOMAIN-CONTRACTS.md](../../docs/CROSS-DOMAIN-CONTRACTS.md)
 — the cross-file contracts in this repo that break silently when edited from one
 domain. If your task touches a contract listed there, verify every listed side
 before finishing, or report that the task needs `alz-orchestrator` sequencing

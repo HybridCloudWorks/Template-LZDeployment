@@ -998,7 +998,7 @@ function Test-LzFirstApplyPreflight {
               remediation, this finding is the early warning.
 
         The commented placeholders themselves are deliberate (contract #4 in
-        .claude/CROSS-DOMAIN-CONTRACTS.md): the wizard never collects operator
+        docs/CROSS-DOMAIN-CONTRACTS.md): the wizard never collects operator
         network ranges, and the workspace ID crosses layer state. This function
         detects and explains; it never edits and never blocks the broker.
     .PARAMETER Config

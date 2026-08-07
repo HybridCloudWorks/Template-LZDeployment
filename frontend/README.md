@@ -43,7 +43,7 @@ wizard; use this page only when working the legacy stacks directly.
    - **`management_ip_ranges`** (connectivity) — required; the plan fails until
      set, and `*`/`0.0.0.0/0` are rejected. Deliberately never collected by any
      generator (see `factory/renderer/variable-map.json` and contract #4 in
-     `.claude/CROSS-DOMAIN-CONTRACTS.md`).
+     `docs/CROSS-DOMAIN-CONTRACTS.md`).
    - **`log_analytics_workspace_id`** (connectivity) — fill **after** the
      platform-management layer applies, then re-plan connectivity so firewall
      diagnostics and threat-intel alerts are created.
