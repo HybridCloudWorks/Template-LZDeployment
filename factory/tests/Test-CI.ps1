@@ -26,6 +26,7 @@ ok 'runner includes all test suites' (
         Select-Object -ExpandProperty Count | ForEach-Object { $_ -eq 0 }
 )
 ok 'runner includes drift check' ($runner -match 'Test-LzSchemaDrift')
+ok 'runner includes resource-provider coverage check' ($runner -match 'Test-ResourceProviderCoverage')
 ok 'runner includes Terraform format and validate' ($runner -match "terraform @\('fmt'" -and $runner -match "terraform @\('validate'")
 ok 'runner emits machine report' ($runner -match 'factory-ci-report\.json')
 ok 'runner records no external mutation' ($runner -match 'externalMutation = \$false')

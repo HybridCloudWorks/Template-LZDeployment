@@ -7,6 +7,79 @@ entries below are history and are not rewritten.
 
 ---
 
+## Resource-provider registration shipped — broker-time, PF-D verified, CI drift-guarded (2026-08-07)
+
+TODO item 2.1, closed the day the operator ratified
+[decision 0006](docs/decisions/0006-resource-provider-registration.md)
+in-session (Option A + Option B's preflight finding; Option C ratified
+against, even as belt-and-braces). azurerm ~> 5.0 registers no resource
+providers, so the first apply into a fresh subscription 409'd
+`MissingSubscriptionRegistration`; registration now lands on the client's
+interactive bootstrap session — the only identity in the motion already
+holding `*/register/action` (decision 0004) — with zero new grants and no
+contract-#2 change. Suites after the work: node 87/0, Test-Bootstrap 85/0
+(was 60), Test-CI 12/0 (was 11), Test-Renderer 245/0, Factory CI 17/17 (was
+16; terraform and static legs remain pipeline-side).
+
+**Broker registration step** (`factory/bootstrap/LZFactory.Bootstrap.psm1`).
+`Invoke-LzBootstrap -Apply` now registers the required namespaces in every
+target subscription (each configured environment's subscription plus the
+azurerm state backend subscription) BEFORE state-storage reconciliation,
+since the state account itself needs `Microsoft.Storage`. Idempotent like
+every other broker mutation: `Registered` is a recorded no-op,
+`Registering` is polled without re-issuing. The read-back poll is bounded
+(default 300s per subscription, `LZ_RP_REGISTRATION_TIMEOUT_SECONDS`
+override); anything slower is recorded as `pending` — registration completes
+server-side, so the pending-user-activity entry says verify, not re-run.
+Outcomes land per subscription per namespace in `bootstrap-audit.json`
+(`resourceProviders` section; plan mode records the intent). The
+11-namespace list is decision 0006's table verbatim, stored ONCE
+(`Get-LzRequiredResourceProviders`) with the excluded registered-by-default
+namespaces (`Microsoft.Authorization`, `Microsoft.Resources`) explicit;
+`Microsoft.KeyVault` is a deliberate look-ahead for the keyvault-cmk
+scaffold. Deliberately NOT added to `bootstrap-plan.json`: the
+per-environment plan output is under a byte-parity contract.
+
+**Preflight PF-D** (fourth `Test-LzFirstApplyPreflight` family). Read-only
+`az provider list` per target subscription (Reader suffices) against the
+same authoritative list — never a second copy. Unregistered namespaces
+surface as WARN findings carrying the exact
+`az provider register --namespace <ns> --subscription <id>` remediation;
+an unreadable state (az absent/unauthenticated — plan mode's normal
+condition) degrades to a single INFO finding, never an error. Detects and
+explains, never edits, never blocks — the existing preflight contract. The
+az read sits behind an injectable `-ProviderStateReader` seam, so tests
+drive the real finding logic with fake states.
+
+**Factory CI drift check** (`factory/ci/Test-ResourceProviderCoverage.ps1`,
+new "Resource provider coverage" check). Derives the distinct `azurerm_*`
+resource/data types from `factory/templates/terraform/` (`.tf` and
+`.tf.tmpl`, the superset of anything rendered), maps each through
+`Resolve-LzResourceTypeNamespace` — the broker-owned mapping that encodes
+the non-obvious cases (`monitor_*`→Insights,
+`log_analytics_*`→OperationalInsights, `management_group*`→Management,
+policy assignment→PolicyInsights, `resource_group`→Resources-excluded) —
+and fails when a namespace the corpus needs is missing from the broker
+list, naming the type, the namespace, and the exact extension points. An
+unmapped type fails the same way. Test-Bootstrap proves both failure modes
+against seeded corpora (item-1.3 precedent) and the green path against the
+real corpus.
+
+**Explicit posture in provider blocks.**
+`resource_provider_registrations = "none"` is now stated, not inherited, in
+every rendered `provider "azurerm"` block (global, platform-connectivity,
+platform-management, workloads-prod/nonprod incl. hub aliases, sandbox) and
+mirrored into the corresponding `terraform/live/*` stacks (contract-#1
+lock-step). No `resource_providers_to_register` anywhere — Option C is
+ratified against. `terraform/backend-bootstrap/` is deliberately untouched:
+no template counterpart, operator-interactive, and behaviorally identical
+either way. `terraform fmt -check` clean on both trees.
+
+**Residual** (carried in TODO item 3.1): the end-to-end proof — broker
+apply registering against a real estate, then a first apply into a fresh
+subscription with no `MissingSubscriptionRegistration` — needs the
+authenticated toolchain.
+
 ## Dot-folder contract text updated to the 2026-08-07 file contract (2026-08-07)
 
 TODO item 2.7, closed in PR #77 after the operator approved dot-folder edits

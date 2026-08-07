@@ -20,7 +20,10 @@ terraform {
 
 provider "azurerm" {
   features {}
-  subscription_id = var.management_subscription_id
+  # Stated 5.0 default (decision 0006): the provider registers no resource
+  # providers — the broker registers the required namespaces at bootstrap.
+  subscription_id                 = var.management_subscription_id
+  resource_provider_registrations = "none"
 }
 
 module "management_groups" {

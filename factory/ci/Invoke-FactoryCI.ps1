@@ -153,6 +153,10 @@ if (-not $result.InSync) { exit 1 }
     # `terraform init` long before any plan. Runs in the 'policy' category so
     # it still reports when LZ_FACTORY_CI_SKIP_TERRAFORM is set.
     Invoke-LzFactoryCheck 'Provider constraints' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ProviderConstraints.ps1') -Category 'policy' | Out-Null
+    # Corpus-vs-broker resource-provider drift (decision 0006): a template
+    # module adding an azurerm type whose namespace the broker does not
+    # register must fail here, not at a client site mid-first-apply.
+    Invoke-LzFactoryCheck 'Resource provider coverage' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ResourceProviderCoverage.ps1') -Category 'policy' | Out-Null
     # Module READMEs are the interface documentation that ships into customer
     # repositories, so a stale variable table is a customer-facing defect.
     Invoke-LzFactoryCheck 'Module docs' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ModuleDocs.ps1') -Category 'contract' | Out-Null

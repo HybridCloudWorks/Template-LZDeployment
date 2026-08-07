@@ -21,6 +21,9 @@ terraform {
 
 provider "azurerm" {
   features {}
+  # Stated 5.0 default (decision 0006): the provider registers no resource
+  # providers — the broker registers the required namespaces at bootstrap.
+  resource_provider_registrations = "none"
 }
 
 module "sandbox" {
