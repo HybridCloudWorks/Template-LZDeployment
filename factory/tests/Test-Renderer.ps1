@@ -192,6 +192,77 @@ ok 'reads a schema enum'          ((@(Get-LzSchemaEnum -Schema $liveSchema -Path
 ok 'enum absent returns null'     ($null -eq (Get-LzSchemaEnum -Schema $liveSchema -Path 'naming.orgPrefix'))
 ok 'unknown path returns null'    ($null -eq (Get-LzSchemaEnum -Schema $liveSchema -Path 'connectivity.nope.nothere'))
 
+# End-to-end: the unit assertions above prove the two extractors work in
+# isolation, but the azfw `Basic` defect (TODO 1.3) reached main because
+# nothing seeded an actual enum/contains() disagreement THROUGH
+# Test-LzSchemaDrift and asserted the check fails. This section replays that
+# defect shape against a seeded corpus: the schema enum still offers `Basic`
+# while the Terraform validation accepts only Standard|Premium.
+Write-Host "`n== 12b-2. Seeded enum/contains() mismatch fails the drift check ==" -ForegroundColor Cyan
+$seedRoot = Join-Path $PSScriptRoot '.out/drift-enum-seed'
+if (Test-Path $seedRoot) { Remove-Item $seedRoot -Recurse -Force }
+New-Item -ItemType Directory -Path (Join-Path $seedRoot 'templates/terraform/live/platform-connectivity') -Force | Out-Null
+@'
+{
+  "properties": {
+    "connectivity": {
+      "properties": {
+        "firewall": {
+          "properties": {
+            "tier": { "type": "string", "enum": ["Standard", "Premium", "Basic"] }
+          }
+        }
+      }
+    }
+  }
+}
+'@ | Set-Content (Join-Path $seedRoot 'schema.json') -Encoding utf8
+@'
+{
+  "layers": {
+    "platform-connectivity": {
+      "variablesFile": "terraform/live/platform-connectivity/variables.tf",
+      "variables": {
+        "azfw_tier": "connectivity.firewall.tier"
+      }
+    }
+  }
+}
+'@ | Set-Content (Join-Path $seedRoot 'variable-map.json') -Encoding utf8
+@'
+variable "azfw_tier" {
+  type    = string
+  default = "Standard"
+
+  validation {
+    condition     = contains(["Standard", "Premium"], var.azfw_tier)
+    error_message = "azfw_tier must be Standard or Premium."
+  }
+}
+'@ | Set-Content (Join-Path $seedRoot 'templates/terraform/live/platform-connectivity/variables.tf') -Encoding utf8
+
+$seeded = Test-LzSchemaDrift -SchemaPath (Join-Path $seedRoot 'schema.json') `
+                             -MappingPath (Join-Path $seedRoot 'variable-map.json') `
+                             -TemplateRoot (Join-Path $seedRoot 'templates')
+$seedFindings = @($seeded.Findings | Where-Object { $_.Kind -eq 'ConstraintMismatch' })
+ok 'seeded mismatch fails the check'    (-not $seeded.InSync)
+ok 'mismatch finding is blocking'       ($seedFindings.Count -eq 1 -and $seedFindings[0].Severity -eq 'Block')
+ok 'finding names the schema field'     ($seedFindings.Count -eq 1 -and $seedFindings[0].Detail -match [regex]::Escape("'connectivity.firewall.tier'"))
+ok 'finding names the variable'         ($seedFindings.Count -eq 1 -and $seedFindings[0].Detail -match [regex]::Escape("'azfw_tier'"))
+ok 'finding names the rejected value'   ($seedFindings.Count -eq 1 -and $seedFindings[0].Detail -match '\[Basic\]')
+
+# Contract #7 is directional (wizard ⊂ schema ⊂ terraform): Terraform accepting
+# MORE than the schema offers is legal widening, not drift. Pin the asymmetry
+# so a future "fix" does not start flagging it.
+(Get-Content (Join-Path $seedRoot 'templates/terraform/live/platform-connectivity/variables.tf') -Raw) `
+    -replace '\["Standard", "Premium"\]', '["Standard", "Premium", "Basic", "ExtraTierSchemaLacks"]' |
+    Set-Content (Join-Path $seedRoot 'templates/terraform/live/platform-connectivity/variables.tf') -Encoding utf8
+$widened = Test-LzSchemaDrift -SchemaPath (Join-Path $seedRoot 'schema.json') `
+                              -MappingPath (Join-Path $seedRoot 'variable-map.json') `
+                              -TemplateRoot (Join-Path $seedRoot 'templates')
+ok 'wider Terraform list is not drift'  ($widened.InSync) (($widened.Findings | Where-Object { $_.Severity -eq 'Block' } | ForEach-Object { $_.Detail }) -join ' | ')
+Remove-Item $seedRoot -Recurse -Force
+
 Write-Host "`n== 12c. Schema defaults seed the render context ==" -ForegroundColor Cyan
 # A schema-valid config that omits an OPTIONAL key with a declared default used
 # to fail the render closed with "Unknown configuration path" — the observed
