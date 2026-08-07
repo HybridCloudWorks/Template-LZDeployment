@@ -171,12 +171,6 @@ variable "log_analytics_workspace_id" {
   default     = ""
 }
 
-variable "log_retention_days" {
-  description = "Number of days to retain logs"
-  type        = number
-  default     = 90
-}
-
 variable "enable_threat_intel_alerts" {
   description = "Enable alerts for threat intelligence hits"
   type        = bool
