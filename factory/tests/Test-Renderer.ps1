@@ -536,7 +536,7 @@ ok 'import generator never executes Terraform' (
     $importModule -notmatch '& terraform'
 )
 ok 'factory checklist carries Stage 11 activities' (
-    (Get-Content (Join-Path $repo 'USER-CHECKLIST.md') -Raw) -match 'LZ_IMPORT_ALLOW_STALE'
+    (Get-Content (Join-Path $repo 'docs/USER-CHECKLIST.md') -Raw) -match 'LZ_IMPORT_ALLOW_STALE'
 )
 
 Write-Host "`n== 22. Stage 12 Factory CI integration ==" -ForegroundColor Cyan

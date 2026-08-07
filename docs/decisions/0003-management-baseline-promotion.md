@@ -1,10 +1,12 @@
 # Decision 0003 — Promoting `management-baseline` into the corpus platform-management layer (WP4)
 
 **Date**: 2026-08-02
-**Status**: Accepted (design) — **NOT IMPLEMENTED**. This records the decisions
-for WP4 of
+**Status**: Accepted — **IMPLEMENTED 2026-08-02** (WP4 of
 [docs/plans/corpus-live-reconciliation.md](../plans/corpus-live-reconciliation.md);
-no template in the tree carries these changes yet.
+execution recorded in CHANGELOG.md "Corpus↔live reconciliation executed").
+The status line originally read "NOT IMPLEMENTED"; corrected 2026-08-07 during
+the docs staleness review — the corpus platform-management layer carries the
+`management_baseline` call, variables, and workspace output.
 **Design authority**: `azure-platform-architect`, 2026-08-02
 
 ## Context

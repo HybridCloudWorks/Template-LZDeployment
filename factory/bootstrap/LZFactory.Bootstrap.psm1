@@ -48,7 +48,7 @@ function Assert-LzBrokerPrerequisites {
     param([object]$Config)
     foreach ($tool in @('az', 'gh')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-            throw "Required tool '$tool' is unavailable. Complete USER-CHECKLIST.md and re-run."
+            throw "Required tool '$tool' is unavailable. Complete docs/USER-CHECKLIST.md and re-run."
         }
     }
     & az account show --output none 2>$null

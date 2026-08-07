@@ -9,7 +9,7 @@ $entry = Get-Content (Join-Path $repo 'brownfield-import.ps1') -Raw
 $shell = Get-Content (Join-Path $repo 'brownfield-import.sh') -Raw
 $module = Get-Content (Join-Path $repo 'factory/import/LZFactory.Import.psm1') -Raw
 $schema = Get-Content (Join-Path $repo 'factory/import/brownfield-classifications.schema.json') -Raw
-$checklist = Get-Content (Join-Path $repo 'USER-CHECKLIST.md') -Raw
+$checklist = Get-Content (Join-Path $repo 'docs/USER-CHECKLIST.md') -Raw
 
 $pass = 0; $fail = 0
 function ok($name, $condition) {

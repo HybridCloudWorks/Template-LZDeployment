@@ -5,8 +5,8 @@ state to a completed Stage 13 dogfood, ending at the Stage 14 hand-off.
 Written 2026-08-02; every command below was verified against the current
 script parameter blocks and workflow YAML on this branch
 (`fix/factory-motion-findings`, PR #59). Run all commands from the repo root.
-Backlog context: [PROD-TODO.md](../../PROD-TODO.md) Phases 4–5; operator
-acceptance criteria: [USER-CHECKLIST.md](../../USER-CHECKLIST.md) (Stage 13/14
+Backlog context: [TODO.md](../../TODO.md) items 4.1–4.7 and 5.1; operator
+acceptance criteria: [USER-CHECKLIST.md](../USER-CHECKLIST.md) (Stage 13/14
 sections).
 
 Convention per gate: **Preconditions → Commands → Expected evidence →
@@ -42,7 +42,7 @@ Nothing to run; this is the starting position the rest of the runbook assumes.
 ## Gate 1 — Fill the config placeholders
 
 **Preconditions**: the engagement owner has confirmed the intended deployment
-tenant (PROD-TODO Phase 2 hard stop — do not proceed on an unconfirmed
+tenant (the REVIEW.md §1 hard stop — do not proceed on an unconfirmed
 tenant).
 
 **Commands**: edit `generated-output/dogfood/lz-config.json` and replace the
@@ -157,8 +157,8 @@ from this config; enumeration read from the current script):
 
 Plus: repo secrets `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
 `AZURE_CLIENT_ID` (apply), `AZURE_PLAN_CLIENT_ID` (plan) — this closes the
-Gate 0 secret gap in the same change that creates the identities (PROD-TODO
-Phase 2 requirement); environments `dev`/`prod`/`hub` with reviewers (pass
+Gate 0 secret gap in the same change that creates the identities (REVIEW.md
+§1 requirement); environments `dev`/`prod`/`hub` with reviewers (pass
 `-EnvironmentReviewers` to avoid the SELF-APPROVAL warning); and deletion of
 any **stale environment-scoped `AZURE_CLIENT_ID` overrides** (they would
 silently shadow the repo-level secret).
@@ -351,7 +351,7 @@ GitHub environment protections, and required status checks — read back via
 `az`/`gh`, not inferred from workflow logs.
 
 **Then, in order** (pointers, not duplication — the acceptance detail lives
-in [USER-CHECKLIST.md](../../USER-CHECKLIST.md) Stage 13/14):
+in [USER-CHECKLIST.md](../USER-CHECKLIST.md) Stage 13/14):
 
 1. Set `dogfoodInstanceAppliesGreen=true` in `factory-version.json` in a
    **separately reviewed PR** — only after every layer applied green and the

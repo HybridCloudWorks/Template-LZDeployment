@@ -44,7 +44,7 @@ promotion proposal.
 > **Status**: Stages 1–14 are implemented. Live Factory CI, dogfood
 > plan/apply/read-back, evidence attestation, and any release-gate PR remain
 > operator activities. All gates remain evidence-driven. See
-> [TODO.md](TODO.md) and [USER-CHECKLIST.md](USER-CHECKLIST.md).
+> [TODO.md](TODO.md) and [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md).
 
 ---
 
@@ -114,9 +114,14 @@ HCW-Demo-LZDeployment/
 ├── dogfood-instance.sh           # Stage 13 strict Bash launcher
 ├── release-readiness.ps1         # Stage 14 PowerShell entry point
 ├── release-readiness.sh          # Stage 14 strict Bash launcher
-├── USER-CHECKLIST.md             # Operator authentication, publication, and verification
-├── TODO.md                       # Current phase plan
-├── CHANGELOG.md                  # Completed work history
+├── docs/
+│   ├── USER-CHECKLIST.md         # Operator authentication, publication, and verification
+│   ├── decisions/                # Decision records
+│   ├── runbooks/                 # Operator procedures
+│   └── wiki-review/              # 2026-08-06 wiki source-material review evidence
+├── TODO.md                       # All action items, phased for handoff
+├── REVIEW.md                     # Blockers only a human-in-the-loop can resolve
+├── CHANGELOG.md                  # Changelog of shipped features
 └── README.md                     # This file
 ```
 
@@ -146,7 +151,7 @@ pwsh ./bootstrap-broker.ps1
 
 The broker is non-interactive and idempotent. Tenant-specific inputs come from
 the config/discovery contracts and environment variables documented in
-[USER-CHECKLIST.md](USER-CHECKLIST.md).
+[docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md).
 
 ### Scaffold
 
@@ -237,12 +242,12 @@ Policy baseline module enforces mandatory tagging, allowed locations, NSG requir
 
 ## Current Known Issues
 
-See [TODO.md](TODO.md) and [PROD-TODO.md](PROD-TODO.md) for the full, current lists. Highlights as of 2026-08-01:
+See [TODO.md](TODO.md) (all action items, phased) and [REVIEW.md](REVIEW.md) (human-resolvable blockers) for the full, current lists. Highlights:
 
-- CI/CD pipeline has no recorded successful run yet — read-only live discovery (2026-08-01) found that no landing-zone identity estate exists: no app registrations, no `AZURE_PLAN_CLIENT_ID` or `TF_API_TOKEN` secret, and no dev/prod/hub environments. The remediation is running the Phase-2 bootstrap end-to-end in the confirmed engagement tenant, not credential patching; see [PROD-TODO.md](PROD-TODO.md) Phase 2
+- CI/CD pipeline has no recorded successful run yet — read-only live discovery (2026-08-01) found that no landing-zone identity estate exists: no app registrations, no `AZURE_PLAN_CLIENT_ID` or `TF_API_TOKEN` secret, and no dev/prod/hub environments. The remediation is running the Phase-2 bootstrap end-to-end in the confirmed engagement tenant, not credential patching; see [REVIEW.md](REVIEW.md) §1 / [TODO.md](TODO.md) item 4.1
 - Backend is currently `azurerm` native storage everywhere except the bootloader and workflow `010`, which assume Terraform Cloud — migration tracked as [GitHub Issue #11](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/11)
 - Two modules (`keyvault-cmk`, `sentinel-siem`) are scaffold-only stubs with no real resources yet
-- 4 utility scripts (`Configure-DeploymentOptions.ps1`, `Invoke-BulkOperations.ps1`, `Validate-ALZDeployment.ps1`, `Verify-CostAccuracy.ps1`) aren't called from anywhere in the pipeline — they now live in [`scripts/utilities/`](scripts/utilities/README.md), clearly separated from the core flow; wiring any of them in is tracked in [TODO.md](TODO.md)
+- 4 utility scripts (`Configure-DeploymentOptions.ps1`, `Invoke-BulkOperations.ps1`, `Validate-ALZDeployment.ps1`, `Verify-CostAccuracy.ps1`) aren't called from anywhere in the pipeline — they now live in [`scripts/utilities/`](scripts/utilities/README.md), clearly separated from the core flow; wiring `Configure-DeploymentOptions.ps1` in is tracked in [REVIEW.md](REVIEW.md) §16 / [TODO.md](TODO.md) item 2.5
 
 ---
 
@@ -262,10 +267,11 @@ See [TODO.md](TODO.md) and [PROD-TODO.md](PROD-TODO.md) for the full, current li
 ## Documentation
 
 - **[GitHub wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki)** — build docs, factory design and Stage 7–14 readiness records, and the webapp/static-generator docs (migrated from `docs/` on 2026-08-01)
-- **[TODO.md](TODO.md)** — the open backlog (legacy deployment debt plus factory runtime work)
-- **[CHANGELOG.md](CHANGELOG.md)** — completed work history, with verification notes and the archived `HANDOFF.md` decisions
-- **[USER-CHECKLIST.md](USER-CHECKLIST.md)** — operator authentication, publication, and verification activities
-- **[docs/runbooks/](docs/runbooks/)** — engagement disposal and lifecycle-hygiene runbooks; **[docs/decisions/](docs/decisions/)** — decision records (private copy over public fork)
+- **[TODO.md](TODO.md)** — all action items repo-wide, phased for handoff
+- **[REVIEW.md](REVIEW.md)** — blockers only a human-in-the-loop can resolve
+- **[CHANGELOG.md](CHANGELOG.md)** — changelog of shipped features, with verification notes and the archived `HANDOFF.md` decisions
+- **[docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md)** — operator authentication, publication, and verification activities
+- **[docs/runbooks/](docs/runbooks/)** — engagement disposal, lifecycle-hygiene, and Stage 13 execution runbooks; **[docs/decisions/](docs/decisions/)** — decision records
 - **[.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)** — load-bearing cross-file contracts (stays in-repo; agents read it from disk)
 - **[terraform/modules/\*/README.md](terraform/modules/)** — per-module usage docs (all 11 modules, as of 2026-08-02)
 

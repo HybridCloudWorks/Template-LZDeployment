@@ -49,8 +49,8 @@
     exchange OIDC tokens. Forms the subject `repo:<owner>/<name>:pull_request`.
 
 .PARAMETER CredentialName
-    Name for the federated credential record. Defaults to 'pr-plan' (the name
-    PROD-TODO Phase 2 documents).
+    Name for the federated credential record. Defaults to 'pr-plan' (the name the
+    REVIEW.md §1 identity-estate blocker documents).
 
 .PARAMETER ExpectedRole
     Role the target identity is expected to hold (sanity read-back). Defaults

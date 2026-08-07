@@ -231,11 +231,11 @@ function Publish-LzScaffoldRepository {
     )
     foreach ($tool in @('git', 'gh')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-            throw "Required publication tool '$tool' is unavailable. See USER-CHECKLIST.md."
+            throw "Required publication tool '$tool' is unavailable. See docs/USER-CHECKLIST.md."
         }
     }
     $auth = Invoke-LzScaffoldCommand gh @('auth', 'status') -AllowFailure
-    if ($auth.ExitCode -ne 0) { throw 'GitHub CLI is not authenticated. See USER-CHECKLIST.md.' }
+    if ($auth.ExitCode -ne 0) { throw 'GitHub CLI is not authenticated. See docs/USER-CHECKLIST.md.' }
 
     $repoView = Invoke-LzScaffoldCommand gh @('repo', 'view', $Plan.repository, '--json', 'nameWithOwner') -AllowFailure
     $repositoryExists = $repoView.ExitCode -eq 0

@@ -102,8 +102,9 @@
     requires GitHub Advanced Security licensing; the script reports (rather
     than fails) when GitHub rejects that PATCH.
 
-    Must be repeated on every client fork -- protection does not inherit
-    (PROD-TODO Phase 1).
+    Wrong-target for client copies under decision 0004 (client copies are
+    disposable and never hardened); applies to the upstream factory repo only.
+    Disposition of this script is tracked in REVIEW.md section 12.
 #>
 [CmdletBinding()]
 param(

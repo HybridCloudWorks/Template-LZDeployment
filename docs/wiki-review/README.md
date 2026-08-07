@@ -1,6 +1,6 @@
 # Wiki source-material review — 2026-08-06
 
-Completes the TODO.md item open since the 2026-08-01 migration: the 11
+Completes the backlog item open since the 2026-08-01 migration: the 11
 single-purpose documents moved from `docs/` to the wiki, filed under "Source
 Material", had never been content-reviewed against the current repository.
 

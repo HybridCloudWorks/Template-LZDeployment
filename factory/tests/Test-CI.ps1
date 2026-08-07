@@ -9,7 +9,7 @@ $workflow = Get-Content (Join-Path $repo '.github/workflows/factory-ci.yml') -Ra
 $runner = Get-Content (Join-Path $repo 'factory/ci/Invoke-FactoryCI.ps1') -Raw
 $network = Get-Content (Join-Path $repo 'factory/ci/Test-SiteNoNetwork.ps1') -Raw
 $pins = Get-Content (Join-Path $repo 'factory/ci/Test-ActionPins.ps1') -Raw
-$checklist = Get-Content (Join-Path $repo 'USER-CHECKLIST.md') -Raw
+$checklist = Get-Content (Join-Path $repo 'docs/USER-CHECKLIST.md') -Raw
 $pass = 0; $fail = 0
 function ok($name, $condition) {
     if ($condition) { $script:pass++; Write-Host "  PASS $name" -ForegroundColor Green }

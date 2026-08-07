@@ -1,9 +1,9 @@
 # Runbook — Engagement Lifecycle Hygiene (Phase 7)
 
 **Scope**: what happens *between* engagements — upgrade channels, provenance,
-and operator-workstation isolation. Backlog context:
-[PROD-TODO.md Phase 7](../../PROD-TODO.md). Disposal itself:
-[engagement-disposal.md](engagement-disposal.md).
+and operator-workstation isolation. Model:
+[decision 0004](../decisions/0004-factory-copy-is-a-disposable-installer.md).
+Disposal itself: [engagement-disposal.md](engagement-disposal.md).
 
 Artifact chain per engagement: **upstream repo** (CBTS factory) → **client
 copy** (private, per [decision 0001](../decisions/0001-private-copy-over-public-fork.md))

@@ -1,7 +1,9 @@
 # CHANGELOG - Completed Work
 
-**Purpose**: Historical record of all completed tasks and deliverables  
-**Last Updated**: August 6, 2026
+**Purpose**: Historical record of completed work. **Going forward (operator
+contract, 2026-08-07): new entries record shipped features only.** Existing
+entries below are history and are not rewritten.
+**Last Updated**: August 7, 2026
 
 ---
 
@@ -489,7 +491,7 @@ delegation condition.
 
 ## PROD-TODO implementation — production-motion tooling and corpus fixes (2026-08-01)
 
-Implements the in-repo portion of the [PROD-TODO.md](PROD-TODO.md) backlog.
+Implements the in-repo portion of the PROD-TODO.md backlog (file retired 2026-08-07; open items absorbed into TODO.md).
 Live operator executions (federated credentials for **both** SPs, per-fork
 branch-protection enablement, Stage 13/14, pipeline-green verification) remain
 open and are annotated there.
