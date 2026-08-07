@@ -11,8 +11,8 @@
 > CHANGELOG.md, REVIEW.md, TODO.md.
 
 **Last Updated**: August 7, 2026
-**Status**: 🟡 3 startable engineering items (Phase 1); everything else is
-gated as stated per item
+**Status**: 🟢 Phase 1 closed (PR #77); every open item is gated as stated
+per item
 **Operator activities & stage checklists**: [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md)
 **External tracking**: [GitHub Issues](https://github.com/HybridCloudWorks/Template-LZDeployment/issues)
 
@@ -33,62 +33,23 @@ retained as the Stage 13 dogfood instance.
 
 ## Phase 1 — Startable engineering fixes
 
-No gate: an engineer can pick these up right now from a clone.
+**Closed 2026-08-07 (PR #77)** — all three items (1.1 template-corpus
+V07/V08 cleanup, 1.2 Linux scaffold hidden-file crash, 1.3 enum/`contains`
+drift-checker gap) shipped, including the live-tree mirror of the 1.1
+cleanup. The record is in [CHANGELOG.md](CHANGELOG.md). Two notes survive
+the closure:
 
-### 1.1 Clean the template corpus so a strict validation run passes V07/V08
+- Item 1.1's validation criterion — `validate-render.ps1 -Strict` passing
+  V07/V08 with **no skips recorded** — is not yet confirmed: tflint/tfsec
+  were unavailable in the sandbox. The confirmation run is folded into
+  item 3.1.
+- Item 1.3 was partially stale when picked up: the production checker gap
+  had already been closed by 435845e (#69, 2026-08-05) after the item was
+  written (2026-08-02), and the 2026-08-06 consolidation missed it — the
+  deliverable became the missing end-to-end proof. When work lands, close
+  the TODO item in the same change.
 
-The first real `validate-render.ps1 -Strict` run (2026-08-06, record in
-[REVIEW.md](REVIEW.md) §7) failed V07 with 6 tflint
-`terraform_unused_declarations` findings and V08 with 1 LOW tfsec finding,
-all in `factory/templates/terraform/` sources:
-
-| Finding | Location (under `factory/templates/terraform/`) |
-| --- | --- |
-| unused `var.sandbox_subscription_id` | `live/platform-management/variables.tf:46` |
-| unused `var.default_tags` | `modules/defender-baseline/variables.tf:80` |
-| unused `var.log_retention_days` | `modules/hub-network/variables.tf:174` |
-| unused `var.log_retention_days` | `modules/nsg-flow-logs/variables.tf:48` |
-| unused `data "azurerm_client_config"` | `modules/management-baseline/main.tf:4` |
-| unused `var.landingzones_mg_id` | `modules/policy-baseline/variables.tf:17` |
-| `azurerm_security_center_contact` missing phone number (tfsec, LOW) | `modules/defender-baseline/` |
-
-Until fixed, a strict engagement run needs operator skips
-(`LZ_VALIDATE_SKIP_LINT` / `LZ_VALIDATE_SKIP_SECURITY_SCAN`).
-**Why**: blocks a skip-free strict validation gate for every engagement.
-**Owner**: `terraform-module-engineer`. **Gate**: none.
-**Validation**: `validate-render.ps1 -Strict` against a fresh render — V07 and
-V08 pass with no skips recorded.
-
-### 1.2 Fix the Linux hidden-file crash in the scaffold inventory walk
-
-`Get-LzScaffoldInventory` (`factory/scaffold/LZFactory.Scaffold.psm1`) walks
-with `Get-ChildItem -Force` (line 95) but the per-file size read at line 110 —
-`(Get-Item $path).Length` — lacks `-Force`, so hidden leaf files (the renderer
-emits `.terraform-docs.yml` per module) crash the inventory on Linux. Scaffold
-**plan and apply are both broken on Linux against real renders** (reproduced
-2026-08-06). Fix is one line: add `-Force` at line 110. Also close the
-coverage gap: `factory/tests/Test-Scaffold.ps1` is a static text-matching
-suite that never executes the walk, which is why Factory CI missed this.
-**Why**: Stage 10 is unusable on Linux until fixed.
-**Owner**: `github-actions-engineer` (factory code). **Gate**: none.
-**Validation**: plan-only `scaffold-copy.ps1` on Linux against a real render;
-a Test-Scaffold case that executes the walk over a tree with hidden files.
-
-### 1.3 Close the schema-enum ↔ Terraform-validation drift-checker gap
-
-Found during the azfw `Basic` removal (CHANGELOG, 2026-08-02): a schema enum
-and a Terraform `contains([...])` validation can disagree and **no automated
-check sees it** — `Test-LzSchemaDrift` compares variable declarations, not
-validation bodies. The azfw case was fixed by hand; the defect class remains
-checker-invisible (it was tracked in TODO.md then dropped in the 2026-08-06
-consolidation — restored here).
-**Why**: contract #7 (wizard ⊂ schema ⊂ terraform,
-[.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)) is
-only partially machine-checked.
-**Owner**: `github-actions-engineer` (Factory CI checks). **Gate**: none.
-**Validation**: a new Factory CI check that fails on a seeded enum/`contains`
-mismatch; `node factory/tests/test.js` and
-`pwsh -File factory/ci/Invoke-FactoryCI.ps1` stay green.
+The next startable work is gated: see Phases 2–5.
 
 ---
 
@@ -187,10 +148,15 @@ The **standalone** validation gate is done (executed 2026-08-06 — record in
 suites against authenticated `az`/`gh`, and the validate phase inside the full
 engagement wrapper (discovery → broker → render → validate → scaffold,
 `scripts/Invoke-CustomerEngagement.ps1`) with real discovery artifacts.
+Carried forward from item 1.1 (closed 2026-08-07 with this criterion unmet):
+the strict run must confirm V07/V08 pass with real tflint/tfsec and **no
+skips recorded** — the corpus cleanup shipped, but the tools were unavailable
+in the sandbox, so the skip-free pass is unproven.
 **Owner**: `alz-orchestrator` (multi-stage execution).
 **Gate**: provisioned, authenticated toolchain — [REVIEW.md](REVIEW.md) §7.
 **Validation**: suite runs recorded with plan/audit evidence files; wrapper
-completes plan-first end to end.
+completes plan-first end to end; `validate-render.ps1 -Strict` against a
+fresh render passes V07/V08 with no skips recorded.
 
 ### 3.2 Publish the prepared wiki review edits
 
