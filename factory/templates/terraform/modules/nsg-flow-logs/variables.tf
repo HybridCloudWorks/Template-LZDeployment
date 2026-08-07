@@ -45,12 +45,6 @@ variable "flow_log_retention_days" {
   default     = 90
 }
 
-variable "log_retention_days" {
-  description = "Number of days to retain diagnostic logs"
-  type        = number
-  default     = 90
-}
-
 variable "enable_traffic_analytics" {
   description = "Enable Traffic Analytics for flow logs"
   type        = bool
