@@ -121,18 +121,15 @@ whether repos are transferred to the client afterward. Watch schema risk GH1
 **Gate**: [REVIEW.md](REVIEW.md) §13.
 **Validation**: policy recorded in a decision record; wizard/docs reference it.
 
-### 2.7 Update dot-folder contract text to the 2026-08-07 file contract
+### 2.7 Update dot-folder contract text to the 2026-08-07 file contract — CLOSED
 
-`.claude/agents/docs-knowledge-curator.md` still states the old TODO/REVIEW
-file contract and says USER-CHECKLIST.md lives at the repo root;
-`.github/workflows/020-rbac-validation.yml` line 13 still cites "PROD-TODO
-Phase 2 blocker" (now REVIEW.md §1). Dot-prefixed folders are
-operator-restricted (2026-08-07 correction), so these edits need explicit
-operator approval.
-**Owner**: `docs-knowledge-curator`.
-**Gate**: operator approval to edit dot-folders.
-**Validation**: `grep -rn "PROD-TODO" .github/ .claude/ --include='*.md' --include='*.yml'`
-returns no live-instruction references.
+Closed 2026-08-07 (PR #77): the gate lifted when the operator approved the
+dot-folder edits in-session. `docs-knowledge-curator.md`'s "What lives where"
+now states the four-file root contract and the `docs/USER-CHECKLIST.md`
+location; the `020-rbac-validation.yml` comment cites REVIEW.md §1. The
+validation grep for "PROD-TODO" returns no live-instruction references.
+Item number retained so cross-references stay stable; record in
+[CHANGELOG.md](CHANGELOG.md).
 
 ---
 

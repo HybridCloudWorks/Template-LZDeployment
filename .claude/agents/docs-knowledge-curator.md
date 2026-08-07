@@ -19,17 +19,29 @@ A stale doc here is a deployment hazard, not a cosmetic issue.
 
 ## What lives where
 
+Root markdown is limited to four files (operator file contract, 2026-08-07):
+
 - `README.md` — what the repo is and how it deploys. Kept honest about status.
-- `TODO.md` — the current phase plan and known pipeline issues.
-- `CHANGELOG.md` — what actually shipped.
-- `docs/` — only `CROSS-DOMAIN-CONTRACTS.md` remains in-repo (agents read it from
-  disk). Build standards, phase plans, deployment flow, static generator design,
-  verification reports, and factory stage readiness records were migrated to the
+- `TODO.md` — ALL open action items repo-wide, triaged chronologically in
+  phases, each naming its gate; the handoff document.
+- `REVIEW.md` — the blocker registry: who can unblock each gated item and the
+  next concrete action.
+- `CHANGELOG.md` — what actually shipped (shipped features only, going
+  forward).
+
+Elsewhere:
+
+- `docs/USER-CHECKLIST.md` — operator activities (moved from the root
+  2026-08-07); code-referenced by the factory test suites and the
+  scaffold/bootstrap error messages, so moving it again means updating its
+  consumers.
+- `docs/decisions/` — decision records; `docs/runbooks/` — operational
+  procedures; `docs/wiki-review/` — wiki review evidence.
+- `.claude/CROSS-DOMAIN-CONTRACTS.md` — the cross-file contracts (agents read
+  it from disk). Historical build standards, phase plans, and verification
+  reports were migrated to the
   [GitHub wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki)
   (2026-08-01).
-- `USER-CHECKLIST.md` — operator activities; stays in the repo root because the
-  factory test suites read and assert against it.
-- `runbooks/` — operational procedures.
 
 ## Skills to reach for
 

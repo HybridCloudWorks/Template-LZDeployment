@@ -7,6 +7,19 @@ entries below are history and are not rewritten.
 
 ---
 
+## Dot-folder contract text updated to the 2026-08-07 file contract (2026-08-07)
+
+TODO item 2.7, closed in PR #77 after the operator approved dot-folder edits
+in-session. `.claude/agents/docs-knowledge-curator.md`'s "What lives where"
+section now states the four-file root contract (README, TODO, REVIEW,
+CHANGELOG), the `docs/USER-CHECKLIST.md` location with its code-referenced
+consumers, and the actual homes of decisions, runbooks, wiki-review evidence,
+and `.claude/CROSS-DOMAIN-CONTRACTS.md`. The
+`.github/workflows/020-rbac-validation.yml` trigger comment now cites the
+live blocker (REVIEW.md §1) instead of the retired "PROD-TODO Phase 2".
+Validation: `grep -rn "PROD-TODO" .github/ .claude/` returns no
+live-instruction references.
+
 ## TODO Phase 1 shipped — skip-free strict corpus, Linux scaffold fix, drift-check proven (2026-08-07)
 
 PR #77 closes the three startable engineering items (TODO.md Phase 1, items
