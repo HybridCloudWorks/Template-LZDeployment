@@ -51,7 +51,7 @@ Spans: `scripts/Start-LandingZoneBootstrap.ps1` and
 `factory/bootstrap/LZFactory.Bootstrap.psm1` (create the identities and
 federated credentials; `identity.cicdIdentityModel` selects minimal vs
 per-environment — see
-[docs/decisions/0002-minimal-identity-estate.md](../docs/decisions/0002-minimal-identity-estate.md)),
+[docs/decisions/0002-minimal-identity-estate.md](decisions/0002-minimal-identity-estate.md)),
 `.github/workflows/terraform-plan.yml`,
 `.github/workflows/010-terraform-init.yml`,
 `.github/workflows/020-rbac-validation.yml`,
@@ -111,7 +111,7 @@ internally consistent; do not "reconcile" them by editing one side.
   in a PR after that layer's first apply; an explicitly supplied variable
   value overrides the read. The **manual resource-ID paste is retired**.
   Rationale:
-  [docs/decisions/0003-management-baseline-promotion.md](../docs/decisions/0003-management-baseline-promotion.md).
+  [docs/decisions/0003-management-baseline-promotion.md](decisions/0003-management-baseline-promotion.md).
 
 The site's connectivity tfvars export emits commented operator placeholders for
 both. Do **not** "fix" this by adding schema keys or wizard fields; the omission

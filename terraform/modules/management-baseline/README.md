@@ -12,7 +12,7 @@ metric alert on workspace ingestion volume. Called by the
 The `log_analytics_workspace_id` output is the value the connectivity layer's
 operators paste into their tfvars after this layer applies (the documented
 placeholder loop-back — see contract #4 in
-`.claude/CROSS-DOMAIN-CONTRACTS.md`).
+`docs/CROSS-DOMAIN-CONTRACTS.md`).
 
 ## What It Creates
 

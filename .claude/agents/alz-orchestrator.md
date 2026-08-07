@@ -7,7 +7,7 @@ description: Top-level router for Azure Landing Zone work in this repo. Use when
 
 ## Orient first
 
-Read [.claude/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md) before
+Read [docs/CROSS-DOMAIN-CONTRACTS.md](../../docs/CROSS-DOMAIN-CONTRACTS.md) before
 decomposing any request — those contracts are the reason cross-domain work routes
 through you. When a task touches a contract, keep every side of it in ONE
 specialist's brief (or sequence the sides yourself with explicit hand-off state);

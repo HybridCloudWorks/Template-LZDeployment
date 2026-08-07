@@ -1,18 +1,27 @@
 # Claude Code orchestration for HCW-Plan_LZDeployment
 
 Source-controlled agents, skills, slash commands, and tool configuration for this
-repository. Everything here loads automatically when Claude Code opens the repo —
-there is nothing to install.
+repository. Everything under `.claude/` loads automatically when Claude Code opens
+the repo — there is nothing to install. This page is the **inventory and
+provenance record**; the *rules* for when capabilities get used, how usage is
+reported, and what is denied live in [CLAUDE.md](../CLAUDE.md) (routing §1,
+reporting §§2–4, guardrails §5) and are not duplicated here.
 
 ```
 .claude/
 ├── agents/      10 orchestration agents (routing + domain specialists)
 ├── commands/    3 slash commands
 ├── skills/      94 skills, flat namespace
-├── settings.json
-└── README.md
+├── hooks/       agent-report.ps1 (Stop hook)
+└── settings.json
 .mcp.json        Azure + Microsoft Learn MCP servers (repo root)
 ```
+
+Per the dot-prefixed-folder policy
+([decision 0008](decisions/0008-dot-prefixed-folders-are-configuration-only.md)),
+`.claude/` holds tooling configuration only — the files above are what Claude
+Code itself reads. Documentation about them (this page, the contracts register,
+the portable-kit runbook) lives in `docs/`.
 
 ## Agents
 
@@ -42,8 +51,8 @@ It reads `TODO.md` and `docs/` first, decomposes the request, and delegates.
 
 ## Skills
 
-94 skills in a flat namespace under `skills/`. Cross-references between skills in
-the same pack are preserved.
+94 skills in a flat namespace under `.claude/skills/`. Cross-references between
+skills in the same pack are preserved.
 
 | Pack | Count | Skills |
 | --- | --- | --- |
@@ -84,27 +93,17 @@ you use those skills.
 
 ## Capability usage report
 
-`hooks/agent-report.ps1` is registered in `settings.json` as a **`Stop`** hook. It
-is currently **enabled** (`agent-report.json` → `"enabled": true`). When disabled it
-exits silently; when enabled it parses the session transcript, counts actual
-`tool_use` records (agents by `subagent_type`, skills by `skill`, everything else
-as a tool) since the previous report, and prints the tally. It never blocks a turn.
-
-```bash
-pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/agent-report.ps1 -Mode Toggle -State On
-```
-
-This is local-only — nothing is transmitted anywhere, unlike the Azure pack's
-telemetry hooks below, which remain unimported. Routing and reporting rules live in
-[`../CLAUDE.md`](../CLAUDE.md).
+`.claude/hooks/agent-report.ps1` is registered in `settings.json` as a **`Stop`**
+hook, toggled by `.claude/agent-report.json`. It counts `tool_use` records from
+the session transcript and never blocks a turn. This is local-only — nothing is
+transmitted anywhere, unlike the Azure pack's unimported telemetry hooks above.
+The report and toggle rules are [CLAUDE.md](../CLAUDE.md) §§2–4; to replicate the
+setup in another repo, see the
+[portable kit runbook](runbooks/agent-report-portable-kit.md).
 
 ## Guardrails
 
-`settings.json` allowlists routine read-only commands (`git status`,
-`terraform validate`, `az account show`, `gh run view`, …) and **denies** the
-operations that can destroy this landing zone: `terraform apply`, `destroy`,
-`state rm/mv`, `force-unlock`, `import`, `az` resource deletion,
-`gh workflow run`, `gh pr merge`, and force-pushing or pushing to `main`.
-
-Every agent definition repeats the same rule: produce the plan or the change, then
-stop. Applying it is the operator's call.
+`.claude/settings.json` allowlists routine read-only commands and denies the
+operations that can destroy this landing zone — the authoritative list is
+[CLAUDE.md](../CLAUDE.md) §5. Every agent definition repeats the same rule:
+produce the plan or the change, then stop. Applying it is the operator's call.

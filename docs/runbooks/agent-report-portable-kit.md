@@ -6,8 +6,8 @@ then parses the session transcript and prints the authoritative *counts*. Reason
 come from the assistant, numbers come from the transcript — the assistant never
 guesses a count, and the hook never invents a reason.
 
-This directory is the source. Everything below is what you copy into another repo
-and how to wire it. Budget about 10 minutes.
+This repo's `.claude/hooks/` directory is the source. Everything below is what you
+copy into another repo and how to wire it. Budget about 10 minutes.
 
 ## 1. What you get
 
@@ -188,4 +188,4 @@ If you want the rest:
   meaningful to count. See §1 of this repo's [CLAUDE.md](../../CLAUDE.md).
 - **Cross-domain contracts doc** — a register of multi-file contracts that break
   when edited from one side. See
-  [.claude/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md).
+  [docs/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md).

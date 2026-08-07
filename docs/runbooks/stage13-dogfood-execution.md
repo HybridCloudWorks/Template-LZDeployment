@@ -213,7 +213,7 @@ pwsh -File scripts/New-BackendConfig.ps1 -Apply
 each carry the real storage-account name and `use_azuread_auth = true` —
 always enforced, never key auth, because the state account is created with
 shared-key access disabled (contract #3,
-[.claude/CROSS-DOMAIN-CONTRACTS.md](../../.claude/CROSS-DOMAIN-CONTRACTS.md)).
+[docs/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md)).
 
 **Verify — name-mismatch check (important)**: the real account name is
 `sthcwtfstate<random-suffix>` (the stack appends a random suffix), while the

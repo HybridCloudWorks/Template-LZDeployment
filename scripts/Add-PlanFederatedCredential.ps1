@@ -29,7 +29,7 @@
     credential list is read back via `az ad app federated-credential list`
     and the exact subject is asserted.
 
-    CONTRACT GUARD (.claude/CROSS-DOMAIN-CONTRACTS.md #2): the `pull_request`
+    CONTRACT GUARD (docs/CROSS-DOMAIN-CONTRACTS.md #2): the `pull_request`
     OIDC subject belongs EXCLUSIVELY to the read-only plan SP. Before doing
     anything, this script reads the target identity's Azure role assignments
     and REFUSES to proceed if the app holds Contributor, Owner, or User

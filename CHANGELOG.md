@@ -7,6 +7,34 @@ entries below are history and are not rewritten.
 
 ---
 
+## Dot-prefixed folders are configuration-only — documentation migrated out of `.claude/` (2026-08-07)
+
+Operator-directed policy, recorded as
+[decision 0008](docs/decisions/0008-dot-prefixed-folders-are-configuration-only.md):
+dot-prefixed folders (`.github/`, `.claude/`, `.azure/`, …) hold tooling
+configuration only; documentation found there is classified by content,
+migrated to its authoritative destination, and deleted at the source. The
+2026-08-07 audit cleared `.github/` and `.azure/` (no documentation) and
+ruled the `.claude/` agents/commands/skills markdown tool-required
+configuration; three files were documentation and moved (`git mv`, history
+preserved): `.claude/CROSS-DOMAIN-CONTRACTS.md` →
+`docs/CROSS-DOMAIN-CONTRACTS.md` (content intact, internal links rebased),
+`.claude/hooks/README.md` → `docs/runbooks/agent-report-portable-kit.md`
+(portable-kit how-to; now names `.claude/hooks/` as the source explicitly),
+and `.claude/README.md` → `docs/claude-orchestration.md` (inventory and
+import provenance kept; rule prose duplicating CLAUDE.md §§1/2/5 trimmed to
+links, making CLAUDE.md the sole source for routing/reporting/guardrail
+rules). Every live referrer retargeted in the same change — 10 agent files
+and the `lz-plan` command, CLAUDE.md (which also gained the 0008 policy
+note), README.md, `frontend/README.md` and `frontend/app.js`, the
+spoke-network and management-baseline READMEs in both the live and factory
+template trees, `scripts/Add-PlanFederatedCredential.ps1`, the Stage 13
+runbook, decision 0003, `terraform-plan.yml.tmpl`, and
+`LZFactory.Bootstrap.psm1`; CHANGELOG history entries naming the old paths
+are left as history. The findings-and-disposition table in decision 0008 is
+the policy's consolidation report. Suites after the work: node 87/0,
+Test-Renderer 245/0, Test-CI 12/0, Factory CI 17/17.
+
 ## `Initialize-ClientFork.ps1` hardening stages retired — private-copy mechanic survives (2026-08-07)
 
 TODO item 2.2, closed the day the operator ratified

@@ -12,7 +12,7 @@ layers (`terraform/live/workloads-prod/main.tf` is the reference caller).
 must be created in the connectivity subscription that owns the hub VNet.
 Every caller must pass a `providers` map (see Usage) — omitting it fails at
 `terraform validate`. This is cross-domain contract #5 in
-`.claude/CROSS-DOMAIN-CONTRACTS.md`.
+`docs/CROSS-DOMAIN-CONTRACTS.md`.
 
 ## What It Creates
 

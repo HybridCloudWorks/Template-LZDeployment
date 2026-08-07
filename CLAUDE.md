@@ -1,7 +1,8 @@
 # Assistant operating instructions — HCW-Plan_LZDeployment
 
 This repository ships its own agents, skills, slash commands, and MCP servers under
-`.claude/` and `.mcp.json`. See [.claude/README.md](.claude/README.md) for the full
+`.claude/` and `.mcp.json`. See
+[docs/claude-orchestration.md](docs/claude-orchestration.md) for the full
 inventory. This file governs **when** those capabilities get used and **how** usage
 is reported.
 
@@ -108,11 +109,11 @@ silently skipping the match.
   `.claude/` meta-config (which has no owner).
 - Dispatch briefs must warm-start the specialist: include the task's current
   state, relevant contract references
-  ([.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)), file paths,
+  ([docs/CROSS-DOMAIN-CONTRACTS.md](docs/CROSS-DOMAIN-CONTRACTS.md)), file paths,
   and the validation commands to run. The specialist must not re-discover session
   state from scratch.
 - Cross-domain contract changes (see
-  [.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)) are exactly
+  [docs/CROSS-DOMAIN-CONTRACTS.md](docs/CROSS-DOMAIN-CONTRACTS.md)) are exactly
   the `alz-orchestrator` trigger — never split a contract across
   independently-briefed specialists.
 
@@ -193,3 +194,9 @@ available from the current context."
 `import`, `az` resource deletion, `gh workflow run`, `gh pr merge`, and force-push
 or push to `main`. Produce the plan or the change, then stop — applying it is the
 operator's call.
+
+Dot-prefixed folders (`.github/`, `.claude/`, `.azure/`, …) hold tooling
+configuration only — documentation found there is a finding to migrate to
+`docs/`, the four root files, or the wiki
+([decision 0008](docs/decisions/0008-dot-prefixed-folders-are-configuration-only.md),
+operator-directed 2026-08-07).

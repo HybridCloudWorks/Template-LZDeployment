@@ -517,7 +517,7 @@ class LegacyTfvarsGenerator {
     const errors = [];
 
     // org_prefix bound must match terraform/live/global/variables.tf
-    // (^[a-z0-9]{2,10}$) — contract #1 in .claude/CROSS-DOMAIN-CONTRACTS.md.
+    // (^[a-z0-9]{2,10}$) — contract #1 in docs/CROSS-DOMAIN-CONTRACTS.md.
     if (!data.orgId || !/^[a-z0-9]{2,10}$/.test(data.orgId)) {
       errors.push("Organization ID must be 2-10 lowercase alphanumeric characters (org_prefix validation in terraform/live/global).");
     }

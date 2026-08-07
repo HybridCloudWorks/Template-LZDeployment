@@ -272,7 +272,7 @@ See [TODO.md](TODO.md) (all action items, phased) and [REVIEW.md](REVIEW.md) (hu
 - **[CHANGELOG.md](CHANGELOG.md)** — changelog of shipped features, with verification notes and the archived `HANDOFF.md` decisions
 - **[docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md)** — operator authentication, publication, and verification activities
 - **[docs/runbooks/](docs/runbooks/)** — engagement disposal, lifecycle-hygiene, and Stage 13 execution runbooks; **[docs/decisions/](docs/decisions/)** — decision records
-- **[.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md)** — load-bearing cross-file contracts (stays in-repo; agents read it from disk)
+- **[docs/CROSS-DOMAIN-CONTRACTS.md](docs/CROSS-DOMAIN-CONTRACTS.md)** — load-bearing cross-file contracts (stays in-repo; agents read it from disk)
 - **[terraform/modules/\*/README.md](terraform/modules/)** — per-module usage docs (all 11 modules, as of 2026-08-02)
 
 ---

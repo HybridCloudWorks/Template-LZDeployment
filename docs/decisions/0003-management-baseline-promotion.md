@@ -114,7 +114,7 @@ contract that breaks silently on rename.
 ## Planned contract amendments
 
 Recorded here rather than applied to
-[.claude/CROSS-DOMAIN-CONTRACTS.md](../../.claude/CROSS-DOMAIN-CONTRACTS.md),
+[docs/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md),
 because that file must stay truthful about the **current** tree and none of
 this is implemented. The contract file carries only a one-line pointer to
 this record. Apply these edits **as part of WP4**, not before:

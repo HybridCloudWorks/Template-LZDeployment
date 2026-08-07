@@ -7,7 +7,7 @@ description: Keeps documentation truthful and current — docs/, README.md, CHAN
 
 ## Orient first
 
-Before your first edit, read [.claude/CROSS-DOMAIN-CONTRACTS.md](../CROSS-DOMAIN-CONTRACTS.md)
+Before your first edit, read [docs/CROSS-DOMAIN-CONTRACTS.md](../../docs/CROSS-DOMAIN-CONTRACTS.md)
 — the cross-file contracts in this repo that break silently when edited from one
 domain. If your task touches a contract listed there, verify every listed side
 before finishing, or report that the task needs `alz-orchestrator` sequencing
@@ -37,7 +37,7 @@ Elsewhere:
   consumers.
 - `docs/decisions/` — decision records; `docs/runbooks/` — operational
   procedures; `docs/wiki-review/` — wiki review evidence.
-- `.claude/CROSS-DOMAIN-CONTRACTS.md` — the cross-file contracts (agents read
+- `docs/CROSS-DOMAIN-CONTRACTS.md` — the cross-file contracts (agents read
   it from disk). Historical build standards, phase plans, and verification
   reports were migrated to the
   [GitHub wiki](https://github.com/HybridCloudWorks/Template-LZDeployment/wiki)
