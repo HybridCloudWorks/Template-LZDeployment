@@ -191,6 +191,32 @@ auto-discover them — and which Log Analytics workspace receives traffic
 analytics.
 **Not decided here** because the answer determines cost and data-residency
 posture, not just wiring.
+**Update 2026-08-08**: the options paper now exists as
+[decision 0009 (Proposed)](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md)
+— three coupled choices costed (NSG scope, workspace target, hosting stack),
+with **A2 + B1 + C2 behind a default-off `enable_nsg_flow_logs` flag**
+recommended. The paper also records four constraints found while costing it,
+which narrow the field more than the money does: the module's storage-account
+name is not unique per call, so at most one instance per `(region,
+environment)` can exist estate-wide; Network Watcher is per-subscription, so
+a connectivity-hosted call cannot reach spoke NSGs at all; the three workspace
+inputs cannot be satisfied from what `management-baseline` exports today (its
+`log_analytics_workspace_id` is the **full ARM ID**, not the short GUID the
+identically-named module input wants); and the `enable_private_endpoint = true`
+default has no `privatelink.blob.core.windows.net` zone to attach to in either
+tree. It further notes that the wizard already collects
+`security.nsgFlowLogs.{enabled,retentionDays,trafficAnalytics}` and no
+`variable-map.json` entry consumes any of them, and that the module README's
+"~$200/month" and its `estimated_monthly_cost_usd` output are both
+indefensible. Per-GB list prices could **not** be verified in-session (egress
+to `prices.azure.com` and the Azure MCP pricing tool were both refused), so
+every figure is a stated-assumption estimate and a rate refresh is a
+ratification prerequisite — the same weakness §17 already records.
+**Awaiting operator ratification**; nothing is implemented until then, and no
+`.tf` file was touched by the authoring pass. Five open questions are carried
+at the end of the paper, the load-bearing ones being residency (a boundary
+constraint moves the recommendation from B1 to B2) and whether the generated
+default should be off or should follow the wizard's pre-checked box.
 
 ### 12. Disposition of `scripts/Initialize-ClientFork.ps1`
 Under decision 0004 its hardening stages (Actions enablement, branch
