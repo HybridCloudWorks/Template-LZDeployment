@@ -7,6 +7,47 @@ entries below are history and are not rewritten.
 
 ---
 
+## NSG flow-log options paper proposed — decision 0009 (2026-08-08)
+
+The [REVIEW.md](REVIEW.md) §11 gate on TODO item 2.3 now has the paper it was
+waiting for:
+[docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md).
+`terraform/modules/nsg-flow-logs/` has zero callers in either tree, so no NSG
+flow log is collected in this repository's deployment or in any generated
+repository — while the wizard already collects
+`security.nsgFlowLogs.{enabled,retentionDays,trafficAnalytics}`
+(`lz-config.schema.json:586`, `site/index.html:701`) with no
+`variable-map.json` entry consuming any of it. The paper separates the three
+coupled choices by owner — NSG scope (A0–A4), workspace target (B1
+`management-baseline` via decision 0003's `count`-gated remote-state read, B2
+dedicated workspace, B3 operator-supplied ID), hosting stack (C1
+connectivity, C2 per-workload, C3 management) — and recommends **A2 + B1 +
+C2, behind a default-off `enable_nsg_flow_logs` flipped in a later PR**, the
+`wire_management_workspace` shape. Four constraints surfaced during costing
+and narrow the field more than the money does: the module's
+`stflowlogs{region_code}{environment}` storage-account name is not unique per
+call, capping the estate at one instance per `(region, environment)`; Network
+Watcher is regional **and** per-subscription and the module declares no
+`configuration_aliases`, so a connectivity-hosted call cannot reach spoke
+NSGs at all; the module's three workspace inputs cannot be satisfied from
+today's exports, and `management-baseline`'s `log_analytics_workspace_id` is
+the full ARM ID rather than the short GUID its identically-named input wants;
+and `enable_private_endpoint = true` has no
+`privatelink.blob.core.windows.net` zone anywhere outside `backend-bootstrap`.
+Costing is list-price with assumptions stated in line — per-GB rates could not
+be verified in-session, egress to `prices.azure.com` and the Azure MCP pricing
+tool both being refused, so a rate refresh is a ratification prerequisite
+(REVIEW.md §17). It records that cost tracks traffic volume rather than NSG
+count, that `traffic_analytics_interval` 10 vs 60 is the one large lever, and
+that the module README's "~$200/month" and its `estimated_monthly_cost_usd`
+output — which ships into every generated repo — are both indefensible.
+Status **Proposed**; awaiting operator ratification; nothing implemented and
+no `.tf` file touched. [REVIEW.md](REVIEW.md) §11 and [TODO.md](TODO.md) item
+2.3 point at the paper; item 2.3 stays open. Suites after the work: node 87/0,
+Test-Renderer 245/0, Test-CI 12/0, Factory CI 17/17.
+
+---
+
 ## Dot-prefixed folders are configuration-only — documentation migrated out of `.claude/` (2026-08-07)
 
 Operator-directed policy, recorded as

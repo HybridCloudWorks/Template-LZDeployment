@@ -100,7 +100,14 @@ Module exists with secure defaults; zero `terraform/live/*` callers, so no
 NSG flow logs are collected anywhere.
 **Owner**: `terraform-module-engineer`.
 **Gate**: operator choice of NSG set + Log Analytics workspace (cost and
-data-residency posture) — [REVIEW.md](REVIEW.md) §11.
+data-residency posture) — [REVIEW.md](REVIEW.md) §11, now with the options
+paper it needs:
+[decision 0009 (Proposed)](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md)
+costs the three coupled choices (NSG scope, workspace target, hosting stack)
+and recommends A2 + B1 + C2 behind a default-off `enable_nsg_flow_logs`.
+**Still open** — the gate lifts on operator ratification, not on the paper
+existing. The paper also names the module outputs and corpus↔live parity work
+the wiring implies.
 **Validation**: `terraform validate` in the touched stack; plan shows the
 flow-log resources against the chosen NSGs only.
 
