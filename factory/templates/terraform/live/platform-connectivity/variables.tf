@@ -192,6 +192,21 @@ variable "state_container_name" {
   default     = "tfstate"
 }
 
+variable "enable_nsg_flow_logs" {
+  # Same shape and reasoning as the workload layers' flag (decision 0009).
+  # Default false so the FIRST plan of a freshly generated repository succeeds:
+  # the module reads NetworkWatcher_${location} in NetworkWatcherRG through the
+  # default provider, and Azure creates that resource group only once the
+  # subscription's first VNet exists. A provider read cannot be rescued by
+  # try() — only count. Flip in a PR after the hubs' first apply and after
+  # wire_management_workspace is enabled. Only has an effect on an NVA hub:
+  # fw_mgmt is the sole hub NSG and hub-network creates it for palo/fortinet
+  # only.
+  description = "Collect NSG flow logs for the hubs' firewall-management NSGs. Enable after the hubs' first apply."
+  type        = bool
+  default     = false
+}
+
 variable "default_tags" {
   description = "Default tags to apply to all resources"
   type        = map(string)

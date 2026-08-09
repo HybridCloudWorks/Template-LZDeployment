@@ -52,3 +52,17 @@ output "firewall_diagnostics_enabled" {
   description = "Whether threat intelligence diagnostics are enabled"
   value       = var.enable_firewall_threat_intel
 }
+
+# Same shape as spoke-network's nsg_ids so a caller passes one value straight
+# into nsg-flow-logs. Keyed by NSG role rather than by resource name, and the
+# nsg-flow-logs module uses the key in the flow-log resource name, so a caller
+# merging both hubs' maps must re-key to keep those names unique per Network
+# Watcher. The hub creates fw_mgmt only for an NVA firewall (local.has_nva),
+# so this is an EMPTY MAP — not null, and never an index into a zero-length
+# resource — for an azfw hub; nsg-flow-logs' for_each then enables nothing.
+output "nsg_ids" {
+  description = "Map of hub NSG role (fw_mgmt) to NSG resource ID. Empty when the hub deploys no NVA firewall."
+  value = local.has_nva ? {
+    fw_mgmt = azurerm_network_security_group.fw_mgmt[0].id
+  } : {}
+}

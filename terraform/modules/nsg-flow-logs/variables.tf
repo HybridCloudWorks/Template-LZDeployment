@@ -18,6 +18,26 @@ variable "resource_group_name" {
   type        = string
 }
 
+variable "storage_account_name" {
+  # Null keeps the name this module has always composed —
+  # stflowlogs${region_code}${environment} — so existing callers are
+  # unaffected. Supply a value when more than one instance of this module must
+  # exist in the same (region, environment): storage account names are
+  # globally unique, so two instances sharing the composed name plan clean and
+  # then collide at apply (contract 8a).
+  description = "Override for the flow-log storage account name. Null composes stflowlogs<region_code><environment>. Required when a second instance shares a region and environment with an existing one."
+  type        = string
+  default     = null
+
+  validation {
+    # Azure storage account naming: 3–24 characters, lowercase letters and
+    # digits only. Checked here rather than left to the API so a bad override
+    # fails at plan instead of part-way through an apply.
+    condition     = var.storage_account_name == null || can(regex("^[a-z0-9]{3,24}$", var.storage_account_name))
+    error_message = "storage_account_name must be 3-24 characters of lowercase letters and digits only."
+  }
+}
+
 variable "nsg_ids" {
   description = "Map of NSG names to NSG resource IDs to enable flow logs on"
   type        = map(string)

@@ -537,6 +537,105 @@ foreach ($wl in @('workloads-prod', 'workloads-nonprod')) {
     ok "$wl leaves retention unbounded" ($retBlock.Success -and $retBlock.Groups['b'].Value -notmatch 'validation\s*\{') ($retBlock.Groups['b'].Value -replace '\s+', ' ')
 }
 
+Write-Host "`n== 15e. Flow-log storage names are distinct (TODO 2.9) ==" -ForegroundColor Cyan
+# Contract 8a used to read "one nsg-flow-logs instance per (region,
+# environment), estate-wide", because the module composed a globally-unique
+# storage account name with no override. Hub fw_mgmt coverage needs a second
+# instance in the same region and environment as the workload one, so the
+# ceiling became "names must be distinct, and the second caller must supply
+# storage_account_name".
+#
+# No plan can prove that here — azurerm needs credentials — so the criterion is
+# proved from configuration, which is where the collision is actually decided:
+# the module's fallback is unchanged, the workload callers still take it, the
+# connectivity callers override it, and the four resulting names are distinct.
+$flowMods = @{
+    live   = "$repo/terraform/modules/nsg-flow-logs"
+    corpus = "$repo/factory/templates/terraform/modules/nsg-flow-logs"
+}
+foreach ($tree in $flowMods.Keys | Sort-Object) {
+    $mVars = Get-Content "$($flowMods[$tree])/variables.tf" -Raw
+    $mMain = Get-Content "$($flowMods[$tree])/main.tf" -Raw
+    $sanBlock = [regex]::Match($mVars, '(?s)variable\s+"storage_account_name"\s*\{(?<b>.*?)(?=\r?\nvariable\s+"|\z)')
+    ok "$tree module declares the override"  $sanBlock.Success
+    ok "$tree override defaults to null"     ($sanBlock.Groups['b'].Value -match '(?m)^\s*default\s*=\s*null\s*$')
+    ok "$tree override validates Azure rule" ($sanBlock.Groups['b'].Value -match '\^\[a-z0-9\]\{3,24\}\$')
+    # The fallback is the pre-override expression, byte for byte: existing
+    # callers must render the name they already have or an apply replaces a
+    # storage account holding flow logs.
+    ok "$tree fallback is unchanged"         ($mMain -match '(?m)^\s*default_storage_account_name\s*=\s*"stflowlogs\$\{var\.region_code\}\$\{var\.environment\}"\s*$')
+    ok "$tree name falls back when unset"    ($mMain -match 'name\s*=\s*coalesce\(var\.storage_account_name,\s*local\.default_storage_account_name\)')
+}
+
+# Effective names, computed the way Terraform would for the fixture's regions.
+$env = 'prod'
+$composed = { param($code) "stflowlogs$code$env" }
+$flowNames = @{}
+foreach ($pair in @(@{ layer = 'workloads-prod'; code = $cfg.azure.primaryRegionCode }, @{ layer = 'workloads-prod-dr'; code = $cfg.azure.drRegionCode })) {
+    $flowNames[$pair.layer] = & $composed $pair.code
+}
+# The workload callers must NOT set the override, or their storage accounts
+# would be renamed under an estate that already has them. Scoped to the module
+# blocks: the layer's remote-state read legitimately mentions
+# state_storage_account_name.
+foreach ($wlFile in @('terraform/live/workloads-prod/main.tf', 'factory/templates/terraform/live/workloads-prod/main.tf.tmpl')) {
+    $wlRawMain = Get-Content "$repo/$wlFile" -Raw
+    $wlCalls = @([regex]::Matches($wlRawMain, '(?s)module\s+"nsg_flow_logs[^"]*"\s*\{(?<b>.*?)\r?\n\}'))
+    ok "$wlFile calls the module twice"  ($wlCalls.Count -eq 2) $wlCalls.Count
+    $overridden = @($wlCalls | Where-Object { $_.Groups['b'].Value -match '(?m)^\s*storage_account_name\s*=' })
+    ok "$wlFile keeps the composed name" ($overridden.Count -eq 0) $overridden.Count
+}
+
+# The connectivity callers must set it, in both trees and in the render.
+$connSources = @{
+    live     = Get-Content "$repo/terraform/live/platform-connectivity/main.tf" -Raw
+    corpus   = Get-Content "$repo/factory/templates/terraform/live/platform-connectivity/main.tf.tmpl" -Raw
+    rendered = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/main.tf') -Raw
+}
+foreach ($tree in $connSources.Keys | Sort-Object) {
+    $src = $connSources[$tree]
+    ok "$tree hub primary overrides the name" ($src -match 'storage_account_name\s*=\s*"stflowlogshub\$\{var\.primary_region_code\}prod"')
+    ok "$tree hub DR overrides the name"      ($src -match 'storage_account_name\s*=\s*"stflowlogshub\$\{var\.dr_region_code\}prod"')
+    # An NVA-less hub has no fw_mgmt NSG, so the instance must not be created
+    # at all — a storage account with nothing to log still bills.
+    ok "$tree gates on the NSG existing"      ($src -match 'var\.enable_nsg_flow_logs\s*&&\s*length\(module\.hub_primary\.nsg_ids\)\s*>\s*0')
+}
+$flowNames['connectivity-primary'] = "stflowlogshub$($cfg.azure.primaryRegionCode)prod"
+$flowNames['connectivity-dr'] = "stflowlogshub$($cfg.azure.drRegionCode)prod"
+
+# The criterion itself: two instances in ONE region at ONE environment now
+# plan distinct storage accounts, and every name is a legal Azure one.
+ok 'primary region: two distinct names' ($flowNames['workloads-prod'] -ne $flowNames['connectivity-primary']) "$($flowNames['workloads-prod']) vs $($flowNames['connectivity-primary'])"
+ok 'DR region: two distinct names'      ($flowNames['workloads-prod-dr'] -ne $flowNames['connectivity-dr']) "$($flowNames['workloads-prod-dr']) vs $($flowNames['connectivity-dr'])"
+ok 'all four names distinct'            (@($flowNames.Values | Sort-Object -Unique).Count -eq 4) ($flowNames.Values -join ',')
+$illegal = @($flowNames.Values | Where-Object { $_ -cnotmatch '^[a-z0-9]{3,24}$' })
+ok 'every name is a legal storage name' ($illegal.Count -eq 0) ($illegal -join ',')
+# The composed fallback must itself satisfy the rule the override validates,
+# or the module would reject a name it generates.
+ok 'fallback satisfies the validation'  ($flowNames['workloads-prod'] -cmatch '^[a-z0-9]{3,24}$') $flowNames['workloads-prod']
+
+# hub-network's map must be empty, not null and not an index into a
+# zero-length resource, when the hub deploys no NVA.
+foreach ($tree in @('terraform/modules/hub-network', 'factory/templates/terraform/modules/hub-network')) {
+    $hubOut = Get-Content "$repo/$tree/outputs.tf" -Raw
+    $nsgBlock = [regex]::Match($hubOut, '(?s)output\s+"nsg_ids"\s*\{(?<b>.*?)(?=\r?\noutput\s+"|\z)')
+    ok "$tree exposes nsg_ids"        $nsgBlock.Success
+    ok "$tree keys fw_mgmt"           ($nsgBlock.Groups['b'].Value -match 'fw_mgmt\s*=\s*azurerm_network_security_group\.fw_mgmt\[0\]\.id')
+    ok "$tree empties without an NVA" ($nsgBlock.Groups['b'].Value -match 'local\.has_nva\s*\?' -and $nsgBlock.Groups['b'].Value -match ':\s*\{\}')
+}
+
+# The connectivity gate follows the workload layers: default-off variable,
+# literal:false mapping, and a rendered constant false.
+$connVars = @(Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/live/platform-connectivity/variables.tf")
+$connGate = @($connVars | Where-Object { $_.Name -eq 'enable_nsg_flow_logs' })
+ok 'connectivity declares the gate'   ($connGate.Count -eq 1)
+ok 'connectivity gate has a default'  ($connGate.Count -eq 1 -and $connGate[0].HasDefault)
+ok 'connectivity maps literal:false'  ($vmap.layers.'platform-connectivity'.variables.enable_nsg_flow_logs -eq 'literal:false') $vmap.layers.'platform-connectivity'.variables.enable_nsg_flow_logs
+$connTfvars = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/terraform.auto.tfvars') -Raw
+ok 'connectivity gate renders false'  ($connTfvars -match '(?m)^enable_nsg_flow_logs\s*=\s*false\s*$') 'expected literal false'
+ok 'connectivity gate is never true'  ($connTfvars -notmatch '(?m)^enable_nsg_flow_logs\s*=\s*true\s*$')
+ok 'connectivity names the unblock'   ($connTfvars -match 'Flip this to true in a PR')
+
 Write-Host "`n== 16. Guard violation stops the render ==" -ForegroundColor Cyan
 $badCfgPath = Join-Path $PSScriptRoot '.out/bad-config.json'
 $bad = Clone $cfg; $bad.connectivity.model = 'virtual-wan'

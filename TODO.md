@@ -145,22 +145,46 @@ election to make residency configurable ahead of one —
 `RAGZRS` so no existing plan changes; a config setting `LRS` or `ZRS` plans a
 storage account with that replication and no paired-region copy.
 
-### 2.9 Make the flow-log storage account name overridable, then cover hub `fw_mgmt`
+### 2.9 Make the flow-log storage account name overridable, then cover hub `fw_mgmt` — CLOSED
 
-The module composes a globally-unique storage account name from region and
-environment with no override, which caps deployment at **one instance per
-`(region, environment)`** estate-wide — a second instance in the same region
-and environment collides on the name. That ceiling is why the hub's `fw_mgmt`
-NSG is currently unlogged: covering it needs an instance in the connectivity
-subscription in the same region as the prod workload instance. Decision 0009
-follow-up (b), and the "Negative" consequence the record names first.
-**Owner**: `terraform-module-engineer`.
-**Gate**: none technical — startable; sequenced behind item 2.3's wiring,
-which is now landed. Needs an operator nod only because it changes the naming
-contract of a module that already has live callers.
-**Validation**: `terraform validate` in both trees; two instances in one
-region and environment plan distinct storage accounts; `hub-network` exposes
-an `fw_mgmt` NSG output and the connectivity layer's instance consumes it.
+Closed 2026-08-09: the gate lifted when the operator gave the nod in-session
+2026-08-09 (decision 0009 follow-up (b); no new decision record — the naming
+change is an implementation of a ratified follow-up, not a new choice).
+Shipped, both trees at parity: `nsg-flow-logs` gained a
+`storage_account_name` variable defaulting to `null`, with the resource name
+falling back through `coalesce()` to the unchanged composed
+`stflowlogs${region_code}${environment}` so every existing caller renders the
+name it already has, and a `validation` block enforcing Azure's 3–24
+lowercase-alphanumeric rule on any supplied value; `hub-network` gained an
+`nsg_ids` output in the same map shape as `spoke-network`'s, keyed `fw_mgmt`
+and **empty** (not null, never an index into a zero-length resource) when the
+hub deploys no NVA; and `platform-connectivity` gained one `nsg-flow-logs`
+instance per hub region, named `stflowlogshub<region_code>prod` so it coexists
+with `workloads-prod`'s `stflowlogs<region_code>prod` in the same region and
+environment, `count`-gated on a new `enable_nsg_flow_logs` **defaulting to
+`false`** *and* on `length(module.hub_*.nsg_ids) > 0` so an NVA-less hub does
+not create a storage account with nothing to log. `enable_private_endpoint`
+stays `false` (item 2.10 owns it) and `enable_traffic_alerts` `false` (no
+action group reaches this layer). `variable-map.json` maps the connectivity
+gate `literal:false`, matching the workload layers and the layer's own
+`wire_management_workspace`. Contract **8a** is rewritten from "one instance per `(region,
+environment)`" to "names must be distinct, and a second instance in a region
+and environment must supply `storage_account_name`".
+**Both validation criteria verified.** `terraform validate` clean in
+`terraform/live/platform-connectivity` and `terraform/live/workloads-prod`
+(terraform 1.9.8, azurerm 5.0.1), and `hub-network` exposes the `fw_mgmt`
+output the connectivity instances consume. The "two instances in one region
+and environment plan distinct storage accounts" criterion is proved from
+configuration rather than from a plan — a real plan needs credentials this
+environment does not have — by `factory/tests/Test-Renderer.ps1` §15e, which
+pins the module's fallback expression, the workload callers' *absence* of an
+override, the connectivity callers' overrides in both trees and in the render,
+and the distinctness and legality of the four resulting names. Alongside:
+87/0, 311/0 (was 271/0 — §15e adds 40 assertions), 85/0, 12/0, Factory CI
+17/17. Record in [CHANGELOG.md](CHANGELOG.md).
+**What remains**: both gates are still off, so the estate collects nothing
+until a PR flips them — that flip is estate-gated and carried in item 3.1,
+like items 2.1 and 2.3 before it.
 
 ### 2.10 Add `privatelink.blob.core.windows.net` and re-enable the flow-log private endpoint
 
