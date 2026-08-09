@@ -38,11 +38,13 @@ output "private_endpoint_ip" {
   value       = var.enable_private_endpoint ? azurerm_private_endpoint.flow_logs_blob[0].private_service_connection[0].private_ip_address : null
 }
 
-output "estimated_monthly_cost_usd" {
-  description = "Estimated monthly cost in USD"
-  value = {
-    storage           = length(var.nsg_ids) * var.flow_log_retention_days * 0.15
-    traffic_analytics = var.enable_traffic_analytics ? 100 : 0
-    total             = length(var.nsg_ids) * var.flow_log_retention_days * 0.15 + (var.enable_traffic_analytics ? 100 : 0)
-  }
-}
+# There is deliberately no estimated_monthly_cost_usd output. The one that
+# used to live here computed storage as length(nsg_ids) * retention_days *
+# 0.15 — NSG-count times days times a dollar figure, which has no unit basis
+# — and a flat $100 for Traffic Analytics regardless of volume. Every meter
+# that actually bills here is per-GB of flow data, a quantity Terraform cannot
+# know at plan time, so no honest number can be emitted from configuration
+# alone. It shipped into every generated repository, where a client read it as
+# a figure their own landing zone had produced. Deleted rather than repaired
+# (decision 0009, open question 5). The meter structure and the per-GB formula
+# are documented in README.md under "Cost".

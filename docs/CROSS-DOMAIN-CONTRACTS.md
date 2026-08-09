@@ -6,7 +6,8 @@ every file that participates. If you edit **one** side of a contract, you must
 check — and usually change — the other sides, or dispatch the change through
 `alz-orchestrator` so no side is edited in isolation.
 
-All entries verified against the repo on 2026-08-06.
+All entries verified against the repo on 2026-08-06; contract #4 corrected and
+contract #8 added 2026-08-09 (decision 0009).
 
 ---
 
@@ -105,17 +106,34 @@ internally consistent; do not "reconcile" them by editing one side.
   uncomment, and the generated plan workflow fails fast while it is unset.
 - `log_analytics_workspace_id` — owned by the platform-management stack. It
   remains **deliberately absent from the schema and the wizard** — the
-  workspace never flows through `lz-config.json`. The generated connectivity
-  layer carries a **pre-rendered `count`-gated remote-state read** of
-  platform-management (`wire_management_workspace`, default `false`), flipped
-  in a PR after that layer's first apply; an explicitly supplied variable
-  value overrides the read. The **manual resource-ID paste is retired**.
-  Rationale:
+  workspace never flows through `lz-config.json`. The connectivity layer
+  carries a **`count`-gated remote-state read** of platform-management
+  (`wire_management_workspace`, default `false`), flipped in a PR after that
+  layer's first apply; an explicitly supplied variable value overrides the
+  read. The **manual resource-ID paste is retired**. Rationale:
   [docs/decisions/0003-management-baseline-promotion.md](decisions/0003-management-baseline-promotion.md).
+
+  **Corrected 2026-08-09** (decision 0009, ratified 2026-08-08): this read is
+  **no longer a generated-layer-only mechanism**. It now exists in *both*
+  trees — `terraform/live/platform-connectivity/main.tf` as well as
+  `factory/templates/terraform/live/platform-connectivity/main.tf.tmpl` — and
+  both sides re-export a `management_workspace` object (ARM id, GUID,
+  location; empty strings while the gate is off). That re-export is what lets
+  the workload layers feed `nsg-flow-logs` from the connectivity remote state
+  they already read instead of opening a second read of platform-management.
+  Editing the read or the re-export on one side without the other is a
+  parity break; both are in scope of this contract.
 
 The site's connectivity tfvars export emits commented operator placeholders for
 both. Do **not** "fix" this by adding schema keys or wizard fields; the omission
-is the contract.
+is the contract — including for the flow-log wiring, whose workspace triple
+comes from the remote-state read and **never** from `lz-config.json`.
+
+Related but *not* forbidden: `security.nsgFlowLogs.retentionDays` and
+`security.nsgFlowLogs.trafficAnalytics` are mapped normally in
+`variable-map.json` — they configure the workspace's use, not its identity.
+`security.nsgFlowLogs.enabled` is mapped `literal:false` rather than to its
+config path, deliberately (see contract #8).
 
 ## 5. `spoke-network` provider alias
 
@@ -146,6 +164,58 @@ Validation bounds may only widen left-to-right: the wizard may be stricter than
 the schema, and the schema stricter than Terraform — never the reverse. A value
 the wizard accepts must be accepted by the schema and by Terraform.
 `Test-LzSchemaDrift` blocks on a violation and prints a counterexample.
+
+## 8. One `nsg-flow-logs` instance per `(region, environment)`, and the gate renders `false`
+
+Two invariants that nothing in the code can enforce, so they live here.
+
+**8a — instance ceiling.** `terraform/modules/nsg-flow-logs/main.tf` composes
+the flow-log storage account name from the region code and environment with no
+override. Storage account names are globally unique, so **at most one instance
+of this module may exist per `(region, environment)` across the whole estate**.
+A second instance in the same region and environment plans clean and then
+fails at apply with a name collision — the quiet-failure shape this register
+exists for.
+
+Participants: the module's naming in both trees; every caller that decides
+*how many* instances to create — `terraform/live/workloads-prod/main.tf`,
+`factory/templates/terraform/live/workloads-{prod,nonprod}/main.tf.tmpl` —
+and any future connectivity-hosted call.
+
+Consequences that are live today: `workloads-prod` creates exactly two
+instances, one per region; the three nonprod spokes in a region share one
+instance because they share `environment = "nonprod"`; and the hub's
+`fw_mgmt` NSG is **unlogged**, because covering it needs a connectivity
+instance in the same region and environment as the prod one. Making the name
+overridable is the prerequisite for lifting any of this
+([TODO.md](../TODO.md) item 2.9).
+
+**8b — the gate is a constant, not a wizard answer.**
+`factory/renderer/variable-map.json` maps `enable_nsg_flow_logs` to
+`literal:false` for both workload layers, and the rendered
+`terraform.auto.tfvars` emits the constant `false`. It does **not** map
+`security.nsgFlowLogs.enabled`, even though the wizard collects it and
+pre-checks it. Two reasons, both load-bearing: a pre-checked box would enable
+a volume-driven meter for every client who never touched it, and the module
+reads `NetworkWatcher_<region>` in `NetworkWatcherRG` through the default
+provider — a resource group Azure creates only with a subscription's first
+VNet — so an ungated read makes the **first plan in every generated
+repository** fail red. `try()` cannot rescue a provider read; only `count`
+can. Same shape, same reason, as `wire_management_workspace` (contract #4).
+
+Participants: `factory/renderer/variable-map.json`,
+`factory/templates/terraform/live/workloads-{prod,nonprod}/terraform.auto.tfvars.tmpl`,
+the `enable_nsg_flow_logs` variable in both workload layers' `variables.tf`,
+`factory/schema/lz-config.schema.json`, `site/index.html`.
+
+Do **not** "fix" the apparent orphan by pointing the mapping at the config
+path. If the posture is ever revisited, it is a decision-record change
+(0009 open question 3), not a mapping tidy-up. `factory/tests/Test-Renderer.ps1`
+§15d pins both halves: the fixtures set `enabled: true` and the render must
+still emit `false`.
+
+Rationale for both:
+[docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md](decisions/0009-nsg-flow-log-scope-and-workspace-target.md).
 
 ---
 

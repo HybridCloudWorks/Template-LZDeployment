@@ -42,20 +42,108 @@ NSGs explicitly passed in `var.nsg_ids` (default `{}` — passing nothing
 deploys the storage/analytics scaffolding but logs zero NSGs). Every
 `terraform/live/*` caller must enumerate each NSG it creates into `nsg_ids`;
 an NSG added to a spoke or hub without a matching `nsg_ids` entry silently
-has no flow logs. As of 2026-08-02 no `terraform/live/*` stack instantiates
-this module yet — when wiring it in, source the map from the owning modules'
-NSG outputs rather than hand-maintained IDs.
+has no flow logs.
 
-## Cost Estimate
+As of 2026-08-09 (decision 0009) `terraform/live/workloads-prod` instantiates
+this module **twice, once per region**, each `count`-gated on
+`var.enable_nsg_flow_logs` which **defaults to `false`**, and each fed from
+`spoke-network`'s `nsg_ids` map output rather than hand-maintained IDs. One
+instance per `(region, environment)` is a hard ceiling, not a style choice:
+the storage account name this module composes is globally unique but not
+unique per call, so a second instance in the same region and environment
+collides. The hub's `fw_mgmt` NSG is **not** covered — that needs an
+overridable storage-account name first.
 
-| Component | Monthly Cost |
+## Cost
+
+The old version of this section quoted a flat **~$200/month** for five NSGs.
+That number is withdrawn: it priced a per-GB meter by NSG count, which is the
+wrong unit. Cost here is driven almost entirely by **how much traffic the
+NSGs see**, not by how many of them there are. The same estate can bill $15
+or $800 a month with the identical Terraform.
+
+### What actually bills
+
+Four meters, in the order they consume a flow record, plus the alert rules:
+
+| # | Meter | Unit | Gated by |
+|---|---|---|---|
+| 1 | Network Watcher flow-log collection | per GB collected | always on when the module runs |
+| 2 | Traffic Analytics processing | per GB processed (rate varies with `traffic_analytics_interval`) | `enable_traffic_analytics` |
+| 3 | Log Analytics ingestion of `AzureNetworkAnalytics_CL` | per GB ingested | `enable_traffic_analytics` |
+| 4 | Blob storage for the raw logs | per GB-month retained | always on when the module runs |
+| — | Two `azurerm_monitor_scheduled_query_rules_alert_v2` rules | per rule-month | `enable_traffic_alerts` |
+
+Meters 1–3 are all per-GB of the *same* flow volume and together dominate the
+bill. Meter 4 is a rounding error at any normal retention.
+
+### The formula
+
+Let **`V`** be monthly flow-log volume in GB — the only quantity that matters,
+and the one nobody can know before the estate carries traffic.
+
+```
+monthly ≈ V × (C + (TA ? P + I : 0))          # meters 1–3, per-GB pipeline
+        + V × R × S                            # meter 4, storage at steady state
+        + A × N                                # alert rules
+```
+
+| Symbol | Meaning |
 |---|---|
-| **Storage** (5 NSGs, 90-day retention) | ~$70 |
-| **Traffic Analytics** | ~$100 |
-| **Egress/Ingestion** (typical) | ~$30 |
-| **Total** | **~$200/month** |
+| `C` | flow-log collection rate, $/GB |
+| `P` | Traffic Analytics processing rate, $/GB (higher at the 10-minute interval) |
+| `I` | Log Analytics ingestion rate, $/GB |
+| `TA` | whether `enable_traffic_analytics` is true |
+| `R` | retention in months — `flow_log_retention_days / 30`, so 90 days ≈ 3 |
+| `S` | blob storage rate, $/GB-month for the chosen replication tier |
+| `A` | scheduled-query alert rule cost, $/rule-month |
+| `N` | number of alert rules (2 when `enable_traffic_alerts` is true, else 0) |
 
-*Costs scale with number of NSGs and data volume*
+To price your own estate, substitute your region's list prices from
+<https://prices.azure.com> and your own `V`.
+
+### Rate assumptions — UNVERIFIED, do not quote to a client
+
+> These are **assumptions carried over from decision 0009**, taken as US-region
+> list prices and **not verified against `prices.azure.com`** (the authoring
+> environment had no egress to it). They are here so the formula above can be
+> exercised, not so anyone can rely on the result. Re-verifying them is an open
+> follow-up in `TODO.md`.
+>
+> `C` ≈ **$0.50/GB** · `P` ≈ **$2.00/GB** at the 60-minute interval ·
+> `I` ≈ **$2.76/GB** pay-as-you-go analytics ingestion ·
+> combined pipeline ≈ **$5.25/GB**, honest band **$4–$6/GB** ·
+> `S` ≈ **$0.05/GB-month** Standard hot RA-GZRS plus transactions ·
+> `A` ≈ **low single-digit dollars per rule-month** at the module's `PT5M`
+> evaluation frequency.
+
+Worked through the formula with those assumed rates, Traffic Analytics on at
+60 minutes, and 90-day retention, the spread across plausible volumes is:
+
+| Volume assumption | `V` | Pipeline | Storage | Alerts | Total |
+|---|---|---|---|---|---|
+| Quiet — freshly provisioned, little real traffic | 2 GB | ≈ $11 | ≈ $0.30 | ≈ $2–5 | **≈ $15/mo** |
+| Typical | 25 GB | ≈ $131 | ≈ $4 | ≈ $2–5 | **≈ $140/mo** |
+| Busy | 150 GB | ≈ $788 | ≈ $23 | ≈ $2–5 | **≈ $815/mo** |
+
+Every figure in that table is `V` × assumed rates. It is a sensitivity
+analysis, not a quote.
+
+### Levers, largest first
+
+- **`enable_traffic_analytics = false`** removes meters 2 and 3 — roughly 90%
+  of the bill. It also leaves raw blobs that nothing queries and disables both
+  alert rules (they query `AzureNetworkAnalytics_CL`, and the module correctly
+  `count`-gates them on the same flag). Cheap and close to worthless.
+- **`traffic_analytics_interval` 10 vs 60** is a real multiplier on meter 2
+  — *assumption: roughly 2×*. Worth it only for a live SOC consuming the data
+  at that latency. Keep 60 unless you have one.
+- **NSG scope** is a weak lever: adding an NSG adds its traffic, not a fixed
+  fee. The private-endpoint NSG in particular carries a small fraction of
+  spoke volume.
+- **`flow_log_retention_days`** moves only meter 4, ≈3% of the bill even in
+  the Busy row. Shortening it saves nothing meaningful and costs you the
+  investigation window.
 
 ## Usage
 
@@ -248,10 +336,17 @@ AzureNetworkAnalytics_CL
 
 ### High Costs
 
-1. **Reduce retention period**: Default is 90 days, consider 30 days
-2. **Selective NSGs**: Only enable on critical NSGs
-3. **Increase TA interval**: Use 60 min instead of 10 min
-4. **Archive old logs**: Move to cool/archive storage tier
+Work the levers in the order the [Cost](#cost) section gives, which is by
+size. Summarised:
+
+1. **Increase the TA interval** to 60 minutes if it is at 10 — the largest
+   single saving that keeps the data usable.
+2. **Turn Traffic Analytics off** (`enable_traffic_analytics = false`) if you
+   are not querying it — removes ~90% of the bill, and disables both alerts.
+3. **Narrow the NSG list** only if some NSGs carry traffic you genuinely do
+   not need logged. Count is not the driver; volume is.
+4. **Reduce retention / archive old logs** last. Storage is ≈3% of the bill,
+   so this rarely repays the lost investigation window.
 
 ## Security Best Practices
 
@@ -319,7 +414,14 @@ AzureNetworkAnalytics_CL
 - `storage_account_name` - Storage account name
 - `flow_log_ids` - Map of NSG names to flow log IDs
 - `traffic_analytics_enabled` - Boolean indicating if TA is enabled
-- `estimated_monthly_cost_usd` - Cost breakdown
+- `flow_log_retention_days` - Retention echoed back from the input
+- `traffic_analytics_interval` - Processing interval, or `null` when TA is off
+- `private_endpoint_ip` - Blob private endpoint IP, or `null` when disabled
+
+There is **no** `estimated_monthly_cost_usd` output. It existed until
+decision 0009 and was deleted rather than repaired: it priced a per-GB meter
+by NSG count and shipped a fabricated number into every generated repository.
+Use the [Cost](#cost) formula instead.
 
 ## References
 
@@ -331,5 +433,6 @@ AzureNetworkAnalytics_CL
 
 - ✅ **Task 5.2**: NSG Flow Logs + Traffic Analytics  
 - **Effort**: 8 hours  
-- **Cost**: ~$200/month  
+- **Cost**: volume-driven — see [Cost](#cost). No single monthly figure is
+  meaningful for this module.  
 - **Risk Reduction**: 15% (network visibility)

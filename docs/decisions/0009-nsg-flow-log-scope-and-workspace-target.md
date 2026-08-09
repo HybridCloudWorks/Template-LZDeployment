@@ -1,13 +1,31 @@
 # Decision 0009 — NSG flow-log scope, workspace target, and hosting stack
 
-- **Status**: **Proposed** — awaiting operator ratification. **Nothing is
-  implemented**; no `.tf` file was touched by the authoring pass and the
-  [REVIEW.md](../../REVIEW.md) §11 gate remains closed.
-- **Date**: 2026-08-08
-- **Deciders**: operator (ratification pending); `azure-platform-architect`
+- **Status**: **Accepted** — operator-ratified in-session 2026-08-08, as
+  recommended: **A2** (all three spoke NSGs), **B1** (the existing
+  `management-baseline` workspace), **C2** (hosted in the workload layers).
+  Implemented 2026-08-09; see the ratification note below for how each open
+  question was answered.
+- **Date**: 2026-08-08 (authored); 2026-08-08 (ratified); 2026-08-09
+  (implemented)
+- **Deciders**: operator (ratified 2026-08-08); `azure-platform-architect`
   (options), `azure-cost-governance` (costing) — authored under
   `alz-orchestrator`
 - **Technical depth**: L300 (implementation)
+
+## Ratification note (operator, in-session 2026-08-08)
+
+The five [open questions](#open-questions-for-the-operator) below were
+answered as follows. The body of this record is otherwise **unchanged from the
+proposed version** — it is the paper the decision was taken on, and editing it
+after the fact would destroy that.
+
+| Q | Question | Resolution |
+| --- | --- | --- |
+| 1 | Residency — any near-term engagement under a data boundary? | **No. B1 proceeds**: Traffic Analytics targets the existing `management-baseline` workspace, and RA-GZRS replication stands. Follow-up (a) — making `account_replication_type` a variable — is *not* promoted ahead of the wiring, but is opened as a backlog item so a residency-constrained engagement is a config change rather than a module fork. |
+| 2 | Volume — any prior estate to anchor Quiet/Typical/Busy? | **No.** The rates and the volume scenarios **stay explicitly labelled assumptions**. No figure in this record may be quoted to a client as a price. Re-verification against `prices.azure.com` is opened as follow-up (d). |
+| 3 | Default posture — render from the pre-checked wizard box, or `false` for every client? | **`false` for every client**, matching `wire_management_workspace`. The wizard pre-checks `security.nsgFlowLogs.enabled`, so rendering from it would commit every client who never touched the box to a volume-driven bill they did not price — and would make the *first* plan in every generated repository fail red where `NetworkWatcherRG` does not yet exist. The answer is still **recorded** in `lz-config.json` and echoed into the rendered `.tfvars` as a comment; `retentionDays` and `trafficAnalytics` *do* flow through, so both are correct the moment a PR flips the gate. |
+| 4 | Scope — is extending `wire_management_workspace` into the live tree inside this item? | **Yes, in scope.** Choice B1 has no other way to reach the workspace without adding a second remote-state read to `workloads-prod`, which is worse. The live tree now carries the same `count`-gated read the corpus already had. |
+| 5 | The bad cost output — delete or replace? | **Delete and document.** `estimated_monthly_cost_usd` is removed from both trees; the meter structure and a per-GB formula now live in the module README's Cost section, with the rates labelled unverified inline. Recorded as a briefing call and **overridable by the operator** if a client-facing number is later judged necessary. |
 
 ## Context and Problem Statement
 
