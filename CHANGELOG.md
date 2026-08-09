@@ -3,7 +3,91 @@
 **Purpose**: Historical record of completed work. **Going forward (operator
 contract, 2026-08-07): new entries record shipped features only.** Existing
 entries below are history and are not rewritten.
-**Last Updated**: August 7, 2026
+**Last Updated**: August 9, 2026
+
+---
+
+## NSG flow logs wired into `workloads-prod` — decision 0009 ratified (2026-08-09)
+
+The operator ratified
+[decision 0009](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md)
+in-session 2026-08-08 as recommended — **A2** (all three spoke NSGs:
+`app`, `data`, `pe`), **B1** (Traffic Analytics into the existing
+`management-baseline` workspace), **C2** (hosted in the workload layers) —
+closing [REVIEW.md](REVIEW.md) §11 and [TODO.md](TODO.md) item 2.3. All five
+open questions were answered and are recorded in a ratification note at the
+head of the record; the body is unchanged, since it is the paper the decision
+was taken on.
+
+Shipped, `terraform/` and `factory/templates/terraform/` at parity:
+`spoke-network` gained an `nsg_ids` `map(string)` output keyed
+`app`/`data`/`pe`, so a caller passes one value rather than three;
+`management-baseline` gained `log_analytics_workspace_guid` (from the
+`workspace_id` attribute) and `log_analytics_workspace_location`, with the
+pre-existing `log_analytics_workspace_id` deliberately left as the full ARM ID
+— passing the ARM ID into the module's GUID-shaped input type-checks, plans
+clean, and yields a Traffic Analytics configuration that never receives data.
+The live connectivity layer picked up the `count`-gated
+`wire_management_workspace` remote-state read that previously existed only in
+the corpus and re-exports the workspace triple (ARM id, GUID, location; empty
+strings while the flag is false), so `workloads-prod` feeds its module calls
+from the connectivity state it already reads rather than adding a second
+remote-state read (open question 4 — scope expansion ratified as in scope).
+`workloads-prod` now calls `nsg-flow-logs` **twice, one instance per region**,
+each `count`-gated on `enable_nsg_flow_logs` — the storage account name the
+module composes is globally unique but not unique per call, so one instance
+per `(region, environment)` is a hard ceiling. `enable_private_endpoint` is
+`false` as a knowing posture reduction: no `privatelink.blob.core.windows.net`
+zone exists in either tree, and the storage account is already
+`default_action = "Deny"`.
+
+`enable_nsg_flow_logs` **defaults to `false` and renders `false` for every
+client** (open question 3). The wizard pre-checks
+`security.nsgFlowLogs.enabled`, so rendering from it would enable a
+volume-driven meter for every client who never touched the box — and the
+module reads `NetworkWatcher_<region>` in `NetworkWatcherRG` through the
+default provider, which Azure creates only with a subscription's first VNet,
+so an ungated read would make the *first* plan in every generated repository
+fail red; `try()` cannot rescue a provider read, only `count` can. So
+`factory/renderer/variable-map.json` maps `enable_nsg_flow_logs` to
+`literal:false` (the `wire_management_workspace` shape) while mapping
+`security.nsgFlowLogs.retentionDays` → `flow_log_retention_days` and
+`security.nsgFlowLogs.trafficAnalytics` → `enable_traffic_analytics` as real
+paths — two of the three wizard keys stop being discarded, and both are
+correct the moment a PR flips the gate. The rendered `terraform.auto.tfvars`
+for both workload layers echoes the client's recorded answer in a comment and
+states plainly that the feature stays off until that PR. Contract #7 holds
+unchanged: the wizard input is `min="1" max="365"`, the schema is 1–365, and
+the Terraform variable is deliberately unbounded.
+
+`estimated_monthly_cost_usd` is **deleted** from both trees (open question 5).
+Its storage term, `length(nsg_ids) * flow_log_retention_days * 0.15`, was
+dimensionally meaningless and its Traffic Analytics term a flat $100
+regardless of volume — and it shipped into every generated repository, where a
+client read it as a figure their own landing zone produced. The module README's
+"~$200/month" table is withdrawn with it; in their place the README now carries
+the four-meter structure, a per-GB formula with every symbol defined, and a
+sensitivity table across Quiet/Typical/Busy volumes, with the underlying rates
+labelled **UNVERIFIED** inline — `prices.azure.com` was refused by the
+environment's egress policy, so refreshing them is folded into
+[TODO.md](TODO.md) item 5.2 / REVIEW.md §17.
+
+`docs/CROSS-DOMAIN-CONTRACTS.md` contract #4 was corrected: the `count`-gated
+workspace remote-state read is no longer a generated-layer-only mechanism, and
+a new contract #8 records the one-instance-per-`(region, environment)` ceiling
+the storage-account naming imposes.
+
+The estate collects **no flow logs** as a result of this change — the flag is
+off, by design, until a later PR flips it. Three engineering follow-ups are
+open as TODO items 2.8 (replication as a variable), 2.9 (overridable
+storage-account name, then hub `fw_mgmt` coverage) and 2.10
+(`privatelink.blob.core.windows.net` and the private endpoint); the
+plan-shows-the-resources criterion is estate-gated and folds into item 3.1.
+Suites after the work: node 87/0, Test-Renderer 271/0 (+26, the new
+flow-log-mapping section), Test-Bootstrap 85/0, Test-CI 12/0, Factory CI
+17/17; `terraform fmt -check -recursive` clean over both trees and
+`terraform validate` clean in `terraform/live/platform-connectivity` and
+`terraform/live/workloads-prod` (terraform 1.9.8, azurerm 5.0.1).
 
 ---
 

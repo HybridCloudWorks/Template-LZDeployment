@@ -94,22 +94,91 @@ engagement-lifecycle runbook). Both validation criteria verified:
 `Get-Help` parses the rewritten help cleanly. Item number retained so
 cross-references stay stable; record in [CHANGELOG.md](CHANGELOG.md).
 
-### 2.3 Wire `nsg-flow-logs` into a live stack
+### 2.3 Wire `nsg-flow-logs` into a live stack — CLOSED
 
-Module exists with secure defaults; zero `terraform/live/*` callers, so no
-NSG flow logs are collected anywhere.
+Closed 2026-08-09: the gate lifted when the operator ratified
+[decision 0009](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md)
+in-session 2026-08-08 as recommended (**A2** all three spoke NSGs, **B1** the
+existing `management-baseline` workspace, **C2** hosted in the workload
+layers). Shipped, both trees at parity: `spoke-network`'s `nsg_ids` map output
+keyed `app`/`data`/`pe`; `management-baseline`'s
+`log_analytics_workspace_guid` and `log_analytics_workspace_location` (the
+pre-existing `log_analytics_workspace_id` left as the full ARM ID); the
+`count`-gated `wire_management_workspace` remote-state read extended into the
+live connectivity layer with a `management_workspace` re-export, so
+`workloads-prod` feeds the module from the connectivity state it already reads
+rather than adding a second read (decision 0009 Q4 — in scope); two
+`nsg-flow-logs` instances in `workloads-prod`, one per region, each
+`count`-gated on `enable_nsg_flow_logs` **defaulting to `false`**; the
+renderer mapping for `security.nsgFlowLogs.{retentionDays,trafficAnalytics}`,
+with `enable_nsg_flow_logs` mapped `literal:false` so the wizard's pre-checked
+box cannot turn a volume-driven meter on for a client who never touched it
+(Q3); and the fabricated `estimated_monthly_cost_usd` output deleted in favour
+of a documented per-GB formula in the module README (Q5).
+**Criterion split**: the `terraform validate` criterion is verified — clean in
+both `terraform/live/platform-connectivity` and `terraform/live/workloads-prod`
+(terraform 1.9.8, azurerm 5.0.1), alongside 87/0, 271/0, 85/0, 12/0 and
+Factory CI 17/17. The "plan shows the flow-log resources against the chosen
+NSGs only" criterion is **estate-gated** — the flag is off, so no plan can
+show them until a PR flips it against a subscription whose spokes exist — and
+folds into item 3.1, the same way item 2.1's residual did. Item number
+retained so cross-references stay stable; record in
+[CHANGELOG.md](CHANGELOG.md). Follow-ups opened as items 2.8–2.10 and folded
+into item 5.2.
+
+### 2.8 Make `nsg-flow-logs` storage replication a variable
+
+`terraform/modules/nsg-flow-logs/main.tf` hardcodes
+`account_replication_type = "RAGZRS"`, so every flow log is asynchronously
+replicated to the Azure paired region and is readable there, with no opt-out
+short of forking the module. For a US estate (`scus` ↔ `ncus`) that is
+unremarkable; under an EU/UK data boundary or a single-country sovereignty
+commitment it moves network metadata across the boundary. Decision 0009
+follow-up (a), deferred at ratification because Q1 answered "no near-term
+engagement under a data boundary" — deferred, not dismissed.
 **Owner**: `terraform-module-engineer`.
-**Gate**: operator choice of NSG set + Log Analytics workspace (cost and
-data-residency posture) — [REVIEW.md](REVIEW.md) §11, now with the options
-paper it needs:
-[decision 0009 (Proposed)](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md)
-costs the three coupled choices (NSG scope, workspace target, hosting stack)
-and recommends A2 + B1 + C2 behind a default-off `enable_nsg_flow_logs`.
-**Still open** — the gate lifts on operator ratification, not on the paper
-existing. The paper also names the module outputs and corpus↔live parity work
-the wiring implies.
-**Validation**: `terraform validate` in the touched stack; plan shows the
-flow-log resources against the chosen NSGs only.
+**Gate**: an engagement under a data-residency boundary, or an operator
+election to make residency configurable ahead of one —
+[decision 0009](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md)
+§Data residency.
+**Validation**: `terraform validate` in both trees; the variable defaults to
+`RAGZRS` so no existing plan changes; a config setting `LRS` or `ZRS` plans a
+storage account with that replication and no paired-region copy.
+
+### 2.9 Make the flow-log storage account name overridable, then cover hub `fw_mgmt`
+
+The module composes a globally-unique storage account name from region and
+environment with no override, which caps deployment at **one instance per
+`(region, environment)`** estate-wide — a second instance in the same region
+and environment collides on the name. That ceiling is why the hub's `fw_mgmt`
+NSG is currently unlogged: covering it needs an instance in the connectivity
+subscription in the same region as the prod workload instance. Decision 0009
+follow-up (b), and the "Negative" consequence the record names first.
+**Owner**: `terraform-module-engineer`.
+**Gate**: none technical — startable; sequenced behind item 2.3's wiring,
+which is now landed. Needs an operator nod only because it changes the naming
+contract of a module that already has live callers.
+**Validation**: `terraform validate` in both trees; two instances in one
+region and environment plan distinct storage accounts; `hub-network` exposes
+an `fw_mgmt` NSG output and the connectivity layer's instance consumes it.
+
+### 2.10 Add `privatelink.blob.core.windows.net` and re-enable the flow-log private endpoint
+
+`enable_private_endpoint = false` in the `workloads-prod` calls is a knowing
+posture reduction ratified with decision 0009: no
+`privatelink.blob.core.windows.net` private DNS zone exists in either tree, so
+a private endpoint would resolve to nothing. The storage account is already
+`default_action = "Deny"`, so this is defence in depth rather than the only
+control — but the module README advertises the private endpoint as a feature
+and it is currently off. Decision 0009 follow-up (c).
+**Owner**: `terraform-module-engineer` (zone in `hub-network`/connectivity,
+then the caller flag).
+**Gate**: the private DNS zone must exist and be linked to the spoke VNets
+first — a technical dependency on the connectivity layer's `deploy_dns` path,
+not an operator decision.
+**Validation**: `terraform validate` in both trees; with the flag on, the plan
+shows the private endpoint bound to the zone; blob resolution from a spoke
+returns the private IP.
 
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 
@@ -278,9 +347,23 @@ separate reviewed release-gate PR.
 The variable tables are machine-enforced (`factory/ci/Test-ModuleDocs.ps1`);
 the cost figures are not derivable from HCL and go stale against Azure list
 prices.
+Carried forward from item 2.3 (closed 2026-08-09) — decision 0009 follow-up
+(d): `terraform/modules/nsg-flow-logs/README.md`'s Cost section now states a
+per-GB formula whose rates (`C` ≈ $0.50/GB collection, `P` ≈ $2.00/GB Traffic
+Analytics at 60 min, `I` ≈ $2.76/GB Log Analytics ingestion, `S` ≈
+$0.05/GB-month RA-GZRS) are **labelled unverified in the file**: the authoring
+environment had no egress to `prices.azure.com` (403 at the proxy) and the
+Azure MCP `pricing` tool was refused. Refresh them from an environment with
+egress and re-date the section. Decision 0009's Q2 resolution stands until
+then — **no figure in that README or in the decision record may be quoted to a
+client as a price**.
 **Owner**: `azure-cost-governance` prepares; a human accepts the figures.
-**Gate**: release cadence — [REVIEW.md](REVIEW.md) §17 (cannot be automated).
-**Validation**: reviewed figures dated in each module README.
+**Gate**: release cadence — [REVIEW.md](REVIEW.md) §17 (cannot be automated);
+for the 0009 rates specifically, an environment with egress to
+`prices.azure.com`.
+**Validation**: reviewed figures dated in each module README; the
+`nsg-flow-logs` rate block loses its "UNVERIFIED" label only when a human has
+accepted verified figures.
 
 ### 5.3 Bump `factory-version.json` in lock-step
 

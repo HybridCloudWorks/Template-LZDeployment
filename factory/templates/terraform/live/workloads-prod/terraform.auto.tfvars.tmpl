@@ -35,4 +35,19 @@ primary_spoke_address_space = {{FACTORY:connectivity.hubSpoke.primarySpokeAddres
 dr_spoke_address_space = {{FACTORY:connectivity.hubSpoke.drSpokeAddressSpace}}
 #{{ENDIF}}
 
+# NSG flow logs. Your wizard answer for "NSG flow logs" was
+# {{FACTORY-BOOL:security.nsgFlowLogs.enabled}} — it is recorded in
+# lz-config.json, and this flag is still rendered false. That is deliberate,
+# not a rendering bug: the module reads NetworkWatcher_<region> in
+# NetworkWatcherRG, which Azure creates only once this subscription's first
+# VNet exists, so an enabled-on-day-one flow-log call would make your very
+# first plan fail. Flip this to true in a PR after the spokes' first apply
+# (and after platform-connectivity's wire_management_workspace is on, which
+# supplies the Log Analytics workspace Traffic Analytics needs). Until then no
+# flow logs are collected and no flow-log meter bills. The two settings below
+# are already your answers and take effect the moment you flip it.
+enable_nsg_flow_logs     = false
+flow_log_retention_days  = {{FACTORY-NUM:security.nsgFlowLogs.retentionDays}}
+enable_traffic_analytics = {{FACTORY-BOOL:security.nsgFlowLogs.trafficAnalytics}}
+
 default_tags = {{FACTORY-MAP:naming.defaultTags}}

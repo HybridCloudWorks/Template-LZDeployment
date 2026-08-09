@@ -73,6 +73,18 @@ locals {
     var.wire_management_workspace ? data.terraform_remote_state.management[0].outputs.log_analytics_workspace_id :
     ""
   )
+
+  # The three facts NSG flow-log Traffic Analytics needs about the workspace,
+  # re-exported below for the workload layers. Routing them through this layer
+  # rather than opening a second remote-state read in each workload layer keeps
+  # one gated read of platform-management in the whole generated repository.
+  # Empty strings when the gate is off — the workload layer's flow-log call is
+  # gated on its own boolean, so empty values are never consumed.
+  management_workspace = {
+    resource_id = local.effective_law_id
+    guid        = var.wire_management_workspace ? data.terraform_remote_state.management[0].outputs.log_analytics_workspace_guid : ""
+    location    = var.wire_management_workspace ? data.terraform_remote_state.management[0].outputs.log_analytics_workspace_location : ""
+  }
 }
 
 module "hub_primary" {

@@ -73,7 +73,7 @@
 
     "workloads-prod": {
       "variablesFile": "terraform/live/workloads-prod/variables.tf",
-      "$comment": "The three state_* variables feed the azurerm form of the connectivity remote-state read. Under HCP Terraform that read is addressed by organization and workspace and these are unused, which is why none of them is required.",
+      "$comment": "The three state_* variables feed the azurerm form of the connectivity remote-state read. Under HCP Terraform that read is addressed by organization and workspace and these are unused, which is why none of them is required. enable_nsg_flow_logs maps to literal:false, NOT to security.nsgFlowLogs.enabled, and the divergence is deliberate (decision 0009, open question 3, resolved by the operator 2026-08-08): the wizard pre-checks that box, so rendering from it would turn flow logs on for every client who never touched it and commit them to a volume-driven bill they did not price. Worse, the module reads NetworkWatcher_<region> in NetworkWatcherRG through the default provider, and that resource group only exists once the subscription's first VNet does — an ungated read makes the FIRST plan in every generated repository fail red, and try() cannot rescue a provider read. So the constant false is what the template emits, exactly as wire_management_workspace does, and the client's recorded answer is echoed as a comment beside it. The other two keys DO flow through, so the retention and Traffic Analytics answers are no longer discarded and are correct the moment a PR flips the gate. Bounds (contract #7): schema retentionDays is 1-365, the wizard input is min=1 max=365, and the Terraform variable is deliberately unbounded, so wizard = schema subset of Terraform holds.",
       "variables": {
         "workload_prod_subscription_id": "azure.subscriptions.workloadProd",
         "connectivity_subscription_id": "azure.subscriptions.connectivity",
@@ -86,12 +86,16 @@
         "dr_region_code": "azure.drRegionCode",
         "primary_spoke_address_space": "connectivity.hubSpoke.primarySpokeAddressSpace",
         "dr_spoke_address_space": "connectivity.hubSpoke.drSpokeAddressSpace",
+        "enable_nsg_flow_logs": "literal:false",
+        "flow_log_retention_days": "security.nsgFlowLogs.retentionDays",
+        "enable_traffic_analytics": "security.nsgFlowLogs.trafficAnalytics",
         "default_tags": "naming.defaultTags"
       }
     },
 
     "workloads-nonprod": {
       "variablesFile": "terraform/live/workloads-nonprod/variables.tf",
+      "$comment": "The nsg-flow-logs trio mirrors workloads-prod exactly, for the same reasons — see that layer's comment. enable_nsg_flow_logs is literal:false by operator resolution of decision 0009 open question 3; retentionDays and trafficAnalytics flow through from the wizard.",
       "variables": {
         "workload_nonprod_subscription_id": "azure.subscriptions.workloadNonProd",
         "connectivity_subscription_id": "azure.subscriptions.connectivity",
@@ -108,6 +112,9 @@
         "test_dr_spoke_address_space": "connectivity.hubSpoke.nonProdSpokeAddressSpaces.test.dr",
         "uat_primary_spoke_address_space": "connectivity.hubSpoke.nonProdSpokeAddressSpaces.uat.primary",
         "uat_dr_spoke_address_space": "connectivity.hubSpoke.nonProdSpokeAddressSpaces.uat.dr",
+        "enable_nsg_flow_logs": "literal:false",
+        "flow_log_retention_days": "security.nsgFlowLogs.retentionDays",
+        "enable_traffic_analytics": "security.nsgFlowLogs.trafficAnalytics",
         "default_tags": "naming.defaultTags"
       }
     },

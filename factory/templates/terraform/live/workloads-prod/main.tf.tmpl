@@ -73,6 +73,17 @@ locals {
 #{{IF computed.hasDrRegion}}
   dr_hub = data.terraform_remote_state.connectivity.outputs.dr_hub_details
 #{{ENDIF}}
+
+  # The connectivity layer re-exports the central Log Analytics workspace as a
+  # triple (decision 0009, choice B1) so this layer needs no second
+  # remote-state read of platform-management. try() rather than a direct
+  # attribute read: a connectivity state applied before that output existed
+  # does not carry it, and this is a lookup against a value already in state —
+  # not a provider read, which try() could not rescue.
+  management_workspace = try(
+    data.terraform_remote_state.connectivity.outputs.management_workspace,
+    { resource_id = "", guid = "", location = "" }
+  )
 #{{ENDIF}}
 
   common_tags = merge(var.default_tags, {
@@ -154,4 +165,94 @@ module "spoke_prod_dr" {
   use_remote_gateways = false
   tags                = local.common_tags
 }
+#{{ENDIF}}
+
+#{{IF connectivity.model != 'none'}}
+# ─────────────────────────────────────────────────────────────────────────────
+# NSG flow logs — decision 0009: all three spoke NSGs (A2), the
+# management-baseline workspace via the connectivity layer's re-export (B1),
+# hosted in this workload layer (C2), behind a default-off flag.
+#
+# ONE INSTANCE PER REGION, never per spoke. The module names its storage
+# account stflowlogs${region_code}${environment} with no override, and storage
+# account names are globally unique — a second instance for the same
+# (region, environment) pair collides estate-wide, not just within this stack.
+#
+# The call lives here rather than in platform-connectivity because Network
+# Watcher is regional AND per-subscription and the module reads it through the
+# default provider, so a connectivity-hosted call cannot reach a spoke NSG in
+# the workload subscription at all.
+#
+# Emitted only for hub-and-spoke landing zones: with connectivity.model =
+# 'none' there is no connectivity layer to relay the workspace triple, and this
+# layer deliberately opens no second remote-state read.
+#
+# Flip enable_nsg_flow_logs in a PR only after (a) the spokes' first apply, so
+# NetworkWatcherRG exists in this subscription — the module's Network Watcher
+# read is a provider read that only count can gate — and (b)
+# platform-connectivity's wire_management_workspace is enabled, so the
+# workspace triple below is populated.
+# ─────────────────────────────────────────────────────────────────────────────
+
+module "nsg_flow_logs_primary" {
+  source = "../../modules/nsg-flow-logs"
+  count  = var.enable_nsg_flow_logs ? 1 : 0
+
+  location            = var.primary_region
+  region_code         = var.primary_region_code
+  environment         = "prod"
+  resource_group_name = module.spoke_prod_primary.resource_group_name
+  nsg_ids             = module.spoke_prod_primary.nsg_ids
+
+  # The module's log_analytics_workspace_id is the SHORT GUID, not the ARM ID
+  # that platform-management's identically-named output carries. Passing the
+  # ARM ID here type-checks, plans clean and yields a Traffic Analytics
+  # configuration that never receives data.
+  log_analytics_workspace_id          = local.management_workspace.guid
+  log_analytics_workspace_resource_id = local.management_workspace.resource_id
+  log_analytics_workspace_region      = local.management_workspace.location
+
+  flow_log_retention_days  = var.flow_log_retention_days
+  enable_traffic_analytics = var.enable_traffic_analytics
+
+  # Knowing posture reduction (decision 0009, constraint 4): the module's
+  # private endpoint needs a privatelink.blob.core.windows.net zone and no such
+  # zone exists in the corpus. The storage account is already
+  # default_action = "Deny" with a trusted-services bypass, so the private
+  # endpoint is defence in depth rather than the only control.
+  enable_private_endpoint = false
+
+  # The module's two scheduled-query alert rules notify through
+  # action_group_ids; no action group is relayed to this layer, and a rule with
+  # an empty action group fires into nothing.
+  enable_traffic_alerts = false
+
+  tags = local.common_tags
+}
+
+#{{IF computed.hasDrRegion}}
+module "nsg_flow_logs_dr" {
+  source = "../../modules/nsg-flow-logs"
+  count  = var.enable_nsg_flow_logs ? 1 : 0
+
+  location            = var.dr_region
+  region_code         = var.dr_region_code
+  environment         = "prod"
+  resource_group_name = module.spoke_prod_dr.resource_group_name
+  nsg_ids             = module.spoke_prod_dr.nsg_ids
+
+  log_analytics_workspace_id          = local.management_workspace.guid
+  log_analytics_workspace_resource_id = local.management_workspace.resource_id
+  log_analytics_workspace_region      = local.management_workspace.location
+
+  flow_log_retention_days  = var.flow_log_retention_days
+  enable_traffic_analytics = var.enable_traffic_analytics
+
+  # Same two knowing reductions as the primary-region instance above.
+  enable_private_endpoint = false
+  enable_traffic_alerts   = false
+
+  tags = local.common_tags
+}
+#{{ENDIF}}
 #{{ENDIF}}

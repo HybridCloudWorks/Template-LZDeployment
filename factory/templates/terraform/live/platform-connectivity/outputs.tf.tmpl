@@ -46,3 +46,12 @@ output "dr_hub_details" {
   }
 }
 #{{ENDIF}}
+
+# Workspace triple for the workload layers' NSG flow-log calls. Unconditional,
+# like the platform-management outputs that feed it, so the workload layers'
+# remote-state read always finds it; the values are empty strings until
+# wire_management_workspace is flipped.
+output "management_workspace" {
+  description = "Central Log Analytics workspace facts required by NSG flow-log Traffic Analytics (ARM resource ID, short GUID, region). Empty until wire_management_workspace is enabled."
+  value       = local.management_workspace
+}

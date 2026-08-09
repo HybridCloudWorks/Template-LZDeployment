@@ -60,6 +60,79 @@ locals {
 #{{IF computed.hasDrRegion}}
   dr_hub = data.terraform_remote_state.connectivity.outputs.dr_hub_details
 #{{ENDIF}}
+
+  # The connectivity layer re-exports the central Log Analytics workspace as a
+  # triple (decision 0009, choice B1); try() covers a connectivity state
+  # applied before that output existed. This is a lookup against a value
+  # already in state, not a provider read.
+  management_workspace = try(
+    data.terraform_remote_state.connectivity.outputs.management_workspace,
+    { resource_id = "", guid = "", location = "" }
+  )
+
+  # Every non-production spoke in a region shares ONE flow-log instance with
+  # environment = "nonprod", because the module's storage account name is
+  # stflowlogs${region_code}${environment} and storage account names are
+  # globally unique — one instance per (region, environment) is the estate-wide
+  # ceiling. The map keys are prefixed per spoke: the module uses the key in
+  # the flow-log resource name, which must stay unique within the region's
+  # Network Watcher, and three spokes each contribute an "app" NSG.
+  nonprod_nsg_ids_primary = {
+#{{IF environments.application contains 'dev'}}
+    "dev-app"  = module.spoke_dev_primary.nsg_ids.app
+    "dev-data" = module.spoke_dev_primary.nsg_ids.data
+    "dev-pe"   = module.spoke_dev_primary.nsg_ids.pe
+#{{ENDIF}}
+#{{IF environments.application contains 'test'}}
+    "test-app"  = module.spoke_test_primary.nsg_ids.app
+    "test-data" = module.spoke_test_primary.nsg_ids.data
+    "test-pe"   = module.spoke_test_primary.nsg_ids.pe
+#{{ENDIF}}
+#{{IF environments.application contains 'uat'}}
+    "uat-app"  = module.spoke_uat_primary.nsg_ids.app
+    "uat-data" = module.spoke_uat_primary.nsg_ids.data
+    "uat-pe"   = module.spoke_uat_primary.nsg_ids.pe
+#{{ENDIF}}
+  }
+
+  # The shared instance's storage account and diagnostic settings need one
+  # resource group; a non-production region has no single owning group, so the
+  # first rendered spoke's group holds them.
+#{{IF environments.application contains 'dev'}}
+  nonprod_flow_log_rg_primary = module.spoke_dev_primary.resource_group_name
+#{{ELSEIF environments.application contains 'test'}}
+  nonprod_flow_log_rg_primary = module.spoke_test_primary.resource_group_name
+#{{ELSE}}
+  nonprod_flow_log_rg_primary = module.spoke_uat_primary.resource_group_name
+#{{ENDIF}}
+#{{IF computed.hasDrRegion}}
+
+  nonprod_nsg_ids_dr = {
+#{{IF environments.application contains 'dev'}}
+    "dev-app"  = module.spoke_dev_dr.nsg_ids.app
+    "dev-data" = module.spoke_dev_dr.nsg_ids.data
+    "dev-pe"   = module.spoke_dev_dr.nsg_ids.pe
+#{{ENDIF}}
+#{{IF environments.application contains 'test'}}
+    "test-app"  = module.spoke_test_dr.nsg_ids.app
+    "test-data" = module.spoke_test_dr.nsg_ids.data
+    "test-pe"   = module.spoke_test_dr.nsg_ids.pe
+#{{ENDIF}}
+#{{IF environments.application contains 'uat'}}
+    "uat-app"  = module.spoke_uat_dr.nsg_ids.app
+    "uat-data" = module.spoke_uat_dr.nsg_ids.data
+    "uat-pe"   = module.spoke_uat_dr.nsg_ids.pe
+#{{ENDIF}}
+  }
+
+#{{IF environments.application contains 'dev'}}
+  nonprod_flow_log_rg_dr = module.spoke_dev_dr.resource_group_name
+#{{ELSEIF environments.application contains 'test'}}
+  nonprod_flow_log_rg_dr = module.spoke_test_dr.resource_group_name
+#{{ELSE}}
+  nonprod_flow_log_rg_dr = module.spoke_uat_dr.resource_group_name
+#{{ENDIF}}
+#{{ENDIF}}
 #{{ENDIF}}
 }
 
@@ -278,6 +351,81 @@ module "spoke_uat_dr" {
 #{{ENDIF}}
   use_remote_gateways         = false
   tags                        = merge(var.default_tags, { environment = "uat", layer = "workload-nonprod" })
+}
+#{{ENDIF}}
+#{{ENDIF}}
+
+#{{IF connectivity.model != 'none'}}
+# ─────────────────────────────────────────────────────────────────────────────
+# NSG flow logs — decision 0009 (A2 + B1 + C2), behind a default-off flag.
+#
+# One instance per REGION covering every non-production spoke in it, for the
+# storage-account naming reason recorded on the locals above. Emitted only for
+# hub-and-spoke landing zones: with connectivity.model = 'none' there is no
+# connectivity layer to relay the workspace triple, and this layer deliberately
+# opens no second remote-state read.
+#
+# Flip enable_nsg_flow_logs in a PR only after the spokes' first apply (the
+# module's Network Watcher read is a provider read that only count can gate)
+# and after platform-connectivity's wire_management_workspace is enabled.
+# ─────────────────────────────────────────────────────────────────────────────
+
+module "nsg_flow_logs_primary" {
+  source = "../../modules/nsg-flow-logs"
+  count  = var.enable_nsg_flow_logs ? 1 : 0
+
+  location            = var.primary_region
+  region_code         = var.primary_region_code
+  environment         = "nonprod"
+  resource_group_name = local.nonprod_flow_log_rg_primary
+  nsg_ids             = local.nonprod_nsg_ids_primary
+
+  # log_analytics_workspace_id is the SHORT GUID, not the ARM ID that
+  # platform-management's identically-named output carries. Passing the ARM ID
+  # here type-checks, plans clean and yields a Traffic Analytics configuration
+  # that never receives data.
+  log_analytics_workspace_id          = local.management_workspace.guid
+  log_analytics_workspace_resource_id = local.management_workspace.resource_id
+  log_analytics_workspace_region      = local.management_workspace.location
+
+  flow_log_retention_days  = var.flow_log_retention_days
+  enable_traffic_analytics = var.enable_traffic_analytics
+
+  # Knowing posture reduction (decision 0009, constraint 4): the private
+  # endpoint needs a privatelink.blob.core.windows.net zone that the corpus
+  # does not create. The storage account is already default_action = "Deny".
+  enable_private_endpoint = false
+
+  # No action group is relayed to this layer, and an alert rule with an empty
+  # action group fires into nothing.
+  enable_traffic_alerts = false
+
+  tags = merge(var.default_tags, { environment = "nonprod", layer = "workload-nonprod" })
+}
+
+#{{IF computed.hasDrRegion}}
+module "nsg_flow_logs_dr" {
+  source = "../../modules/nsg-flow-logs"
+  count  = var.enable_nsg_flow_logs ? 1 : 0
+
+  location            = var.dr_region
+  region_code         = var.dr_region_code
+  environment         = "nonprod"
+  resource_group_name = local.nonprod_flow_log_rg_dr
+  nsg_ids             = local.nonprod_nsg_ids_dr
+
+  log_analytics_workspace_id          = local.management_workspace.guid
+  log_analytics_workspace_resource_id = local.management_workspace.resource_id
+  log_analytics_workspace_region      = local.management_workspace.location
+
+  flow_log_retention_days  = var.flow_log_retention_days
+  enable_traffic_analytics = var.enable_traffic_analytics
+
+  # Same two knowing reductions as the primary-region instance above.
+  enable_private_endpoint = false
+  enable_traffic_alerts   = false
+
+  tags = merge(var.default_tags, { environment = "nonprod", layer = "workload-nonprod" })
 }
 #{{ENDIF}}
 #{{ENDIF}}

@@ -212,11 +212,50 @@ indefensible. Per-GB list prices could **not** be verified in-session (egress
 to `prices.azure.com` and the Azure MCP pricing tool were both refused), so
 every figure is a stated-assumption estimate and a rate refresh is a
 ratification prerequisite — the same weakness §17 already records.
-**Awaiting operator ratification**; nothing is implemented until then, and no
-`.tf` file was touched by the authoring pass. Five open questions are carried
-at the end of the paper, the load-bearing ones being residency (a boundary
-constraint moves the recommendation from B1 to B2) and whether the generated
-default should be off or should follow the wizard's pre-checked box.
+**Update 2026-08-09 — ratified and implemented; no longer awaiting a
+decision.** The operator ratified
+[decision 0009](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md)
+in-session 2026-08-08 as recommended — **A2** (all three spoke NSGs, `app` /
+`data` / `pe`), **B1** (the existing `management-baseline` workspace), **C2**
+(hosted in the workload layers) — and answered all five open questions: Q1 no
+residency boundary in play, so B1 proceeds and RA-GZRS stands; Q2 the rates
+remain labelled assumptions and no figure may be quoted as a price; Q3 the
+gate renders **`false` for every client** rather than following the wizard's
+pre-checked box; Q4 extending `wire_management_workspace` into the live tree
+is in scope; Q5 delete the bad cost output and document a formula instead.
+
+**What shipped** (TODO item 2.3, closed 2026-08-09; both trees at parity):
+`spoke-network` gained an `nsg_ids` map output keyed `app`/`data`/`pe`;
+`management-baseline` gained `log_analytics_workspace_guid` and
+`log_analytics_workspace_location`, with the pre-existing
+`log_analytics_workspace_id` left untouched as the full ARM ID; the live
+connectivity layer picked up the corpus's `count`-gated
+`wire_management_workspace` remote-state read and re-exports the workspace
+triple, so `workloads-prod` feeds the module from the connectivity state it
+already reads rather than adding a second read; `workloads-prod` calls
+`nsg-flow-logs` twice, one instance per region, each `count`-gated on
+`enable_nsg_flow_logs` **defaulting to `false`**; `variable-map.json` now maps
+`security.nsgFlowLogs.{retentionDays,trafficAnalytics}` through to Terraform
+while mapping `enable_nsg_flow_logs` to `literal:false`, so the wizard's
+answers stop being discarded without the pre-checked box silently enabling a
+volume-driven meter; and `estimated_monthly_cost_usd` was deleted from both
+trees in favour of the module README's meter table and per-GB formula, with
+the rates labelled unverified inline. Verified: `terraform validate` clean in
+`terraform/live/platform-connectivity` and `terraform/live/workloads-prod`,
+`terraform fmt -check -recursive` clean over both trees, 87/0 · 271/0 · 85/0 ·
+12/0, Factory CI 17/17.
+
+**What remains and who holds it**: the flag is **off**, so the estate still
+collects no flow logs — flipping it is a later PR and, per the record, only
+after the spokes' first apply and after `wire_management_workspace` is
+enabled. The "plan shows the flow-log resources against the chosen NSGs only"
+criterion is therefore estate-gated and carried in [TODO.md](TODO.md) item 3.1
+(the operator holds that gate, §7 toolchain). Three engineering follow-ups are
+open as TODO items **2.8** (replication as a variable — residency), **2.9**
+(overridable storage-account name, then hub `fw_mgmt` coverage) and **2.10**
+(`privatelink.blob.core.windows.net` and re-enabling the private endpoint).
+The rate refresh against `prices.azure.com` folds into item 5.2 / §17 below
+and needs an environment with egress.
 
 ### 12. Disposition of `scripts/Initialize-ClientFork.ps1`
 Under decision 0004 its hardening stages (Actions enablement, branch

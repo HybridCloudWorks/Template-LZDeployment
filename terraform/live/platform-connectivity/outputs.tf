@@ -37,3 +37,11 @@ output "dr_hub_details" {
     firewall_private_ip = module.hub_dr.firewall_private_ip
   }
 }
+
+# Workspace triple for the workload layers' NSG flow-log calls. Unconditional
+# so the workload layers' remote-state read always finds it; the values are
+# empty strings until wire_management_workspace is flipped.
+output "management_workspace" {
+  description = "Central Log Analytics workspace facts required by NSG flow-log Traffic Analytics (ARM resource ID, short GUID, region). Empty until wire_management_workspace is enabled."
+  value       = local.management_workspace
+}

@@ -439,6 +439,104 @@ foreach ($layer in @('workloads-prod', 'workloads-nonprod')) {
     ok "$layer calls spoke-network"               ($tmpl -match 'source\s*=\s*"\.\./\.\./modules/spoke-network"')
 }
 
+Write-Host "`n== 15d. NSG flow-log mapping (decision 0009) ==" -ForegroundColor Cyan
+# Three wizard keys under security.nsgFlowLogs were collected and then thrown
+# away — nothing in the corpus read them. Two now feed Terraform variables.
+# The third, `enabled`, deliberately does NOT: the operator resolved decision
+# 0009's open question 3 as "renders false for every client". The box is
+# PRE-CHECKED in the wizard, so honouring it would enable a volume-driven
+# meter for every client who never touched it, and — worse — the module reads
+# NetworkWatcher_<region> through the default provider, which makes the FIRST
+# plan in every generated repository fail red before any VNet exists.
+#
+# So the interesting assertion is the negative one: the fixtures all say
+# enabled=true, and the render must still emit false.
+ok 'fixture pre-checks the box'    ($cfg.security.nsgFlowLogs.enabled -eq $true) $cfg.security.nsgFlowLogs.enabled
+
+$prodTfvars = Get-Content (Join-Path $out 'terraform/live/workloads-prod/terraform.auto.tfvars') -Raw
+ok 'prod gate renders false'       ($prodTfvars -match '(?m)^enable_nsg_flow_logs\s*=\s*false\s*$') 'expected literal false'
+ok 'prod gate is never true'       ($prodTfvars -notmatch '(?m)^enable_nsg_flow_logs\s*=\s*true\s*$')
+ok 'prod retention flows through'  ($prodTfvars -match '(?m)^flow_log_retention_days\s*=\s*90\s*$')
+ok 'prod TA flows through'         ($prodTfvars -match '(?m)^enable_traffic_analytics\s*=\s*true\s*$')
+# The rendered file must SAY the answer was recorded and the feature is off,
+# not leave a client to infer it from a bare false.
+ok 'prod tfvars explains the off'  ($prodTfvars -match 'recorded in' -and $prodTfvars -match 'rendered false')
+ok 'prod tfvars names the unblock' ($prodTfvars -match 'Flip this to true in a PR')
+
+$npTfvars = Get-Content (Join-Path $nonprodOut 'terraform/live/workloads-nonprod/terraform.auto.tfvars') -Raw
+ok 'nonprod gate renders false'    ($npTfvars -match '(?m)^enable_nsg_flow_logs\s*=\s*false\s*$')
+ok 'nonprod retention flows'       ($npTfvars -match '(?m)^flow_log_retention_days\s*=\s*90\s*$')
+ok 'nonprod TA flows through'      ($npTfvars -match '(?m)^enable_traffic_analytics\s*=\s*true\s*$')
+
+# Proves the two live mappings are mappings and not hard-coded defaults that
+# happen to match the fixture, and re-proves the gate stays false even when the
+# client explicitly unchecks the box (there is no path back to true).
+$flowCfgPath = Join-Path $PSScriptRoot '.out/flowlog-config.json'
+$flowCfg = Clone $cfg
+$flowCfg.security.nsgFlowLogs.enabled = $false
+$flowCfg.security.nsgFlowLogs.retentionDays = 30
+$flowCfg.security.nsgFlowLogs.trafficAnalytics = $false
+$flowCfg | ConvertTo-Json -Depth 30 | Set-Content $flowCfgPath -Encoding utf8
+$flowOut = Join-Path $PSScriptRoot '.out/render-flowlog-out'
+if (Test-Path $flowOut) { Remove-Item $flowOut -Recurse -Force }
+Invoke-LzRender -ConfigPath $flowCfgPath -OutputDirectory $flowOut -Quiet | Out-Null
+$flowTfvars = Get-Content (Join-Path $flowOut 'terraform/live/workloads-prod/terraform.auto.tfvars') -Raw
+ok 'retention tracks the config'   ($flowTfvars -match '(?m)^flow_log_retention_days\s*=\s*30\s*$')
+ok 'TA tracks the config'          ($flowTfvars -match '(?m)^enable_traffic_analytics\s*=\s*false\s*$')
+ok 'unchecked box still renders false' ($flowTfvars -match '(?m)^enable_nsg_flow_logs\s*=\s*false\s*$')
+Remove-Item $flowOut -Recurse -Force
+Remove-Item $flowCfgPath -Force
+
+# The register must declare the same story the templates tell, or the next
+# reader "fixes" the divergence back into a defect.
+$vmap = Get-Content "$repo/factory/renderer/variable-map.json" -Raw | ConvertFrom-Json -Depth 20
+foreach ($wl in @('workloads-prod', 'workloads-nonprod')) {
+    $wlVars = $vmap.layers.$wl.variables
+    ok "$wl maps the gate to literal:false" ($wlVars.enable_nsg_flow_logs -eq 'literal:false') $wlVars.enable_nsg_flow_logs
+    ok "$wl maps retentionDays"             ($wlVars.flow_log_retention_days -eq 'security.nsgFlowLogs.retentionDays') $wlVars.flow_log_retention_days
+    ok "$wl maps trafficAnalytics"          ($wlVars.enable_traffic_analytics -eq 'security.nsgFlowLogs.trafficAnalytics') $wlVars.enable_traffic_analytics
+}
+
+# Contract #4: the workspace never flows through lz-config.json. The flow-log
+# wiring takes it from the connectivity remote-state read, so this change must
+# not have introduced a workspace key anywhere in the register.
+$mapPathValues = @()
+foreach ($lyr in $vmap.layers.PSObject.Properties) {
+    foreach ($v in $lyr.Value.variables.PSObject.Properties) { $mapPathValues += $v.Value }
+}
+# observability.logAnalytics.retentionDays is a legitimate long-standing
+# mapping and is NOT what contract #4 forbids — it sets how long the workspace
+# keeps data, not which workspace exists. What is forbidden is a config key
+# that identifies the workspace, which is what a workspace-id/guid variable
+# would consume.
+$mapVarNames = @()
+foreach ($lyr in $vmap.layers.PSObject.Properties) {
+    foreach ($v in $lyr.Value.variables.PSObject.Properties) {
+        if ($v.Value -notlike 'literal:*' -and $v.Value -notlike 'computed.*') { $mapVarNames += $v.Name }
+    }
+}
+$workspaceIdentityVars = @($mapVarNames | Where-Object { $_ -match 'workspace_(id|guid|resource_id|region|location)$' })
+ok 'contract 4: no workspace key mapped' ($workspaceIdentityVars.Count -eq 0) ($workspaceIdentityVars -join ',')
+ok 'contract 4: no workspace path used'  (@($mapPathValues | Where-Object { $_ -match 'workspaceId|workspaceGuid|workspaceResourceId' }).Count -eq 0) (($mapPathValues | Where-Object { $_ -match 'workspace' }) -join ',')
+
+# Contract #7 bounds ordering for the one numeric key: wizard ⊂ schema ⊂
+# Terraform. The wizard input and the schema are both 1–365; Terraform is
+# deliberately unbounded, which is legal widening. A validation block on the
+# Terraform variable narrower than 1–365 would invert the ordering.
+$flowSchema = $liveSchema.properties.security.properties.nsgFlowLogs.properties.retentionDays
+ok 'schema retention min is 1'     ($flowSchema.minimum -eq 1) $flowSchema.minimum
+ok 'schema retention max is 365'   ($flowSchema.maximum -eq 365) $flowSchema.maximum
+$siteHtml = Get-Content "$repo/site/index.html" -Raw
+ok 'wizard input is within schema' ($siteHtml -match 'data-path="security\.nsgFlowLogs\.retentionDays"[^>]*min="1"[^>]*max="365"')
+foreach ($wl in @('workloads-prod', 'workloads-nonprod')) {
+    # Segment on the next `variable "` rather than on a closing brace: the
+    # variable's own comment contains NetworkWatcher_${location}, so a
+    # brace-counting match truncates in the middle of the block.
+    $wlRaw = Get-Content "$repo/factory/templates/terraform/live/$wl/variables.tf" -Raw
+    $retBlock = [regex]::Match($wlRaw, '(?s)variable\s+"flow_log_retention_days"\s*\{(?<b>.*?)(?=\r?\nvariable\s+"|\z)')
+    ok "$wl leaves retention unbounded" ($retBlock.Success -and $retBlock.Groups['b'].Value -notmatch 'validation\s*\{') ($retBlock.Groups['b'].Value -replace '\s+', ' ')
+}
+
 Write-Host "`n== 16. Guard violation stops the render ==" -ForegroundColor Cyan
 $badCfgPath = Join-Path $PSScriptRoot '.out/bad-config.json'
 $bad = Clone $cfg; $bad.connectivity.model = 'virtual-wan'

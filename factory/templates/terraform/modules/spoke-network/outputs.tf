@@ -27,3 +27,16 @@ output "pe_subnet_id" {
   description = "Private endpoint subnet ID"
   value       = azurerm_subnet.pe.id
 }
+
+# Keyed by subnet role rather than by NSG name so a caller can merge several
+# spokes' maps and still address one NSG. The nsg-flow-logs module uses the key
+# in the flow-log resource name, so a caller merging more than one spoke must
+# re-key (e.g. "dev-app") to keep those names unique per Network Watcher.
+output "nsg_ids" {
+  description = "Map of subnet role (app, data, pe) to NSG resource ID"
+  value = {
+    app  = azurerm_network_security_group.app.id
+    data = azurerm_network_security_group.data.id
+    pe   = azurerm_network_security_group.pe.id
+  }
+}

@@ -138,7 +138,41 @@ variable "dr_availability_zones" {
 }
 
 variable "log_analytics_workspace_id" {
-  description = "Log Analytics workspace resource ID for hub diagnostics"
+  # Cross-layer input: platform-management owns the workspace, and the two
+  # layers keep separate state. Leave this empty and flip
+  # wire_management_workspace instead — the count-gated remote-state read then
+  # supplies the ID. An explicitly supplied value here takes precedence over
+  # the read. Empty with the gate off means hub diagnostics are not sent
+  # anywhere.
+  description = "Log Analytics workspace resource ID for hub diagnostics. Overrides the wire_management_workspace remote-state read when set."
+  type        = string
+  default     = ""
+}
+
+variable "wire_management_workspace" {
+  # Mirrors the corpus connectivity layer (decision 0003). Default false so a
+  # plan succeeds before platform-management has ever been applied: an ungated
+  # remote-state read of that layer fails red until its first apply, and try()
+  # cannot rescue a provider read — only count works. Flip to true in a PR
+  # after platform-management has been applied once; hub diagnostics then
+  # follow the central workspace automatically, and the workspace triple the
+  # NSG flow-log wiring needs becomes available to the workload layers.
+  description = "Read the central Log Analytics workspace from the platform-management layer's state. Enable after platform-management's first apply."
+  type        = bool
+  default     = false
+}
+
+variable "state_resource_group_name" {
+  # Consumed only by the platform-management remote-state read above, so it
+  # must not be required — the gate is off by default and the layer otherwise
+  # has no use for it.
+  description = "Terraform state resource group name (consumed by the wire_management_workspace read)"
+  type        = string
+  default     = ""
+}
+
+variable "state_storage_account_name" {
+  description = "Terraform state storage account name (consumed by the wire_management_workspace read)"
   type        = string
   default     = ""
 }
