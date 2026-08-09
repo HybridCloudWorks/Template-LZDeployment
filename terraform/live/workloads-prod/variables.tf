@@ -65,3 +65,35 @@ variable "default_tags" {
     managed_by  = "Terraform"
   }
 }
+
+variable "enable_nsg_flow_logs" {
+  # Default false so a plan succeeds before the spokes exist (decision 0009,
+  # the wire_management_workspace shape): the module reads
+  # NetworkWatcher_${location} in NetworkWatcherRG through the default
+  # provider, and that resource group is only created when the subscription's
+  # first VNet appears. A provider read cannot be rescued by try() — only
+  # count. Flip in a PR after the spokes' first apply and after
+  # platform-connectivity's wire_management_workspace is enabled.
+  description = "Collect NSG flow logs for the production spokes' app, data and private-endpoint NSGs. Enable after the spokes' first apply."
+  type        = bool
+  default     = false
+}
+
+variable "flow_log_retention_days" {
+  # Deliberately unbounded here: the schema constrains
+  # security.nsgFlowLogs.retentionDays to 1-365 and contract #7 only permits
+  # bounds to widen left to right (wizard subset of schema subset of
+  # Terraform). Adding a validation block narrower than 1-365 would invert it.
+  description = "Days NSG flow logs are retained in the flow-logs storage account"
+  type        = number
+  default     = 90
+}
+
+variable "enable_traffic_analytics" {
+  # Turning this off removes the Traffic Analytics processing and workspace
+  # ingestion meters — roughly nine tenths of the flow-log bill — and leaves
+  # raw logs in blob storage that nothing queries.
+  description = "Process NSG flow logs through Traffic Analytics into the central Log Analytics workspace"
+  type        = bool
+  default     = true
+}

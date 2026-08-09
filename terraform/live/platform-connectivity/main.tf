@@ -23,10 +23,52 @@ provider "azurerm" {
   resource_provider_registrations = "none"
 }
 
+# The central Log Analytics workspace is owned by platform-management, which
+# keeps separate state (control AR3). Mirrors the corpus connectivity layer
+# (decision 0003) so both trees carry the same mechanism: the read is
+# count-gated on wire_management_workspace (default false) so a plan succeeds
+# before platform-management has ever been applied — try() cannot rescue a
+# provider read; only count works. Flip the boolean in a PR after that layer's
+# first apply. Live uses one state container per layer with the key
+# terraform.tfstate (contract #3); the corpus uses a shared container with
+# per-layer keys, which is why the two reads are not byte-identical.
+data "terraform_remote_state" "management" {
+  count = var.wire_management_workspace ? 1 : 0
+
+  backend = "azurerm"
+  config = {
+    resource_group_name  = var.state_resource_group_name
+    storage_account_name = var.state_storage_account_name
+    container_name       = "platform-management"
+    key                  = "terraform.tfstate"
+    # State storage disables shared keys; without AAD auth this read 403s.
+    use_azuread_auth = true
+  }
+}
+
 locals {
   common_tags = merge(var.default_tags, {
     layer = "platform-connectivity"
   })
+
+  # Workspace ID precedence: an explicitly supplied variable wins; otherwise
+  # the gated remote-state read; otherwise empty, which disables hub
+  # diagnostics in the hub-network module.
+  effective_law_id = (
+    var.log_analytics_workspace_id != "" ? var.log_analytics_workspace_id :
+    var.wire_management_workspace ? data.terraform_remote_state.management[0].outputs.log_analytics_workspace_id :
+    ""
+  )
+
+  # The three facts NSG flow-log Traffic Analytics needs about the workspace,
+  # re-exported below for the workload layers. Empty strings when the gate is
+  # off — the workload layer's flow-log call is gated on its own boolean, so
+  # empty values are never consumed.
+  management_workspace = {
+    resource_id = local.effective_law_id
+    guid        = var.wire_management_workspace ? data.terraform_remote_state.management[0].outputs.log_analytics_workspace_guid : ""
+    location    = var.wire_management_workspace ? data.terraform_remote_state.management[0].outputs.log_analytics_workspace_location : ""
+  }
 }
 
 # Primary hub (South Central US)
@@ -45,7 +87,7 @@ module "hub_primary" {
   deploy_dns_placeholder     = var.deploy_dns
   management_ip_ranges       = var.management_ip_ranges
   availability_zones         = var.primary_availability_zones
-  log_analytics_workspace_id = var.log_analytics_workspace_id
+  log_analytics_workspace_id = local.effective_law_id
   tags                       = local.common_tags
 }
 
@@ -65,7 +107,7 @@ module "hub_dr" {
   deploy_dns_placeholder     = var.deploy_dns
   management_ip_ranges       = var.management_ip_ranges
   availability_zones         = var.dr_availability_zones
-  log_analytics_workspace_id = var.log_analytics_workspace_id
+  log_analytics_workspace_id = local.effective_law_id
   tags                       = local.common_tags
 }
 

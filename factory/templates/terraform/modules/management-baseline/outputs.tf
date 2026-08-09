@@ -50,3 +50,18 @@ output "management_summary" {
     action_group            = azurerm_monitor_action_group.alz.name
   }
 }
+
+# The Traffic Analytics block of azurerm_network_watcher_flow_log needs three
+# separate facts about the workspace, and only one of them is the ARM ID above.
+# workspace_id is the short GUID (the workspace "customer ID"); passing the ARM
+# ID into that field type-checks, plans clean, and produces a Traffic Analytics
+# configuration that never receives data. Do not collapse these three outputs.
+output "log_analytics_workspace_guid" {
+  description = "Log Analytics workspace GUID (short customer ID) — required by Traffic Analytics, distinct from the ARM resource ID above"
+  value       = azurerm_log_analytics_workspace.alz.workspace_id
+}
+
+output "log_analytics_workspace_location" {
+  description = "Region the Log Analytics workspace lives in — Traffic Analytics must be told where its workspace is, and it is also the residency declaration for processed flow metadata"
+  value       = azurerm_log_analytics_workspace.alz.location
+}

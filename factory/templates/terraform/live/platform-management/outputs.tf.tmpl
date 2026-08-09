@@ -8,6 +8,20 @@ output "log_analytics_workspace_id" {
   value       = module.management_baseline.log_analytics_workspace_id
 }
 
+# Also unconditional. Traffic Analytics needs the short GUID and the workspace
+# region as well as the ARM ID above; the connectivity layer re-exports all
+# three so the workload layers can reach them through the connectivity read
+# they already perform, rather than opening a second remote-state read.
+output "log_analytics_workspace_guid" {
+  description = "Central Log Analytics workspace GUID (short customer ID), required by NSG flow-log Traffic Analytics"
+  value       = module.management_baseline.log_analytics_workspace_guid
+}
+
+output "log_analytics_workspace_location" {
+  description = "Region of the central Log Analytics workspace, required by NSG flow-log Traffic Analytics"
+  value       = module.management_baseline.log_analytics_workspace_location
+}
+
 #{{IF security.backup.enabled}}
 output "backup_primary_rsv_id" {
   description = "Recovery Services vault ID in the primary region"
