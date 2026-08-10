@@ -499,7 +499,7 @@ finds them at the resource rather than in a changelog.
 skipped`, checkov exiting clean. Full `Invoke-FactoryCI.ps1` green except
 PSScriptAnalyzer (PS Gallery blocked here).
 
-### 2.16 Six hub subnets carry no NSG
+### 2.16 Six hub subnets carry no NSG — BASTION DONE, FIVE REMAIN
 
 `CKV2_AZURE_31` fires on **six subnets per hub**, both regions — twelve
 findings — and every one of them can take a network security group. They are
@@ -508,7 +508,7 @@ difference between *impossible* and *not done*, but suppression is not the fix.
 
 | Subnet | What an NSG has to allow |
 | --- | --- |
-| `bastion` (`AzureBastionSubnet`) | The **prescribed** Bastion rule set: inbound 443 from Internet, GatewayManager and AzureLoadBalancer; outbound 3389/22 to VirtualNetwork, 443 to AzureCloud. A wrong rule here breaks Bastion outright — this is the one to get right first and rush least. |
+| ~~`bastion` (`AzureBastionSubnet`)~~ | **Done 2026-08-10.** `azurerm_network_security_group.bastion` carries Microsoft's prescribed set — 443 inbound from Internet, GatewayManager and AzureLoadBalancer, 8080/5701 within the VNet; 22/3389 outbound to VirtualNetwork, 443 to AzureCloud, 8080/5701 within the VNet, 80 to Internet — plus the documented explicit denies. |
 | `dns_inbound` / `dns_outbound` | Delegated to `Microsoft.Network/dnsResolvers`. Azure permits an NSG; it must not block resolver traffic on 53/UDP+TCP. |
 | `fw_trust` / `fw_untrust` | NVA data-path subnets (palo/fortinet only). Rules follow the appliance vendor's guidance, so this half is firewall-type dependent. |
 | `private_endpoints` | Arrived with item 2.11. Private endpoints ignore NSGs unless the subnet sets `private_endpoint_network_policies = "Enabled"` — which this module already does, so an NSG here would actually apply. |
@@ -516,14 +516,39 @@ difference between *impossible* and *not done*, but suppression is not the fix.
 Not one rule set: three or four different ones, two of them
 vendor-conditional. That is why it is an item rather than a line in 2.15.
 
+**Bastion, done 2026-08-10.** Two caveats stated rather than buried:
+
+- **The rules were written from Microsoft Learn's documented set
+  ([bastion-nsg](https://learn.microsoft.com/azure/bastion/bastion-nsg)) and
+  could NOT be re-verified against it** — `learn.microsoft.com` is unreachable
+  from the environment they were authored in (403 through the proxy, on both
+  the docs MCP and the Azure MCP). Treat that page as the authority if the two
+  ever disagree.
+- **The failure mode is loud, not silent.** Azure validates this NSG when a
+  Bastion *host* is deployed and fails the deployment if a required rule is
+  missing. This repository deploys only the placeholder subnet, so no host
+  exists to break today, and the first real deployment would surface an error
+  rather than a half-working host.
+
+The `CKV2_AZURE_31` suppression on `bastion` stays, with its reason **rewritten
+to the truth**: the NSG exists and is associated; checkov does not resolve the
+association because it is count-indexed — the same graph limitation that hides
+the SAS policy on flow-log storage.
+
+The Bastion NSG is deliberately **not** added to the `nsg_ids` output. That
+output feeds the connectivity layer's flow-log calls, and widening it would
+change flow-log scope, which decision 0009 set deliberately. That is a
+decision-0009 change, not an NSG change.
+
 **Owner**: `azure-platform-architect` (design) → `terraform-module-engineer`.
-**Gate**: none technical — the module already associates an NSG on `fw_mgmt`,
-so the mechanism exists. It needs a decision on how far to go: the Bastion set
-alone (highest value, best documented by Microsoft), or all six.
-**Validation**: `CKV2_AZURE_31` suppressions removed from every subnet that
-gains an NSG, leaving only the precautionary `gateway` one; all three fixtures
-strict-pass with checkov clean; a Bastion host still connects — which this
-environment cannot prove, so that part waits on a real estate.
+**Gate for the remaining five**: a decision on scope. The DNS-resolver pair is
+straightforward; `fw_trust`/`fw_untrust` need the NVA vendor's guidance and are
+firewall-type conditional; `private_endpoints` needs to know what the endpoints
+in it will be.
+**Validation**: as each subnet gains an NSG, its `CKV2_AZURE_31` suppression is
+either removed or rewritten to the count-indexed-association reason; all three
+fixtures strict-pass; a Bastion host actually connects — which this environment
+cannot prove, so that waits on a real estate.
 
 ### 2.17 Shared-key authorization stays enabled on flow-log storage
 
