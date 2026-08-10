@@ -7,6 +7,39 @@ entries below are history and are not rewritten.
 
 ---
 
+## One guard ID, one condition — and a check that keeps it that way (2026-08-10)
+
+[TODO.md](TODO.md) item 2.13, the residual item 2.12 opened the same day.
+
+`G22` was raised for a missing non-production **subscription** and, separately,
+for a missing non-production **spoke CIDR** — different failures with different
+remediations under one identifier, which is why the renderer README's single
+`G22` row described only one of them. The subscription case is now **G24** with
+its own row. `G22` keeps its documented meaning and still appears at two call
+sites, which is correct: those are the primary and DR variants of one condition
+a client fixes in one place.
+
+The item's gate was whether a guard ID is a stable client-facing identifier.
+Reading the code answered it: an ID reaches a client only as transient console
+text from `Write-LzRenderFail`, and nothing — schema, workflow, or generated
+artifact — persists or keys off one. It is a diagnostic label, so renumbering
+is safe.
+
+Fixing it surfaced a second gap: **`G15`** (custom naming standard with an
+empty pattern) had no README row and never had one. Both gaps existed because
+nothing checked, so `Test-Renderer.ps1` §15g gained two invariants — every ID
+the chain raises has a table row, and every documented ID still exists in the
+chain. The coverage check reads **table rows only**, deliberately: scanning the
+whole README made it vacuous, since the paragraph explaining the `G15` gap
+mentions `G15`, so deleting its row still counted as documenting it. Both
+invariants were negative-tested rather than assumed.
+
+The allowance list added with `G23` is renamed `$multiUseGuardIds` and now
+means "declared, deliberate multi-use" instead of "known defect". It is not
+empty and should not be.
+
+---
+
 ## The private DNS zones are the client's list, and an unimplementable answer is refused (2026-08-10)
 
 [TODO.md](TODO.md) item 2.12, closing the residual item 2.10 opened the same

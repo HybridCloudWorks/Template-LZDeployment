@@ -275,6 +275,12 @@ and the wording was corrected), and `centralizedInHub = false` is refused by
 render guard G23 and by the wizard rather than collected and ignored. Still
 unrendered from that section of the wizard:
 `connectivity.privateEndpoints.enabled` and `denyPublicNetworkAccessPolicy`.
+**2.13** — guard `G22` covering two unrelated conditions, found by the
+duplicate-ID check 2.12 added — **shipped 2026-08-10**: the missing-subscription
+case is now `G24`, `G15` gained the README row it never had, and §15g now fails
+if any guard ID the chain raises has no table row or if a documented ID has
+vanished from the chain. A guard ID reaches a client only as transient console
+text, which is what made renumbering safe.
 The rate refresh against `prices.azure.com` folds into item 5.2 / §17 below
 and needs an environment with egress.
 

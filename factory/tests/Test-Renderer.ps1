@@ -795,20 +795,38 @@ $guardSrc = Get-Content "$repo/factory/renderer/public/Test-LzRenderGuards.ps1" 
 ok 'a guard refuses decentralized'  ($guardSrc -match "Id 'G23'")
 ok 'the guard blocks, not warns'    ($guardSrc -notmatch "(?s)Id 'G23'.*?-Severity\s+'Warn'")
 # Guard IDs are handed out by hand and are NOT in file order — G21 was already
-# taken, several screens above G20, when this guard was written, and the
-# duplicate shipped. This assertion is the thing that would have caught it.
+# taken, several screens above G20, when G23 was written, and the duplicate
+# shipped. These two assertions are what would have caught it, and what caught
+# the older drift TODO item 2.13 fixed.
 #
-# G22 is a KNOWN pre-existing duplicate: it covers a missing non-production
-# subscription and, separately, a missing non-production spoke CIDR. Renumbering
-# it would change an identifier clients see in a blocked render, so it is left
-# alone and carried as TODO item 2.13. Anything ELSE appearing twice is new and
-# fails here.
-$knownDuplicateGuardIds = @('G22')
+# An ID may appear at more than one call site ONLY when it is one condition
+# with several variants: G22 raises separately for a missing primary and a
+# missing DR spoke CIDR, which is one failure a client fixes in one place. It
+# used to cover a missing SUBSCRIPTION as well — a different failure with a
+# different remediation, which is why the README's single G22 row described
+# only half of it. That case is now G24.
+$multiUseGuardIds = @('G22')
 $guardIds = @([regex]::Matches($guardSrc, "Id '(?<id>G\d+)'") | ForEach-Object { $_.Groups['id'].Value })
 $dupeGuardIds = @($guardIds | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name } | Sort-Object)
-$unexpectedDupes = @($dupeGuardIds | Where-Object { $_ -notin $knownDuplicateGuardIds })
-ok 'no new duplicate guard IDs'     ($unexpectedDupes.Count -eq 0) ($unexpectedDupes -join ',')
-ok 'known duplicate still known'    ((($dupeGuardIds -join ',')) -eq ($knownDuplicateGuardIds -join ',')) ($dupeGuardIds -join ',')
+$unexpectedDupes = @($dupeGuardIds | Where-Object { $_ -notin $multiUseGuardIds })
+ok 'no undeclared repeated IDs'     ($unexpectedDupes.Count -eq 0) ($unexpectedDupes -join ',')
+ok 'declared repeats still repeat'  ((($dupeGuardIds -join ',')) -eq ($multiUseGuardIds -join ',')) ($dupeGuardIds -join ',')
+
+# Every ID the chain can raise must be documented. G15 sat undocumented for its
+# whole life because nothing checked; a guard a client hits and cannot look up
+# is a worse failure than the one it reports.
+# Scoped to TABLE ROWS and the advisory sentence — deliberately NOT the whole
+# file. Scanning the whole README made this check vacuous: the paragraph
+# explaining the G15 gap mentions G15, so deleting its row still "documented"
+# it. A guard is documented when it has a row, not when prose names it.
+$guardReadmeLines = @(Get-Content "$repo/factory/renderer/README.md")
+$guardDocLines = @($guardReadmeLines | Where-Object { $_ -match '^\|\s*G\d' -or $_ -match 'are advisory warnings' })
+$documentedIds = @([regex]::Matches(($guardDocLines -join "`n"), '\bG(?<n>\d{2})\b') | ForEach-Object { "G$($_.Groups['n'].Value)" } | Sort-Object -Unique)
+$undocumentedIds = @(@($guardIds | Sort-Object -Unique) | Where-Object { $_ -notin $documentedIds })
+ok 'every guard ID is documented'   ($undocumentedIds.Count -eq 0) ($undocumentedIds -join ',')
+# And nothing documented has been deleted from the chain without the row going.
+$phantomIds = @($documentedIds | Where-Object { $_ -notin $guardIds -and $_ -ne 'G00' })
+ok 'no phantom guard rows'          ($phantomIds.Count -eq 0) ($phantomIds -join ',')
 ok 'G23 is documented'              ((Get-Content "$repo/factory/renderer/README.md" -Raw) -match '\|\s*G23\s*\|')
 # An absent key must read as the centralized answer, or every config written
 # before this field existed would suddenly fail to render.

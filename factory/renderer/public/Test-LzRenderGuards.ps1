@@ -225,7 +225,12 @@ function Test-LzRenderGuards {
 
     $nonProdEnvironments = @($Config.environments.application | Where-Object { $_ -in @('dev', 'test', 'uat') })
     if ($nonProdEnvironments.Count -gt 0 -and -not (& $hasSub 'workloadNonProd')) {
-        $v += New-LzGuardViolation -Id 'G22' `
+        # G24, not G22: a missing subscription and a missing spoke CIDR are
+        # different failures with different remediations, and sharing one ID
+        # made the README's single G22 row describe only one of them
+        # (TODO item 2.13). G22 is still used twice below — deliberately, for
+        # the primary and DR variants of the SAME condition.
+        $v += New-LzGuardViolation -Id 'G24' `
             -Message 'A non-production environment is selected but azure.subscriptions.workloadNonProd is missing.' `
             -Remediation 'Supply the shared non-production workload subscription ID.'
     }

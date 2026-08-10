@@ -143,6 +143,7 @@ only in the UI is a suggestion, not a guarantee.
 | G09/G11 | A required subscription missing |
 | G12 | Overlapping hub/spoke address spaces |
 | G13 | Promotion path referencing an undeployed environment |
+| G15 | `naming.standard` is `custom` but a required pattern is empty |
 | G16 | Unknown token in a custom naming pattern |
 | G17/G18 | Backend selected but not configured |
 | G19 | Sentinel policy engine without the HCP backend |
@@ -150,9 +151,18 @@ only in the UI is a suggestion, not a guarantee.
 | G21 | An active layer has no implemented Terraform corpus |
 | G22 | A selected non-production environment is missing its required spoke CIDR |
 | G23 | `privateDns.centralizedInHub = false`, which contract 9 does not implement |
+| G24 | A non-production environment is selected but its shared subscription is missing |
 
 G10 and G14 are advisory warnings (missing sandbox subscription, prod without
 reviewers) and do not block.
+
+Every ID the guard chain can raise appears above or in that sentence, and
+`Test-Renderer.ps1` §15g fails if one does not — G15 was missing from this table
+for as long as it existed, and G22 covered two unrelated conditions until
+TODO item 2.13 split the subscription case out as G24. An ID may legitimately
+appear at more than one call site when it is one condition with several
+variants (G22 raises separately for the primary and DR CIDR); §15g carries
+those in an explicit list so a new duplicate is still a failure.
 
 Scaffold-module guards read status from `factory-version.json` rather than a
 hard-coded list, so implementing a module automatically lifts its guard.
