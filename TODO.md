@@ -475,11 +475,21 @@ name is an interpolation checkov cannot resolve; `CKV_AZURE_216` — threat
 intelligence is set on the attached firewall **policy**, which governs;
 `CKV2_AZURE_24` — closing the automation account's public access without a
 private endpoint would trade a finding for a broken control plane;
-`CKV2_AZURE_31` ×7 — `GatewaySubnet` and `AzureFirewallSubnet` *cannot* carry
-an NSG, and the other five *can* and do not yet.
+`CKV2_AZURE_31` ×7 — see the correction below: **every** flagged subnet can
+carry an NSG and does not yet. Only the `gateway` directive rests on "Azure
+forbids it", and it suppresses nothing, because that subnet is not flagged.
+
+**Corrected 2026-08-10, after this item was first written**: the summary above
+originally said part of the `CKV2_AZURE_31` suppression was justified because
+`GatewaySubnet` and `AzureFirewallSubnet` cannot carry an NSG. Neither is
+flagged by checkov at all. All 12 findings are on `bastion`, `dns_inbound`,
+`dns_outbound`, `fw_trust`, `fw_untrust` and `private_endpoints` — **six
+subnets per hub, every one of which can take an NSG**. The "impossible to fix"
+framing applied to none of them and understated the outstanding work; it is
+now item 2.16.
 
 **Two things this deliberately did NOT do**, both recorded rather than hidden:
-the five hub subnets that could take an NSG still do not (authoring correct
+the six hub subnets that could take an NSG still do not (authoring correct
 per-subnet rules is real work, and a wrong Bastion NSG breaks Bastion), and
 shared-key authorization on flow-log storage stays enabled pending
 verification. Both are named in their suppression text, so the next reader
@@ -488,6 +498,57 @@ finds them at the resource rather than in a changelog.
 **Validation**: all three fixtures, `LZ_VALIDATE_STRICT=true`, `8 passed, 0
 skipped`, checkov exiting clean. Full `Invoke-FactoryCI.ps1` green except
 PSScriptAnalyzer (PS Gallery blocked here).
+
+### 2.16 Six hub subnets carry no NSG
+
+`CKV2_AZURE_31` fires on **six subnets per hub**, both regions — twelve
+findings — and every one of them can take a network security group. They are
+suppressed with a stated reason (item 2.15) so the gate is honest about the
+difference between *impossible* and *not done*, but suppression is not the fix.
+
+| Subnet | What an NSG has to allow |
+| --- | --- |
+| `bastion` (`AzureBastionSubnet`) | The **prescribed** Bastion rule set: inbound 443 from Internet, GatewayManager and AzureLoadBalancer; outbound 3389/22 to VirtualNetwork, 443 to AzureCloud. A wrong rule here breaks Bastion outright — this is the one to get right first and rush least. |
+| `dns_inbound` / `dns_outbound` | Delegated to `Microsoft.Network/dnsResolvers`. Azure permits an NSG; it must not block resolver traffic on 53/UDP+TCP. |
+| `fw_trust` / `fw_untrust` | NVA data-path subnets (palo/fortinet only). Rules follow the appliance vendor's guidance, so this half is firewall-type dependent. |
+| `private_endpoints` | Arrived with item 2.11. Private endpoints ignore NSGs unless the subnet sets `private_endpoint_network_policies = "Enabled"` — which this module already does, so an NSG here would actually apply. |
+
+Not one rule set: three or four different ones, two of them
+vendor-conditional. That is why it is an item rather than a line in 2.15.
+
+**Owner**: `azure-platform-architect` (design) → `terraform-module-engineer`.
+**Gate**: none technical — the module already associates an NSG on `fw_mgmt`,
+so the mechanism exists. It needs a decision on how far to go: the Bastion set
+alone (highest value, best documented by Microsoft), or all six.
+**Validation**: `CKV2_AZURE_31` suppressions removed from every subnet that
+gains an NSG, leaving only the precautionary `gateway` one; all three fixtures
+strict-pass with checkov clean; a Bastion host still connects — which this
+environment cannot prove, so that part waits on a real estate.
+
+### 2.17 Shared-key authorization stays enabled on flow-log storage
+
+`terraform/modules/nsg-flow-logs/main.tf` does not set
+`shared_access_key_enabled`, so it defaults to `true` — unlike the Terraform
+state account, which disables it deliberately (contract #3). `CKV2_AZURE_40`
+flags it, and item 2.15 suppressed it rather than flipping it.
+
+**The reason for not flipping it is ignorance, not judgement**, which is worth
+stating plainly: whether Azure Network Watcher can write NSG flow logs to a
+storage account with shared-key authorization disabled could not be confirmed.
+A Microsoft Learn search returned nothing conclusive, and this environment has
+no Azure access to test against. Turning it off on a guess risks flow logs that
+plan clean, apply clean, and silently deliver nothing — the exact failure shape
+decision 0009 was written to avoid.
+
+**Owner**: `terraform-module-engineer`, with `azure-platform-architect` on the
+service-support question.
+**Gate**: a definitive answer — a Microsoft Learn statement on flow-log
+storage requirements, or one test against a real subscription.
+**Validation**: if supported, `shared_access_key_enabled = false` in both
+trees, the `CKV2_AZURE_40` suppression removed, and flow logs observed
+arriving in the account afterwards; if not supported, the suppression text
+replaced with the citation that settles it, so the next reader does not have to
+re-derive this.
 
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 
