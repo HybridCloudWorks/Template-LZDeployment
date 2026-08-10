@@ -366,6 +366,21 @@ function Test-LzRenderGuards {
             -Remediation 'Set github.visibility to private, or correct the ownership model.'
     }
 
+    # ── Private DNS centralization ───────────────────────────────────────────
+    # Contract 9 puts the private DNS zones in the connectivity layer and
+    # forbids a workload layer from creating a zone of the same name — two
+    # zones of one name resolve differently depending on which VNet asks, and
+    # nothing surfaces the divergence. centralizedInHub = false has no
+    # implementation behind it, so rendering it as if it were honoured would be
+    # exactly the silent yes-means-no this guard chain exists to stop. Default
+    # true: an absent key is the centralized answer (TODO item 2.12).
+    if ($Config.connectivity.privateDns.enabled -and
+        (Get-LzGuardConfigValue -Object $Config -Path 'connectivity.privateDns.centralizedInHub' -Default $true) -eq $false) {
+        $v += New-LzGuardViolation -Id 'G21' `
+            -Message 'connectivity.privateDns.centralizedInHub = false is not implemented: private DNS zones are owned by the connectivity layer (cross-domain contract 9).' `
+            -Remediation 'Set connectivity.privateDns.centralizedInHub to true, or disable connectivity.privateDns.enabled.'
+    }
+
     $blocks = @($v | Where-Object { $_.Severity -eq 'Block' })
     $warns = @($v | Where-Object { $_.Severity -eq 'Warn' })
 

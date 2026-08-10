@@ -157,24 +157,51 @@ resource "azurerm_virtual_network_peering" "dr_to_primary" {
 # this one serves the estate's spokes and hubs.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# The set actually created: the client's list when they typed one, otherwise
+# the single blob zone item 2.10 shipped. Blank does NOT mean "a CAF default
+# set derived from the services you enabled" — the schema and the wizard hint
+# used to promise that and nothing implemented it, so the promise was reworded
+# rather than a set of zones nobody asked for being created (TODO item 2.12).
+locals {
+  private_dns_zones = (
+    var.deploy_private_dns_zones
+    ? toset(length(var.private_dns_zones) > 0 ? var.private_dns_zones : [local.blob_zone_name])
+    : toset([])
+  )
+
+  blob_zone_name = "privatelink.blob.core.windows.net"
+}
+
 resource "azurerm_private_dns_zone" "blob" {
-  count               = var.deploy_blob_private_dns_zone ? 1 : 0
-  name                = "privatelink.blob.core.windows.net"
+  for_each            = local.private_dns_zones
+  name                = each.value
   resource_group_name = module.hub_primary.resource_group_name
 
   tags = local.common_tags
+}
+
+# count -> for_each moves the resource address from blob[0] to
+# blob["privatelink.blob.core.windows.net"]. Nothing in the estate has applied
+# this yet, but the corpus ships to clients who may have, and a moved block
+# costs nothing when the old address was never in state.
+moved {
+  from = azurerm_private_dns_zone.blob[0]
+  to   = azurerm_private_dns_zone.blob["privatelink.blob.core.windows.net"]
 }
 
 # Both hubs link to the single zone. registration_enabled stays false on every
 # link in this file: these VNets resolve privatelink records, they do not
 # register their own VM names into the zone, and only one link per zone may
 # enable registration at all.
+# Every zone is linked to both hubs. The link name carries a slug of the zone
+# rather than the literal name: link names allow a narrower character set than
+# zone names, and two zones differing only by dots would otherwise collide.
 resource "azurerm_private_dns_zone_virtual_network_link" "blob_hub_primary" {
-  count = var.deploy_blob_private_dns_zone ? 1 : 0
-  name  = "link-blob-hub-${var.primary_region_code}"
+  for_each = local.private_dns_zones
+  name     = "link-${substr(replace(each.value, ".", "-"), 0, 60)}-${var.primary_region_code}"
   # azurerm 5.0 requires private_dns_zone_id; resource_group_name +
   # private_dns_zone_name are rejected as unsupported (see backend-bootstrap).
-  private_dns_zone_id  = azurerm_private_dns_zone.blob[0].id
+  private_dns_zone_id  = azurerm_private_dns_zone.blob[each.key].id
   virtual_network_id   = module.hub_primary.hub_vnet_id
   registration_enabled = false
 
@@ -182,13 +209,23 @@ resource "azurerm_private_dns_zone_virtual_network_link" "blob_hub_primary" {
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "blob_hub_dr" {
-  count                = var.deploy_blob_private_dns_zone ? 1 : 0
-  name                 = "link-blob-hub-${var.dr_region_code}"
-  private_dns_zone_id  = azurerm_private_dns_zone.blob[0].id
+  for_each             = local.private_dns_zones
+  name                 = "link-${substr(replace(each.value, ".", "-"), 0, 60)}-${var.dr_region_code}"
+  private_dns_zone_id  = azurerm_private_dns_zone.blob[each.key].id
   virtual_network_id   = module.hub_dr.hub_vnet_id
   registration_enabled = false
 
   tags = local.common_tags
+}
+
+moved {
+  from = azurerm_private_dns_zone_virtual_network_link.blob_hub_primary[0]
+  to   = azurerm_private_dns_zone_virtual_network_link.blob_hub_primary["privatelink.blob.core.windows.net"]
+}
+
+moved {
+  from = azurerm_private_dns_zone_virtual_network_link.blob_hub_dr[0]
+  to   = azurerm_private_dns_zone_virtual_network_link.blob_hub_dr["privatelink.blob.core.windows.net"]
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -488,9 +488,14 @@
             "enabled": { "type": "boolean", "default": true },
             "centralizedInHub": { "type": "boolean", "default": true },
             "zones": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Private DNS zones to create, e.g. privatelink.blob.core.windows.net. Empty means use the renderer's CAF default set."
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 253,
+        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+      },
+              "description": "Private DNS zones to create in the connectivity subscription and link to every hub, e.g. privatelink.blob.core.windows.net. Empty means privatelink.blob.core.windows.net alone — there is no CAF default set behind this field."
             }
           }
         },

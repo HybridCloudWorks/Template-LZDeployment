@@ -349,7 +349,12 @@ const RE = {
   cidr: /^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\/(3[0-2]|[12]?[0-9])$/,
   ipv4: /^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$/,
   tagKey: /^[A-Za-z_][A-Za-z0-9_-]*$/,
-  cron: /^(\S+\s+){4}\S+$/
+  cron: /^(\S+\s+){4}\S+$/,
+  // Must stay at least as strict as the private_dns_zones validation in
+  // terraform/live/platform-connectivity/variables.tf and the schema pattern
+  // for connectivity.privateDns.zones (contract #7: wizard subset of schema
+  // subset of terraform).
+  dnsZone: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
 };
 
 /** Parse a CIDR into [networkInt, broadcastInt] for overlap testing. */
@@ -517,6 +522,27 @@ function validate() {
     }
     if (!c.hubSpoke.availabilityZones.length) {
       warn('connectivity', 'No availability zones selected. Zonal resources will be deployed without zone redundancy.');
+    }
+  }
+  if (c.privateDns && c.privateDns.enabled) {
+    // Zone names go straight into azurerm_private_dns_zone. Catching a bad one
+    // here rather than at plan keeps the wizard at least as strict as the
+    // schema, which is at least as strict as Terraform (contract #7).
+    const zones = c.privateDns.zones || [];
+    for (const z of zones) {
+      if (!RE.dnsZone.test(z) || z.length > 253) {
+        err('connectivity', `Private DNS zone "${z}" is not a valid zone name — lowercase dotted labels only, no leading or trailing dot or hyphen.`);
+      }
+    }
+    if (new Set(zones).size !== zones.length) {
+      err('connectivity', 'The private DNS zone list contains duplicates.');
+    }
+    // centralizedInHub = false has no implementation: cross-domain contract 9
+    // puts the zones in the connectivity layer, and render guard G21 blocks a
+    // configuration that unticks it. Failing here means the client sees it in
+    // the wizard rather than at render time.
+    if (c.privateDns.centralizedInHub === false) {
+      err('connectivity', 'Centralizing Private DNS in the hub cannot be turned off: the generated Terraform creates the zones in the connectivity layer. Untick "Private DNS zones" instead if you do not want them.');
     }
   }
   if (['palo', 'fortinet'].includes(c.firewall.type)) {

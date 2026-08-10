@@ -72,7 +72,7 @@ locals {
 
   # The privatelink.blob.core.windows.net zone the connectivity layer owns
   # (decision 0009 follow-up (c)). One value drives the whole endpoint path:
-  # empty means the operator has not flipped deploy_blob_private_dns_zone, so
+  # empty means the operator has not flipped deploy_private_dns_zones, so
   # the spoke link below is not created and the flow-log calls leave
   # enable_private_endpoint off.
   blob_private_dns_zone_id = try(
