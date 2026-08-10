@@ -175,7 +175,8 @@ decision 0009 follow-up (b)); this entry previously read "at most one instance
 per `(region, environment)`", which was the pre-override ceiling.*
 
 `terraform/modules/nsg-flow-logs/main.tf` names the flow-log storage account
-`coalesce(var.storage_account_name, "stflowlogs${region_code}${environment}")`.
+`coalesce(var.storage_account_name, local.default_storage_account_name)`, where
+that local composes `"stflowlogs${var.region_code}${var.environment}"`.
 Storage account names are globally unique, so the rule is: **every instance of
 this module in the estate must resolve to a distinct name, and any caller
 creating a second instance in a `(region, environment)` another instance
