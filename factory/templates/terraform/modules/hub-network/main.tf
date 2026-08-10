@@ -283,7 +283,7 @@ resource "azurerm_subnet" "private_endpoints" {
   count = var.private_endpoint_subnet_prefix == null ? 0 : 1
 
   name                 = "snet-private-endpoints-${var.region_code}-${var.environment}-01"
-  resource_group_name  = azurerm_resource_group.connectivity.name
+  resource_group_name  = azurerm_resource_group.hub.name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [var.private_endpoint_subnet_prefix]
 
