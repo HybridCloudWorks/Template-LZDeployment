@@ -61,6 +61,23 @@ locals {
     data.terraform_remote_state.connectivity.outputs.management_workspace,
     { resource_id = "", guid = "", location = "" }
   )
+
+  # The privatelink.blob.core.windows.net zone the connectivity layer owns
+  # (TODO item 2.10). try() for the same reason as above: a connectivity state
+  # applied before this output existed does not carry the key, and this is a
+  # lookup against state rather than a provider read.
+  #
+  # This single value is the whole switch. Empty means the operator has not
+  # flipped deploy_blob_private_dns_zone, so the spoke links below are not
+  # created and the flow-log calls leave enable_private_endpoint off; non-empty
+  # means the zone exists and every part of the endpoint path follows from it.
+  # There is deliberately no second per-layer flag to leave half-set.
+  blob_private_dns_zone_id = try(
+    data.terraform_remote_state.connectivity.outputs.blob_private_dns_zone_id,
+    ""
+  )
+
+  blob_private_dns_enabled = local.blob_private_dns_zone_id != ""
 }
 
 # Production spoke in primary region
@@ -112,6 +129,42 @@ module "spoke_prod_dr" {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Spoke links into the connectivity layer's blob private DNS zone — TODO item
+# 2.10. Without these, a private endpoint in a spoke would be created and its
+# name would still resolve to the public blob address from inside that spoke.
+#
+# The link resource belongs to the ZONE, which lives in the connectivity
+# subscription, so it is created through the hub-scoped provider alias this
+# layer already holds for the hub side of VNet peering — not through the
+# default provider, which is scoped to the workload subscription and would
+# fail to find the zone.
+# ─────────────────────────────────────────────────────────────────────────────
+
+resource "azurerm_private_dns_zone_virtual_network_link" "blob_spoke_primary" {
+  provider = azurerm.hub
+  count    = local.blob_private_dns_enabled ? 1 : 0
+
+  name                 = "link-blob-spoke-prod-${var.primary_region_code}"
+  private_dns_zone_id  = local.blob_private_dns_zone_id
+  virtual_network_id   = module.spoke_prod_primary.spoke_vnet_id
+  registration_enabled = false
+
+  tags = local.common_tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "blob_spoke_dr" {
+  provider = azurerm.hub
+  count    = local.blob_private_dns_enabled ? 1 : 0
+
+  name                 = "link-blob-spoke-prod-${var.dr_region_code}"
+  private_dns_zone_id  = local.blob_private_dns_zone_id
+  virtual_network_id   = module.spoke_prod_dr.spoke_vnet_id
+  registration_enabled = false
+
+  tags = local.common_tags
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # NSG flow logs — decision 0009: all three spoke NSGs (A2), the
 # management-baseline workspace via connectivity's re-export (B1), hosted in
 # this workload layer (C2), behind a default-off flag.
@@ -157,12 +210,15 @@ module "nsg_flow_logs_primary" {
   flow_log_retention_days  = var.flow_log_retention_days
   enable_traffic_analytics = var.enable_traffic_analytics
 
-  # Knowing posture reduction (decision 0009, constraint 4): the module's
-  # private endpoint needs a privatelink.blob.core.windows.net zone and no such
-  # zone exists in either tree. The storage account is already
-  # default_action = "Deny" with a trusted-services bypass, so the private
-  # endpoint is defence in depth rather than the only control.
-  enable_private_endpoint = false
+  # Decision 0009's constraint-4 reduction is LIFTED here (TODO item 2.10):
+  # the zone now exists whenever connectivity says it does, this spoke is
+  # linked to it above, and spoke-network has always exposed a dedicated
+  # private-endpoint subnet. All three follow from the one remote-state value,
+  # so the endpoint turns on with the zone rather than on a flag of its own —
+  # and cannot be half-enabled, which the module now also refuses at plan.
+  enable_private_endpoint    = local.blob_private_dns_enabled
+  private_endpoint_subnet_id = module.spoke_prod_primary.pe_subnet_id
+  private_dns_zone_ids       = local.blob_private_dns_enabled ? [local.blob_private_dns_zone_id] : []
 
   # The module's two scheduled-query alert rules notify through
   # action_group_ids; no action group is relayed to this layer, and a rule with
@@ -189,9 +245,12 @@ module "nsg_flow_logs_dr" {
   flow_log_retention_days  = var.flow_log_retention_days
   enable_traffic_analytics = var.enable_traffic_analytics
 
-  # Same two knowing reductions as the primary-region instance above.
-  enable_private_endpoint = false
-  enable_traffic_alerts   = false
+  # Same wiring as the primary-region instance above, against the DR spoke.
+  enable_private_endpoint    = local.blob_private_dns_enabled
+  private_endpoint_subnet_id = module.spoke_prod_dr.pe_subnet_id
+  private_dns_zone_ids       = local.blob_private_dns_enabled ? [local.blob_private_dns_zone_id] : []
+
+  enable_traffic_alerts = false
 
   tags = local.common_tags
 }

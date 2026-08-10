@@ -45,3 +45,13 @@ output "management_workspace" {
   description = "Central Log Analytics workspace facts required by NSG flow-log Traffic Analytics (ARM resource ID, short GUID, region). Empty until wire_management_workspace is enabled."
   value       = local.management_workspace
 }
+
+# Blob private DNS zone for the workload layers' flow-log private endpoints
+# (TODO item 2.10). Unconditional, like management_workspace above, so the
+# workload layers' remote-state read always finds the key; the value is an
+# empty string until deploy_blob_private_dns_zone is flipped, and the workload
+# layers treat empty as "no endpoint" rather than needing a second flag.
+output "blob_private_dns_zone_id" {
+  description = "Resource ID of the privatelink.blob.core.windows.net private DNS zone, or an empty string when deploy_blob_private_dns_zone is false."
+  value       = var.deploy_blob_private_dns_zone ? azurerm_private_dns_zone.blob[0].id : ""
+}

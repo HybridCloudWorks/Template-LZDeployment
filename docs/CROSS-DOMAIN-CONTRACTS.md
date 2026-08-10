@@ -8,7 +8,8 @@ check — and usually change — the other sides, or dispatch the change through
 
 All entries verified against the repo on 2026-08-06; contract #4 corrected and
 contract #8 added 2026-08-09 (decision 0009); contract #8a revised the same day
-when the storage-account name became overridable (TODO item 2.9).
+when the storage-account name became overridable (TODO item 2.9); contract #9
+added 2026-08-10 when the blob private DNS zone landed (TODO item 2.10).
 
 ---
 
@@ -236,6 +237,67 @@ still emit `false`.
 
 Rationale for both:
 [docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md](decisions/0009-nsg-flow-log-scope-and-workspace-target.md).
+
+---
+
+## 9. The blob private DNS zone is owned by connectivity and consumed by the workload layers
+
+*Added 2026-08-10 (TODO item 2.10, decision 0009 follow-up (c)).*
+
+A private endpoint whose name has no matching private DNS zone is created
+successfully, plans clean, and resolves to the public address anyway. That is
+why every `nsg-flow-logs` caller carried `enable_private_endpoint = false` from
+decision 0009 until this item. The fix spans two layers and three
+subscriptions, and nothing in Terraform's graph enforces the split, so it lives
+here.
+
+**The rule.** `privatelink.blob.core.windows.net` is created **once**, in
+`terraform/live/platform-connectivity`, gated on `deploy_blob_private_dns_zone`.
+That layer links the hub VNets. Every workload layer links **its own** spoke
+VNets to that same zone and derives its endpoints from the exported
+`blob_private_dns_zone_id` — empty string means "no zone", which is the single
+switch for the entire endpoint path. A workload layer must never create a zone
+of this name itself: private DNS zone names are unique per resource group, not
+per tenant, so a second one resolves the same name to different records
+depending on which VNet asks, and the failure is silent.
+
+**The link crosses a subscription boundary and must use the hub alias.** The
+link resource belongs to the zone, which lives in the connectivity
+subscription; the spoke VNet lives in the workload subscription. Workload
+layers create these links through the `azurerm.hub` provider alias they already
+hold for the hub side of VNet peering (contract #5). Through the default
+provider the zone is simply not found.
+
+**Ordering.** `platform-connectivity` must be applied with the gate on before a
+workload layer can create links or endpoints. This is the same shape as
+`wire_management_workspace`: the workload layers read the value through `try()`
+against remote state, so a connectivity state applied before the output existed
+yields an empty string and the endpoints stay off rather than erroring.
+
+**The one place the module can catch a mistake.** `nsg-flow-logs` now carries
+`lifecycle.precondition`s rejecting `enable_private_endpoint = true` without a
+subnet or without a zone ID, so a half-wired caller fails at **plan**. That
+guards the caller; it cannot guard the zone-ownership rule above, which is why
+this entry exists.
+
+Participants: `terraform/live/platform-connectivity/{main,variables,outputs}.tf`
+and its corpus twins; the `blob_private_dns_zone_id`/`blob_private_dns_enabled`
+locals, the `blob_spoke_*` links and the three endpoint arguments in
+`terraform/live/workloads-prod/main.tf` and
+`factory/templates/terraform/live/workloads-{prod,nonprod}/main.tf.tmpl`;
+`terraform/modules/nsg-flow-logs/main.tf` in both trees;
+`factory/renderer/variable-map.json`; `factory/tests/Test-Renderer.ps1` §15f.
+
+Consequences that are live today: the gate renders from the client's
+`connectivity.privateDns.enabled` answer rather than a constant, because a zone
+has no volume meter and no dependency that can fail a first plan — but turning
+it on still creates **no endpoint**, because those are gated on
+`enable_nsg_flow_logs`, which contract 8b keeps a constant `false`. The hub's
+own flow-log instances remain endpoint-less for a different reason:
+`hub-network` exposes no private-endpoint subnet ([TODO.md](../TODO.md) item
+2.11). The wizard's `connectivity.privateDns.zones` list is still consumed
+nowhere — this contract covers one purpose-built zone, not the client's list
+(item 2.12).
 
 ---
 

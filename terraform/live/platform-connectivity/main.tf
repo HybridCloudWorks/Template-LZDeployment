@@ -135,6 +135,63 @@ resource "azurerm_virtual_network_peering" "dr_to_primary" {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Blob private DNS — decision 0009 follow-up (c), TODO item 2.10.
+#
+# A private endpoint without a matching private DNS zone resolves to nothing,
+# which is why every flow-log caller in both trees has carried
+# enable_private_endpoint = false since decision 0009. This is the zone those
+# callers were waiting for.
+#
+# It lives HERE, not in the workload layers, for the reason the hub owns DNS
+# generally: a private DNS zone is a global resource, one zone serves both
+# regions and every spoke, and a per-workload-subscription zone would give the
+# same name different contents depending on which VNet asked. The workload
+# layers link their own spoke VNets to it across the subscription boundary
+# using the hub-scoped provider alias they already hold for the hub side of
+# VNet peering, and consume the ID from this layer's output.
+#
+# backend-bootstrap creates a zone of the same name in the state subscription.
+# That is not a conflict: private DNS zone names are unique per resource group,
+# not per tenant, and the two are linked to disjoint VNet sets — the bootstrap
+# zone serves the state storage account's endpoint from the management VNet,
+# this one serves the estate's spokes and hubs.
+# ─────────────────────────────────────────────────────────────────────────────
+
+resource "azurerm_private_dns_zone" "blob" {
+  count               = var.deploy_blob_private_dns_zone ? 1 : 0
+  name                = "privatelink.blob.core.windows.net"
+  resource_group_name = module.hub_primary.resource_group_name
+
+  tags = local.common_tags
+}
+
+# Both hubs link to the single zone. registration_enabled stays false on every
+# link in this file: these VNets resolve privatelink records, they do not
+# register their own VM names into the zone, and only one link per zone may
+# enable registration at all.
+resource "azurerm_private_dns_zone_virtual_network_link" "blob_hub_primary" {
+  count = var.deploy_blob_private_dns_zone ? 1 : 0
+  name  = "link-blob-hub-${var.primary_region_code}"
+  # azurerm 5.0 requires private_dns_zone_id; resource_group_name +
+  # private_dns_zone_name are rejected as unsupported (see backend-bootstrap).
+  private_dns_zone_id  = azurerm_private_dns_zone.blob[0].id
+  virtual_network_id   = module.hub_primary.hub_vnet_id
+  registration_enabled = false
+
+  tags = local.common_tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "blob_hub_dr" {
+  count                = var.deploy_blob_private_dns_zone ? 1 : 0
+  name                 = "link-blob-hub-${var.dr_region_code}"
+  private_dns_zone_id  = azurerm_private_dns_zone.blob[0].id
+  virtual_network_id   = module.hub_dr.hub_vnet_id
+  registration_enabled = false
+
+  tags = local.common_tags
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # NSG flow logs for the hub — decision 0009 follow-up (b), TODO item 2.9.
 #
 # Network Watcher is regional AND per-subscription and the module reads it
@@ -181,12 +238,16 @@ module "nsg_flow_logs_hub_primary" {
   log_analytics_workspace_resource_id = local.management_workspace.resource_id
   log_analytics_workspace_region      = local.management_workspace.location
 
-  # Knowing posture reduction (decision 0009, constraint 4): the module's
-  # private endpoint needs a privatelink.blob.core.windows.net zone and no such
-  # zone exists in either tree. The storage account is already
-  # default_action = "Deny" with a trusted-services bypass, so the private
-  # endpoint is defence in depth rather than the only control. TODO item 2.10
-  # owns re-enabling it.
+  # Still a knowing posture reduction, but the reason has changed with TODO
+  # item 2.10: the zone above now exists and is linked to this hub VNet, so
+  # what blocks the endpoint is that hub-network exposes no private-endpoint
+  # subnet to put it in — unlike spoke-network, which has carried pe_subnet_id
+  # all along. Adding one means claiming another block of the hub address
+  # space, which is a hub-topology change rather than a flow-log change, so it
+  # is carried as its own follow-up (TODO item 2.11) rather than smuggled in
+  # here. The storage account is already default_action = "Deny" with a
+  # trusted-services bypass, so this stays defence in depth, not the only
+  # control.
   enable_private_endpoint = false
 
   # The module's two scheduled-query alert rules notify through
@@ -212,7 +273,8 @@ module "nsg_flow_logs_hub_dr" {
   log_analytics_workspace_resource_id = local.management_workspace.resource_id
   log_analytics_workspace_region      = local.management_workspace.location
 
-  # Same two knowing reductions as the primary-region instance above.
+  # Same two knowing reductions as the primary-region instance above — the
+  # endpoint waits on a hub private-endpoint subnet (item 2.11), not on a zone.
   enable_private_endpoint = false
   enable_traffic_alerts   = false
 

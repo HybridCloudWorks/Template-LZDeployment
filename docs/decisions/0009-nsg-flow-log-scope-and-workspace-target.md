@@ -490,7 +490,17 @@ Nothing below is done. It is what ratification would authorise.
   per hub region as `stflowlogshub<region_code>prod` behind its own
   default-`false` `enable_nsg_flow_logs`; contract 8a is rewritten from an
   instance ceiling to a distinct-names rule; (c) add
-  `privatelink.blob.core.windows.net` and turn the private endpoint back on;
+  `privatelink.blob.core.windows.net` and turn the private endpoint back on —
+  **shipped 2026-08-10** (TODO item 2.10): `platform-connectivity` owns the
+  zone behind a `deploy_blob_private_dns_zone` gate and links both hub VNets,
+  exports the zone ID unconditionally, and the workload layers link their own
+  spokes across the subscription boundary through the `azurerm.hub` alias and
+  derive `enable_private_endpoint`, the endpoint subnet and the zone list from
+  that one exported value; the module now rejects a half-configured endpoint
+  at plan; new contract 9 records the two-layer split. Constraint 4's
+  reduction is lifted for the **workload** instances only — the hub instances
+  stay endpoint-less because `hub-network` exposes no private-endpoint subnet
+  (item 2.11);
   (d) refresh the assumed rates against `prices.azure.com` from an
   environment with egress, and fold the result into REVIEW.md §17's periodic
   review.

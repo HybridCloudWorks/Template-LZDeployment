@@ -70,6 +70,18 @@ locals {
     { resource_id = "", guid = "", location = "" }
   )
 
+  # The privatelink.blob.core.windows.net zone the connectivity layer owns
+  # (decision 0009 follow-up (c)). One value drives the whole endpoint path:
+  # empty means the operator has not flipped deploy_blob_private_dns_zone, so
+  # the spoke link below is not created and the flow-log calls leave
+  # enable_private_endpoint off.
+  blob_private_dns_zone_id = try(
+    data.terraform_remote_state.connectivity.outputs.blob_private_dns_zone_id,
+    ""
+  )
+
+  blob_private_dns_enabled = local.blob_private_dns_zone_id != ""
+
   # Every non-production spoke in a region shares ONE flow-log instance with
   # environment = "nonprod", because this call takes the module's composed name
   # stflowlogs${region_code}${environment} and storage account names are
@@ -106,6 +118,21 @@ locals {
 #{{ELSE}}
   nonprod_flow_log_rg_primary = module.spoke_uat_primary.resource_group_name
 #{{ENDIF}}
+
+  # The same first-rendered spoke holds the flow-log private endpoint and is
+  # the VNet linked to the blob zone: the endpoint must sit in a subnet of a
+  # VNet in this region, and the spoke that already owns the storage account's
+  # resource group is the one with no arbitrary choice left to make.
+#{{IF environments.application contains 'dev'}}
+  nonprod_flow_log_vnet_primary      = module.spoke_dev_primary.spoke_vnet_id
+  nonprod_flow_log_pe_subnet_primary = module.spoke_dev_primary.pe_subnet_id
+#{{ELSEIF environments.application contains 'test'}}
+  nonprod_flow_log_vnet_primary      = module.spoke_test_primary.spoke_vnet_id
+  nonprod_flow_log_pe_subnet_primary = module.spoke_test_primary.pe_subnet_id
+#{{ELSE}}
+  nonprod_flow_log_vnet_primary      = module.spoke_uat_primary.spoke_vnet_id
+  nonprod_flow_log_pe_subnet_primary = module.spoke_uat_primary.pe_subnet_id
+#{{ENDIF}}
 #{{IF computed.hasDrRegion}}
 
   nonprod_nsg_ids_dr = {
@@ -132,6 +159,17 @@ locals {
   nonprod_flow_log_rg_dr = module.spoke_test_dr.resource_group_name
 #{{ELSE}}
   nonprod_flow_log_rg_dr = module.spoke_uat_dr.resource_group_name
+#{{ENDIF}}
+
+#{{IF environments.application contains 'dev'}}
+  nonprod_flow_log_vnet_dr      = module.spoke_dev_dr.spoke_vnet_id
+  nonprod_flow_log_pe_subnet_dr = module.spoke_dev_dr.pe_subnet_id
+#{{ELSEIF environments.application contains 'test'}}
+  nonprod_flow_log_vnet_dr      = module.spoke_test_dr.spoke_vnet_id
+  nonprod_flow_log_pe_subnet_dr = module.spoke_test_dr.pe_subnet_id
+#{{ELSE}}
+  nonprod_flow_log_vnet_dr      = module.spoke_uat_dr.spoke_vnet_id
+  nonprod_flow_log_pe_subnet_dr = module.spoke_uat_dr.pe_subnet_id
 #{{ENDIF}}
 #{{ENDIF}}
 #{{ENDIF}}
@@ -370,6 +408,49 @@ module "spoke_uat_dr" {
 # module's Network Watcher read is a provider read that only count can gate)
 # and after platform-connectivity's wire_management_workspace is enabled.
 # ─────────────────────────────────────────────────────────────────────────────
+# Spoke link into the connectivity layer's blob private DNS zone — decision
+# 0009 follow-up (c). Without it, a private endpoint in this spoke would be
+# created and its name would still resolve to the public blob address from
+# inside the spoke.
+#
+# The link belongs to the ZONE, which lives in the connectivity subscription,
+# so it is created through the hub-scoped provider alias this layer already
+# holds for the hub side of VNet peering — not through the default provider,
+# which is scoped to the workload subscription and would not find the zone.
+#
+# Only the spoke that hosts the endpoint is linked. The other spokes in the
+# region neither read nor write the flow-log storage account; the hub links
+# the connectivity layer creates are what put the record in front of operator
+# access paths.
+# ─────────────────────────────────────────────────────────────────────────────
+
+resource "azurerm_private_dns_zone_virtual_network_link" "blob_spoke_primary" {
+  provider = azurerm.hub
+  count    = local.blob_private_dns_enabled ? 1 : 0
+
+  name                 = "link-blob-spoke-nonprod-${var.primary_region_code}"
+  private_dns_zone_id  = local.blob_private_dns_zone_id
+  virtual_network_id   = local.nonprod_flow_log_vnet_primary
+  registration_enabled = false
+
+  tags = merge(var.default_tags, { environment = "nonprod", layer = "workload-nonprod" })
+}
+#{{IF computed.hasDrRegion}}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "blob_spoke_dr" {
+  provider = azurerm.hub
+  count    = local.blob_private_dns_enabled ? 1 : 0
+
+  name                 = "link-blob-spoke-nonprod-${var.dr_region_code}"
+  private_dns_zone_id  = local.blob_private_dns_zone_id
+  virtual_network_id   = local.nonprod_flow_log_vnet_dr
+  registration_enabled = false
+
+  tags = merge(var.default_tags, { environment = "nonprod", layer = "workload-nonprod" })
+}
+#{{ENDIF}}
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 module "nsg_flow_logs_primary" {
   source = "../../modules/nsg-flow-logs"
@@ -392,10 +473,15 @@ module "nsg_flow_logs_primary" {
   flow_log_retention_days  = var.flow_log_retention_days
   enable_traffic_analytics = var.enable_traffic_analytics
 
-  # Knowing posture reduction (decision 0009, constraint 4): the private
-  # endpoint needs a privatelink.blob.core.windows.net zone that the corpus
-  # does not create. The storage account is already default_action = "Deny".
-  enable_private_endpoint = false
+  # Decision 0009's constraint-4 reduction is LIFTED here (follow-up (c)): the
+  # zone now exists whenever connectivity says it does, the hosting spoke is
+  # linked to it above, and spoke-network has always exposed a dedicated
+  # private-endpoint subnet. All three follow from the one remote-state value,
+  # so the endpoint turns on with the zone rather than on a flag of its own —
+  # and cannot be half-enabled, which the module now also refuses at plan.
+  enable_private_endpoint    = local.blob_private_dns_enabled
+  private_endpoint_subnet_id = local.nonprod_flow_log_pe_subnet_primary
+  private_dns_zone_ids       = local.blob_private_dns_enabled ? [local.blob_private_dns_zone_id] : []
 
   # No action group is relayed to this layer, and an alert rule with an empty
   # action group fires into nothing.
@@ -422,9 +508,13 @@ module "nsg_flow_logs_dr" {
   flow_log_retention_days  = var.flow_log_retention_days
   enable_traffic_analytics = var.enable_traffic_analytics
 
-  # Same two knowing reductions as the primary-region instance above.
-  enable_private_endpoint = false
-  enable_traffic_alerts   = false
+  # Same wiring as the primary-region instance above, against the DR region's
+  # hosting spoke.
+  enable_private_endpoint    = local.blob_private_dns_enabled
+  private_endpoint_subnet_id = local.nonprod_flow_log_pe_subnet_dr
+  private_dns_zone_ids       = local.blob_private_dns_enabled ? [local.blob_private_dns_zone_id] : []
+
+  enable_traffic_alerts = false
 
   tags = merge(var.default_tags, { environment = "nonprod", layer = "workload-nonprod" })
 }

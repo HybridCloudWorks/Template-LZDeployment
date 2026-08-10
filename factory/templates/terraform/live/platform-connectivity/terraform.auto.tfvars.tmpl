@@ -56,6 +56,20 @@ dr_nva_trust_ip = {{FACTORY:connectivity.firewall.nvaTrustIpDr}}
 deploy_bastion = {{FACTORY-BOOL:connectivity.bastion.enabled}}
 deploy_dns     = {{FACTORY-BOOL:connectivity.privateDns.enabled}}
 
+# Creates the privatelink.blob.core.windows.net zone in this subscription and
+# links both hub VNets to it. Rendered from the same "Private DNS zones" answer
+# as deploy_dns above, because a zone has no per-gigabyte meter and nothing it
+# depends on can make a first plan fail — unlike the flow-log flag below.
+#
+# On its own this creates the zone and its links and nothing else. The private
+# endpoints it unblocks live in the workload layers and are gated there on
+# their own NSG flow-log flag, which is rendered false, so nothing that bills
+# by volume appears until you flip that.
+#
+# Only this one zone is created. If you listed other zones in the wizard, they
+# are recorded in lz-config.json and are not yet rendered anywhere.
+deploy_blob_private_dns_zone = {{FACTORY-BOOL:connectivity.privateDns.enabled}}
+
 # NSG flow logs for the hub's firewall-management NSG. Your wizard answer for
 # "NSG flow logs" was {{FACTORY-BOOL:security.nsgFlowLogs.enabled}} — it is
 # recorded in lz-config.json, and this flag is still rendered false, exactly as

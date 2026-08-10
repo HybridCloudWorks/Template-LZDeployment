@@ -362,6 +362,15 @@ size. Summarised:
 ## Security Best Practices
 
 ✅ **Enable private endpoint** for storage account (no public access)  
+
+> **The endpoint needs a zone, and the zone is not this module's.**
+> `enable_private_endpoint` defaults to `true`, but both values it needs
+> default to empty, so the module refuses a half-configured endpoint at plan.
+> In this repository the `privatelink.blob.core.windows.net` zone is owned by
+> `platform-connectivity` behind `deploy_blob_private_dns_zone`, and callers
+> derive all three arguments from its exported `blob_private_dns_zone_id` —
+> see contract 9 in `docs/CROSS-DOMAIN-CONTRACTS.md`. Do not create a second
+> zone of that name in a workload layer.
 ✅ **Use RAGZRS replication** for compliance and durability  
 ✅ **Set retention to 90+ days** for incident investigation  
 ✅ **Enable denied flow alerts** to detect attacks  
@@ -410,8 +419,8 @@ AzureNetworkAnalytics_CL
 | `enable_traffic_analytics` | Enable Traffic Analytics for flow logs | `bool` | `true` | no |
 | `traffic_analytics_interval` | Traffic Analytics processing interval in minutes (10 or 60) | `number` | `60` | no |
 | `enable_private_endpoint` | Enable private endpoint for flow logs storage account | `bool` | `true` | no |
-| `private_endpoint_subnet_id` | Subnet ID for private endpoint (required if enable_private_endpoint = true) | `string` | `""` | no |
-| `private_dns_zone_ids` | Private DNS zone IDs for blob storage private endpoint | `list(string)` | `[]` | no |
+| `private_endpoint_subnet_id` | Subnet ID for private endpoint. **Required** when `enable_private_endpoint = true` — a `lifecycle.precondition` rejects the plan otherwise. | `string` | `""` | no |
+| `private_dns_zone_ids` | Private DNS zone IDs for the blob endpoint. **Required** (at least one) when `enable_private_endpoint = true` — a `lifecycle.precondition` rejects the plan otherwise, because an endpoint with no zone resolves to the public address. | `list(string)` | `[]` | no |
 | `allowed_subnet_ids` | Subnet IDs allowed to access flow logs storage account | `list(string)` | `[]` | no |
 | `allowed_ip_cidrs` | Public IPv4 CIDR ranges allowed through the flow-logs storage account firewall. Entries that fail to parse are dropped (fail closed). | `list(string)` | `[]` | no |
 | `enable_traffic_alerts` | Enable alerts for unusual traffic patterns | `bool` | `true` | no |

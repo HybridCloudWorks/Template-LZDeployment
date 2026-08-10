@@ -98,6 +98,22 @@ resource "azurerm_private_endpoint" "flow_logs_blob" {
   }
 
   tags = var.tags
+
+  # enable_private_endpoint defaults to TRUE while both values it needs default
+  # to empty, so a caller that flips it on and supplies neither gets the quiet
+  # failure this repo exists to prevent: an empty subnet_id is rejected only at
+  # apply, and an empty zone group creates a private endpoint whose name never
+  # resolves. Fail at plan instead (TODO item 2.10).
+  lifecycle {
+    precondition {
+      condition     = var.private_endpoint_subnet_id != ""
+      error_message = "enable_private_endpoint = true requires private_endpoint_subnet_id."
+    }
+    precondition {
+      condition     = length(var.private_dns_zone_ids) > 0
+      error_message = "enable_private_endpoint = true requires at least one private_dns_zone_ids entry — a privatelink.blob.core.windows.net zone linked to the VNet holding private_endpoint_subnet_id."
+    }
+  }
 }
 
 # Network Watcher (usually already exists per region, but ensure it's present)
