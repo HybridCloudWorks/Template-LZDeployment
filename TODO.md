@@ -237,23 +237,54 @@ any hardcoded `false`.
 endpoint until the flow-log gate is on too. Two residuals opened as items 2.11
 and 2.12.
 
-### 2.11 Give `hub-network` a private-endpoint subnet
+### 2.11 Give `hub-network` a private-endpoint subnet — CLOSED
 
-The hub's own `nsg-flow-logs` instances (item 2.9) still carry
-`enable_private_endpoint = false`, and after item 2.10 the reason has changed:
-the zone exists and is linked to the hub VNets, but `hub-network` exposes no
-subnet to put an endpoint in — unlike `spoke-network`, which has carried
-`pe_subnet_id` all along. Adding one claims another block of the hub address
-space, which is a hub-topology change rather than a flow-log change, so it was
-kept out of 2.10.
-**Owner**: `azure-platform-architect` (address-space allocation) →
-`terraform-module-engineer`.
-**Gate**: none technical; it needs an address-space decision, because the hub
-`/4` split is already carrying gateway, bastion and the two DNS-resolver
-delegated subnets.
-**Validation**: `terraform validate` in both trees; the hub instances set the
-same three endpoint arguments the workload callers do and pass the module's
-preconditions; no existing hub subnet's prefix changes.
+Closed 2026-08-10. The gate was "which block of the hub address space", and
+the answer turned out to be that **there isn't one** — which is itself the
+finding, not a dodge.
+
+**Why no derived index works.** Every other hub subnet comes from a
+`cidrsubnet()` index off the hub space, but the free space differs by firewall
+type and the two sets are **disjoint**. For a `10.0.0.0/16` hub:
+
+| Firewall | Consumes | Free /20s |
+| --- | --- | --- |
+| `azfw` | `AzureFirewallSubnet` = the whole first quarter | `10.0.64.0`–`10.0.191.255` |
+| `palo` / `fortinet` | `snet-fw-mgmt` (index 0) plus quarters 1 and 2 for trust/untrust | `10.0.16.0`–`10.0.63.255` |
+
+Quarter 3 is full in both (gateway, bastion, two DNS-resolver subnets). So a
+fixed index collides with one firewall type, and an index that varies by
+firewall type would make the address plan depend on a security choice.
+
+**Shipped**: `hub-network` gains `private_endpoint_subnet_prefix`, **null by
+default**, CIDR-validated, creating `snet-private-endpoints-*` only when the
+operator supplies a range from their own plan. The connectivity layer passes
+one per hub and exports the subnet ID; the rendered tfvars carries both as
+commented placeholders next to the reason they are not derived.
+
+The hub's own flow-log endpoints now turn on when **three** conditions hold,
+expressed once in a local so the two regional calls cannot drift: the blob
+zone exists (items 2.10/2.12), the client asked for private endpoints (item
+2.14), and a subnet prefix was supplied (this item). Any absent leaves
+`enable_private_endpoint = false`, which is what has shipped since decision
+0009.
+
+**Not done, and available if you want it**: re-cutting the hub plan so a
+universal index exists — `AzureFirewallSubnet` takes a `/18` where Azure asks
+for a `/26` — would free quarter 0 for every firewall type. That changes an
+existing subnet's prefix, so it is a deliberate topology change rather than
+something to smuggle into this item.
+
+**Validation**: `Test-Renderer.ps1` **455/0** (§15i new). The full
+`Invoke-FactoryCI.ps1` runs locally now — every check green except
+PSScriptAnalyzer, which cannot install here (PS Gallery blocked).
+`terraform fmt -check` clean on both trees; `terraform validate` still needs
+CI (`registry.terraform.io` is 403 through this proxy). §15i was
+negative-tested, and the first version of its "prefix is not derived" check
+was **vacuous** — a `[^}]*` class stopped at the `${var.region_code}`
+interpolation in the subnet name and never reached `address_prefixes`. It now
+extracts the block to a closing brace at column 0 and fails when the prefix is
+replaced by a `cidrsubnet()` call.
 
 ### 2.12 Render the wizard's `connectivity.privateDns.zones` list — CLOSED
 

@@ -266,8 +266,11 @@ workload layers link their own spokes across the subscription boundary and
 derive the endpoint from the exported zone ID, with the module rejecting a
 half-configured endpoint at plan (new contract 9). Still open: **2.8**
 (replication as a variable — residency), plus two residuals 2.10 exposed —
-**2.11** (`hub-network` has no private-endpoint subnet, so the hub's own
-instances stay endpoint-less) and **2.12** — the wizard's
+**2.11** — `hub-network` had no private-endpoint subnet — **shipped
+2026-08-10**: the subnet now exists on an operator-supplied prefix, because no
+`cidrsubnet()` index is free under both the `azfw` and `palo`/`fortinet` hub
+layouts (their free ranges are disjoint), and the hub endpoints turn on only
+when the zone, the client's answer and a prefix are all present — and **2.12** — the wizard's
 `connectivity.privateDns.zones` list — **shipped 2026-08-10**: the list is
 rendered and created with `for_each`, an empty list means the blob zone alone
 (the "CAF default set" both the schema and the wizard promised never existed

@@ -7,6 +7,40 @@ entries below are history and are not rewritten.
 
 ---
 
+## The hub can host a private endpoint — on an address you choose (2026-08-10)
+
+[TODO.md](TODO.md) item 2.11, the last of the three residuals decision 0009
+left behind. The hub's own NSG flow-log instances have carried
+`enable_private_endpoint = false` since that decision; items 2.10 and 2.14
+supplied the private DNS zone and the client's answer, and this supplies the
+subnet.
+
+**The gate was "which block of the hub address space", and the answer is that
+there isn't one.** Every other hub subnet is derived from a `cidrsubnet()`
+index, but the free space differs by firewall type and the two sets are
+disjoint. An `azfw` hub gives `AzureFirewallSubnet` the entire first quarter,
+leaving quarters 1 and 2 free; a `palo`/`fortinet` hub uses only index 0 of
+quarter 0 but consumes quarters 1 and 2 for trust and untrust. Quarter 3 is
+full in both. So a fixed index collides with one firewall type, and an index
+that varied by firewall type would make the address plan depend on a security
+choice.
+
+`hub-network` therefore takes `private_endpoint_subnet_prefix` — **null by
+default**, CIDR-validated — and creates the subnet only when an operator
+supplies a range from their own plan. The rendered tfvars carries both regional
+placeholders commented out, next to the reason they are not derived.
+
+The hub endpoints now require **three** conditions, expressed once in a local
+so the two regional calls cannot drift: the zone exists, the client asked for
+private endpoints, and a prefix was supplied.
+
+Re-cutting the plan so a universal index exists — `AzureFirewallSubnet` holds a
+`/18` where Azure asks for a `/26` — would free quarter 0 for every firewall
+type. That changes an existing subnet's prefix, so it is left as a deliberate
+topology decision rather than smuggled in here.
+
+---
+
 ## `connectivity.privateEndpoints` is read at both ends (2026-08-10)
 
 [TODO.md](TODO.md) item 2.14. Both fields under `connectivity.privateEndpoints`

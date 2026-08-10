@@ -53,6 +53,9 @@
         "deploy_dns": "connectivity.privateDns.enabled",
         "deploy_private_dns_zones": "connectivity.privateDns.enabled",
         "private_dns_zones": "connectivity.privateDns.zones",
+        "enable_private_endpoints": "connectivity.privateEndpoints.enabled",
+        "primary_private_endpoint_subnet_prefix": "literal:operator-supplied",
+        "dr_private_endpoint_subnet_prefix": "literal:operator-supplied",
         "primary_availability_zones": "connectivity.hubSpoke.availabilityZones",
         "dr_availability_zones": "connectivity.hubSpoke.availabilityZones",
         "default_tags": "naming.defaultTags"

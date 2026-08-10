@@ -91,6 +91,7 @@ module "hub_primary" {
 | `firewall_enable_tls_inspection` | TLS inspection (Premium only) | `bool` | `false` | no |
 | `firewall_tls_certificate_key_vault_secret_id` | Key Vault secret for TLS inspection cert | `string` | `""` | no |
 | `log_analytics_workspace_id` | Workspace for diagnostics; empty disables diagnostics/alerts | `string` | `""` | no |
+| `private_endpoint_subnet_prefix` | CIDR for the hub private-endpoint subnet, supplied from your own address plan (no cidrsubnet index is free under both firewall layouts). Null creates no subnet. | `string` | `null` | no |
 | `enable_threat_intel_alerts` | Alert on threat-intelligence hits | `bool` | `true` | no |
 | `security_action_group_ids` | Action Groups for security alerts | `list(string)` | `[]` | no |
 

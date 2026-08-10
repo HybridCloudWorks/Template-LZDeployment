@@ -251,3 +251,45 @@ resource "azurerm_monitor_diagnostic_setting" "azfw" {
     category = "AllMetrics"
   }
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Private-endpoint subnet — TODO item 2.11.
+#
+# The hub's own NSG flow-log instances have carried enable_private_endpoint =
+# false since decision 0009 for a reason unrelated to the private DNS zone
+# (item 2.10 supplied that): this module exposed no subnet to put an endpoint
+# in. This is that subnet.
+#
+# THE PREFIX IS OPERATOR-SUPPLIED, NOT DERIVED, and that is a deliberate
+# constraint rather than an omission. Every other subnet here comes from a
+# cidrsubnet() index off the hub space, but no index is free under BOTH
+# firewall layouts:
+#
+#   azfw          AzureFirewallSubnet takes cidrsubnet(space, 2, 0) — the whole
+#                 first quarter — leaving quarters 1 and 2 free (the trust and
+#                 untrust subnets are NVA-only).
+#   palo/fortinet snet-fw-mgmt takes only cidrsubnet(space, 4, 0), leaving
+#                 indices 1-3 of quarter 0 free, but quarters 1 and 2 are
+#                 consumed by trust/untrust.
+#
+# For a 10.0.0.0/16 hub those free sets are 10.0.64.0-10.0.191.255 and
+# 10.0.16.0-10.0.63.255 respectively — disjoint. A fixed index would collide
+# with one firewall type or the other, and an index that varies by firewall
+# type would make the address plan depend on a security choice. Rather than
+# guess, the operator supplies a prefix from their own plan; null means no
+# subnet and no hub private endpoints, which is the behaviour before this
+# variable existed.
+resource "azurerm_subnet" "private_endpoints" {
+  count = var.private_endpoint_subnet_prefix == null ? 0 : 1
+
+  name                 = "snet-private-endpoints-${var.region_code}-${var.environment}-01"
+  resource_group_name  = azurerm_resource_group.connectivity.name
+  virtual_network_name = azurerm_virtual_network.hub.name
+  address_prefixes     = [var.private_endpoint_subnet_prefix]
+
+  # Azure has not required this since network policies became opt-in per
+  # endpoint, and leaving it enabled lets an NSG on this subnet apply to
+  # private endpoints — which is what an operator putting endpoints in a hub
+  # subnet almost certainly wants.
+  private_endpoint_network_policies = "Enabled"
+}

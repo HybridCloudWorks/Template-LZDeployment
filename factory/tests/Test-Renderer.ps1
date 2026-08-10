@@ -894,6 +894,50 @@ ok 'effect defaults to Audit'       ($polVarSrc -match '(?s)variable\s+"public_n
 ok 'effect is bounded'              ($polVarSrc -match 'contains\(\["Audit", "Deny", "Disabled"\]')
 ok 'rendered effect is Audit'       ($vmap.layers.global.variables.public_network_access_effect -eq 'literal:Audit')
 ok 'assignment default is off'      ($polVarSrc -match '(?s)variable\s+"assign_public_network_access_policy"\s*\{.*?default\s*=\s*false')
+
+Write-Host "`n== 15i. The hub can host a private endpoint, on the operator's prefix (TODO 2.11) ==" -ForegroundColor Cyan
+# hub-network exposed no private-endpoint subnet, which is why the hub's own
+# flow-log instances stayed endpoint-less after items 2.10 and 2.14 supplied
+# the zone and the client's answer.
+foreach ($hubMain in @("$repo/terraform/modules/hub-network/main.tf",
+                       "$repo/factory/templates/terraform/modules/hub-network/main.tf")) {
+    $hubSrc = Get-Content $hubMain -Raw
+    # The block is extracted to a closing brace at column 0, NOT with [^}]*:
+    # the subnet name interpolates ${var.region_code}, so a negated-brace class
+    # stops at that interpolation and never reaches address_prefixes. The first
+    # version of this check passed even with the prefix replaced by
+    # cidrsubnet() for exactly that reason.
+    $peBlock = [regex]::Match($hubSrc, '(?s)resource\s+"azurerm_subnet"\s+"private_endpoints"\s*\{(?<b>.*?)\r?\n\}')
+    ok 'hub can create a PE subnet'  ($peBlock.Success)
+    $pe = $peBlock.Groups['b'].Value
+    # The prefix is operator-supplied BECAUSE no cidrsubnet index is free under
+    # both firewall layouts. A derived default would collide with one of them,
+    # so its absence is the assertion.
+    ok 'the prefix is not derived'   ($pe -notmatch 'cidrsubnet\(') $pe
+    ok 'the prefix is the variable'  ($pe -match 'address_prefixes\s*=\s*\[var\.private_endpoint_subnet_prefix\]')
+    ok 'no prefix means no subnet'   ($pe -match 'count\s*=\s*var\.private_endpoint_subnet_prefix\s*==\s*null\s*\?\s*0\s*:\s*1')
+}
+foreach ($hubVars in @("$repo/terraform/modules/hub-network/variables.tf",
+                       "$repo/factory/templates/terraform/modules/hub-network/variables.tf")) {
+    $hv = Get-Content $hubVars -Raw
+    ok 'prefix defaults to null'     ($hv -match '(?s)variable\s+"private_endpoint_subnet_prefix"\s*\{.*?default\s*=\s*null')
+    ok 'prefix is CIDR-validated'    ($hv -match 'can\(cidrhost\(var\.private_endpoint_subnet_prefix, 0\)\)')
+}
+
+# The three-way condition, written once so the two regional calls cannot drift.
+foreach ($connMain in @("$repo/terraform/live/platform-connectivity/main.tf",
+                        "$repo/factory/templates/terraform/live/platform-connectivity/main.tf.tmpl")) {
+    $cSrc = Get-Content $connMain -Raw
+    ok 'endpoint needs the answer'   ($cSrc -match 'hub_private_endpoints_enabled\s*=\s*\(\s*\r?\n\s*var\.enable_private_endpoints')
+    ok 'endpoint needs the zone'     ($cSrc -match 'contains\(local\.private_dns_zones,\s*local\.blob_zone_name\)')
+    ok 'endpoint needs a subnet'     ($cSrc -match 'hub_private_endpoints_primary\s*=\s*local\.hub_private_endpoints_enabled\s*&&\s*var\.primary_private_endpoint_subnet_prefix\s*!=\s*null')
+    # Both regional calls must consume the local, never a bare true.
+    ok 'primary consumes the local'  ($cSrc -match 'enable_private_endpoint\s*=\s*local\.hub_private_endpoints_primary')
+    ok 'dr consumes the local'       ($cSrc -match 'enable_private_endpoint\s*=\s*local\.hub_private_endpoints_dr')
+    ok 'no unconditional endpoint'   ($cSrc -notmatch 'enable_private_endpoint\s*=\s*true')
+}
+ok 'prefixes stay operator-supplied' ($vmap.layers.'platform-connectivity'.variables.primary_private_endpoint_subnet_prefix -eq 'literal:operator-supplied')
+ok 'tfvars offers the placeholder'   ($connTfvars -match '(?m)^#\s*primary_private_endpoint_subnet_prefix\s*=')
 ok 'wizard drops the CAF promise'   ((Get-Content "$repo/site/index.html" -Raw) -notmatch 'CAF default zone set')
 
 Write-Host "`n== 16. Guard violation stops the render ==" -ForegroundColor Cyan

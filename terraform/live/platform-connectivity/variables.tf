@@ -248,3 +248,29 @@ variable "default_tags" {
     managed_by  = "Terraform"
   }
 }
+
+variable "primary_private_endpoint_subnet_prefix" {
+  # Operator-supplied because no cidrsubnet() index is free under both the
+  # azfw and palo/fortinet hub layouts — see the comment on
+  # azurerm_subnet.private_endpoints in modules/hub-network (TODO item 2.11).
+  description = "CIDR for the primary hub's private-endpoint subnet, from your own address plan. Null leaves hub private endpoints unavailable."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "dr_private_endpoint_subnet_prefix" {
+  description = "CIDR for the DR hub's private-endpoint subnet, from your own address plan. Null leaves hub private endpoints unavailable."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "enable_private_endpoints" {
+  # Same wizard answer the workload layers consume (item 2.14). The hub's
+  # endpoints honour it too, so unticking the box turns off every private
+  # endpoint in the estate rather than only the spokes'.
+  description = "Create private endpoints for this layer's PaaS resources. Requires a hub private-endpoint subnet prefix and the blob private DNS zone as well."
+  type        = bool
+  default     = true
+}
