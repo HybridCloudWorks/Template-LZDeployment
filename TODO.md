@@ -431,6 +431,60 @@ dropping the AND fails another.
 rather than blocks. Neither is a gap this item left open — both are the stated
 starting posture.
 
+### 2.15 V07 and V08 fail against real tflint and checkov
+
+**Executed 2026-08-10, and the result contradicts what item 3.1 assumed.** That
+item carries a criterion from item 1.1: "the strict run must confirm V07/V08
+pass with real tflint/tfsec and **no skips recorded**", unproven only because
+the tools were missing from the sandbox. They are installable after all —
+tflint 0.64.0 from its GitHub release, checkov 3.3.9 from PyPI — so the run
+happened. **V01–V06 pass. V07 and V08 fail.**
+
+Evidence: a fresh render of `factory/tests/fixtures/sample-config.json`
+(82 files) through `validate-render.ps1` with `LZ_VALIDATE_STRICT=true`.
+
+**V07 — 6 findings, all `terraform_unused_declarations`, and it is a real
+corpus defect, not lint noise.** `state_resource_group_name`,
+`state_storage_account_name` and `state_container_name` are declared in
+`live/platform-connectivity/variables.tf` and `live/workloads-prod/variables.tf`
+but referenced nowhere in an **HCP Terraform** render: the remote-state reads
+take the `organization`/`workspaces` branch, and the tfvars only emit the three
+under `#{{IF computed.backendIsAzurerm}}`. The variable *declarations* are
+unconditional. Every HCP-backend client therefore gets three dead variables in
+two layers. The fixture used here is `backend.type = hcp-terraform`, which is
+why nothing caught it before.
+
+**V08 — 196 passed, 40 failed, 0 skipped, across 11 distinct rules.** They are
+not one kind of thing, which is the whole difficulty:
+
+| Rule | Count | First read |
+| --- | --- | --- |
+| `CKV2_AZURE_31` | 12 | Subnet without an NSG — includes `GatewaySubnet` and `AzureFirewallSubnet`, where Azure forbids or restricts one |
+| `CKV_AZURE_59` | 4 | Storage allows public access — the flow-log accounts, **deliberate** and documented (network rules + `default_action = "Deny"`) |
+| `CKV_AZURE_33` | 4 | Queue-service logging off on flow-log storage |
+| `CKV2_AZURE_41` / `CKV2_AZURE_40` | 8 | SAS/key expiration policy |
+| `CKV2_AZURE_1` | 4 | Storage without CMK — `keyvault-cmk` is a deliberate scaffold (item 2.4) |
+| `CKV_AZURE_43` | 2 | Storage naming rules — the composed `stflowlogs*` name |
+| `CKV_AZURE_216` | 2 | `DenyIntelMode` on the firewalls |
+| others | 4 | `CKV2_AZURE_35`, `_36`, `_24` |
+
+At least three of these — `CKV_AZURE_59`, `CKV2_AZURE_1`, and the
+`CKV2_AZURE_31` hits on gateway/firewall subnets — contradict decisions this
+repository has already taken and written down. The gate fails on **any**
+finding, so it cannot pass until each is either fixed or carries a documented
+`checkov:skip` with a reason.
+
+**This is a policy question before it is a code change**, which is why it is
+filed rather than fixed: deciding which findings are accepted is not a call to
+make silently on the operator's behalf.
+**Owner**: `alz-orchestrator` (spans the corpus, the validation gate, and
+security posture).
+**Gate**: an operator ruling on scope — see the two questions in the PR that
+filed this item.
+**Validation**: `validate-render.ps1` with `LZ_VALIDATE_STRICT=true` against a
+fresh render reports V01–V08 all `[OK]` with `Skipped checks: 0`; the evidence
+report records no gate skips.
+
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 
 Both are `check "module_not_implemented"` scaffolds, render-blocked (guards
