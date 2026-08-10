@@ -503,8 +503,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean", "default": true },
-            "denyPublicNetworkAccessPolicy": { "type": "boolean", "default": true }
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Create private endpoints for PaaS resources. ANDs with the connectivity layer's private DNS zone — an endpoint without a matching zone resolves to nothing."
+            },
+            "denyPublicNetworkAccessPolicy": {
+              "type": "boolean",
+              "default": true,
+              "description": "Assign the public-network-access initiative (storage accounts and key vaults) over the Landing Zones management group. Ships with the Audit effect: the platform's own storage accounts rely on network rules rather than private endpoints, so Deny would fail the first apply."
+            }
           }
         }
       }

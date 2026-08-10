@@ -10,7 +10,8 @@ All entries verified against the repo on 2026-08-06; contract #4 corrected and
 contract #8 added 2026-08-09 (decision 0009); contract #8a revised the same day
 when the storage-account name became overridable (TODO item 2.9); contract #9
 added 2026-08-10 when the blob private DNS zone landed (TODO item 2.10) and
-revised the same day when the zone set became the client's list (item 2.12).
+revised the same day when the zone set became the client's list (item 2.12)
+and again when the private-endpoint answer joined it (item 2.14).
 
 ---
 
@@ -291,7 +292,17 @@ wizard so the client sees it before export. An **absent** key reads as `true`,
 so configurations written before the field existed still render.
 
 **Ordering.** `platform-connectivity` must be applied with the gate on before a
-workload layer can create links or endpoints. This is the same shape as
+workload layer can create links or endpoints.
+
+**The endpoint needs TWO yeses** (added 2026-08-10, TODO item 2.14). The zone
+existing means the platform *can* resolve an endpoint;
+`connectivity.privateEndpoints.enabled` is the client's separate *"use private
+endpoints"* answer, rendered to `enable_private_endpoints` in both workload
+layers and **ANDed** with the zone. Either side off means no endpoint. The
+spoke VNet links are deliberately NOT gated on the second answer — they cost
+nothing and make the zone usable the moment the answer changes. An OR here, or
+dropping either side, silently restores the pre-2.14 behaviour, which is why
+§15h asserts the conjunction in all four files. This is the same shape as
 `wire_management_workspace`: the workload layers read the value through `try()`
 against remote state, so a connectivity state applied before the output existed
 yields an empty string and the endpoints stay off rather than erroring.
@@ -303,7 +314,9 @@ guards the caller; it cannot guard the zone-ownership rule above, which is why
 this entry exists.
 
 Participants: `factory/schema/lz-config.schema.json`
-(`connectivity.privateDns`), `site/index.html` and `site/app.js`,
+(`connectivity.privateDns` and `connectivity.privateEndpoints`),
+`terraform/live/workloads-{prod,nonprod}` and their corpus templates
+(`enable_private_endpoints`), `site/index.html` and `site/app.js`,
 `factory/renderer/public/Test-LzRenderGuards.ps1` (G23),
 `terraform/live/platform-connectivity/{main,variables,outputs}.tf`
 and its corpus twins; the `blob_private_dns_zone_id`/`blob_private_dns_enabled`

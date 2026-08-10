@@ -183,3 +183,20 @@ variable "security_action_group_ids" {
   default     = []
 }
 
+
+variable "private_endpoint_subnet_prefix" {
+  # No default index: see the long comment on azurerm_subnet.private_endpoints
+  # in main.tf — no cidrsubnet() index is free under both the azfw and the
+  # palo/fortinet layouts, so a derived default would collide with one of them
+  # (TODO item 2.11). Null means no subnet, which is what this module did
+  # before the variable existed.
+  description = "CIDR for the hub's private-endpoint subnet, supplied from your own address plan. Null creates no subnet and leaves hub private endpoints unavailable."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.private_endpoint_subnet_prefix == null || can(cidrhost(var.private_endpoint_subnet_prefix, 0))
+    error_message = "private_endpoint_subnet_prefix must be valid CIDR notation, or null."
+  }
+}

@@ -266,15 +266,22 @@ workload layers link their own spokes across the subscription boundary and
 derive the endpoint from the exported zone ID, with the module rejecting a
 half-configured endpoint at plan (new contract 9). Still open: **2.8**
 (replication as a variable — residency), plus two residuals 2.10 exposed —
-**2.11** (`hub-network` has no private-endpoint subnet, so the hub's own
-instances stay endpoint-less) and **2.12** — the wizard's
+**2.11** — `hub-network` had no private-endpoint subnet — **shipped
+2026-08-10**: the subnet now exists on an operator-supplied prefix, because no
+`cidrsubnet()` index is free under both the `azfw` and `palo`/`fortinet` hub
+layouts (their free ranges are disjoint), and the hub endpoints turn on only
+when the zone, the client's answer and a prefix are all present — and **2.12** — the wizard's
 `connectivity.privateDns.zones` list — **shipped 2026-08-10**: the list is
 rendered and created with `for_each`, an empty list means the blob zone alone
 (the "CAF default set" both the schema and the wizard promised never existed
 and the wording was corrected), and `centralizedInHub = false` is refused by
 render guard G23 and by the wizard rather than collected and ignored. Still
-unrendered from that section of the wizard:
-`connectivity.privateEndpoints.enabled` and `denyPublicNetworkAccessPolicy`.
+**2.14** — `connectivity.privateEndpoints`, the last unrendered pair in that
+section — **shipped 2026-08-10**: `enabled` ANDs into the workload layers'
+private endpoint, and `denyPublicNetworkAccessPolicy` assigns a custom
+storage/key-vault initiative over Landing Zones with the **Audit** effect (a
+Deny would fail the first apply on the estate's own storage accounts, and the
+wizard label was reworded to match).
 **2.13** — guard `G22` covering two unrelated conditions, found by the
 duplicate-ID check 2.12 added — **shipped 2026-08-10**: the missing-subscription
 case is now `G24`, `G15` gained the README row it never had, and §15g now fails

@@ -50,4 +50,10 @@ enable_nsg_flow_logs     = false
 flow_log_retention_days  = {{FACTORY-NUM:security.nsgFlowLogs.retentionDays}}
 enable_traffic_analytics = {{FACTORY-BOOL:security.nsgFlowLogs.trafficAnalytics}}
 
+# Your "Private endpoints" answer. It ANDs with the connectivity layer's
+# private DNS zone: no zone means no endpoint regardless, because an endpoint
+# without a matching zone resolves to nothing. Untick it and no private
+# endpoint is created here even once the zone exists.
+enable_private_endpoints = {{FACTORY-BOOL:connectivity.privateEndpoints.enabled}}
+
 default_tags = {{FACTORY-MAP:naming.defaultTags}}

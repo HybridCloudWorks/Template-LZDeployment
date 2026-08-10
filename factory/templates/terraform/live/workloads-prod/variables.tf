@@ -116,3 +116,16 @@ variable "enable_traffic_analytics" {
   type        = bool
   default     = true
 }
+
+variable "enable_private_endpoints" {
+  # Renders from connectivity.privateEndpoints.enabled (TODO item 2.14).
+  # Default true matches the schema default and the wizard's pre-checked box,
+  # so this changes nothing for anyone who left it alone — it gives the client
+  # who UNTICKED it the effect they asked for, which they previously did not
+  # get. It ANDs with the connectivity layer's private DNS zone: no zone means
+  # no endpoint regardless, because an endpoint without a zone resolves to
+  # nothing (contract 9).
+  description = "Create private endpoints for this layer's PaaS resources. Requires the connectivity layer's private DNS zone to exist as well."
+  type        = bool
+  default     = true
+}

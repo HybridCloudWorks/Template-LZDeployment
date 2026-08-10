@@ -66,3 +66,11 @@ output "nsg_ids" {
     fw_mgmt = azurerm_network_security_group.fw_mgmt[0].id
   } : {}
 }
+
+output "private_endpoint_subnet_id" {
+  # Empty string rather than null when absent: the connectivity layer feeds
+  # this straight into the flow-log module's private_endpoint_subnet_id, which
+  # is a plain string defaulting to "".
+  description = "Resource ID of the hub private-endpoint subnet, or an empty string when no prefix was supplied."
+  value       = var.private_endpoint_subnet_prefix == null ? "" : azurerm_subnet.private_endpoints[0].id
+}

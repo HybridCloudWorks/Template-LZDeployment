@@ -73,6 +73,20 @@ deploy_private_dns_zones = {{FACTORY-BOOL:connectivity.privateDns.enabled}}
 # from the services you enabled; nothing has ever implemented that.
 private_dns_zones = {{FACTORY-LIST:connectivity.privateDns.zones}}
 
+# Your "Private endpoints" answer, honoured by the hub's own NSG flow-log
+# storage as well as the spokes'.
+enable_private_endpoints = {{FACTORY-BOOL:connectivity.privateEndpoints.enabled}}
+
+# OPTIONAL, and operator-supplied on purpose: the hub subnet a private
+# endpoint would live in. Every other hub subnet is derived from your hub
+# address space, but no derived index is free under BOTH firewall layouts —
+# an Azure Firewall hub consumes the first quarter of the space, while a
+# palo/fortinet hub consumes the second and third. Pick a free /24 (or larger)
+# from your own plan and uncomment. Left unset, no subnet is created and the
+# hub's flow-log storage keeps its network-rule protection without an endpoint.
+# primary_private_endpoint_subnet_prefix = "10.0.80.0/24"
+# dr_private_endpoint_subnet_prefix      = "10.10.80.0/24"
+
 # NSG flow logs for the hub's firewall-management NSG. Your wizard answer for
 # "NSG flow logs" was {{FACTORY-BOOL:security.nsgFlowLogs.enabled}} — it is
 # recorded in lz-config.json, and this flag is still rendered false, exactly as

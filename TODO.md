@@ -237,23 +237,54 @@ any hardcoded `false`.
 endpoint until the flow-log gate is on too. Two residuals opened as items 2.11
 and 2.12.
 
-### 2.11 Give `hub-network` a private-endpoint subnet
+### 2.11 Give `hub-network` a private-endpoint subnet — CLOSED
 
-The hub's own `nsg-flow-logs` instances (item 2.9) still carry
-`enable_private_endpoint = false`, and after item 2.10 the reason has changed:
-the zone exists and is linked to the hub VNets, but `hub-network` exposes no
-subnet to put an endpoint in — unlike `spoke-network`, which has carried
-`pe_subnet_id` all along. Adding one claims another block of the hub address
-space, which is a hub-topology change rather than a flow-log change, so it was
-kept out of 2.10.
-**Owner**: `azure-platform-architect` (address-space allocation) →
-`terraform-module-engineer`.
-**Gate**: none technical; it needs an address-space decision, because the hub
-`/4` split is already carrying gateway, bastion and the two DNS-resolver
-delegated subnets.
-**Validation**: `terraform validate` in both trees; the hub instances set the
-same three endpoint arguments the workload callers do and pass the module's
-preconditions; no existing hub subnet's prefix changes.
+Closed 2026-08-10. The gate was "which block of the hub address space", and
+the answer turned out to be that **there isn't one** — which is itself the
+finding, not a dodge.
+
+**Why no derived index works.** Every other hub subnet comes from a
+`cidrsubnet()` index off the hub space, but the free space differs by firewall
+type and the two sets are **disjoint**. For a `10.0.0.0/16` hub:
+
+| Firewall | Consumes | Free /20s |
+| --- | --- | --- |
+| `azfw` | `AzureFirewallSubnet` = the whole first quarter | `10.0.64.0`–`10.0.191.255` |
+| `palo` / `fortinet` | `snet-fw-mgmt` (index 0) plus quarters 1 and 2 for trust/untrust | `10.0.16.0`–`10.0.63.255` |
+
+Quarter 3 is full in both (gateway, bastion, two DNS-resolver subnets). So a
+fixed index collides with one firewall type, and an index that varies by
+firewall type would make the address plan depend on a security choice.
+
+**Shipped**: `hub-network` gains `private_endpoint_subnet_prefix`, **null by
+default**, CIDR-validated, creating `snet-private-endpoints-*` only when the
+operator supplies a range from their own plan. The connectivity layer passes
+one per hub and exports the subnet ID; the rendered tfvars carries both as
+commented placeholders next to the reason they are not derived.
+
+The hub's own flow-log endpoints now turn on when **three** conditions hold,
+expressed once in a local so the two regional calls cannot drift: the blob
+zone exists (items 2.10/2.12), the client asked for private endpoints (item
+2.14), and a subnet prefix was supplied (this item). Any absent leaves
+`enable_private_endpoint = false`, which is what has shipped since decision
+0009.
+
+**Not done, and available if you want it**: re-cutting the hub plan so a
+universal index exists — `AzureFirewallSubnet` takes a `/18` where Azure asks
+for a `/26` — would free quarter 0 for every firewall type. That changes an
+existing subnet's prefix, so it is a deliberate topology change rather than
+something to smuggle into this item.
+
+**Validation**: `Test-Renderer.ps1` **455/0** (§15i new). The full
+`Invoke-FactoryCI.ps1` runs locally now — every check green except
+PSScriptAnalyzer, which cannot install here (PS Gallery blocked).
+`terraform fmt -check` clean on both trees; `terraform validate` still needs
+CI (`registry.terraform.io` is 403 through this proxy). §15i was
+negative-tested, and the first version of its "prefix is not derived" check
+was **vacuous** — a `[^}]*` class stopped at the `${var.region_code}`
+interpolation in the subnet name and never reached `address_prefixes`. It now
+extracts the block to a closing brace at column 0 and fails when the prefix is
+replaced by a `cidrsubnet()` call.
 
 ### 2.12 Render the wizard's `connectivity.privateDns.zones` list — CLOSED
 
@@ -346,6 +377,59 @@ Bootstrap 85/0, CI 12/0, Discovery 60/0, Scaffold 16/0, Validate 18/0, Import
 10/0, Dogfood 10/0, Release 10/0, node 87/0. PowerShell is installed in this
 environment now, so these are real runs rather than CI's. PSScriptAnalyzer and
 the terraform legs remain CI's.
+
+### 2.14 Render `connectivity.privateEndpoints` — CLOSED
+
+Closed 2026-08-10. Both fields under `connectivity.privateEndpoints` had been
+collected by the wizard since the factory shipped and read by nothing — the
+same shape of gap as item 2.12, different fields.
+
+**`enabled`** now renders to `enable_private_endpoints` in both workload layers
+and **ANDs** with the connectivity layer's private DNS zone. Default `true`
+matches the schema and the pre-checked box, so nothing changes for anyone who
+left it alone; the client who *unticked* it now gets the effect they asked for,
+which they previously did not. The spoke VNet links stay ungated — they cost
+nothing and make the zone usable the moment the answer changes. Contract 9 is
+extended with the two-yes rule.
+
+**`denyPublicNetworkAccessPolicy`** now assigns a custom initiative — storage
+accounts and key vaults — over the **Landing Zones** management group, gated on
+`assign_public_network_access_policy` (default off).
+
+Two judgment calls, both flagged and cheap to reverse:
+
+- **The effect is `Audit`, not `Deny`.** This estate creates storage accounts
+  that deliberately keep public network access enabled behind network rules:
+  the flow-log accounts, and the state account during setup. A `Deny` at
+  landing-zone scope would fail a generated repository's first apply on the
+  platform's own resources — the failure mode decision 0009 exists to prevent.
+  The wizard label and the schema description were reworded from "denying" to
+  match. **To reverse**: set `public_network_access_effect` to `Deny`, once the
+  estate's own accounts are behind private endpoints.
+- **Scope is Landing Zones, never root or platform.** The platform group holds
+  the Terraform state account, which cannot be private-endpoint-only during
+  bootstrap — the client's own machine creates the estate from it
+  ([decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)).
+  §15h asserts the scope positively *and* negatively.
+
+**Custom definitions rather than built-in GUIDs**, matching the module's
+existing `policy-tls-minimum.tf`: a custom definition carries its own
+parameterised effect instead of depending on a built-in whose allowed effects
+can change. The trade is coverage — storage and key vaults, not the ~20
+services the ALZ `Deny-Public-Endpoints` initiative reaches. Adding a service
+is one definition plus one reference in the set.
+
+**Validation**: `Test-Renderer.ps1` **429/0** (+17, §15h new), every other
+PowerShell suite green, node 87/0, and `terraform fmt -check` clean on both
+trees — all run locally. `terraform validate` could NOT run:
+`registry.terraform.io` is 403 through this environment's proxy, so the
+provider schema is unavailable. That leg and PSScriptAnalyzer remain CI's.
+§15h was negative-tested — widening the scope to root fails two assertions and
+dropping the AND fails another.
+
+**What remains**: the initiative covers two PaaS services, and `Audit` reports
+rather than blocks. Neither is a gap this item left open — both are the stated
+starting posture.
 
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 

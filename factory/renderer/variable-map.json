@@ -21,7 +21,9 @@
         "workload_prod_subscription_id": "azure.subscriptions.workloadProd",
         "workload_nonprod_subscription_id": "azure.subscriptions.workloadNonProd",
         "sandbox_subscription_id": "azure.subscriptions.sandbox",
-        "allowed_locations": "azure.allowedLocations"
+        "allowed_locations": "azure.allowedLocations",
+        "assign_public_network_access_policy": "connectivity.privateEndpoints.denyPublicNetworkAccessPolicy",
+        "public_network_access_effect": "literal:Audit"
       }
     },
 
@@ -51,6 +53,9 @@
         "deploy_dns": "connectivity.privateDns.enabled",
         "deploy_private_dns_zones": "connectivity.privateDns.enabled",
         "private_dns_zones": "connectivity.privateDns.zones",
+        "enable_private_endpoints": "connectivity.privateEndpoints.enabled",
+        "primary_private_endpoint_subnet_prefix": "literal:operator-supplied",
+        "dr_private_endpoint_subnet_prefix": "literal:operator-supplied",
         "primary_availability_zones": "connectivity.hubSpoke.availabilityZones",
         "dr_availability_zones": "connectivity.hubSpoke.availabilityZones",
         "default_tags": "naming.defaultTags"
@@ -92,6 +97,7 @@
         "enable_nsg_flow_logs": "literal:false",
         "flow_log_retention_days": "security.nsgFlowLogs.retentionDays",
         "enable_traffic_analytics": "security.nsgFlowLogs.trafficAnalytics",
+        "enable_private_endpoints": "connectivity.privateEndpoints.enabled",
         "default_tags": "naming.defaultTags"
       }
     },
@@ -118,6 +124,7 @@
         "enable_nsg_flow_logs": "literal:false",
         "flow_log_retention_days": "security.nsgFlowLogs.retentionDays",
         "enable_traffic_analytics": "security.nsgFlowLogs.trafficAnalytics",
+        "enable_private_endpoints": "connectivity.privateEndpoints.enabled",
         "default_tags": "naming.defaultTags"
       }
     },

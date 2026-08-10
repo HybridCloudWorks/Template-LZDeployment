@@ -40,10 +40,17 @@ module "management_groups" {
 module "policy_baseline" {
   source = "../../modules/policy-baseline"
 
-  root_mg_id        = module.management_groups.root_mg_id
-  platform_mg_id    = module.management_groups.platform_mg_id
-  sandbox_mg_id     = module.management_groups.sandbox_mg_id
-  allowed_locations = var.allowed_locations
+  root_mg_id         = module.management_groups.root_mg_id
+  platform_mg_id     = module.management_groups.platform_mg_id
+  landingzones_mg_id = module.management_groups.landingzones_mg_id
+  sandbox_mg_id      = module.management_groups.sandbox_mg_id
+  allowed_locations  = var.allowed_locations
+
+  # TODO item 2.14: the wizard's "Assign policy denying public network access
+  # on PaaS" answer. Scoped to Landing Zones inside the module, never to the
+  # platform group that holds the state account.
+  assign_public_network_access_policy = var.assign_public_network_access_policy
+  public_network_access_effect        = var.public_network_access_effect
 
   depends_on = [module.management_groups]
 }

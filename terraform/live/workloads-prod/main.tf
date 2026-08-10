@@ -77,7 +77,14 @@ locals {
     ""
   )
 
-  blob_private_dns_enabled = local.blob_private_dns_zone_id != ""
+  # Two independent answers must BOTH be yes. The zone existing means the
+  # platform can resolve a private endpoint; enable_private_endpoints is the
+  # client's separate "use private endpoints" answer, which the wizard has
+  # collected since the factory shipped with nothing consuming it (TODO item
+  # 2.14). Unticking it now means no endpoint is created even where the zone
+  # exists — the VNet links below still are, because they cost nothing and
+  # make the zone usable the moment the answer changes.
+  blob_private_dns_enabled = local.blob_private_dns_zone_id != "" && var.enable_private_endpoints
 }
 
 # Production spoke in primary region

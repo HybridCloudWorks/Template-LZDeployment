@@ -75,40 +75,42 @@ locals {
 module "hub_primary" {
   source = "../../modules/hub-network"
 
-  region                     = var.primary_region
-  region_code                = var.primary_region_code
-  environment                = "prod"
-  hub_address_space          = var.primary_hub_address_space
-  firewall_type              = var.firewall_type
-  azfw_tier                  = var.azfw_tier
-  firewall_threat_intel_mode = var.firewall_threat_intel_mode
-  nva_trust_ip_placeholder   = var.primary_nva_trust_ip
-  deploy_bastion_placeholder = var.deploy_bastion
-  deploy_dns_placeholder     = var.deploy_dns
-  management_ip_ranges       = var.management_ip_ranges
-  availability_zones         = var.primary_availability_zones
-  log_analytics_workspace_id = local.effective_law_id
-  tags                       = local.common_tags
+  region                         = var.primary_region
+  region_code                    = var.primary_region_code
+  environment                    = "prod"
+  hub_address_space              = var.primary_hub_address_space
+  firewall_type                  = var.firewall_type
+  azfw_tier                      = var.azfw_tier
+  firewall_threat_intel_mode     = var.firewall_threat_intel_mode
+  nva_trust_ip_placeholder       = var.primary_nva_trust_ip
+  deploy_bastion_placeholder     = var.deploy_bastion
+  deploy_dns_placeholder         = var.deploy_dns
+  management_ip_ranges           = var.management_ip_ranges
+  availability_zones             = var.primary_availability_zones
+  log_analytics_workspace_id     = local.effective_law_id
+  private_endpoint_subnet_prefix = var.primary_private_endpoint_subnet_prefix
+  tags                           = local.common_tags
 }
 
 # DR hub (North Central US)
 module "hub_dr" {
   source = "../../modules/hub-network"
 
-  region                     = var.dr_region
-  region_code                = var.dr_region_code
-  environment                = "prod"
-  hub_address_space          = var.dr_hub_address_space
-  firewall_type              = var.firewall_type
-  azfw_tier                  = var.azfw_tier
-  firewall_threat_intel_mode = var.firewall_threat_intel_mode
-  nva_trust_ip_placeholder   = var.dr_nva_trust_ip
-  deploy_bastion_placeholder = var.deploy_bastion
-  deploy_dns_placeholder     = var.deploy_dns
-  management_ip_ranges       = var.management_ip_ranges
-  availability_zones         = var.dr_availability_zones
-  log_analytics_workspace_id = local.effective_law_id
-  tags                       = local.common_tags
+  region                         = var.dr_region
+  region_code                    = var.dr_region_code
+  environment                    = "prod"
+  hub_address_space              = var.dr_hub_address_space
+  firewall_type                  = var.firewall_type
+  azfw_tier                      = var.azfw_tier
+  firewall_threat_intel_mode     = var.firewall_threat_intel_mode
+  nva_trust_ip_placeholder       = var.dr_nva_trust_ip
+  deploy_bastion_placeholder     = var.deploy_bastion
+  deploy_dns_placeholder         = var.deploy_dns
+  management_ip_ranges           = var.management_ip_ranges
+  availability_zones             = var.dr_availability_zones
+  log_analytics_workspace_id     = local.effective_law_id
+  private_endpoint_subnet_prefix = var.dr_private_endpoint_subnet_prefix
+  tags                           = local.common_tags
 }
 
 # Global VNet peering between hubs
@@ -170,6 +172,19 @@ locals {
   )
 
   blob_zone_name = "privatelink.blob.core.windows.net"
+
+  # The hub's own flow-log private endpoints need THREE things, and the
+  # conditions arrived one item at a time: the blob zone (2.10/2.12), the
+  # client's private-endpoint answer (2.14), and a hub subnet to place the
+  # endpoint in (2.11). Written once here so the two regional calls cannot
+  # drift apart.
+  hub_private_endpoints_enabled = (
+    var.enable_private_endpoints &&
+    contains(local.private_dns_zones, local.blob_zone_name)
+  )
+
+  hub_private_endpoints_primary = local.hub_private_endpoints_enabled && var.primary_private_endpoint_subnet_prefix != null
+  hub_private_endpoints_dr      = local.hub_private_endpoints_enabled && var.dr_private_endpoint_subnet_prefix != null
 }
 
 resource "azurerm_private_dns_zone" "blob" {
@@ -275,17 +290,17 @@ module "nsg_flow_logs_hub_primary" {
   log_analytics_workspace_resource_id = local.management_workspace.resource_id
   log_analytics_workspace_region      = local.management_workspace.location
 
-  # Still a knowing posture reduction, but the reason has changed with TODO
-  # item 2.10: the zone above now exists and is linked to this hub VNet, so
-  # what blocks the endpoint is that hub-network exposes no private-endpoint
-  # subnet to put it in — unlike spoke-network, which has carried pe_subnet_id
-  # all along. Adding one means claiming another block of the hub address
-  # space, which is a hub-topology change rather than a flow-log change, so it
-  # is carried as its own follow-up (TODO item 2.11) rather than smuggled in
-  # here. The storage account is already default_action = "Deny" with a
-  # trusted-services bypass, so this stays defence in depth, not the only
-  # control.
-  enable_private_endpoint = false
+  # TODO item 2.11 supplied the missing piece: hub-network now creates a
+  # private-endpoint subnet when the operator gives it a prefix. All three
+  # conditions must hold — the zone exists (item 2.10), the client asked for
+  # private endpoints (item 2.14), and a hub subnet exists to put one in. Any
+  # of them absent leaves this false, which is the behaviour that has shipped
+  # since decision 0009. The storage account is default_action = "Deny" with a
+  # trusted-services bypass either way, so this is defence in depth rather
+  # than the only control.
+  enable_private_endpoint    = local.hub_private_endpoints_primary
+  private_endpoint_subnet_id = module.hub_primary.private_endpoint_subnet_id
+  private_dns_zone_ids       = local.hub_private_endpoints_primary ? [azurerm_private_dns_zone.blob[local.blob_zone_name].id] : []
 
   # The module's two scheduled-query alert rules notify through
   # action_group_ids; no action group is relayed to this layer, and a rule with
@@ -310,10 +325,14 @@ module "nsg_flow_logs_hub_dr" {
   log_analytics_workspace_resource_id = local.management_workspace.resource_id
   log_analytics_workspace_region      = local.management_workspace.location
 
-  # Same two knowing reductions as the primary-region instance above — the
-  # endpoint waits on a hub private-endpoint subnet (item 2.11), not on a zone.
-  enable_private_endpoint = false
-  enable_traffic_alerts   = false
+  # Same three-way condition as the primary-region instance above (item 2.11).
+  enable_private_endpoint    = local.hub_private_endpoints_dr
+  private_endpoint_subnet_id = module.hub_dr.private_endpoint_subnet_id
+  private_dns_zone_ids       = local.hub_private_endpoints_dr ? [azurerm_private_dns_zone.blob[local.blob_zone_name].id] : []
+
+  # Unchanged: the module's scheduled-query alert rules notify through
+  # action_group_ids, and no action group is relayed to this layer.
+  enable_traffic_alerts = false
 
   tags = local.common_tags
 }
