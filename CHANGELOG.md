@@ -7,6 +7,40 @@ entries below are history and are not rewritten.
 
 ---
 
+## AzureBastionSubnet carries Microsoft's prescribed NSG (2026-08-10)
+
+First of the six subnets [TODO.md](TODO.md) item 2.16 opened, and the one worth
+doing first: Azure prescribes this rule set exactly, so there is nothing to
+invent — 443 inbound from Internet, GatewayManager and AzureLoadBalancer,
+8080/5701 within the VNet; 22/3389 outbound to VirtualNetwork, 443 to
+AzureCloud, 8080/5701 within the VNet, 80 to Internet, plus the documented
+explicit denies.
+
+Two things worth knowing rather than burying:
+
+The rules were written from Microsoft Learn's
+[bastion-nsg](https://learn.microsoft.com/azure/bastion/bastion-nsg) page and
+**could not be re-verified against it** — `learn.microsoft.com` is unreachable
+from the environment they were authored in. That page is the authority if the
+two ever disagree, and the module comment says so.
+
+The failure mode is **loud**. Azure validates this NSG when a Bastion *host* is
+deployed and fails the deployment outright if a required rule is missing. This
+repository ships only the placeholder subnet, so nothing can break today, and
+the first real deployment would error rather than come up half-working.
+
+The `CKV2_AZURE_31` suppression on this subnet stays, with its reason rewritten
+to the truth: the NSG exists and is associated, and checkov does not resolve the
+association because it is count-indexed — the same graph limitation that hides
+the SAS policy on flow-log storage. The suppression no longer excuses a missing
+control; it explains a scanner that cannot see one.
+
+The NSG is deliberately **not** added to the `nsg_ids` output, which feeds the
+connectivity layer's flow-log calls. Widening that would change flow-log scope,
+which decision 0009 set deliberately — a decision-0009 change, not an NSG one.
+
+---
+
 ## The validation gate's last two gates actually pass now (2026-08-10)
 
 [TODO.md](TODO.md) item 2.15. V07 and V08 had never been run with real tools —

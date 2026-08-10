@@ -100,7 +100,7 @@ resource "azurerm_subnet" "gateway" {
 
 # Bastion subnet
 resource "azurerm_subnet" "bastion" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
+  #checkov:skip=CKV2_AZURE_31:This subnet DOES have an NSG - azurerm_network_security_group.bastion, associated below with Microsoft's prescribed Bastion rule set (TODO item 2.16). Checkov does not resolve the association because it is count-indexed, the same graph limitation that hides the SAS policy on flow-log storage. The control is present and reviewable in this file.
   count                = var.deploy_bastion_placeholder ? 1 : 0
   name                 = "AzureBastionSubnet"
   resource_group_name  = azurerm_resource_group.hub.name
@@ -169,6 +169,169 @@ resource "azurerm_subnet_network_security_group_association" "fw_mgmt" {
   count                     = local.has_nva ? 1 : 0
   subnet_id                 = azurerm_subnet.fw_mgmt[0].id
   network_security_group_id = azurerm_network_security_group.fw_mgmt[0].id
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AzureBastionSubnet NSG — TODO item 2.16.
+#
+# This rule set is NOT a design choice. Azure Bastion requires a specific set
+# on AzureBastionSubnet, and a Bastion host DEPLOYMENT FAILS VALIDATION if the
+# subnet carries an NSG missing any of them — so the failure mode here is loud
+# at deploy time, not a silently broken host later. Do not "tidy" these rules:
+# each one is on Microsoft's prescribed list.
+#
+# Source: Microsoft Learn, "Work with NSG access and Azure Bastion"
+# (https://learn.microsoft.com/azure/bastion/bastion-nsg). The rules were
+# written from that documented set; the sandbox this was authored in could not
+# reach learn.microsoft.com to re-verify them line by line, so treat the URL as
+# the authority if the two ever disagree.
+#
+# What each rule is for:
+#   inbound  443 from Internet        — operators reaching the Bastion portal
+#   inbound  443 from GatewayManager  — the Azure control plane managing the host
+#   inbound  443 from AzureLoadBalancer — health probes
+#   inbound  8080/5701 within the VNet — communication between host instances
+#   outbound 22/3389 to VirtualNetwork — the actual RDP/SSH sessions
+#   outbound 443 to AzureCloud        — dependencies (diagnostics, session mgmt)
+#   outbound 8080/5701 within the VNet — the other half of instance comms
+#   outbound 80 to Internet           — session-information certificate checks
+#
+# The explicit deny rules at 4096 mirror the documented example. They are
+# functionally redundant — Azure's default rules already deny at 65500, after
+# every allow above — and are kept because the documented set includes them and
+# because an explicit terminator states the intent.
+resource "azurerm_network_security_group" "bastion" {
+  count               = var.deploy_bastion_placeholder ? 1 : 0
+  name                = "nsg-bastion-${var.region_code}-${var.environment}-01"
+  resource_group_name = azurerm_resource_group.hub.name
+  location            = azurerm_resource_group.hub.location
+  tags                = var.tags
+
+  security_rule {
+    name                       = "AllowHttpsInbound"
+    priority                   = 120
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "Internet"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowGatewayManagerInbound"
+    priority                   = 130
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "GatewayManager"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowAzureLoadBalancerInbound"
+    priority                   = 140
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "AzureLoadBalancer"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowBastionHostCommunication"
+    priority                   = 150
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_ranges    = ["8080", "5701"]
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "VirtualNetwork"
+  }
+
+  security_rule {
+    name                       = "DenyAllInbound"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowSshRdpOutbound"
+    priority                   = 100
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_ranges    = ["22", "3389"]
+    source_address_prefix      = "*"
+    destination_address_prefix = "VirtualNetwork"
+  }
+
+  security_rule {
+    name                       = "AllowAzureCloudOutbound"
+    priority                   = 110
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "AzureCloud"
+  }
+
+  security_rule {
+    name                       = "AllowBastionCommunication"
+    priority                   = 120
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_ranges    = ["8080", "5701"]
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "VirtualNetwork"
+  }
+
+  security_rule {
+    name                       = "AllowGetSessionInformation"
+    priority                   = 130
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "Internet"
+  }
+
+  security_rule {
+    name                       = "DenyAllOutbound"
+    priority                   = 4096
+    direction                  = "Outbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "bastion" {
+  count                     = var.deploy_bastion_placeholder ? 1 : 0
+  subnet_id                 = azurerm_subnet.bastion[0].id
+  network_security_group_id = azurerm_network_security_group.bastion[0].id
 }
 
 # GatewaySubnet deliberately has no NSG: Azure does not support NSG
