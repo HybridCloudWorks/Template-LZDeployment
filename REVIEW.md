@@ -144,8 +144,14 @@ could not have seen, both caused by what it happened to use:
   storage, `CKV2_AZURE_1` on the deliberate `keyvault-cmk` scaffold, and the
   `CKV2_AZURE_31` hits on `GatewaySubnet`/`AzureFirewallSubnet`).
 
-Filed as [TODO.md](TODO.md) item 2.15, which needs an operator ruling on which
-findings are accepted before any of it is code.
+**Both now pass** (item 2.15, closed the same day on an operator-directed
+conservative reading): three findings fixed, nine rules suppressed at the
+resource with stated reasons, and the scanner **pinned to checkov** so the
+gate's verdict no longer depends on which tool the runner has. All three
+fixtures — `sample` (hcp-terraform), `azurerm` and `nonprod` — report
+`8 passed, 0 skipped`. The third was added to the rotation because the whole
+finding was that only one render shape had ever been linted; it failed on
+something the other two did not.
 
 **What remains blocked here**: the broker/import/scaffold-apply suites against
 authenticated `az` and `gh` sessions, and running the validate phase inside the

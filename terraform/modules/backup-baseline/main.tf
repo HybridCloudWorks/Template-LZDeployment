@@ -10,6 +10,13 @@ resource "azurerm_resource_group" "backup" {
 
 # Recovery Services Vault (for VMs, Files, SQL)
 resource "azurerm_recovery_services_vault" "main" {
+  # CKV2_AZURE_35. A vault needs an identity to reach a CMK-encrypted or
+  # private-endpoint-fronted storage target; SystemAssigned costs nothing and
+  # is the identity every later hardening step will want (TODO item 2.15).
+  identity {
+    type = "SystemAssigned"
+  }
+
   name                = "rsv-platform-${var.region_code}-${var.environment}-01"
   resource_group_name = azurerm_resource_group.backup.name
   location            = azurerm_resource_group.backup.location

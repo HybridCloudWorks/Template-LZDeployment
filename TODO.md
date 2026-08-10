@@ -431,59 +431,63 @@ dropping the AND fails another.
 rather than blocks. Neither is a gap this item left open — both are the stated
 starting posture.
 
-### 2.15 V07 and V08 fail against real tflint and checkov
+### 2.15 V07 and V08 fail against real tflint and checkov — CLOSED
 
-**Executed 2026-08-10, and the result contradicts what item 3.1 assumed.** That
-item carries a criterion from item 1.1: "the strict run must confirm V07/V08
-pass with real tflint/tfsec and **no skips recorded**", unproven only because
-the tools were missing from the sandbox. They are installable after all —
-tflint 0.64.0 from its GitHub release, checkov 3.3.9 from PyPI — so the run
-happened. **V01–V06 pass. V07 and V08 fail.**
+Found and closed 2026-08-10. Item 3.1 had carried a criterion from item 1.1 —
+"the strict run must confirm V07/V08 pass with real tflint/tfsec and **no skips
+recorded**" — unproven only because the tools were believed unavailable. They
+install (tflint 0.64.0 from its GitHub release, checkov 3.3.9 from PyPI), the
+run happened, and **V07 and V08 both failed**. They now pass.
 
-Evidence: a fresh render of `factory/tests/fixtures/sample-config.json`
-(82 files) through `validate-render.ps1` with `LZ_VALIDATE_STRICT=true`.
+**Two blind spots caused it, both about what the 2026-08-06 run happened to
+use.** It rendered `azurerm-config.json` and it used tfsec. Rendering
+`sample-config.json` (hcp-terraform) surfaced six fresh
+`terraform_unused_declarations`, and checkov — which V08 tries **first** —
+reported 40 failures where tfsec reported one.
 
-**V07 — 6 findings, all `terraform_unused_declarations`, and it is a real
-corpus defect, not lint noise.** `state_resource_group_name`,
-`state_storage_account_name` and `state_container_name` are declared in
-`live/platform-connectivity/variables.tf` and `live/workloads-prod/variables.tf`
-but referenced nowhere in an **HCP Terraform** render: the remote-state reads
-take the `organization`/`workspaces` branch, and the tfvars only emit the three
-under `#{{IF computed.backendIsAzurerm}}`. The variable *declarations* are
-unconditional. Every HCP-backend client therefore gets three dead variables in
-two layers. The fixture used here is `backend.type = hcp-terraform`, which is
-why nothing caught it before.
+**The scanner is now pinned to checkov.** A gate whose verdict depends on which
+of three tools the runner happens to have installed is not a gate. tfsec is
+also archived upstream.
 
-**V08 — 196 passed, 40 failed, 0 skipped, across 11 distinct rules.** They are
-not one kind of thing, which is the whole difficulty:
+**All three fixtures now pass all eight gates with zero gate skips** —
+`sample` (hcp-terraform), `azurerm`, and `nonprod`. The third was checked
+precisely because the finding was that only one render shape had ever been
+linted, and it duly failed on something the other two did not: the per-
+environment spoke CIDR variables, unreferenced when a client selects only some
+non-production environments.
 
-| Rule | Count | First read |
-| --- | --- | --- |
-| `CKV2_AZURE_31` | 12 | Subnet without an NSG — includes `GatewaySubnet` and `AzureFirewallSubnet`, where Azure forbids or restricts one |
-| `CKV_AZURE_59` | 4 | Storage allows public access — the flow-log accounts, **deliberate** and documented (network rules + `default_action = "Deny"`) |
-| `CKV_AZURE_33` | 4 | Queue-service logging off on flow-log storage |
-| `CKV2_AZURE_41` / `CKV2_AZURE_40` | 8 | SAS/key expiration policy |
-| `CKV2_AZURE_1` | 4 | Storage without CMK — `keyvault-cmk` is a deliberate scaffold (item 2.4) |
-| `CKV_AZURE_43` | 2 | Storage naming rules — the composed `stflowlogs*` name |
-| `CKV_AZURE_216` | 2 | `DenyIntelMode` on the firewalls |
-| others | 4 | `CKV2_AZURE_35`, `_36`, `_24` |
+**Resolution, conservative reading (operator-directed).** Genuinely-real
+findings fixed; findings that contradict decisions already taken suppressed at
+the resource with a stated reason. **Nothing was suppressed silently** — every
+directive names what it defers to.
 
-At least three of these — `CKV_AZURE_59`, `CKV2_AZURE_1`, and the
-`CKV2_AZURE_31` hits on gateway/firewall subnets — contradict decisions this
-repository has already taken and written down. The gate fails on **any**
-finding, so it cannot pass until each is either fixed or carries a documented
-`checkov:skip` with a reason.
+*Fixed* (3 rules): managed identity on the recovery-services vault
+(`CKV2_AZURE_35`) and the automation account (`CKV2_AZURE_36`); a SAS
+expiration policy on the flow-log storage (`CKV2_AZURE_41`).
 
-**This is a policy question before it is a code change**, which is why it is
-filed rather than fixed: deciding which findings are accepted is not a call to
-make silently on the operator's behalf.
-**Owner**: `alz-orchestrator` (spans the corpus, the validation gate, and
-security posture).
-**Gate**: an operator ruling on scope — see the two questions in the PR that
-filed this item.
-**Validation**: `validate-render.ps1` with `LZ_VALIDATE_STRICT=true` against a
-fresh render reports V01–V08 all `[OK]` with `Skipped checks: 0`; the evidence
-report records no gate skips.
+*Suppressed with reasons* (9 rules, 15 directives): `CKV_AZURE_59` and
+`CKV2_AZURE_40` on flow-log storage — public access is deliberate and
+network-rule fronted (decision 0009), and whether Network Watcher can write to
+a shared-key-disabled account is **unverified**, so it was not flipped on a
+guess; `CKV2_AZURE_1` — CMK needs `keyvault-cmk`, a decided deferral (item
+2.4); `CKV_AZURE_33` — no queue service exists to log; `CKV_AZURE_43` — the
+name is an interpolation checkov cannot resolve; `CKV_AZURE_216` — threat
+intelligence is set on the attached firewall **policy**, which governs;
+`CKV2_AZURE_24` — closing the automation account's public access without a
+private endpoint would trade a finding for a broken control plane;
+`CKV2_AZURE_31` ×7 — `GatewaySubnet` and `AzureFirewallSubnet` *cannot* carry
+an NSG, and the other five *can* and do not yet.
+
+**Two things this deliberately did NOT do**, both recorded rather than hidden:
+the five hub subnets that could take an NSG still do not (authoring correct
+per-subnet rules is real work, and a wrong Bastion NSG breaks Bastion), and
+shared-key authorization on flow-log storage stays enabled pending
+verification. Both are named in their suppression text, so the next reader
+finds them at the resource rather than in a changelog.
+
+**Validation**: all three fixtures, `LZ_VALIDATE_STRICT=true`, `8 passed, 0
+skipped`, checkov exiting clean. Full `Invoke-FactoryCI.ps1` green except
+PSScriptAnalyzer (PS Gallery blocked here).
 
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 

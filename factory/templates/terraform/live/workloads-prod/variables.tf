@@ -13,6 +13,14 @@ variable "connectivity_subscription_id" {
   default     = ""
 }
 
+# Consumed only under the azurerm backend: the remote-state reads take the
+# organization/workspaces branch under HCP Terraform, and the tfvars emit these
+# three only when computed.backendIsAzurerm. The corpus ships ONE variables.tf
+# for both backends, so under an HCP render they are declared and unreferenced.
+# Making the declarations conditional would turn this file into a template —
+# a structural change to how the corpus renders variables, and not one to make
+# to silence a lint rule. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "state_resource_group_name" {
   # Consumed only by the azurerm remote-state read of the connectivity layer.
   # Under the HCP Terraform backend the remote state is addressed by
@@ -24,12 +32,28 @@ variable "state_resource_group_name" {
   default     = ""
 }
 
+# Consumed only under the azurerm backend: the remote-state reads take the
+# organization/workspaces branch under HCP Terraform, and the tfvars emit these
+# three only when computed.backendIsAzurerm. The corpus ships ONE variables.tf
+# for both backends, so under an HCP render they are declared and unreferenced.
+# Making the declarations conditional would turn this file into a template —
+# a structural change to how the corpus renders variables, and not one to make
+# to silence a lint rule. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "state_storage_account_name" {
   description = "Terraform state storage account name (azurerm backend only)"
   type        = string
   default     = ""
 }
 
+# Consumed only under the azurerm backend: the remote-state reads take the
+# organization/workspaces branch under HCP Terraform, and the tfvars emit these
+# three only when computed.backendIsAzurerm. The corpus ships ONE variables.tf
+# for both backends, so under an HCP render they are declared and unreferenced.
+# Making the declarations conditional would turn this file into a template —
+# a structural change to how the corpus renders variables, and not one to make
+# to silence a lint rule. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "state_container_name" {
   # Must match the container backend.tf writes to. Every layer shares one
   # container and is separated by state key, so a remote-state read that

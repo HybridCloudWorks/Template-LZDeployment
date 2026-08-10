@@ -7,6 +7,42 @@ entries below are history and are not rewritten.
 
 ---
 
+## The validation gate's last two gates actually pass now (2026-08-10)
+
+[TODO.md](TODO.md) item 2.15. V07 and V08 had never been run with real tools —
+they were believed uninstallable in the sandbox. They install. The run
+happened, and both failed.
+
+Two blind spots caused it, both about what the 2026-08-06 run happened to use:
+it rendered the **azurerm** fixture, and it used **tfsec**. Rendering the
+hcp-terraform fixture surfaced six fresh `terraform_unused_declarations`, and
+checkov — which V08 tries *first* — reported 40 failures where tfsec reported
+one. The scanner is now **pinned to checkov**: a gate whose verdict depends on
+which of three tools the runner happens to have is not a gate, and tfsec is
+archived upstream.
+
+All three fixtures now pass all eight gates with zero gate skips. The third
+(`nonprod`) was added to the rotation precisely because the finding was that
+only one render shape had ever been linted — and it failed on something the
+other two did not.
+
+Three findings were **fixed**: managed identities on the recovery-services
+vault and automation account, and a SAS expiration policy on flow-log storage.
+Nine rules are **suppressed at the resource with a stated reason** — none
+silently. Where a rule contradicted a decision already taken, the suppression
+says which decision: public network access on flow-log storage is decision
+0009, CMK waits on the deliberate `keyvault-cmk` scaffold, threat intelligence
+lives on the firewall policy that governs it, and `GatewaySubnet` /
+`AzureFirewallSubnet` cannot carry an NSG at all.
+
+Two gaps are named rather than closed, in the suppression text where the next
+reader will find them: five hub subnets that *could* take an NSG still do not,
+and shared-key authorization on flow-log storage stays enabled because whether
+Network Watcher can write to a shared-key-disabled account is unverified — not
+something to flip on a guess.
+
+---
+
 ## The hub can host a private endpoint — on an address you choose (2026-08-10)
 
 [TODO.md](TODO.md) item 2.11, the last of the three residuals decision 0009
