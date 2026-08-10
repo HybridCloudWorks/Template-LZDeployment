@@ -311,23 +311,41 @@ written, and the absence of the CAF promise from both places that made it.
 `denyPublicNetworkAccessPolicy` remain collected and unrendered — a separate
 gap from this item, not opened here.
 
-### 2.13 Guard ID `G22` covers two unrelated conditions
+### 2.13 Guard ID `G22` covers two unrelated conditions — CLOSED
 
-`factory/renderer/public/Test-LzRenderGuards.ps1` raises `G22` for a missing
-non-production **subscription** and, separately, for a missing non-production
-**spoke CIDR** — two unrelated failures under one identifier, and the renderer
-README documents only the second. Found while adding G23 (item 2.12), which
-initially shipped as a duplicate of `G21` for the same reason: the IDs are
-assigned by hand and are not in file order. `Test-Renderer.ps1` §15g now fails
-on any *new* duplicate and carries `G22` as a named allowance, so this is
-tracked rather than silent.
-**Owner**: `github-actions-engineer` (owns the renderer's guard chain).
-**Gate**: none technical. It needs a call on whether a guard ID is a stable
-client-facing identifier — clients see it in a blocked render — or an internal
-label free to renumber.
-**Validation**: each condition has its own ID and its own README row; §15g's
-`$knownDuplicateGuardIds` allowance is emptied in the same change, which is
-what proves it was fixed rather than re-hidden.
+Closed 2026-08-10. The gate — "is a guard ID a stable client-facing identifier
+or an internal label?" — was answered by reading the code rather than by an
+operator call: an ID reaches a client **only** as transient console text
+(`Write-LzRenderFail "$($g.Id): $($g.Message)"`). Nothing persists or keys off
+one: not the schema, not a workflow, not any generated artifact. It is a
+diagnostic label, so renumbering is safe.
+
+Shipped. The missing-subscription case is now **G24** with its own README row;
+`G22` keeps its documented meaning, the missing non-production spoke CIDR.
+`G22` still appears at two call sites and that is **correct** — the primary and
+DR variants of one condition a client fixes in one place.
+
+**Corrected criterion.** This item said the fix would be proved by emptying
+§15g's allowance list. That was written on the wrong assumption that all three
+`G22` sites were the bug. The list is not empty and should not be; it is
+renamed `$multiUseGuardIds` and now means "declared, deliberate multi-use"
+rather than "known defect". A new undeclared repeat still fails.
+
+**Found while fixing it**: `G15` (custom naming standard with an empty
+pattern) had no README row and never had one. Both gaps came from nothing
+checking, so the durable fix is two new §15g invariants — every ID the chain
+raises has a table row, and every documented ID still exists in the chain.
+The coverage check is scoped to **table rows**, not the whole README: scanning
+the file made it vacuous, because the paragraph explaining the G15 gap names
+G15, so deleting its row still counted as documenting it. Both invariants were
+negative-tested — removing the G15 row fails, and reintroducing a duplicate ID
+fails three assertions.
+
+**Validation**: `Test-Renderer.ps1` **412/0** run locally (was 410/0), plus
+Bootstrap 85/0, CI 12/0, Discovery 60/0, Scaffold 16/0, Validate 18/0, Import
+10/0, Dogfood 10/0, Release 10/0, node 87/0. PowerShell is installed in this
+environment now, so these are real runs rather than CI's. PSScriptAnalyzer and
+the terraform legs remain CI's.
 
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 
