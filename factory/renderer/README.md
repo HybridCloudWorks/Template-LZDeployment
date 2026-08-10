@@ -147,9 +147,9 @@ only in the UI is a suggestion, not a guarantee.
 | G17/G18 | Backend selected but not configured |
 | G19 | Sentinel policy engine without the HCP backend |
 | G20 | Internal visibility without Enterprise Cloud |
-| G21 | `privateDns.centralizedInHub = false`, which contract 9 does not implement |
 | G21 | An active layer has no implemented Terraform corpus |
 | G22 | A selected non-production environment is missing its required spoke CIDR |
+| G23 | `privateDns.centralizedInHub = false`, which contract 9 does not implement |
 
 G10 and G14 are advisory warnings (missing sandbox subscription, prod without
 reviewers) and do not block.

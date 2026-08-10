@@ -41,9 +41,16 @@ is pre-checked, so a default set would bill and clutter by default.
 
 **`centralizedInHub = false` is refused rather than ignored.** Contract 9 puts
 zone ownership in the connectivity layer, so `false` has no implementation
-behind it. New render guard **G21** blocks it, and `site/app.js` rejects it in
+behind it. New render guard **G23** blocks it, and `site/app.js` rejects it in
 the wizard so the client sees it before export. An absent key reads as `true`,
 so configurations written before the field existed still render.
+
+The guard shipped first as a duplicate of `G21` — guard IDs are assigned by
+hand and are not in file order, so `G21` was already in use several screens
+above `G20`. It is now `G23`, and §15g fails on any new duplicate. That check
+also surfaced a pre-existing one: `G22` covers two unrelated conditions, which
+is carried as [TODO.md](TODO.md) item 2.13 rather than renumbered, since a
+guard ID is something clients see in a blocked render.
 
 Zone names are now bounded in all three places contract #7 orders, using the
 **same expression** in each — `RE.dnsZone` in the wizard, `items.pattern` in

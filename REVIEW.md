@@ -272,7 +272,7 @@ instances stay endpoint-less) and **2.12** — the wizard's
 rendered and created with `for_each`, an empty list means the blob zone alone
 (the "CAF default set" both the schema and the wizard promised never existed
 and the wording was corrected), and `centralizedInHub = false` is refused by
-render guard G21 and by the wizard rather than collected and ignored. Still
+render guard G23 and by the wizard rather than collected and ignored. Still
 unrendered from that section of the wizard:
 `connectivity.privateEndpoints.enabled` and `denyPublicNetworkAccessPolicy`.
 The rate refresh against `prices.azure.com` folds into item 5.2 / §17 below

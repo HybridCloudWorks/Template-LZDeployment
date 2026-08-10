@@ -376,7 +376,7 @@ function Test-LzRenderGuards {
     # true: an absent key is the centralized answer (TODO item 2.12).
     if ($Config.connectivity.privateDns.enabled -and
         (Get-LzGuardConfigValue -Object $Config -Path 'connectivity.privateDns.centralizedInHub' -Default $true) -eq $false) {
-        $v += New-LzGuardViolation -Id 'G21' `
+        $v += New-LzGuardViolation -Id 'G23' `
             -Message 'connectivity.privateDns.centralizedInHub = false is not implemented: private DNS zones are owned by the connectivity layer (cross-domain contract 9).' `
             -Remediation 'Set connectivity.privateDns.centralizedInHub to true, or disable connectivity.privateDns.enabled.'
     }

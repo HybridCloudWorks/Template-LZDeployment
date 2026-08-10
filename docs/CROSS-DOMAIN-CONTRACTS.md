@@ -285,7 +285,7 @@ expression**, so none is looser than the one to its right.
 **`centralizedInHub = false` is refused, not ignored.** The wizard collects
 `connectivity.privateDns.centralizedInHub`, and this contract is the reason it
 has only one supported answer: a workload-owned zone is exactly the silent
-divergence described above. Render guard **G21** blocks a configuration that
+divergence described above. Render guard **G23** blocks a configuration that
 unticks it while private DNS is enabled, and `site/app.js` refuses it in the
 wizard so the client sees it before export. An **absent** key reads as `true`,
 so configurations written before the field existed still render.
@@ -304,7 +304,7 @@ this entry exists.
 
 Participants: `factory/schema/lz-config.schema.json`
 (`connectivity.privateDns`), `site/index.html` and `site/app.js`,
-`factory/renderer/public/Test-LzRenderGuards.ps1` (G21),
+`factory/renderer/public/Test-LzRenderGuards.ps1` (G23),
 `terraform/live/platform-connectivity/{main,variables,outputs}.tf`
 and its corpus twins; the `blob_private_dns_zone_id`/`blob_private_dns_enabled`
 locals, the `blob_spoke_*` links and the three endpoint arguments in

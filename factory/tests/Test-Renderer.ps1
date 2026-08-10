@@ -663,7 +663,10 @@ foreach ($tree in $flowMods.Keys | Sort-Object) {
 # zone name is the exact one Azure resolves blob privatelink records from.
 foreach ($connFile in @('terraform/live/platform-connectivity/main.tf', 'factory/templates/terraform/live/platform-connectivity/main.tf.tmpl')) {
     $connSrc = Get-Content "$repo/$connFile" -Raw
-    ok "$connFile creates the zone"      ($connSrc -match '(?s)resource\s+"azurerm_private_dns_zone"\s+"blob"\s*\{[^}]*name\s*=\s*"privatelink\.blob\.core\.windows\.net"')
+    # The zone name comes from the set now (item 2.12), so the literal lives in
+    # local.blob_zone_name — which is also what the output looks up by.
+    ok "$connFile creates the zone"      ($connSrc -match '(?s)resource\s+"azurerm_private_dns_zone"\s+"blob"\s*\{[^}]*name\s*=\s*each\.value')
+    ok "$connFile pins the blob name"    ($connSrc -match '(?m)^\s*blob_zone_name\s*=\s*"privatelink\.blob\.core\.windows\.net"\s*$')
     ok "$connFile gates the zones"       ($connSrc -match 'var\.deploy_private_dns_zones\s*\r?\n?\s*\?\s*toset\(')
     ok "$connFile zones are for_each"    ($connSrc -match '(?s)resource\s+"azurerm_private_dns_zone"\s+"blob"\s*\{[^}]*for_each\s*=\s*local\.private_dns_zones')
     ok "$connFile blank means blob"      ($connSrc -match 'length\(var\.private_dns_zones\)\s*>\s*0\s*\?\s*var\.private_dns_zones\s*:\s*\[local\.blob_zone_name\]')
@@ -789,12 +792,27 @@ ok 'schema pattern matches tf'      ((& $normalize $schemaZones.items.pattern) -
 # refused at BOTH ends rather than collected and dropped.
 ok 'wizard refuses decentralized'   ($appJs -match 'centralizedInHub === false')
 $guardSrc = Get-Content "$repo/factory/renderer/public/Test-LzRenderGuards.ps1" -Raw
-ok 'a guard refuses decentralized'  ($guardSrc -match "Id 'G21'")
-ok 'the guard blocks, not warns'    ($guardSrc -notmatch "(?s)Id 'G21'.*?-Severity\s+'Warn'")
-ok 'G21 is documented'              ((Get-Content "$repo/factory/renderer/README.md" -Raw) -match '\|\s*G21\s*\|')
+ok 'a guard refuses decentralized'  ($guardSrc -match "Id 'G23'")
+ok 'the guard blocks, not warns'    ($guardSrc -notmatch "(?s)Id 'G23'.*?-Severity\s+'Warn'")
+# Guard IDs are handed out by hand and are NOT in file order — G21 was already
+# taken, several screens above G20, when this guard was written, and the
+# duplicate shipped. This assertion is the thing that would have caught it.
+#
+# G22 is a KNOWN pre-existing duplicate: it covers a missing non-production
+# subscription and, separately, a missing non-production spoke CIDR. Renumbering
+# it would change an identifier clients see in a blocked render, so it is left
+# alone and carried as TODO item 2.13. Anything ELSE appearing twice is new and
+# fails here.
+$knownDuplicateGuardIds = @('G22')
+$guardIds = @([regex]::Matches($guardSrc, "Id '(?<id>G\d+)'") | ForEach-Object { $_.Groups['id'].Value })
+$dupeGuardIds = @($guardIds | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name } | Sort-Object)
+$unexpectedDupes = @($dupeGuardIds | Where-Object { $_ -notin $knownDuplicateGuardIds })
+ok 'no new duplicate guard IDs'     ($unexpectedDupes.Count -eq 0) ($unexpectedDupes -join ',')
+ok 'known duplicate still known'    ((($dupeGuardIds -join ',')) -eq ($knownDuplicateGuardIds -join ',')) ($dupeGuardIds -join ',')
+ok 'G23 is documented'              ((Get-Content "$repo/factory/renderer/README.md" -Raw) -match '\|\s*G23\s*\|')
 # An absent key must read as the centralized answer, or every config written
 # before this field existed would suddenly fail to render.
-ok 'G21 defaults to centralized'    ($guardSrc -match "centralizedInHub' -Default \`$true")
+ok 'G23 defaults to centralized'    ($guardSrc -match "centralizedInHub' -Default \`$true")
 
 # A config that unticks it renders nothing at all.
 $dnsCfgPath = Join-Path $PSScriptRoot '.out/decentralized-dns-config.json'
@@ -809,7 +827,8 @@ ok 'nothing written when blocked'   (-not (Test-Path (Join-Path $dnsOut 'README.
 
 # The promise that had nothing behind it must be gone from both places that
 # made it — an empty list means the blob zone, not a derived CAF set.
-ok 'schema drops the CAF promise'   ($schemaZones.description -notmatch 'CAF default set') $schemaZones.description
+ok 'schema drops the CAF promise'   ($schemaZones.description -notmatch 'use the CAF default set') $schemaZones.description
+ok 'schema states what blank does'  ($schemaZones.description -match 'privatelink\.blob\.core\.windows\.net alone')
 ok 'wizard drops the CAF promise'   ((Get-Content "$repo/site/index.html" -Raw) -notmatch 'CAF default zone set')
 
 Write-Host "`n== 16. Guard violation stops the render ==" -ForegroundColor Cyan

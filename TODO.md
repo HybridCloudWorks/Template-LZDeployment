@@ -285,7 +285,7 @@ place, `local.private_dns_zones`.
 
 **Answered — `centralizedInHub`.** Contract 9 puts zone ownership in the
 connectivity layer, so `false` has no implementation. It is now **refused**
-rather than silently ignored: new render guard **G21** blocks it, and
+rather than silently ignored: new render guard **G23** blocks it, and
 `site/app.js` rejects it in the wizard so the client sees it before export. An
 absent key reads as `true`, so older configurations still render. Building the
 decentralized path would contradict contract 9 and needs an ADR first.
@@ -301,7 +301,7 @@ on the link name.
 and no `terraform`, so `Test-Renderer.ps1` §15f (updated for the rename) and
 §15g (new), the PowerShell suites and the `fmt`/`validate` legs are CI's.
 §15g pins the three-way bound equality as an *ordering* rather than three
-separate regexes, G21's existence, severity, documentation and its
+separate regexes, G23's existence, severity, documentation and its
 default-true reading, a decentralized config failing the render with nothing
 written, and the absence of the CAF promise from both places that made it.
 
@@ -310,6 +310,24 @@ written, and the absence of the CAF promise from both places that made it.
 `enable_nsg_flow_logs` is on too. `connectivity.privateEndpoints.enabled` and
 `denyPublicNetworkAccessPolicy` remain collected and unrendered — a separate
 gap from this item, not opened here.
+
+### 2.13 Guard ID `G22` covers two unrelated conditions
+
+`factory/renderer/public/Test-LzRenderGuards.ps1` raises `G22` for a missing
+non-production **subscription** and, separately, for a missing non-production
+**spoke CIDR** — two unrelated failures under one identifier, and the renderer
+README documents only the second. Found while adding G23 (item 2.12), which
+initially shipped as a duplicate of `G21` for the same reason: the IDs are
+assigned by hand and are not in file order. `Test-Renderer.ps1` §15g now fails
+on any *new* duplicate and carries `G22` as a named allowance, so this is
+tracked rather than silent.
+**Owner**: `github-actions-engineer` (owns the renderer's guard chain).
+**Gate**: none technical. It needs a call on whether a guard ID is a stable
+client-facing identifier — clients see it in a blocked render — or an internal
+label free to renumber.
+**Validation**: each condition has its own ID and its own README row; §15g's
+`$knownDuplicateGuardIds` allowance is emptied in the same change, which is
+what proves it was fixed rather than re-hidden.
 
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 
