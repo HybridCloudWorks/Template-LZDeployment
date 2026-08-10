@@ -64,6 +64,9 @@ module "policy_baseline" {
 | `sandbox_mg_id` | Sandbox management group ID | `string` | — | yes |
 | `location` | Azure region for the policy assignment managed identity | `string` | `"southcentralus"` | no |
 | `allowed_locations` | List of allowed Azure regions | `list(string)` | `["southcentralus", "northcentralus"]` | no |
+| `landingzones_mg_id` | Landing Zones management group ID. Scope for workload-facing policy assignments. | `string` | `""` | no |
+| `assign_public_network_access_policy` | Assign the initiative auditing (or denying) public network access on PaaS data services, scoped to the Landing Zones management group. | `bool` | `false` | no |
+| `public_network_access_effect` | Effect for the public-network-access initiative: `Audit`, `Deny`, or `Disabled`. | `string` | `"Audit"` | no |
 
 ## Outputs
 
