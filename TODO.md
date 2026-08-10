@@ -186,23 +186,90 @@ and the distinctness and legality of the four resulting names. Alongside:
 until a PR flips them — that flip is estate-gated and carried in item 3.1,
 like items 2.1 and 2.3 before it.
 
-### 2.10 Add `privatelink.blob.core.windows.net` and re-enable the flow-log private endpoint
+### 2.10 Add `privatelink.blob.core.windows.net` and re-enable the flow-log private endpoint — CLOSED
 
-`enable_private_endpoint = false` in the `workloads-prod` calls is a knowing
-posture reduction ratified with decision 0009: no
-`privatelink.blob.core.windows.net` private DNS zone exists in either tree, so
-a private endpoint would resolve to nothing. The storage account is already
-`default_action = "Deny"`, so this is defence in depth rather than the only
-control — but the module README advertises the private endpoint as a feature
-and it is currently off. Decision 0009 follow-up (c).
-**Owner**: `terraform-module-engineer` (zone in `hub-network`/connectivity,
-then the caller flag).
-**Gate**: the private DNS zone must exist and be linked to the spoke VNets
-first — a technical dependency on the connectivity layer's `deploy_dns` path,
-not an operator decision.
-**Validation**: `terraform validate` in both trees; with the flag on, the plan
-shows the private endpoint bound to the zone; blob resolution from a spoke
-returns the private IP.
+Closed 2026-08-10 (decision 0009 follow-up (c); no new decision record — the
+zone is the implementation of a ratified follow-up, and the two-layer split it
+introduces is a contract fact, so it went into new **contract 9**). The gate
+was technical, not an operator decision, and is now satisfied.
+
+Shipped, both trees at parity. `platform-connectivity` owns the zone: a new
+`deploy_blob_private_dns_zone` variable `count`-gates
+`privatelink.blob.core.windows.net` in the primary hub's resource group and
+links **both** hub VNets to it, and `blob_private_dns_zone_id` is exported
+**unconditionally** — an empty string while the gate is off — so the workload
+layers' existing remote-state read always finds the key. The workload layers
+link their **own** spoke VNets to that zone through the `azurerm.hub` provider
+alias they already hold for hub-side peering (the zone is in the connectivity
+subscription; the default provider would not find it), and derive
+`enable_private_endpoint`, `private_endpoint_subnet_id` and
+`private_dns_zone_ids` from that single exported value. One flag in one layer
+turns the whole path on and it cannot be half-set. `spoke-network` already
+exposed `pe_subnet_id`, so no new subnet was needed on the workload side; the
+non-production corpus layer puts the endpoint in the same first-rendered spoke
+that already hosts the shared instance's resource group.
+
+`nsg-flow-logs` gained two `lifecycle.precondition`s, because
+`enable_private_endpoint` defaults to **true** while
+`private_endpoint_subnet_id` and `private_dns_zone_ids` default to empty: a
+caller that enables the endpoint without a subnet failed only at apply, and one
+without a zone created an endpoint whose name never resolved. Both now fail at
+plan.
+
+**Renderer**: `deploy_blob_private_dns_zone` maps to the client's
+`connectivity.privateDns.enabled` answer — the same key as `deploy_dns`, and
+deliberately **not** `literal:false`. Neither reason for the flow-log flag's
+constant applies: a zone has no volume-driven meter and no dependency that can
+make a generated repository's first plan fail. Turning it on still creates no
+endpoint, because those are gated on `enable_nsg_flow_logs`, which contract 8b
+keeps constant.
+
+**Validation**: node 87/0. The PowerShell suites and `terraform validate` could
+not run in this environment — no `pwsh` and no `terraform` binary — so
+`Test-Renderer.ps1` §15f (new) and the `fmt`/`validate` legs are CI's; §15f
+pins the module preconditions, the gated zone and both hub links, the
+default-off variable in both trees, the unconditional export, and for each of
+the three workload files the remote-state read, the hub-aliased and gated
+spoke links, all three endpoint arguments on every call, and the absence of
+any hardcoded `false`.
+
+**What remains**: the estate creates nothing until the gate is on, and no
+endpoint until the flow-log gate is on too. Two residuals opened as items 2.11
+and 2.12.
+
+### 2.11 Give `hub-network` a private-endpoint subnet
+
+The hub's own `nsg-flow-logs` instances (item 2.9) still carry
+`enable_private_endpoint = false`, and after item 2.10 the reason has changed:
+the zone exists and is linked to the hub VNets, but `hub-network` exposes no
+subnet to put an endpoint in — unlike `spoke-network`, which has carried
+`pe_subnet_id` all along. Adding one claims another block of the hub address
+space, which is a hub-topology change rather than a flow-log change, so it was
+kept out of 2.10.
+**Owner**: `azure-platform-architect` (address-space allocation) →
+`terraform-module-engineer`.
+**Gate**: none technical; it needs an address-space decision, because the hub
+`/4` split is already carrying gateway, bastion and the two DNS-resolver
+delegated subnets.
+**Validation**: `terraform validate` in both trees; the hub instances set the
+same three endpoint arguments the workload callers do and pass the module's
+preconditions; no existing hub subnet's prefix changes.
+
+### 2.12 Render the wizard's `connectivity.privateDns.zones` list
+
+The wizard collects a **list** of private DNS zones — the field is pre-filled
+with `privatelink.blob.core.windows.net` and `privatelink.vaultcore.azure.net`
+— and also `connectivity.privateDns.centralizedInHub`. Item 2.10 consumes only
+`connectivity.privateDns.enabled`, and creates exactly one purpose-built zone.
+Everything else the client typed is recorded in `lz-config.json` and rendered
+nowhere, which is the "generator has answers it does not cover" shape REVIEW.md
+tracks.
+**Owner**: `frontend-experience-designer` (what the answer means) →
+`terraform-module-engineer` (`for_each` over the list).
+**Gate**: none technical. Worth deciding whether `centralizedInHub = false`
+should mean anything at all before building for it.
+**Validation**: a config listing two zones renders two zones and their links;
+the default single-zone case renders byte-identically to today.
 
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 

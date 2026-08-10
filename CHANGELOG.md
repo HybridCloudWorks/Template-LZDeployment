@@ -3,7 +3,62 @@
 **Purpose**: Historical record of completed work. **Going forward (operator
 contract, 2026-08-07): new entries record shipped features only.** Existing
 entries below are history and are not rewritten.
-**Last Updated**: August 9, 2026
+**Last Updated**: August 10, 2026
+
+---
+
+## The flow-log private endpoint is back on, behind a connectivity-owned blob DNS zone (2026-08-10)
+
+Decision 0009 follow-up (c), [TODO.md](TODO.md) item 2.10. The item's gate was
+technical rather than an operator decision — the zone had to exist and be
+linked to the spoke VNets — and satisfying it is what this change does. No new
+decision record; the two-layer split it introduces is a contract fact and went
+into new **contract 9** in
+[docs/CROSS-DOMAIN-CONTRACTS.md](docs/CROSS-DOMAIN-CONTRACTS.md).
+
+Since decision 0009 every `nsg-flow-logs` caller has carried
+`enable_private_endpoint = false`, because a private endpoint whose name has no
+matching private DNS zone is created successfully, plans clean, and resolves to
+the public address anyway.
+
+`terraform/live/platform-connectivity` now owns that zone. A new
+`deploy_blob_private_dns_zone` variable `count`-gates
+`privatelink.blob.core.windows.net` in the primary hub's resource group and
+links **both** hub VNets to it, with `registration_enabled = false` on every
+link. `blob_private_dns_zone_id` is exported **unconditionally** — an empty
+string while the gate is off — so the workload layers' existing remote-state
+read always finds the key and never needs a second flag.
+
+The workload layers link their **own** spoke VNets to that zone through the
+`azurerm.hub` provider alias they already hold for hub-side peering: the link
+resource belongs to the zone, which lives in the connectivity subscription,
+and through the default provider the zone is simply not found. From the one
+exported value each layer derives `enable_private_endpoint`,
+`private_endpoint_subnet_id` (`spoke-network` has exposed `pe_subnet_id` all
+along, so no new subnet was needed) and `private_dns_zone_ids`. One flag in one
+layer turns the whole path on, and it cannot be half-set.
+
+`terraform/modules/nsg-flow-logs` gained two `lifecycle.precondition`s, because
+`enable_private_endpoint` defaults to **true** while both values it needs
+default to empty: a caller that enabled the endpoint without a subnet failed
+only at apply, and one without a zone got an endpoint whose name never
+resolved. Both now fail at plan.
+
+`deploy_blob_private_dns_zone` renders from the client's
+`connectivity.privateDns.enabled` answer rather than a constant `false`.
+Neither reason for the flow-log flag's constant applies to a zone: it has no
+volume-driven meter, and nothing it depends on can make a generated
+repository's first plan fail. Turning it on still creates **no** private
+endpoint — those are gated on `enable_nsg_flow_logs`, which contract 8b keeps
+constant — so a generated repository gets a zone and two links and nothing that
+bills by volume.
+
+Not claimed: the hub's own flow-log instances stay endpoint-less, because
+`hub-network` exposes no private-endpoint subnet and adding one is an
+address-space decision ([TODO.md](TODO.md) item 2.11); and the wizard's
+`connectivity.privateDns.zones` list and `centralizedInHub` answer are still
+rendered nowhere — this ships one purpose-built zone, not the client's list
+(item 2.12).
 
 ---
 

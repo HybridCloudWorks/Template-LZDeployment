@@ -257,9 +257,17 @@ nod: the storage account name is now overridable, `hub-network` exposes an
 `fw_mgmt` `nsg_ids` map, and `platform-connectivity` runs one instance per hub
 region as `stflowlogshub<region_code>prod` behind its own default-`false`
 `enable_nsg_flow_logs` — so the hub gate joins the workload gate in item 3.1's
-estate-gated flip. Still open: **2.8** (replication as a variable —
-residency) and **2.10** (`privatelink.blob.core.windows.net` and re-enabling
-the private endpoint).
+estate-gated flip. **2.10** (`privatelink.blob.core.windows.net` and
+re-enabling the private endpoint) **shipped 2026-08-10**: its gate was
+technical, not an operator decision — `platform-connectivity` now owns the zone
+behind a `deploy_blob_private_dns_zone` flag and links both hub VNets, and the
+workload layers link their own spokes across the subscription boundary and
+derive the endpoint from the exported zone ID, with the module rejecting a
+half-configured endpoint at plan (new contract 9). Still open: **2.8**
+(replication as a variable — residency), plus two residuals 2.10 exposed —
+**2.11** (`hub-network` has no private-endpoint subnet, so the hub's own
+instances stay endpoint-less) and **2.12** (the wizard's
+`connectivity.privateDns.zones` list is still rendered nowhere).
 The rate refresh against `prices.azure.com` folds into item 5.2 / §17 below
 and needs an environment with egress.
 
