@@ -59,10 +59,19 @@ output "management_workspace" {
 # Blob private DNS zone for the workload layers' flow-log private endpoints
 # (decision 0009 follow-up (c)). Unconditional, like management_workspace
 # above, so the workload layers' remote-state read always finds the key; the
-# value is an empty string until deploy_blob_private_dns_zone is flipped, and
+# value is an empty string until deploy_private_dns_zones is flipped, and
 # the workload layers treat empty as "no endpoint" rather than needing a
 # second flag.
 output "blob_private_dns_zone_id" {
-  description = "Resource ID of the privatelink.blob.core.windows.net private DNS zone, or an empty string when deploy_blob_private_dns_zone is false."
-  value       = var.deploy_blob_private_dns_zone ? azurerm_private_dns_zone.blob[0].id : ""
+  description = "Resource ID of the privatelink.blob.core.windows.net private DNS zone, or an empty string when the zones are not deployed or the blob zone is not among them."
+  # Looked up by NAME in the created set rather than by position: the set is
+  # the client's list and need not contain the blob zone at all. A client who
+  # listed only other zones gets an empty string here and their flow-log
+  # endpoints correctly stay off, rather than an index error at plan.
+  value = try(azurerm_private_dns_zone.blob["privatelink.blob.core.windows.net"].id, "")
+}
+
+output "private_dns_zone_ids" {
+  description = "Map of every created private DNS zone name to its resource ID. Empty when deploy_private_dns_zones is false."
+  value       = { for name, z in azurerm_private_dns_zone.blob : name => z.id }
 }

@@ -149,6 +149,7 @@ only in the UI is a suggestion, not a guarantee.
 | G20 | Internal visibility without Enterprise Cloud |
 | G21 | An active layer has no implemented Terraform corpus |
 | G22 | A selected non-production environment is missing its required spoke CIDR |
+| G23 | `privateDns.centralizedInHub = false`, which contract 9 does not implement |
 
 G10 and G14 are advisory warnings (missing sandbox subscription, prod without
 reviewers) and do not block.

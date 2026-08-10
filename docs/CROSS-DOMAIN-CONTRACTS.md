@@ -9,7 +9,8 @@ check — and usually change — the other sides, or dispatch the change through
 All entries verified against the repo on 2026-08-06; contract #4 corrected and
 contract #8 added 2026-08-09 (decision 0009); contract #8a revised the same day
 when the storage-account name became overridable (TODO item 2.9); contract #9
-added 2026-08-10 when the blob private DNS zone landed (TODO item 2.10).
+added 2026-08-10 when the blob private DNS zone landed (TODO item 2.10) and
+revised the same day when the zone set became the client's list (item 2.12).
 
 ---
 
@@ -251,9 +252,12 @@ decision 0009 until this item. The fix spans two layers and three
 subscriptions, and nothing in Terraform's graph enforces the split, so it lives
 here.
 
-**The rule.** `privatelink.blob.core.windows.net` is created **once**, in
-`terraform/live/platform-connectivity`, gated on `deploy_blob_private_dns_zone`.
-That layer links the hub VNets. Every workload layer links **its own** spoke
+**The rule.** The private DNS zones are created **once**, in
+`terraform/live/platform-connectivity`, gated on `deploy_private_dns_zones`
+and enumerated by `private_dns_zones` (revised 2026-08-10, TODO item 2.12 —
+the variable was `deploy_blob_private_dns_zone` and the set was one hardcoded
+zone when contract 9 was written). That layer links the hub VNets to every
+zone. Every workload layer links **its own** spoke
 VNets to that same zone and derives its endpoints from the exported
 `blob_private_dns_zone_id` — empty string means "no zone", which is the single
 switch for the entire endpoint path. A workload layer must never create a zone
@@ -268,6 +272,24 @@ layers create these links through the `azurerm.hub` provider alias they already
 hold for the hub side of VNet peering (contract #5). Through the default
 provider the zone is simply not found.
 
+**The zone list is the client's, and `blob_private_dns_zone_id` is looked up
+by name.** `private_dns_zones` renders from `connectivity.privateDns.zones`;
+an empty list means `privatelink.blob.core.windows.net` alone. A client list
+that omits the blob zone therefore yields an **empty** `blob_private_dns_zone_id`
+and the workload endpoints correctly stay off — never an index error, never an
+endpoint bound to the wrong zone. Zone names are bounded in all three places
+in contract #7's order: the wizard regex `RE.dnsZone`, the schema's
+`items.pattern`, and the `private_dns_zones` validation are the **same
+expression**, so none is looser than the one to its right.
+
+**`centralizedInHub = false` is refused, not ignored.** The wizard collects
+`connectivity.privateDns.centralizedInHub`, and this contract is the reason it
+has only one supported answer: a workload-owned zone is exactly the silent
+divergence described above. Render guard **G23** blocks a configuration that
+unticks it while private DNS is enabled, and `site/app.js` refuses it in the
+wizard so the client sees it before export. An **absent** key reads as `true`,
+so configurations written before the field existed still render.
+
 **Ordering.** `platform-connectivity` must be applied with the gate on before a
 workload layer can create links or endpoints. This is the same shape as
 `wire_management_workspace`: the workload layers read the value through `try()`
@@ -280,7 +302,10 @@ subnet or without a zone ID, so a half-wired caller fails at **plan**. That
 guards the caller; it cannot guard the zone-ownership rule above, which is why
 this entry exists.
 
-Participants: `terraform/live/platform-connectivity/{main,variables,outputs}.tf`
+Participants: `factory/schema/lz-config.schema.json`
+(`connectivity.privateDns`), `site/index.html` and `site/app.js`,
+`factory/renderer/public/Test-LzRenderGuards.ps1` (G23),
+`terraform/live/platform-connectivity/{main,variables,outputs}.tf`
 and its corpus twins; the `blob_private_dns_zone_id`/`blob_private_dns_enabled`
 locals, the `blob_spoke_*` links and the three endpoint arguments in
 `terraform/live/workloads-prod/main.tf` and
@@ -295,9 +320,10 @@ it on still creates **no endpoint**, because those are gated on
 `enable_nsg_flow_logs`, which contract 8b keeps a constant `false`. The hub's
 own flow-log instances remain endpoint-less for a different reason:
 `hub-network` exposes no private-endpoint subnet ([TODO.md](../TODO.md) item
-2.11). The wizard's `connectivity.privateDns.zones` list is still consumed
-nowhere — this contract covers one purpose-built zone, not the client's list
-(item 2.12).
+2.11). An empty `zones` list means the blob zone alone: the schema and the
+wizard once promised "the CAF default zone set for the services you enabled",
+nothing implemented it, and the wording was corrected rather than a set of
+zones nobody asked for being created (item 2.12).
 
 ---
 

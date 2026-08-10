@@ -574,7 +574,7 @@
       <div class="field" data-visible-when="connectivity.privateDns.enabled=true">
         <label for="cn_dnsZones">Private DNS zones</label>
         <textarea id="cn_dnsZones" data-path="connectivity.privateDns.zones" data-type="lines" rows="4" spellcheck="false" placeholder="privatelink.blob.core.windows.net&#10;privatelink.vaultcore.azure.net"></textarea>
-        <p class="hint">One per line. Leave blank to use the CAF default zone set for the services you enabled.</p>
+        <p class="hint">One per line, lowercase. Created in the connectivity subscription and linked to every hub. Leave blank for <code>privatelink.blob.core.windows.net</code> alone — the only zone the generated Terraform consumes today.</p>
       </div>
     </section>
 

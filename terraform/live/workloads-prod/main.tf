@@ -68,7 +68,7 @@ locals {
   # lookup against state rather than a provider read.
   #
   # This single value is the whole switch. Empty means the operator has not
-  # flipped deploy_blob_private_dns_zone, so the spoke links below are not
+  # flipped deploy_private_dns_zones, so the spoke links below are not
   # created and the flow-log calls leave enable_private_endpoint off; non-empty
   # means the zone exists and every part of the endpoint path follows from it.
   # There is deliberately no second per-layer flag to leave half-set.

@@ -110,20 +110,49 @@ variable "deploy_dns" {
   default     = true
 }
 
-variable "deploy_blob_private_dns_zone" {
-  # Default false, like every other gate decision 0009 introduced: the zone is
-  # cheap and cannot fail on a fresh subscription, but it is the switch that
-  # turns the workload layers' flow-log private endpoints ON (they derive
-  # enable_private_endpoint from whether this zone exists), and a posture
-  # change belongs in a PR rather than in a default. Flip it, apply this layer,
-  # then apply the workload layers — the spoke links and the endpoints follow
-  # from the exported zone ID with no second flag to remember.
+variable "deploy_private_dns_zones" {
+  # Renamed from deploy_blob_private_dns_zone (TODO item 2.12) now that it
+  # gates a list rather than one zone. Default false, like every other gate
+  # decision 0009 introduced: this is the switch that turns the workload
+  # layers' flow-log private endpoints ON (they derive
+  # enable_private_endpoint from whether the blob zone exists), and a posture
+  # change belongs in a PR rather than in a default. Flip it, apply this
+  # layer, then apply the workload layers.
   #
   # Separate from deploy_dns: that one creates DNS *resolver subnet
   # placeholders* inside the hub VNets and creates no zone at all.
-  description = "Create the privatelink.blob.core.windows.net private DNS zone in the connectivity subscription and link it to both hub VNets. Enables the workload layers' flow-log private endpoints."
+  description = "Create the private DNS zones in var.private_dns_zones in the connectivity subscription and link them to both hub VNets. Enables the workload layers' flow-log private endpoints when the blob zone is among them."
   type        = bool
   default     = false
+}
+
+variable "private_dns_zones" {
+  # Empty means the blob zone alone — the one zone item 2.10 shipped and the
+  # only one anything in this repository consumes. It does NOT mean "the CAF
+  # default set for the services you enabled": the schema and the wizard hint
+  # promised that, nothing implemented it, and creating a set of zones the
+  # client never asked for is not a good way to make the promise true. The
+  # wording was corrected instead (TODO item 2.12).
+  description = "Private DNS zone names to create and link to both hubs. Empty means privatelink.blob.core.windows.net alone."
+  type        = list(string)
+  default     = []
+
+  # Loosest of the three bounds (contract #7): the wizard and the schema may be
+  # stricter than this, never the reverse. Azure allows up to 34 labels and 253
+  # characters; a leading or trailing dot, an empty label or an uppercase
+  # letter is rejected here rather than at apply.
+  validation {
+    condition = alltrue([
+      for z in var.private_dns_zones :
+      can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", z)) && length(z) <= 253
+    ])
+    error_message = "Each private DNS zone must be a lowercase dotted name of at least two labels, no leading/trailing dot or hyphen, 253 characters or fewer."
+  }
+
+  validation {
+    condition     = length(var.private_dns_zones) == length(distinct(var.private_dns_zones))
+    error_message = "private_dns_zones must not contain duplicates — two entries of the same name are one zone and would collide on the link name."
+  }
 }
 
 variable "management_ip_ranges" {

@@ -367,7 +367,7 @@ size. Summarised:
 > `enable_private_endpoint` defaults to `true`, but both values it needs
 > default to empty, so the module refuses a half-configured endpoint at plan.
 > In this repository the `privatelink.blob.core.windows.net` zone is owned by
-> `platform-connectivity` behind `deploy_blob_private_dns_zone`, and callers
+> `platform-connectivity` behind `deploy_private_dns_zones`, and callers
 > derive all three arguments from its exported `blob_private_dns_zone_id` —
 > see contract 9 in `docs/CROSS-DOMAIN-CONTRACTS.md`. Do not create a second
 > zone of that name in a workload layer.
