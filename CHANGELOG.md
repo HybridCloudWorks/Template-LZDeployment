@@ -31,9 +31,14 @@ vault and automation account, and a SAS expiration policy on flow-log storage.
 Nine rules are **suppressed at the resource with a stated reason** — none
 silently. Where a rule contradicted a decision already taken, the suppression
 says which decision: public network access on flow-log storage is decision
-0009, CMK waits on the deliberate `keyvault-cmk` scaffold, threat intelligence
-lives on the firewall policy that governs it, and `GatewaySubnet` /
-`AzureFirewallSubnet` cannot carry an NSG at all.
+0009, CMK waits on the deliberate `keyvault-cmk` scaffold, and threat
+intelligence lives on the firewall policy that governs it.
+
+**Corrected the same day**: this entry first said the subnet suppressions were
+partly justified because `GatewaySubnet` and `AzureFirewallSubnet` cannot carry
+an NSG. Checkov flags neither. All 12 findings are on six subnets per hub that
+**can** take one — so none of the suppression rests on impossibility, and the
+outstanding work is larger than that wording implied. Opened as item 2.16.
 
 Two gaps are named rather than closed, in the suppression text where the next
 reader will find them: five hub subnets that *could* take an NSG still do not,

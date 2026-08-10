@@ -71,7 +71,7 @@ resource "azurerm_subnet" "fw_mgmt" {
 
 # Firewall Trust (internal) subnet (for Palo/Fortinet)
 resource "azurerm_subnet" "fw_trust" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, not a rename. TODO item 2.15.
+  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
   count                = local.has_nva ? 1 : 0
   name                 = "snet-fw-trust-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
@@ -81,7 +81,7 @@ resource "azurerm_subnet" "fw_trust" {
 
 # Firewall Untrust (external) subnet (for Palo/Fortinet)
 resource "azurerm_subnet" "fw_untrust" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, not a rename. TODO item 2.15.
+  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
   count                = local.has_nva ? 1 : 0
   name                 = "snet-fw-untrust-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
@@ -91,7 +91,7 @@ resource "azurerm_subnet" "fw_untrust" {
 
 # Gateway subnet
 resource "azurerm_subnet" "gateway" {
-  #checkov:skip=CKV2_AZURE_31:GatewaySubnet cannot carry an NSG - Azure rejects the association, and a VPN/ER gateway breaks if one is forced on.
+  #checkov:skip=CKV2_AZURE_31:Precautionary, not currently load-bearing - checkov does not flag this subnet today. Kept because the rule would be wrong here if it ever did: Azure rejects an NSG association on GatewaySubnet, and a VPN/ER gateway breaks if one is forced on.
   name                 = "GatewaySubnet"
   resource_group_name  = azurerm_resource_group.hub.name
   virtual_network_name = azurerm_virtual_network.hub.name
@@ -100,7 +100,7 @@ resource "azurerm_subnet" "gateway" {
 
 # Bastion subnet
 resource "azurerm_subnet" "bastion" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, not a rename. TODO item 2.15.
+  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
   count                = var.deploy_bastion_placeholder ? 1 : 0
   name                 = "AzureBastionSubnet"
   resource_group_name  = azurerm_resource_group.hub.name
@@ -110,7 +110,7 @@ resource "azurerm_subnet" "bastion" {
 
 # DNS resolver inbound subnet
 resource "azurerm_subnet" "dns_inbound" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, not a rename. TODO item 2.15.
+  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
   count                = var.deploy_dns_placeholder ? 1 : 0
   name                 = "snet-dns-inbound-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
@@ -128,7 +128,7 @@ resource "azurerm_subnet" "dns_inbound" {
 
 # DNS resolver outbound subnet
 resource "azurerm_subnet" "dns_outbound" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, not a rename. TODO item 2.15.
+  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
   count                = var.deploy_dns_placeholder ? 1 : 0
   name                 = "snet-dns-outbound-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
@@ -287,7 +287,7 @@ resource "azurerm_monitor_diagnostic_setting" "azfw" {
 # subnet and no hub private endpoints, which is the behaviour before this
 # variable existed.
 resource "azurerm_subnet" "private_endpoints" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet - same gap as the other hub subnets, and it arrived with the subnet itself (TODO item 2.11). Authoring correct per-subnet rules is follow-up work under TODO item 2.15.
+  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet - same gap as the other hub subnets, and it arrived with the subnet itself (TODO item 2.11). Authoring correct per-subnet rules is tracked as TODO item 2.16.
   count = var.private_endpoint_subnet_prefix == null ? 0 : 1
 
   name                 = "snet-private-endpoints-${var.region_code}-${var.environment}-01"

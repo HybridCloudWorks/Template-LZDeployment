@@ -142,7 +142,8 @@ could not have seen, both caused by what it happened to use:
   At least three failing rules contradict decisions already taken and written
   down here (`CKV_AZURE_59` on the deliberately network-rule-protected flow-log
   storage, `CKV2_AZURE_1` on the deliberate `keyvault-cmk` scaffold, and the
-  `CKV2_AZURE_31` hits on `GatewaySubnet`/`AzureFirewallSubnet`).
+  `CKV2_AZURE_31` hits, which turned out to be entirely on subnets that *can*
+  take an NSG — see item 2.16).
 
 **Both now pass** (item 2.15, closed the same day on an operator-directed
 conservative reading): three findings fixed, nine rules suppressed at the
