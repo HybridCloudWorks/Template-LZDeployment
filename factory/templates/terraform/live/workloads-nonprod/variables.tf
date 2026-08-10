@@ -13,18 +13,42 @@ variable "connectivity_subscription_id" {
   default     = ""
 }
 
+# Consumed only under the azurerm backend: the remote-state reads take the
+# organization/workspaces branch under HCP Terraform, and the tfvars emit these
+# three only when computed.backendIsAzurerm. The corpus ships ONE variables.tf
+# for both backends, so under an HCP render they are declared and unreferenced.
+# Making the declarations conditional would turn this file into a template —
+# a structural change to how the corpus renders variables, and not one to make
+# to silence a lint rule. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "state_resource_group_name" {
   description = "Terraform state resource group name (azurerm backend only)"
   type        = string
   default     = ""
 }
 
+# Consumed only under the azurerm backend: the remote-state reads take the
+# organization/workspaces branch under HCP Terraform, and the tfvars emit these
+# three only when computed.backendIsAzurerm. The corpus ships ONE variables.tf
+# for both backends, so under an HCP render they are declared and unreferenced.
+# Making the declarations conditional would turn this file into a template —
+# a structural change to how the corpus renders variables, and not one to make
+# to silence a lint rule. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "state_storage_account_name" {
   description = "Terraform state storage account name (azurerm backend only)"
   type        = string
   default     = ""
 }
 
+# Consumed only under the azurerm backend: the remote-state reads take the
+# organization/workspaces branch under HCP Terraform, and the tfvars emit these
+# three only when computed.backendIsAzurerm. The corpus ships ONE variables.tf
+# for both backends, so under an HCP render they are declared and unreferenced.
+# Making the declarations conditional would turn this file into a template —
+# a structural change to how the corpus renders variables, and not one to make
+# to silence a lint rule. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "state_container_name" {
   description = "Terraform state container name (azurerm backend only)"
   type        = string
@@ -53,36 +77,84 @@ variable "dr_region_code" {
   default     = ""
 }
 
+# Declared for every non-production environment, consumed only for the ones
+# this client selected: the spoke modules in main.tf render per selected
+# environment, so a configuration choosing dev alone leaves the test and uat
+# pairs unreferenced. Same shape as the state_* variables above — one static
+# variables.tf serving several render shapes — and the same reasoning applies:
+# making the declarations conditional is a structural change to the corpus,
+# not a lint fix. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "dev_primary_spoke_address_space" {
   description = "Dev primary spoke CIDR"
   type        = string
   default     = ""
 }
 
+# Declared for every non-production environment, consumed only for the ones
+# this client selected: the spoke modules in main.tf render per selected
+# environment, so a configuration choosing dev alone leaves the test and uat
+# pairs unreferenced. Same shape as the state_* variables above — one static
+# variables.tf serving several render shapes — and the same reasoning applies:
+# making the declarations conditional is a structural change to the corpus,
+# not a lint fix. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "dev_dr_spoke_address_space" {
   description = "Dev DR spoke CIDR"
   type        = string
   default     = ""
 }
 
+# Declared for every non-production environment, consumed only for the ones
+# this client selected: the spoke modules in main.tf render per selected
+# environment, so a configuration choosing dev alone leaves the test and uat
+# pairs unreferenced. Same shape as the state_* variables above — one static
+# variables.tf serving several render shapes — and the same reasoning applies:
+# making the declarations conditional is a structural change to the corpus,
+# not a lint fix. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "test_primary_spoke_address_space" {
   description = "Test primary spoke CIDR"
   type        = string
   default     = ""
 }
 
+# Declared for every non-production environment, consumed only for the ones
+# this client selected: the spoke modules in main.tf render per selected
+# environment, so a configuration choosing dev alone leaves the test and uat
+# pairs unreferenced. Same shape as the state_* variables above — one static
+# variables.tf serving several render shapes — and the same reasoning applies:
+# making the declarations conditional is a structural change to the corpus,
+# not a lint fix. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "test_dr_spoke_address_space" {
   description = "Test DR spoke CIDR"
   type        = string
   default     = ""
 }
 
+# Declared for every non-production environment, consumed only for the ones
+# this client selected: the spoke modules in main.tf render per selected
+# environment, so a configuration choosing dev alone leaves the test and uat
+# pairs unreferenced. Same shape as the state_* variables above — one static
+# variables.tf serving several render shapes — and the same reasoning applies:
+# making the declarations conditional is a structural change to the corpus,
+# not a lint fix. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "uat_primary_spoke_address_space" {
   description = "UAT primary spoke CIDR"
   type        = string
   default     = ""
 }
 
+# Declared for every non-production environment, consumed only for the ones
+# this client selected: the spoke modules in main.tf render per selected
+# environment, so a configuration choosing dev alone leaves the test and uat
+# pairs unreferenced. Same shape as the state_* variables above — one static
+# variables.tf serving several render shapes — and the same reasoning applies:
+# making the declarations conditional is a structural change to the corpus,
+# not a lint fix. TODO item 2.15.
+# tflint-ignore: terraform_unused_declarations
 variable "uat_dr_spoke_address_space" {
   description = "UAT DR spoke CIDR"
   type        = string

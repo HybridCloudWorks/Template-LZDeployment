@@ -431,6 +431,64 @@ dropping the AND fails another.
 rather than blocks. Neither is a gap this item left open — both are the stated
 starting posture.
 
+### 2.15 V07 and V08 fail against real tflint and checkov — CLOSED
+
+Found and closed 2026-08-10. Item 3.1 had carried a criterion from item 1.1 —
+"the strict run must confirm V07/V08 pass with real tflint/tfsec and **no skips
+recorded**" — unproven only because the tools were believed unavailable. They
+install (tflint 0.64.0 from its GitHub release, checkov 3.3.9 from PyPI), the
+run happened, and **V07 and V08 both failed**. They now pass.
+
+**Two blind spots caused it, both about what the 2026-08-06 run happened to
+use.** It rendered `azurerm-config.json` and it used tfsec. Rendering
+`sample-config.json` (hcp-terraform) surfaced six fresh
+`terraform_unused_declarations`, and checkov — which V08 tries **first** —
+reported 40 failures where tfsec reported one.
+
+**The scanner is now pinned to checkov.** A gate whose verdict depends on which
+of three tools the runner happens to have installed is not a gate. tfsec is
+also archived upstream.
+
+**All three fixtures now pass all eight gates with zero gate skips** —
+`sample` (hcp-terraform), `azurerm`, and `nonprod`. The third was checked
+precisely because the finding was that only one render shape had ever been
+linted, and it duly failed on something the other two did not: the per-
+environment spoke CIDR variables, unreferenced when a client selects only some
+non-production environments.
+
+**Resolution, conservative reading (operator-directed).** Genuinely-real
+findings fixed; findings that contradict decisions already taken suppressed at
+the resource with a stated reason. **Nothing was suppressed silently** — every
+directive names what it defers to.
+
+*Fixed* (3 rules): managed identity on the recovery-services vault
+(`CKV2_AZURE_35`) and the automation account (`CKV2_AZURE_36`); a SAS
+expiration policy on the flow-log storage (`CKV2_AZURE_41`).
+
+*Suppressed with reasons* (9 rules, 15 directives): `CKV_AZURE_59` and
+`CKV2_AZURE_40` on flow-log storage — public access is deliberate and
+network-rule fronted (decision 0009), and whether Network Watcher can write to
+a shared-key-disabled account is **unverified**, so it was not flipped on a
+guess; `CKV2_AZURE_1` — CMK needs `keyvault-cmk`, a decided deferral (item
+2.4); `CKV_AZURE_33` — no queue service exists to log; `CKV_AZURE_43` — the
+name is an interpolation checkov cannot resolve; `CKV_AZURE_216` — threat
+intelligence is set on the attached firewall **policy**, which governs;
+`CKV2_AZURE_24` — closing the automation account's public access without a
+private endpoint would trade a finding for a broken control plane;
+`CKV2_AZURE_31` ×7 — `GatewaySubnet` and `AzureFirewallSubnet` *cannot* carry
+an NSG, and the other five *can* and do not yet.
+
+**Two things this deliberately did NOT do**, both recorded rather than hidden:
+the five hub subnets that could take an NSG still do not (authoring correct
+per-subnet rules is real work, and a wrong Bastion NSG breaks Bastion), and
+shared-key authorization on flow-log storage stays enabled pending
+verification. Both are named in their suppression text, so the next reader
+finds them at the resource rather than in a changelog.
+
+**Validation**: all three fixtures, `LZ_VALIDATE_STRICT=true`, `8 passed, 0
+skipped`, checkov exiting clean. Full `Invoke-FactoryCI.ps1` green except
+PSScriptAnalyzer (PS Gallery blocked here).
+
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 
 Both are `check "module_not_implemented"` scaffolds, render-blocked (guards

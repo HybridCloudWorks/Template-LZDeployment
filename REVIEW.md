@@ -120,13 +120,44 @@ Record of that execution:
   accepted; strict-fail report → `fail`; deleted report → `missing`; tampered
   `manifestSha256` → `stale`. No apply performed.
 
+**Strict re-run 2026-08-10 — the skip-free pass does NOT hold.** tflint 0.64.0
+(GitHub release) and checkov 3.3.9 (PyPI) install in the sandbox after all, so
+the re-run this section had been waiting for was executed against a fresh
+82-file render. **V01–V06 pass; V07 and V08 fail.** Two things the earlier run
+could not have seen, both caused by what it happened to use:
+
+- **It rendered `azurerm-config.json`.** This run used `sample-config.json`,
+  whose backend is `hcp-terraform`, and V07 returns *six*
+  `terraform_unused_declarations` again — the three `state_*` variables in
+  `live/platform-connectivity` and `live/workloads-prod`. PR #77 did fix the
+  2026-08-06 findings; these are different ones with the same rule. Under HCP
+  the remote-state reads take the `organization`/`workspaces` branch and the
+  tfvars emit the three only `#{{IF computed.backendIsAzurerm}}`, but the
+  *declarations* are unconditional. **The corpus has only ever been
+  lint-checked under one backend.**
+- **It used tfsec, which found 1 LOW.** V08 tries **checkov first** when
+  present, and checkov reports 196 passed / **40 failed** / 0 skipped across 11
+  rules. So V08's verdict depends on which of the three scanners is installed —
+  the "V08 passes" expectation was formed against tfsec and does not transfer.
+  At least three failing rules contradict decisions already taken and written
+  down here (`CKV_AZURE_59` on the deliberately network-rule-protected flow-log
+  storage, `CKV2_AZURE_1` on the deliberate `keyvault-cmk` scaffold, and the
+  `CKV2_AZURE_31` hits on `GatewaySubnet`/`AzureFirewallSubnet`).
+
+**Both now pass** (item 2.15, closed the same day on an operator-directed
+conservative reading): three findings fixed, nine rules suppressed at the
+resource with stated reasons, and the scanner **pinned to checkov** so the
+gate's verdict no longer depends on which tool the runner has. All three
+fixtures — `sample` (hcp-terraform), `azurerm` and `nonprod` — report
+`8 passed, 0 skipped`. The third was added to the rotation because the whole
+finding was that only one render shape had ever been linted; it failed on
+something the other two did not.
+
 **What remains blocked here**: the broker/import/scaffold-apply suites against
-authenticated `az` and `gh` sessions; running the validate phase inside
-the full engagement wrapper (discovery → broker → render → validate →
-scaffold) with real discovery artifacts; and the strict re-run confirming
-V07/V08 pass with real tflint/tfsec and **no skips recorded** now that the
-corpus is clean (the tools were unavailable where the 2026-08-07 fixes were
-made). Tracked as [TODO.md](TODO.md) item 3.1.
+authenticated `az` and `gh` sessions, and running the validate phase inside the
+full engagement wrapper (discovery → broker → render → validate → scaffold)
+with real discovery artifacts. Tracked as [TODO.md](TODO.md) item 3.1 — whose
+V07/V08 criterion is now **answered rather than pending**, by item 2.15.
 **Unblocked by**: a provisioned toolchain with real `az` and `gh` sessions.
 
 ### 8. Set GitHub Pages source to "GitHub Actions"

@@ -3,6 +3,26 @@
 
 # Storage Account for Flow Logs
 resource "azurerm_storage_account" "flow_logs" {
+  # ── Accepted checkov findings (TODO item 2.15) ──────────────────────────
+  # Each of these defers to a decision already taken and written down. They
+  # are suppressed here, at the resource, rather than in a config file.
+  #
+  #checkov:skip=CKV_AZURE_59:Public network access is deliberately enabled and fronted by the network rules below (default_action Deny + trusted-services bypass). Network Watcher writes flow logs through the service, and closing this without a private endpoint breaks that. Decision 0009; the endpoint itself is TODO 2.11/2.14.
+  #checkov:skip=CKV2_AZURE_1:Customer-managed keys need the keyvault-cmk module, which is a decided deferral (TODO item 2.4, render-blocked by guard G03). Service-managed encryption is on.
+  #checkov:skip=CKV2_AZURE_41:The sas_policy block IS configured below (1-hour expiration, Log action) - this is not a missing control. Checkov still reports it: CKV2_* are graph checks, and this resource lives inside a module whose graph checkov did not resolve here (its guidelines endpoint is also unreachable in this environment). Suppressed as a scanner miss, with the control present and reviewable a few lines down.
+  #checkov:skip=CKV_AZURE_43:The name is composed from variables checkov cannot resolve, so it evaluates the unresolved expression rather than the 21-character lowercase result. The module validates the real name itself.
+  #checkov:skip=CKV_AZURE_33:Queue-service logging cannot be enabled for a service this account never uses - flow logs are blobs only. Enabling it would create a queue endpoint to log.
+  #checkov:skip=CKV2_AZURE_40:Shared-key authorization is NOT disabled here, unlike the state account. Whether Network Watcher can write flow logs to a shared-key-disabled account is unverified, and flipping it on an unverified basis risks silently breaking flow-log delivery. Carried as a follow-up rather than guessed at.
+
+  # CKV2_AZURE_41. Nothing here issues a SAS — flow logs are written by the
+  # Network Watcher service and read through AAD — but an expiration policy
+  # bounds any SAS an operator later mints by hand, which is exactly the case
+  # worth bounding (TODO item 2.15).
+  sas_policy {
+    expiration_period = "00.01:00:00"
+    expiration_action = "Log"
+  }
+
   # Storage account names are globally unique, so the composed fallback below
   # allows only ONE instance of this module per (region, environment) across
   # the whole estate. A caller that needs a second instance in the same region

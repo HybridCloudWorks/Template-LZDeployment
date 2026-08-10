@@ -530,10 +530,19 @@ function Invoke-LzValidate {
 
         # ── V08 security-scan ────────────────────────────────────────────────
         $gateStarted = Get-Date
+        # PINNED TO CHECKOV (TODO item 2.15). This used to take the first of
+        # checkov/tfsec/trivy found on PATH, which made the gate's verdict
+        # depend on what the runner happened to have installed: the 2026-08-06
+        # strict run used tfsec and recorded ONE low finding, while checkov on
+        # the same corpus reports forty. A gate whose answer changes with the
+        # toolbox is not a gate. tfsec is also archived upstream, folded into
+        # Trivy, so checkov is the one with a future.
+        #
+        # Accepted findings are suppressed at the resource with
+        # `#checkov:skip=<id>:<reason>` so the exception sits next to the code it
+        # excuses rather than in a config file nobody opens.
         $scanners = @(
             [pscustomobject]@{ Name = 'checkov'; Arguments = @('-d', $terraformRoot, '--quiet', '--compact') }
-            [pscustomobject]@{ Name = 'tfsec'; Arguments = @($terraformRoot, '--no-color') }
-            [pscustomobject]@{ Name = 'trivy'; Arguments = @('config', '--exit-code', '1', $terraformRoot) }
         )
         $scanner = @($scanners | Where-Object { Get-Command $_.Name -ErrorAction SilentlyContinue }) | Select-Object -First 1
         if ($SkipSecurityScan) {

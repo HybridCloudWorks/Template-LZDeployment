@@ -21,6 +21,13 @@ resource "azurerm_log_analytics_workspace" "alz" {
 
 # Automation Account - For operational management and runbooks
 resource "azurerm_automation_account" "alz" {
+  #checkov:skip=CKV2_AZURE_24:Disabling public network access here without a private endpoint or hybrid worker leaves an automation account nothing can reach, so it would trade a checkov finding for a broken control plane. The private-endpoint groundwork exists (TODO 2.11/2.14) but is not wired to this account. Follow-up, not a silent flip. TODO item 2.15.
+  # CKV2_AZURE_36. Runbooks authenticate as this identity rather than as a
+  # stored credential (TODO item 2.15).
+  identity {
+    type = "SystemAssigned"
+  }
+
   name                = "aa-${var.org_prefix}-${var.region_code}"
   location            = azurerm_resource_group.management.location
   resource_group_name = azurerm_resource_group.management.name
