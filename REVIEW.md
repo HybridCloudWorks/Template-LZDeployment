@@ -273,8 +273,12 @@ rendered and created with `for_each`, an empty list means the blob zone alone
 (the "CAF default set" both the schema and the wizard promised never existed
 and the wording was corrected), and `centralizedInHub = false` is refused by
 render guard G23 and by the wizard rather than collected and ignored. Still
-unrendered from that section of the wizard:
-`connectivity.privateEndpoints.enabled` and `denyPublicNetworkAccessPolicy`.
+**2.14** — `connectivity.privateEndpoints`, the last unrendered pair in that
+section — **shipped 2026-08-10**: `enabled` ANDs into the workload layers'
+private endpoint, and `denyPublicNetworkAccessPolicy` assigns a custom
+storage/key-vault initiative over Landing Zones with the **Audit** effect (a
+Deny would fail the first apply on the estate's own storage accounts, and the
+wizard label was reworded to match).
 **2.13** — guard `G22` covering two unrelated conditions, found by the
 duplicate-ID check 2.12 added — **shipped 2026-08-10**: the missing-subscription
 case is now `G24`, `G15` gained the README row it never had, and §15g now fails

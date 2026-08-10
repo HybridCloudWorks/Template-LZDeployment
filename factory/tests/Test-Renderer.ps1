@@ -161,8 +161,14 @@ $d = Test-LzSchemaDrift -SchemaPath "$repo/factory/schema/lz-config.schema.json"
                         -TemplateRoot "$repo/factory/templates"
 ok 'corpus is currently in sync'  ($d.InSync) (($d.Findings | ForEach-Object { $_.Detail }) -join ' | ')
 
-$vars = Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/live/global/variables.tf"
-ok 'parses all variables'         (@($vars).Count -eq 8) @($vars).Count
+$globalVarFile = "$repo/factory/templates/terraform/live/global/variables.tf"
+$vars = Get-LzTerraformVariables -Path $globalVarFile
+# Compared against an INDEPENDENT count rather than a literal. The point of
+# this assertion is that the HCL parser does not silently drop a declaration;
+# a hardcoded number tested that only until the next variable was added, and
+# then failed for a reason that had nothing to do with the parser.
+$declaredCount = @(Select-String -Path $globalVarFile -Pattern '^variable\s+"' ).Count
+ok 'parses all variables'         (@($vars).Count -eq $declaredCount) "$(@($vars).Count) parsed vs $declaredCount declared"
 ok 'detects HasDefault'           ((@($vars | Where-Object { $_.Name -eq 'org_prefix' })[0].HasDefault) -eq $false)
 ok 'extracts validation regex'    ((@($vars | Where-Object { $_.Name -eq 'org_prefix' })[0].ValidationRegex) -eq '^[a-z0-9]{2,10}$')
 
@@ -847,6 +853,47 @@ ok 'nothing written when blocked'   (-not (Test-Path (Join-Path $dnsOut 'README.
 # made it — an empty list means the blob zone, not a derived CAF set.
 ok 'schema drops the CAF promise'   ($schemaZones.description -notmatch 'use the CAF default set') $schemaZones.description
 ok 'schema states what blank does'  ($schemaZones.description -match 'privatelink\.blob\.core\.windows\.net alone')
+
+Write-Host "`n== 15h. connectivity.privateEndpoints is consumed at both ends (TODO 2.14) ==" -ForegroundColor Cyan
+# Two answers the wizard has collected since the factory shipped with nothing
+# reading them. Same shape of gap as item 2.12, different fields.
+
+# (a) enabled -> the flow-log private endpoint in BOTH workload layers.
+foreach ($wl in @('workloads-prod', 'workloads-nonprod')) {
+    $wlMain = if ($wl -eq 'workloads-prod') { "$repo/terraform/live/$wl/main.tf" } else { $null }
+    $wlTmpl = "$repo/factory/templates/terraform/live/$wl/main.tf.tmpl"
+    foreach ($f in @($wlMain, $wlTmpl | Where-Object { $_ })) {
+        if (-not (Test-Path $f)) { continue }
+        $src = Get-Content $f -Raw
+        # The endpoint requires BOTH the zone and the client's answer. An OR,
+        # or dropping either side, would silently restore the old behaviour.
+        ok "$(Split-Path $f -Leaf) ANDs the answer" ($src -match 'blob_private_dns_zone_id\s*!=\s*""\s*&&\s*var\.enable_private_endpoints')
+    }
+    $wlVars = Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/live/$wl/variables.tf"
+    ok "$wl declares the gate"      (@($wlVars | Where-Object { $_.Name -eq 'enable_private_endpoints' }).Count -eq 1)
+    ok "$wl gate maps to the answer" ($vmap.layers.$wl.variables.enable_private_endpoints -eq 'connectivity.privateEndpoints.enabled')
+}
+
+# (b) denyPublicNetworkAccessPolicy -> a real policy assignment.
+$polSrc = Get-Content "$repo/factory/templates/terraform/modules/policy-baseline/policy-public-network-access.tf" -Raw
+ok 'the initiative is assigned'     ($polSrc -match 'resource\s+"azurerm_management_group_policy_assignment"\s+"public_network_access"')
+ok 'the assignment is gated'        ($polSrc -match '(?s)"azurerm_management_group_policy_assignment"\s+"public_network_access"\s*\{[^}]*count\s*=\s*var\.assign_public_network_access_policy')
+# Scope is the load-bearing part: the platform MG holds the state storage
+# account, which cannot be private-endpoint-only during bootstrap.
+ok 'scoped to landing zones'        ($polSrc -match 'management_group_id\s*=\s*var\.landingzones_mg_id')
+ok 'never scoped to root/platform'  ($polSrc -notmatch 'management_group_id\s*=\s*var\.(root|platform)_mg_id')
+ok 'policy maps to the answer'      ($vmap.layers.global.variables.assign_public_network_access_policy -eq 'connectivity.privateEndpoints.denyPublicNetworkAccessPolicy')
+
+# The effect ships as Audit. A Deny would fail a generated repository's first
+# apply on the estate's OWN storage accounts, which keep public network access
+# enabled behind network rules.
+$polVars = Get-LzTerraformVariables -Path "$repo/factory/templates/terraform/modules/policy-baseline/variables.tf"
+ok 'effect variable exists'         (@($polVars | Where-Object { $_.Name -eq 'public_network_access_effect' }).Count -eq 1)
+$polVarSrc = Get-Content "$repo/factory/templates/terraform/modules/policy-baseline/variables.tf" -Raw
+ok 'effect defaults to Audit'       ($polVarSrc -match '(?s)variable\s+"public_network_access_effect"\s*\{.*?default\s*=\s*"Audit"')
+ok 'effect is bounded'              ($polVarSrc -match 'contains\(\["Audit", "Deny", "Disabled"\]')
+ok 'rendered effect is Audit'       ($vmap.layers.global.variables.public_network_access_effect -eq 'literal:Audit')
+ok 'assignment default is off'      ($polVarSrc -match '(?s)variable\s+"assign_public_network_access_policy"\s*\{.*?default\s*=\s*false')
 ok 'wizard drops the CAF promise'   ((Get-Content "$repo/site/index.html" -Raw) -notmatch 'CAF default zone set')
 
 Write-Host "`n== 16. Guard violation stops the render ==" -ForegroundColor Cyan

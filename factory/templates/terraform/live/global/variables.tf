@@ -52,3 +52,25 @@ variable "allowed_locations" {
   type        = list(string)
   default     = ["southcentralus", "northcentralus"]
 }
+
+variable "assign_public_network_access_policy" {
+  # Renders from connectivity.privateEndpoints.denyPublicNetworkAccessPolicy
+  # (TODO item 2.14), which the wizard has collected since the factory shipped
+  # with nothing consuming it.
+  description = "Assign the initiative auditing public network access on PaaS data services across the Landing Zones management group."
+  type        = bool
+  default     = false
+}
+
+variable "public_network_access_effect" {
+  # See the module variable of the same name for why the default is Audit and
+  # not Deny — the estate's own storage accounts would fail a Deny.
+  description = "Effect for the public-network-access initiative: Audit, Deny, or Disabled."
+  type        = string
+  default     = "Audit"
+
+  validation {
+    condition     = contains(["Audit", "Deny", "Disabled"], var.public_network_access_effect)
+    error_message = "public_network_access_effect must be one of: Audit, Deny, Disabled."
+  }
+}

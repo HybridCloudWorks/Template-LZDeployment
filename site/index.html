@@ -569,7 +569,8 @@
         <label class="check"><input type="checkbox" data-path="connectivity.privateDns.enabled" checked> Private DNS zones</label>
         <label class="check"><input type="checkbox" data-path="connectivity.privateDns.centralizedInHub" checked> Centralize Private DNS in the hub</label>
         <label class="check"><input type="checkbox" data-path="connectivity.privateEndpoints.enabled" checked> Private endpoints</label>
-        <label class="check"><input type="checkbox" data-path="connectivity.privateEndpoints.denyPublicNetworkAccessPolicy" checked> Assign policy denying public network access on PaaS</label>
+        <label class="check"><input type="checkbox" data-path="connectivity.privateEndpoints.denyPublicNetworkAccessPolicy" checked> Assign the public-network-access policy on PaaS data services</label>
+        <p class="hint">Assigns an initiative over your Landing Zones management group covering storage accounts and key vaults. It ships with the <strong>Audit</strong> effect, not Deny: the platform's own storage accounts (NSG flow logs, and Terraform state during setup) reach Azure over network rules rather than private endpoints, so a Deny would fail your first apply. Tighten <code>public_network_access_effect</code> to <code>Deny</code> once those are behind private endpoints.</p>
       </div>
       <div class="field" data-visible-when="connectivity.privateDns.enabled=true">
         <label for="cn_dnsZones">Private DNS zones</label>

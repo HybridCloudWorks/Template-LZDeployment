@@ -347,6 +347,59 @@ Bootstrap 85/0, CI 12/0, Discovery 60/0, Scaffold 16/0, Validate 18/0, Import
 environment now, so these are real runs rather than CI's. PSScriptAnalyzer and
 the terraform legs remain CI's.
 
+### 2.14 Render `connectivity.privateEndpoints` — CLOSED
+
+Closed 2026-08-10. Both fields under `connectivity.privateEndpoints` had been
+collected by the wizard since the factory shipped and read by nothing — the
+same shape of gap as item 2.12, different fields.
+
+**`enabled`** now renders to `enable_private_endpoints` in both workload layers
+and **ANDs** with the connectivity layer's private DNS zone. Default `true`
+matches the schema and the pre-checked box, so nothing changes for anyone who
+left it alone; the client who *unticked* it now gets the effect they asked for,
+which they previously did not. The spoke VNet links stay ungated — they cost
+nothing and make the zone usable the moment the answer changes. Contract 9 is
+extended with the two-yes rule.
+
+**`denyPublicNetworkAccessPolicy`** now assigns a custom initiative — storage
+accounts and key vaults — over the **Landing Zones** management group, gated on
+`assign_public_network_access_policy` (default off).
+
+Two judgment calls, both flagged and cheap to reverse:
+
+- **The effect is `Audit`, not `Deny`.** This estate creates storage accounts
+  that deliberately keep public network access enabled behind network rules:
+  the flow-log accounts, and the state account during setup. A `Deny` at
+  landing-zone scope would fail a generated repository's first apply on the
+  platform's own resources — the failure mode decision 0009 exists to prevent.
+  The wizard label and the schema description were reworded from "denying" to
+  match. **To reverse**: set `public_network_access_effect` to `Deny`, once the
+  estate's own accounts are behind private endpoints.
+- **Scope is Landing Zones, never root or platform.** The platform group holds
+  the Terraform state account, which cannot be private-endpoint-only during
+  bootstrap — the client's own machine creates the estate from it
+  ([decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)).
+  §15h asserts the scope positively *and* negatively.
+
+**Custom definitions rather than built-in GUIDs**, matching the module's
+existing `policy-tls-minimum.tf`: a custom definition carries its own
+parameterised effect instead of depending on a built-in whose allowed effects
+can change. The trade is coverage — storage and key vaults, not the ~20
+services the ALZ `Deny-Public-Endpoints` initiative reaches. Adding a service
+is one definition plus one reference in the set.
+
+**Validation**: `Test-Renderer.ps1` **429/0** (+17, §15h new), every other
+PowerShell suite green, node 87/0, and `terraform fmt -check` clean on both
+trees — all run locally. `terraform validate` could NOT run:
+`registry.terraform.io` is 403 through this environment's proxy, so the
+provider schema is unavailable. That leg and PSScriptAnalyzer remain CI's.
+§15h was negative-tested — widening the scope to root fails two assertions and
+dropping the AND fails another.
+
+**What remains**: the initiative covers two PaaS services, and `Audit` reports
+rather than blocks. Neither is a gap this item left open — both are the stated
+starting posture.
+
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 
 Both are `check "module_not_implemented"` scaffolds, render-blocked (guards

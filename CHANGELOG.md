@@ -7,6 +7,48 @@ entries below are history and are not rewritten.
 
 ---
 
+## `connectivity.privateEndpoints` is read at both ends (2026-08-10)
+
+[TODO.md](TODO.md) item 2.14. Both fields under `connectivity.privateEndpoints`
+had been collected by the wizard since the factory shipped and consumed by
+nothing — the same shape of gap as item 2.12, different fields. Contract 9 is
+extended rather than added to.
+
+**`enabled`** renders to `enable_private_endpoints` in both workload layers and
+**ANDs** with the connectivity layer's private DNS zone. Default `true` matches
+the schema and the pre-checked box, so nothing changes for anyone who left it
+alone — it gives the client who *unticked* it the effect they asked for and
+previously did not get. The spoke VNet links stay ungated: they cost nothing
+and make the zone usable the moment the answer changes.
+
+**`denyPublicNetworkAccessPolicy`** assigns a custom initiative — storage
+accounts and key vaults — over the **Landing Zones** management group, gated on
+`assign_public_network_access_policy` (default off).
+
+Two calls worth knowing about, both reversible:
+
+The effect ships as **`Audit`, not `Deny`**. This estate creates storage
+accounts that deliberately keep public network access enabled behind network
+rules — the flow-log accounts, and the state account during setup — so a `Deny`
+at landing-zone scope would fail a generated repository's first apply on the
+platform's own resources. That is the failure mode decision 0009 exists to
+prevent. The wizard label and the schema description were reworded from
+"denying" to match what actually ships; promising Deny and shipping Audit would
+have been the 2.12 CAF-promise mistake again. Tighten
+`public_network_access_effect` once the estate's own accounts are behind
+private endpoints.
+
+Scope is **Landing Zones, never root or platform**. The platform group holds
+the Terraform state account, which cannot be private-endpoint-only during
+bootstrap — the client's own machine creates the estate from it. §15h asserts
+that positively and negatively.
+
+The definitions are **custom rather than built-in GUIDs**, matching the
+module's existing `policy-tls-minimum.tf`. The trade is coverage: two PaaS
+services, not the ~20 the ALZ `Deny-Public-Endpoints` initiative reaches.
+
+---
+
 ## One guard ID, one condition — and a check that keeps it that way (2026-08-10)
 
 [TODO.md](TODO.md) item 2.13, the residual item 2.12 opened the same day.
