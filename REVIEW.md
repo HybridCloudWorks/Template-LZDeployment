@@ -250,10 +250,16 @@ collects no flow logs — flipping it is a later PR and, per the record, only
 after the spokes' first apply and after `wire_management_workspace` is
 enabled. The "plan shows the flow-log resources against the chosen NSGs only"
 criterion is therefore estate-gated and carried in [TODO.md](TODO.md) item 3.1
-(the operator holds that gate, §7 toolchain). Three engineering follow-ups are
-open as TODO items **2.8** (replication as a variable — residency), **2.9**
-(overridable storage-account name, then hub `fw_mgmt` coverage) and **2.10**
-(`privatelink.blob.core.windows.net` and re-enabling the private endpoint).
+(the operator holds that gate, §7 toolchain). Of the three engineering
+follow-ups opened as TODO items, **2.9** (overridable storage-account name,
+then hub `fw_mgmt` coverage) **shipped 2026-08-09** on an in-session operator
+nod: the storage account name is now overridable, `hub-network` exposes an
+`fw_mgmt` `nsg_ids` map, and `platform-connectivity` runs one instance per hub
+region as `stflowlogshub<region_code>prod` behind its own default-`false`
+`enable_nsg_flow_logs` — so the hub gate joins the workload gate in item 3.1's
+estate-gated flip. Still open: **2.8** (replication as a variable —
+residency) and **2.10** (`privatelink.blob.core.windows.net` and re-enabling
+the private endpoint).
 The rate refresh against `prices.azure.com` folds into item 5.2 / §17 below
 and needs an environment with egress.
 

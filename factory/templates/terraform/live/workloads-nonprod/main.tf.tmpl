@@ -71,12 +71,13 @@ locals {
   )
 
   # Every non-production spoke in a region shares ONE flow-log instance with
-  # environment = "nonprod", because the module's storage account name is
+  # environment = "nonprod", because this call takes the module's composed name
   # stflowlogs${region_code}${environment} and storage account names are
-  # globally unique — one instance per (region, environment) is the estate-wide
-  # ceiling. The map keys are prefixed per spoke: the module uses the key in
-  # the flow-log resource name, which must stay unique within the region's
-  # Network Watcher, and three spokes each contribute an "app" NSG.
+  # globally unique — a second instance in that (region, environment) would
+  # have to supply storage_account_name explicitly, as the connectivity layer's
+  # hub instances do. The map keys are prefixed per spoke: the module uses the
+  # key in the flow-log resource name, which must stay unique within the
+  # region's Network Watcher, and three spokes each contribute an "app" NSG.
   nonprod_nsg_ids_primary = {
 #{{IF environments.application contains 'dev'}}
     "dev-app"  = module.spoke_dev_primary.nsg_ids.app

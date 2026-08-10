@@ -7,7 +7,8 @@ check — and usually change — the other sides, or dispatch the change through
 `alz-orchestrator` so no side is edited in isolation.
 
 All entries verified against the repo on 2026-08-06; contract #4 corrected and
-contract #8 added 2026-08-09 (decision 0009).
+contract #8 added 2026-08-09 (decision 0009); contract #8a revised the same day
+when the storage-account name became overridable (TODO item 2.9).
 
 ---
 
@@ -165,30 +166,49 @@ the schema, and the schema stricter than Terraform — never the reverse. A valu
 the wizard accepts must be accepted by the schema and by Terraform.
 `Test-LzSchemaDrift` blocks on a violation and prints a counterexample.
 
-## 8. One `nsg-flow-logs` instance per `(region, environment)`, and the gate renders `false`
+## 8. `nsg-flow-logs` storage names must be distinct, and the gate renders `false`
 
 Two invariants that nothing in the code can enforce, so they live here.
 
-**8a — instance ceiling.** `terraform/modules/nsg-flow-logs/main.tf` composes
-the flow-log storage account name from the region code and environment with no
-override. Storage account names are globally unique, so **at most one instance
-of this module may exist per `(region, environment)` across the whole estate**.
-A second instance in the same region and environment plans clean and then
-fails at apply with a name collision — the quiet-failure shape this register
-exists for.
+**8a — distinct storage account names.** *Revised 2026-08-09 (TODO item 2.9,
+decision 0009 follow-up (b)); this entry previously read "at most one instance
+per `(region, environment)`", which was the pre-override ceiling.*
 
-Participants: the module's naming in both trees; every caller that decides
-*how many* instances to create — `terraform/live/workloads-prod/main.tf`,
-`factory/templates/terraform/live/workloads-{prod,nonprod}/main.tf.tmpl` —
-and any future connectivity-hosted call.
+`terraform/modules/nsg-flow-logs/main.tf` names the flow-log storage account
+`coalesce(var.storage_account_name, local.default_storage_account_name)`, where
+that local composes `"stflowlogs${var.region_code}${var.environment}"`.
+Storage account names are globally unique, so the rule is: **every instance of
+this module in the estate must resolve to a distinct name, and any caller
+creating a second instance in a `(region, environment)` another instance
+already serves must pass `storage_account_name` explicitly.** Two instances
+left on the composed default in one `(region, environment)` plan clean and
+then fail at apply with a name collision — the quiet-failure shape this
+register exists for. The override is validated 3–24 lowercase alphanumerics,
+so a malformed one fails at plan rather than at apply.
 
-Consequences that are live today: `workloads-prod` creates exactly two
-instances, one per region; the three nonprod spokes in a region share one
-instance because they share `environment = "nonprod"`; and the hub's
-`fw_mgmt` NSG is **unlogged**, because covering it needs a connectivity
-instance in the same region and environment as the prod one. Making the name
-overridable is the prerequisite for lifting any of this
-([TODO.md](../TODO.md) item 2.9).
+Participants: the module's naming and its `storage_account_name` variable in
+both trees; every caller that decides *how many* instances to create and under
+*what names* — `terraform/live/workloads-prod/main.tf`,
+`terraform/live/platform-connectivity/main.tf`, and their corpus twins
+`factory/templates/terraform/live/workloads-{prod,nonprod}/main.tf.tmpl` and
+`factory/templates/terraform/live/platform-connectivity/main.tf.tmpl`;
+`factory/tests/Test-Renderer.ps1` §15e, which pins the fallback, the
+workload callers' *absence* of an override, the connectivity callers'
+overrides, and the distinctness of the resulting names.
+
+Consequences that are live today: `workloads-prod` creates two instances, one
+per region, both on the composed default (`stflowlogs<region_code>prod`); the
+three nonprod spokes in a region share one instance because they share
+`environment = "nonprod"`; and the hub's `fw_mgmt` NSG **is now covered** by
+one connectivity-hosted instance per hub region, named
+`stflowlogshub<region_code>prod` so it coexists with the workload instance in
+the same region and environment. Both sets are `count`-gated on a
+default-`false` `enable_nsg_flow_logs`, so nothing is collected until a PR
+flips a gate. The connectivity instances are additionally gated on
+`length(module.hub_*.nsg_ids) > 0`: `fw_mgmt` exists only for a
+`palo`/`fortinet` hub, and an `azfw` hub must not create a storage account
+with nothing to log. Adding a *third* instance to either of those regions
+means choosing another distinct name.
 
 **8b — the gate is a constant, not a wizard answer.**
 `factory/renderer/variable-map.json` maps `enable_nsg_flow_logs` to

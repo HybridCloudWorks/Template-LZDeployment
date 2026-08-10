@@ -27,11 +27,12 @@
 
     "platform-connectivity": {
       "variablesFile": "terraform/live/platform-connectivity/variables.tf",
-      "$comment": "management_ip_ranges is deliberately schema-less (contract #4): it is operator-supplied, required, and wildcard-rejecting, so it maps to literal: — the rendered tfvars carries a commented placeholder the operator must uncomment, and the generated plan workflow fails fast while it is unset. log_analytics_workspace_id stays unmapped (Info): platform-management owns the workspace and the count-gated wire_management_workspace remote-state read supplies it after that layer's first apply. The three state_* variables feed the azurerm form of that read, mirroring workloads-prod.",
+      "$comment": "management_ip_ranges is deliberately schema-less (contract #4): it is operator-supplied, required, and wildcard-rejecting, so it maps to literal: — the rendered tfvars carries a commented placeholder the operator must uncomment, and the generated plan workflow fails fast while it is unset. log_analytics_workspace_id stays unmapped (Info): platform-management owns the workspace and the count-gated wire_management_workspace remote-state read supplies it after that layer's first apply. The three state_* variables feed the azurerm form of that read, mirroring workloads-prod. enable_nsg_flow_logs maps to literal:false for the same reason it does in the workload layers (decision 0009 open question 3, follow-up (b)): the hub instances cover the fw_mgmt NSG, but the wizard's pre-checked security.nsgFlowLogs.enabled must not turn a volume-driven meter on for a client who never touched it, and the module's Network Watcher read through the default provider would make the first plan of a generated repository fail red. This layer takes no retention or Traffic Analytics variables — the module defaults govern the hub instances — so the two mapped wizard keys stay workload-layer-only.",
       "variables": {
         "connectivity_subscription_id": "azure.subscriptions.connectivity",
         "management_ip_ranges": "literal:operator-supplied",
         "wire_management_workspace": "literal:false",
+        "enable_nsg_flow_logs": "literal:false",
         "state_resource_group_name": "backend.azurerm.resourceGroupName",
         "state_storage_account_name": "backend.azurerm.storageAccountName",
         "state_container_name": "backend.azurerm.containerName",

@@ -173,10 +173,13 @@ module "spoke_prod_dr" {
 # management-baseline workspace via the connectivity layer's re-export (B1),
 # hosted in this workload layer (C2), behind a default-off flag.
 #
-# ONE INSTANCE PER REGION, never per spoke. The module names its storage
-# account stflowlogs${region_code}${environment} with no override, and storage
-# account names are globally unique — a second instance for the same
-# (region, environment) pair collides estate-wide, not just within this stack.
+# ONE INSTANCE PER REGION, never per spoke. Both calls take the module's
+# composed name, stflowlogs${region_code}${environment}, and storage account
+# names are globally unique — so any other instance in the same
+# (region, environment) must supply storage_account_name explicitly or it
+# collides estate-wide, not just within this stack. The connectivity layer's
+# hub instances do exactly that; do not add an override here, which would
+# rename storage accounts an applied estate already holds.
 #
 # The call lives here rather than in platform-connectivity because Network
 # Watcher is regional AND per-subscription and the module reads it through the

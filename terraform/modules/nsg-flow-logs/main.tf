@@ -3,7 +3,14 @@
 
 # Storage Account for Flow Logs
 resource "azurerm_storage_account" "flow_logs" {
-  name                     = "stflowlogs${var.region_code}${var.environment}"
+  # Storage account names are globally unique, so the composed fallback below
+  # allows only ONE instance of this module per (region, environment) across
+  # the whole estate. A caller that needs a second instance in the same region
+  # and environment — the connectivity layer's hub fw_mgmt coverage is the
+  # first — must supply storage_account_name explicitly (contract 8a). The
+  # fallback is unchanged from before the override existed, so every existing
+  # caller renders the same name it always did.
+  name                     = coalesce(var.storage_account_name, local.default_storage_account_name)
   resource_group_name      = var.resource_group_name
   location                 = var.location
   account_tier             = "Standard"
@@ -51,6 +58,14 @@ resource "azurerm_storage_account" "flow_logs" {
 }
 
 locals {
+  # The name this module has always composed, kept as the fallback so callers
+  # that supply no override are byte-identical to the pre-override module. It
+  # satisfies the same rule var.storage_account_name validates against —
+  # "stflowlogs" is 10 lowercase letters, region codes are 2–5 lowercase
+  # characters (schema $defs/regionCode) and environment names are short
+  # lowercase words, so the result stays inside 3–24 lowercase alphanumerics.
+  default_storage_account_name = "stflowlogs${var.region_code}${var.environment}"
+
   # Azure storage ip_rules accept public IPv4 addresses or CIDR ranges, with
   # /32 written as a bare address. The parser fails closed: an entry that does
   # not parse as an IPv4 CIDR is dropped, narrowing access instead of

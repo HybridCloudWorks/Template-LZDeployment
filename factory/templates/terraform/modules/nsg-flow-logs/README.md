@@ -47,12 +47,23 @@ has no flow logs.
 As of 2026-08-09 (decision 0009) `terraform/live/workloads-prod` instantiates
 this module **twice, once per region**, each `count`-gated on
 `var.enable_nsg_flow_logs` which **defaults to `false`**, and each fed from
-`spoke-network`'s `nsg_ids` map output rather than hand-maintained IDs. One
-instance per `(region, environment)` is a hard ceiling, not a style choice:
-the storage account name this module composes is globally unique but not
-unique per call, so a second instance in the same region and environment
-collides. The hub's `fw_mgmt` NSG is **not** covered — that needs an
-overridable storage-account name first.
+`spoke-network`'s `nsg_ids` map output rather than hand-maintained IDs.
+
+`terraform/live/platform-connectivity` adds one instance per hub region,
+covering the hub's `fw_mgmt` NSG (`hub-network`'s `nsg_ids` output), on the
+same default-off `enable_nsg_flow_logs` gate. Network Watcher is regional
+**and per-subscription**, which is why hub NSGs must be covered from the
+connectivity layer and spoke NSGs from the workload layers — neither call can
+reach the other's NSGs.
+
+**Names must be distinct.** Storage account names are globally unique but the
+composed default (`stflowlogs<region_code><environment>`) is not unique per
+call, so any caller creating a second instance in a region and environment
+already served must pass `storage_account_name`. The connectivity instances do
+exactly that (`stflowlogshub<region_code>prod`), which is what lets them
+coexist with `workloads-prod`'s `stflowlogs<region_code>prod` in the same
+region and environment. Two instances left on the default in one
+`(region, environment)` plan clean and then fail at apply on the name.
 
 ## Cost
 
@@ -390,6 +401,7 @@ AzureNetworkAnalytics_CL
 | `region_code` | Short region code (e.g., scus, ncus) | `string` | — | yes |
 | `environment` | Environment name (e.g., prod, dev) | `string` | — | yes |
 | `resource_group_name` | Resource group name for flow log resources | `string` | — | yes |
+| `storage_account_name` | Override for the flow-log storage account name. Null composes `stflowlogs<region_code><environment>`. Required when a second instance shares a region and environment with an existing one. | `string` | `null` | no |
 | `nsg_ids` | Map of NSG names to NSG resource IDs to enable flow logs on | `map(string)` | `{}` | no |
 | `log_analytics_workspace_id` | Log Analytics workspace ID (short format) | `string` | — | yes |
 | `log_analytics_workspace_resource_id` | Log Analytics workspace resource ID (full ARM format) | `string` | — | yes |

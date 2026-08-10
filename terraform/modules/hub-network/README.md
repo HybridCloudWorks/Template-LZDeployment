@@ -108,6 +108,7 @@ module "hub_primary" {
 | `firewall_threat_intel_mode` | Configured mode, or `Disabled` |
 | `firewall_idps_mode` | IDPS mode (Premium), or `Not Available` |
 | `firewall_diagnostics_enabled` | Whether threat-intel diagnostics are enabled |
+| `nsg_ids` | Map of hub NSG role (`fw_mgmt`) to NSG ID, for `nsg-flow-logs`. Empty map when no NVA firewall is deployed |
 
 ## Cost Estimate
 

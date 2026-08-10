@@ -7,6 +7,69 @@ entries below are history and are not rewritten.
 
 ---
 
+## Flow-log storage names are overridable, and the hub `fw_mgmt` NSG is covered (2026-08-09)
+
+Decision 0009 follow-up (b), [TODO.md](TODO.md) item 2.9, closed on an
+in-session operator nod 2026-08-09. No new decision record: the naming change
+implements a follow-up the ratified record already named, and the nod was
+needed only because it changes the naming contract of a module that now has
+live callers.
+
+`terraform/modules/nsg-flow-logs` takes a `storage_account_name` variable,
+defaulting to `null`. The resource name is
+`coalesce(var.storage_account_name, local.default_storage_account_name)`,
+where the local is the pre-existing `stflowlogs${region_code}${environment}`
+expression byte for byte — so `workloads-prod`'s two instances render exactly
+the names they rendered before, and an applied estate sees no rename. A
+`validation` block enforces Azure's storage-account rule (3–24 characters,
+lowercase letters and digits) on any supplied value, so a malformed override
+fails at plan rather than part-way through an apply; the composed fallback
+satisfies the same rule.
+
+`terraform/modules/hub-network` gained an `nsg_ids` output in the same map
+shape as `spoke-network`'s, keyed `fw_mgmt`, so a caller passes one value into
+`nsg-flow-logs`. The hub creates that NSG only for a `palo`/`fortinet`
+firewall, so for an `azfw` hub the output is an **empty map** — not null, and
+never an index into a zero-length resource.
+
+`terraform/live/platform-connectivity` (and its corpus twin) now runs one
+`nsg-flow-logs` instance per hub region, consuming that map and the
+`management_workspace` triple the layer already re-exports. Each passes an
+explicit `storage_account_name` of `stflowlogshub<region_code>prod`: Network
+Watcher is regional **and per-subscription**, so the hub NSG can only be
+covered from this layer, and `workloads-prod` already occupies
+`stflowlogs<region_code>prod` in the same two regions at the same environment
+— two instances on the composed default would plan clean and collide at
+apply. Both instances are `count`-gated on a new `enable_nsg_flow_logs`
+**defaulting to `false`**, the same shape and reasoning as the workload
+layers' flag, *and* on `length(module.hub_*.nsg_ids) > 0`, so an NVA-less hub
+does not create a storage account with nothing to log.
+`enable_private_endpoint` stays `false` as the same knowing posture reduction
+the workload calls carry (item 2.10 owns re-enabling it), and
+`enable_traffic_alerts` stays `false` because no action group reaches this
+layer. `factory/renderer/variable-map.json` maps the new gate `literal:false`,
+matching both the workload layers and this layer's own
+`wire_management_workspace`, and the rendered connectivity
+`terraform.auto.tfvars` echoes the client's recorded wizard answer beside the
+constant `false`. **Nothing is collected until a PR flips a gate.**
+
+Contract **8a** in [docs/CROSS-DOMAIN-CONTRACTS.md](docs/CROSS-DOMAIN-CONTRACTS.md)
+is rewritten accordingly: the estate-wide ceiling of one instance per
+`(region, environment)` is replaced by "names must be distinct, and a caller
+creating a second instance in a region and environment another instance
+already serves must supply `storage_account_name`". 8b is unchanged.
+
+The item's own criterion — two instances in one region and environment
+planning distinct storage accounts — is proved from configuration, since a
+real plan needs credentials: `factory/tests/Test-Renderer.ps1` §15e pins the
+module's fallback expression and validation, the workload callers' absence of
+an override, the connectivity callers' overrides in both trees and in the
+render, the NVA-less empty map, and the distinctness and legality of all four
+resulting names. Verified: `terraform validate` clean in
+`terraform/live/platform-connectivity` and `terraform/live/workloads-prod`,
+`terraform fmt -check -recursive` clean over both trees, 87/0 · 311/0 (was
+271/0; §15e adds 40 assertions) · 85/0 · 12/0, Factory CI 17/17.
+
 ## NSG flow logs wired into `workloads-prod` — decision 0009 ratified (2026-08-09)
 
 The operator ratified

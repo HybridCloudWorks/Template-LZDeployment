@@ -483,7 +483,13 @@ Nothing below is done. It is what ratification would authorise.
 - **Follow-ups** (only after ratification): (a) make
   `account_replication_type` a variable defaulting to `RAGZRS`, so residency
   becomes a knob rather than a module fork; (b) make the storage account name
-  overridable and then extend coverage to `fw_mgmt` (choice A4); (c) add
+  overridable and then extend coverage to `fw_mgmt` (choice A4) — **shipped
+  2026-08-09** (TODO item 2.9): `storage_account_name` defaults to `null` and
+  falls back to the unchanged composed name, `hub-network` exposes an
+  `nsg_ids` map keyed `fw_mgmt`, and `platform-connectivity` runs one instance
+  per hub region as `stflowlogshub<region_code>prod` behind its own
+  default-`false` `enable_nsg_flow_logs`; contract 8a is rewritten from an
+  instance ceiling to a distinct-names rule; (c) add
   `privatelink.blob.core.windows.net` and turn the private endpoint back on;
   (d) refresh the assumed rates against `prices.azure.com` from an
   environment with egress, and fold the result into REVIEW.md §17's periodic

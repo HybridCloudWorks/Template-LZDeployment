@@ -56,6 +56,19 @@ dr_nva_trust_ip = {{FACTORY:connectivity.firewall.nvaTrustIpDr}}
 deploy_bastion = {{FACTORY-BOOL:connectivity.bastion.enabled}}
 deploy_dns     = {{FACTORY-BOOL:connectivity.privateDns.enabled}}
 
+# NSG flow logs for the hub's firewall-management NSG. Your wizard answer for
+# "NSG flow logs" was {{FACTORY-BOOL:security.nsgFlowLogs.enabled}} — it is
+# recorded in lz-config.json, and this flag is still rendered false, exactly as
+# it is in the workload layers. That is deliberate, not a rendering bug: the
+# module reads NetworkWatcher_<region> in NetworkWatcherRG, which Azure creates
+# only once this subscription's first VNet exists, so an enabled-on-day-one
+# flow-log call would make your very first plan fail. Flip this to true in a PR
+# after the hubs' first apply and after wire_management_workspace above is on,
+# which supplies the Log Analytics workspace Traffic Analytics needs. It has an
+# effect only on a palo/fortinet hub — an Azure Firewall hub has no
+# firewall-management NSG to log.
+enable_nsg_flow_logs = false
+
 primary_availability_zones = {{FACTORY-LIST:connectivity.hubSpoke.availabilityZones}}
 #{{IF computed.hasDrRegion}}
 dr_availability_zones = {{FACTORY-LIST:connectivity.hubSpoke.availabilityZones}}
