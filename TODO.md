@@ -255,21 +255,61 @@ delegated subnets.
 same three endpoint arguments the workload callers do and pass the module's
 preconditions; no existing hub subnet's prefix changes.
 
-### 2.12 Render the wizard's `connectivity.privateDns.zones` list
+### 2.12 Render the wizard's `connectivity.privateDns.zones` list — CLOSED
 
-The wizard collects a **list** of private DNS zones — the field is pre-filled
-with `privatelink.blob.core.windows.net` and `privatelink.vaultcore.azure.net`
-— and also `connectivity.privateDns.centralizedInHub`. Item 2.10 consumes only
-`connectivity.privateDns.enabled`, and creates exactly one purpose-built zone.
-Everything else the client typed is recorded in `lz-config.json` and rendered
-nowhere, which is the "generator has answers it does not cover" shape REVIEW.md
-tracks.
-**Owner**: `frontend-experience-designer` (what the answer means) →
-`terraform-module-engineer` (`for_each` over the list).
-**Gate**: none technical. Worth deciding whether `centralizedInHub = false`
-should mean anything at all before building for it.
-**Validation**: a config listing two zones renders two zones and their links;
-the default single-zone case renders byte-identically to today.
+Closed 2026-08-10. No operator decision was needed for the list itself; the
+two questions the item flagged were answered as stated below and are cheap to
+overturn.
+
+Shipped, both trees at parity. `platform-connectivity` takes a
+`private_dns_zones` list, renders it from `connectivity.privateDns.zones`, and
+creates the zones with `for_each`, linking **every** zone to both hub VNets;
+the link name carries a slug of the zone because link names allow a narrower
+character set than zone names. `deploy_blob_private_dns_zone` was renamed
+`deploy_private_dns_zones` now that it gates a list, and `moved` blocks carry
+the `count` → `for_each` address change so a client who applied item 2.10 sees
+a move rather than a destroy/create. `blob_private_dns_zone_id` is now looked
+up **by name**: a client list that omits the blob zone yields an empty string
+and their flow-log endpoints stay off, instead of an index error at plan or an
+endpoint bound to the wrong zone. `private_dns_zone_ids` exports the whole map
+for future callers.
+
+**Answered — blank list.** An empty list means
+`privatelink.blob.core.windows.net` alone, which is what item 2.10 shipped.
+The schema description and the wizard hint both promised "the CAF default zone
+set for the services you enabled" and nothing implemented it; the wording was
+corrected in both places. Creating a set of zones a client never asked for —
+their box is pre-checked — is a worse way to make that promise true than
+saying what actually happens. Reversing this means adding a default set in one
+place, `local.private_dns_zones`.
+
+**Answered — `centralizedInHub`.** Contract 9 puts zone ownership in the
+connectivity layer, so `false` has no implementation. It is now **refused**
+rather than silently ignored: new render guard **G21** blocks it, and
+`site/app.js` rejects it in the wizard so the client sees it before export. An
+absent key reads as `true`, so older configurations still render. Building the
+decentralized path would contradict contract 9 and needs an ADR first.
+
+**Bounds (contract #7).** Zone names are validated in all three places, and
+the wizard regex, the schema `items.pattern` and the Terraform validation are
+the *same expression*, so none is looser than the one to its right. The schema
+also gained `uniqueItems` and `maxLength: 253`; Terraform rejects duplicates
+for the same reason — two entries of one name are one zone and would collide
+on the link name.
+
+**Validation**: node 87/0. As with item 2.10, this environment has no `pwsh`
+and no `terraform`, so `Test-Renderer.ps1` §15f (updated for the rename) and
+§15g (new), the PowerShell suites and the `fmt`/`validate` legs are CI's.
+§15g pins the three-way bound equality as an *ordering* rather than three
+separate regexes, G21's existence, severity, documentation and its
+default-true reading, a decentralized config failing the render with nothing
+written, and the absence of the CAF promise from both places that made it.
+
+**What remains**: the zones are still created only when
+`deploy_private_dns_zones` is on, and still produce no endpoint until
+`enable_nsg_flow_logs` is on too. `connectivity.privateEndpoints.enabled` and
+`denyPublicNetworkAccessPolicy` remain collected and unrendered — a separate
+gap from this item, not opened here.
 
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 

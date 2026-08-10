@@ -664,7 +664,10 @@ foreach ($tree in $flowMods.Keys | Sort-Object) {
 foreach ($connFile in @('terraform/live/platform-connectivity/main.tf', 'factory/templates/terraform/live/platform-connectivity/main.tf.tmpl')) {
     $connSrc = Get-Content "$repo/$connFile" -Raw
     ok "$connFile creates the zone"      ($connSrc -match '(?s)resource\s+"azurerm_private_dns_zone"\s+"blob"\s*\{[^}]*name\s*=\s*"privatelink\.blob\.core\.windows\.net"')
-    ok "$connFile gates the zone"        ($connSrc -match 'count\s*=\s*var\.deploy_blob_private_dns_zone\s*\?\s*1\s*:\s*0')
+    ok "$connFile gates the zones"       ($connSrc -match 'var\.deploy_private_dns_zones\s*\r?\n?\s*\?\s*toset\(')
+    ok "$connFile zones are for_each"    ($connSrc -match '(?s)resource\s+"azurerm_private_dns_zone"\s+"blob"\s*\{[^}]*for_each\s*=\s*local\.private_dns_zones')
+    ok "$connFile blank means blob"      ($connSrc -match 'length\(var\.private_dns_zones\)\s*>\s*0\s*\?\s*var\.private_dns_zones\s*:\s*\[local\.blob_zone_name\]')
+    ok "$connFile moves count to key"    ($connSrc -match '(?s)moved\s*\{\s*from\s*=\s*azurerm_private_dns_zone\.blob\[0\]')
     ok "$connFile links the primary hub" ($connSrc -match '(?s)"azurerm_private_dns_zone_virtual_network_link"\s+"blob_hub_primary"\s*\{.*?virtual_network_id\s*=\s*module\.hub_primary\.hub_vnet_id')
     ok "$connFile links the DR hub"      ($connSrc -match '(?s)"azurerm_private_dns_zone_virtual_network_link"\s+"blob_hub_dr"\s*\{.*?virtual_network_id\s*=\s*module\.hub_dr\.hub_vnet_id')
     # azurerm 5.0 rejects the resource_group_name + private_dns_zone_name pair.
@@ -677,9 +680,15 @@ foreach ($connFile in @('terraform/live/platform-connectivity/main.tf', 'factory
 # endpoints on, so it is a PR decision rather than a default.
 foreach ($connVarFile in @('terraform/live/platform-connectivity/variables.tf', 'factory/templates/terraform/live/platform-connectivity/variables.tf')) {
     $zVars = @(Get-LzTerraformVariables -Path "$repo/$connVarFile")
-    $zGate = @($zVars | Where-Object { $_.Name -eq 'deploy_blob_private_dns_zone' })
+    $zGate = @($zVars | Where-Object { $_.Name -eq 'deploy_private_dns_zones' })
     ok "$connVarFile declares the gate"  ($zGate.Count -eq 1)
-    ok "$connVarFile gate defaults off"  ($zGate.Count -eq 1 -and $zGate[0].HasDefault -and (Get-Content "$repo/$connVarFile" -Raw) -match '(?s)variable\s+"deploy_blob_private_dns_zone"\s*\{.*?default\s*=\s*false')
+    ok "$connVarFile gate defaults off"  ($zGate.Count -eq 1 -and $zGate[0].HasDefault -and (Get-Content "$repo/$connVarFile" -Raw) -match '(?s)variable\s+"deploy_private_dns_zones"\s*\{.*?default\s*=\s*false')
+    # The list variable is the loosest of the three bounds (contract #7).
+    $zList = @($zVars | Where-Object { $_.Name -eq 'private_dns_zones' })
+    ok "$connVarFile declares the list"  ($zList.Count -eq 1)
+    ok "$connVarFile list defaults empty" ((Get-Content "$repo/$connVarFile" -Raw) -match '(?s)variable\s+"private_dns_zones"\s*\{.*?default\s*=\s*\[\]')
+    ok "$connVarFile validates zone names" ((Get-Content "$repo/$connVarFile" -Raw) -match 'a-z0-9\]\(\[a-z0-9-\]\*\[a-z0-9\]\)\?')
+    ok "$connVarFile rejects duplicates"  ((Get-Content "$repo/$connVarFile" -Raw) -match 'distinct\(var\.private_dns_zones\)')
 }
 
 # The zone ID is exported unconditionally — an empty string when the gate is
@@ -688,7 +697,9 @@ foreach ($connOutFile in @('terraform/live/platform-connectivity/outputs.tf', 'f
     $oSrc = Get-Content "$repo/$connOutFile" -Raw
     $oBlock = [regex]::Match($oSrc, '(?s)output\s+"blob_private_dns_zone_id"\s*\{(?<b>.*?)(?=\r?\noutput\s+"|\z)')
     ok "$connOutFile exports the zone ID" $oBlock.Success
-    ok "$connOutFile empties when off"    ($oBlock.Groups['b'].Value -match 'var\.deploy_blob_private_dns_zone\s*\?\s*azurerm_private_dns_zone\.blob\[0\]\.id\s*:\s*""')
+    # Looked up BY NAME: a client list that omits the blob zone must yield an
+    # empty string, not an index error and not the wrong zone.
+    ok "$connOutFile looks the zone up by name" ($oBlock.Groups['b'].Value -match 'try\(azurerm_private_dns_zone\.blob\[[^\]]*\]\.id,\s*""\)')
     ok "$connOutFile export is ungated"   ($oBlock.Groups['b'].Value -notmatch 'count')
 }
 
@@ -735,9 +746,11 @@ foreach ($hubOutFile in @('terraform/modules/hub-network/outputs.tf', 'factory/t
 
 # The renderer honours the client's Private DNS answer rather than a constant,
 # and the rendered tfvars says what it does and does not turn on.
-ok 'gate maps to the wizard answer'  ($vmap.layers.'platform-connectivity'.variables.deploy_blob_private_dns_zone -eq 'connectivity.privateDns.enabled') $vmap.layers.'platform-connectivity'.variables.deploy_blob_private_dns_zone
+ok 'gate maps to the wizard answer'  ($vmap.layers.'platform-connectivity'.variables.deploy_private_dns_zones -eq 'connectivity.privateDns.enabled') $vmap.layers.'platform-connectivity'.variables.deploy_private_dns_zones
+ok 'zone list maps to the answer'    ($vmap.layers.'platform-connectivity'.variables.private_dns_zones -eq 'connectivity.privateDns.zones') $vmap.layers.'platform-connectivity'.variables.private_dns_zones
 $expectedZoneGate = if ($cfg.connectivity.privateDns.enabled) { 'true' } else { 'false' }
-ok 'gate renders the answer'         ($connTfvars -match "(?m)^deploy_blob_private_dns_zone\s*=\s*$expectedZoneGate\s*$") $expectedZoneGate
+ok 'gate renders the answer'         ($connTfvars -match "(?m)^deploy_private_dns_zones\s*=\s*$expectedZoneGate\s*$") $expectedZoneGate
+ok 'zone list renders'               ($connTfvars -match '(?m)^private_dns_zones\s*=\s*\[')
 ok 'tfvars says endpoints stay off'  ($connTfvars -match 'gated there on')
 
 # The endpoint path must remain inert in a rendered repository: the zone may be
@@ -745,6 +758,59 @@ ok 'tfvars says endpoints stay off'  ($connTfvars -match 'gated there on')
 # false, so nothing per-gigabyte appears from a first apply.
 $renderedProd = Get-Content (Join-Path $out 'terraform/live/workloads-prod/terraform.auto.tfvars') -Raw
 ok 'rendered prod flow gate is off'  ($renderedProd -match '(?m)^enable_nsg_flow_logs\s*=\s*false\s*$')
+
+Write-Host "`n== 15g. The client's private DNS zone list is what gets created (TODO 2.12) ==" -ForegroundColor Cyan
+# The wizard has always collected a LIST of zones and a centralizedInHub flag.
+# Item 2.10 consumed neither: it created one hardcoded blob zone. Both halves
+# of that gap are closed here — the list is rendered, and the flag that has no
+# implementation is refused rather than silently ignored.
+
+# Contract #7 ordering, checked as an ordering rather than three separate
+# regexes: every zone the WIZARD would accept must be accepted by the SCHEMA,
+# and every zone the schema accepts must be accepted by TERRAFORM.
+$zoneSchema = Get-Content "$repo/factory/schema/lz-config.schema.json" -Raw | ConvertFrom-Json -Depth 30
+$schemaZones = $zoneSchema.properties.connectivity.properties.privateDns.properties.zones
+ok 'schema constrains zone items'   ($null -ne $schemaZones.items.pattern) $schemaZones.items.pattern
+ok 'schema caps zone length'        ($schemaZones.items.maxLength -eq 253) $schemaZones.items.maxLength
+ok 'schema rejects duplicates'      ($schemaZones.uniqueItems -eq $true)
+$appJs = Get-Content "$repo/site/app.js" -Raw
+ok 'wizard carries a zone regex'    ($appJs -match 'dnsZone:\s*/')
+ok 'wizard validates the list'      ($appJs -match 'RE\.dnsZone\.test\(z\)')
+# The three patterns must be the same expression, which is the only way to be
+# sure none of the three is looser than the one to its right.
+$tfPattern = ([regex]::Match((Get-Content "$repo/terraform/live/platform-connectivity/variables.tf" -Raw), 'regex\("(?<p>\^\[a-z0-9\][^"]*)"')).Groups['p'].Value
+$jsPattern = ([regex]::Match($appJs, 'dnsZone:\s*/(?<p>\^\[a-z0-9\][^/]*)/')).Groups['p'].Value
+$normalize = { param($x) $x -replace '\\\\', '\' }
+ok 'terraform pattern found'        ($tfPattern -ne '') $tfPattern
+ok 'wizard pattern matches schema'  ($jsPattern -eq (& $normalize $schemaZones.items.pattern)) "$jsPattern vs $($schemaZones.items.pattern)"
+ok 'schema pattern matches tf'      ((& $normalize $schemaZones.items.pattern) -eq (& $normalize $tfPattern)) "$($schemaZones.items.pattern) vs $tfPattern"
+
+# centralizedInHub = false has no implementation (contract 9), so it must be
+# refused at BOTH ends rather than collected and dropped.
+ok 'wizard refuses decentralized'   ($appJs -match 'centralizedInHub === false')
+$guardSrc = Get-Content "$repo/factory/renderer/public/Test-LzRenderGuards.ps1" -Raw
+ok 'a guard refuses decentralized'  ($guardSrc -match "Id 'G21'")
+ok 'the guard blocks, not warns'    ($guardSrc -notmatch "(?s)Id 'G21'.*?-Severity\s+'Warn'")
+ok 'G21 is documented'              ((Get-Content "$repo/factory/renderer/README.md" -Raw) -match '\|\s*G21\s*\|')
+# An absent key must read as the centralized answer, or every config written
+# before this field existed would suddenly fail to render.
+ok 'G21 defaults to centralized'    ($guardSrc -match "centralizedInHub' -Default \`$true")
+
+# A config that unticks it renders nothing at all.
+$dnsCfgPath = Join-Path $PSScriptRoot '.out/decentralized-dns-config.json'
+$dnsBad = Clone $cfg
+$dnsBad.connectivity.privateDns.enabled = $true
+$dnsBad.connectivity.privateDns.centralizedInHub = $false
+$dnsBad | ConvertTo-Json -Depth 30 | Set-Content $dnsCfgPath -Encoding utf8
+$dnsOut = Join-Path $PSScriptRoot '.out/render-dns-out'
+if (Test-Path $dnsOut) { Remove-Item $dnsOut -Recurse -Force }
+ok 'decentralized config throws'    (throws { Invoke-LzRender -ConfigPath $dnsCfgPath -OutputDirectory $dnsOut -Quiet })
+ok 'nothing written when blocked'   (-not (Test-Path (Join-Path $dnsOut 'README.md')))
+
+# The promise that had nothing behind it must be gone from both places that
+# made it — an empty list means the blob zone, not a derived CAF set.
+ok 'schema drops the CAF promise'   ($schemaZones.description -notmatch 'CAF default set') $schemaZones.description
+ok 'wizard drops the CAF promise'   ((Get-Content "$repo/site/index.html" -Raw) -notmatch 'CAF default zone set')
 
 Write-Host "`n== 16. Guard violation stops the render ==" -ForegroundColor Cyan
 $badCfgPath = Join-Path $PSScriptRoot '.out/bad-config.json'

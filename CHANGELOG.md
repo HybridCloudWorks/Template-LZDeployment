@@ -7,6 +7,56 @@ entries below are history and are not rewritten.
 
 ---
 
+## The private DNS zones are the client's list, and an unimplementable answer is refused (2026-08-10)
+
+[TODO.md](TODO.md) item 2.12, closing the residual item 2.10 opened the same
+day. Contract 9 in
+[docs/CROSS-DOMAIN-CONTRACTS.md](docs/CROSS-DOMAIN-CONTRACTS.md) is revised
+rather than added to.
+
+The wizard has always collected a **list** of private DNS zones and a
+`centralizedInHub` flag. Item 2.10 consumed neither: it created one hardcoded
+`privatelink.blob.core.windows.net`. Both halves are closed here.
+
+`platform-connectivity` now takes a `private_dns_zones` list, rendered from
+`connectivity.privateDns.zones`, and creates the set with `for_each`, linking
+every zone to both hub VNets. The link name carries a slug of the zone rather
+than the zone itself, because link names allow a narrower character set and two
+zones differing only by dots would otherwise collide.
+`deploy_blob_private_dns_zone` is renamed `deploy_private_dns_zones` now that
+it gates a list, and `moved` blocks carry the `count` → `for_each` address
+change so anyone who applied item 2.10 sees a move rather than a
+destroy/create.
+
+`blob_private_dns_zone_id` is looked up **by name** instead of by position. A
+client whose list omits the blob zone gets an empty string, and their flow-log
+endpoints correctly stay off — rather than an index error at plan or an
+endpoint bound to whatever zone happened to be first.
+
+**An empty list means the blob zone alone.** The schema description and the
+wizard hint both promised "the CAF default zone set for the services you
+enabled"; nothing implemented it. The wording is corrected in both places
+rather than a set of zones the client never asked for being created — their box
+is pre-checked, so a default set would bill and clutter by default.
+
+**`centralizedInHub = false` is refused rather than ignored.** Contract 9 puts
+zone ownership in the connectivity layer, so `false` has no implementation
+behind it. New render guard **G21** blocks it, and `site/app.js` rejects it in
+the wizard so the client sees it before export. An absent key reads as `true`,
+so configurations written before the field existed still render.
+
+Zone names are now bounded in all three places contract #7 orders, using the
+**same expression** in each — `RE.dnsZone` in the wizard, `items.pattern` in
+the schema, and the `private_dns_zones` validation in Terraform — so none is
+looser than the one to its right. The schema also gained `uniqueItems` and
+`maxLength: 253`.
+
+Not claimed: `connectivity.privateEndpoints.enabled` and
+`denyPublicNetworkAccessPolicy` are still collected and rendered nowhere. That
+is a separate gap and no item was opened for it here.
+
+---
+
 ## The flow-log private endpoint is back on, behind a connectivity-owned blob DNS zone (2026-08-10)
 
 Decision 0009 follow-up (c), [TODO.md](TODO.md) item 2.10. The item's gate was
