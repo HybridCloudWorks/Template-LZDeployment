@@ -374,7 +374,11 @@ function Test-LzRenderGuards {
     # implementation behind it, so rendering it as if it were honoured would be
     # exactly the silent yes-means-no this guard chain exists to stop. Default
     # true: an absent key is the centralized answer (TODO item 2.12).
-    if ($Config.connectivity.privateDns.enabled -and
+    # BOTH reads go through Get-LzGuardConfigValue, not just the second:
+    # privateDns is not schema-required, and a direct $Config.connectivity.privateDns
+    # dereference throws under StrictMode on a sparse configuration, which would
+    # take the whole guard chain down instead of producing a violation.
+    if ((Get-LzGuardConfigValue -Object $Config -Path 'connectivity.privateDns.enabled' -Default $false) -and
         (Get-LzGuardConfigValue -Object $Config -Path 'connectivity.privateDns.centralizedInHub' -Default $true) -eq $false) {
         $v += New-LzGuardViolation -Id 'G23' `
             -Message 'connectivity.privateDns.centralizedInHub = false is not implemented: private DNS zones are owned by the connectivity layer (cross-domain contract 9).' `
