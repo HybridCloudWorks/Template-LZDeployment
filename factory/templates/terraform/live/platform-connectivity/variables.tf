@@ -111,6 +111,22 @@ variable "deploy_dns" {
   default     = true
 }
 
+variable "deploy_blob_private_dns_zone" {
+  # Default false, like every other gate decision 0009 introduced: the zone is
+  # cheap and cannot fail on a fresh subscription, but it is the switch that
+  # turns the workload layers' flow-log private endpoints ON (they derive
+  # enable_private_endpoint from whether this zone exists), and a posture
+  # change belongs in a PR rather than in a default. Flip it, apply this layer,
+  # then apply the workload layers — the spoke links and the endpoints follow
+  # from the exported zone ID with no second flag to remember.
+  #
+  # Separate from deploy_dns: that one creates DNS *resolver subnet
+  # placeholders* inside the hub VNets and creates no zone at all.
+  description = "Create the privatelink.blob.core.windows.net private DNS zone in the connectivity subscription and link it to both hub VNets. Enables the workload layers' flow-log private endpoints."
+  type        = bool
+  default     = false
+}
+
 variable "management_ip_ranges" {
   # Not exposed by the wizard: the schema deliberately has no key for operator
   # source ranges (contract #4), so the value cannot come from lz-config.json.

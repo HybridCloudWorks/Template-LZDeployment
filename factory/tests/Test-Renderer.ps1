@@ -636,6 +636,116 @@ ok 'connectivity gate renders false'  ($connTfvars -match '(?m)^enable_nsg_flow_
 ok 'connectivity gate is never true'  ($connTfvars -notmatch '(?m)^enable_nsg_flow_logs\s*=\s*true\s*$')
 ok 'connectivity names the unblock'   ($connTfvars -match 'Flip this to true in a PR')
 
+Write-Host "`n== 15f. Blob private DNS unblocks the flow-log endpoint (TODO 2.10) ==" -ForegroundColor Cyan
+# Decision 0009 constraint 4 turned enable_private_endpoint off everywhere,
+# because a private endpoint without a matching private DNS zone resolves to
+# nothing. Follow-up (c) creates the zone in the connectivity layer and lets
+# the workload layers derive the endpoint from it.
+#
+# Like 15e, no plan can prove this without credentials, so it is proved from
+# configuration: the module refuses a half-configured endpoint, the zone and
+# its hub links are gated on one variable, that variable is exported, and each
+# workload caller links its spoke and derives all three endpoint arguments from
+# the exported value.
+
+# The module must fail at PLAN, not at apply, when a caller enables the
+# endpoint without a subnet or a zone — enable_private_endpoint defaults to
+# true while both of those default to empty.
+foreach ($tree in $flowMods.Keys | Sort-Object) {
+    $mMain = Get-Content "$($flowMods[$tree])/main.tf" -Raw
+    $peBlock = [regex]::Match($mMain, '(?s)resource\s+"azurerm_private_endpoint"\s+"flow_logs_blob"\s*\{(?<b>.*?)\r?\n\}')
+    ok "$tree module has the endpoint"       $peBlock.Success
+    ok "$tree requires a subnet at plan"     ($peBlock.Groups['b'].Value -match 'condition\s*=\s*var\.private_endpoint_subnet_id\s*!=\s*""')
+    ok "$tree requires a zone at plan"       ($peBlock.Groups['b'].Value -match 'condition\s*=\s*length\(var\.private_dns_zone_ids\)\s*>\s*0')
+}
+
+# The zone and both hub links are gated on one connectivity variable, and the
+# zone name is the exact one Azure resolves blob privatelink records from.
+foreach ($connFile in @('terraform/live/platform-connectivity/main.tf', 'factory/templates/terraform/live/platform-connectivity/main.tf.tmpl')) {
+    $connSrc = Get-Content "$repo/$connFile" -Raw
+    ok "$connFile creates the zone"      ($connSrc -match '(?s)resource\s+"azurerm_private_dns_zone"\s+"blob"\s*\{[^}]*name\s*=\s*"privatelink\.blob\.core\.windows\.net"')
+    ok "$connFile gates the zone"        ($connSrc -match 'count\s*=\s*var\.deploy_blob_private_dns_zone\s*\?\s*1\s*:\s*0')
+    ok "$connFile links the primary hub" ($connSrc -match '(?s)"azurerm_private_dns_zone_virtual_network_link"\s+"blob_hub_primary"\s*\{.*?virtual_network_id\s*=\s*module\.hub_primary\.hub_vnet_id')
+    ok "$connFile links the DR hub"      ($connSrc -match '(?s)"azurerm_private_dns_zone_virtual_network_link"\s+"blob_hub_dr"\s*\{.*?virtual_network_id\s*=\s*module\.hub_dr\.hub_vnet_id')
+    # azurerm 5.0 rejects the resource_group_name + private_dns_zone_name pair.
+    ok "$connFile uses the 5.0 link arg" ($connSrc -notmatch '(?m)^\s*private_dns_zone_name\s*=')
+    # Only one link per zone may register, and none of these should.
+    ok "$connFile registers no VNet"     ($connSrc -notmatch 'registration_enabled\s*=\s*true')
+}
+
+# Default-off in both trees: the zone is the switch that turns the workload
+# endpoints on, so it is a PR decision rather than a default.
+foreach ($connVarFile in @('terraform/live/platform-connectivity/variables.tf', 'factory/templates/terraform/live/platform-connectivity/variables.tf')) {
+    $zVars = @(Get-LzTerraformVariables -Path "$repo/$connVarFile")
+    $zGate = @($zVars | Where-Object { $_.Name -eq 'deploy_blob_private_dns_zone' })
+    ok "$connVarFile declares the gate"  ($zGate.Count -eq 1)
+    ok "$connVarFile gate defaults off"  ($zGate.Count -eq 1 -and $zGate[0].HasDefault -and (Get-Content "$repo/$connVarFile" -Raw) -match '(?s)variable\s+"deploy_blob_private_dns_zone"\s*\{.*?default\s*=\s*false')
+}
+
+# The zone ID is exported unconditionally — an empty string when the gate is
+# off — so the workload layers' remote-state read always finds the key.
+foreach ($connOutFile in @('terraform/live/platform-connectivity/outputs.tf', 'factory/templates/terraform/live/platform-connectivity/outputs.tf.tmpl')) {
+    $oSrc = Get-Content "$repo/$connOutFile" -Raw
+    $oBlock = [regex]::Match($oSrc, '(?s)output\s+"blob_private_dns_zone_id"\s*\{(?<b>.*?)(?=\r?\noutput\s+"|\z)')
+    ok "$connOutFile exports the zone ID" $oBlock.Success
+    ok "$connOutFile empties when off"    ($oBlock.Groups['b'].Value -match 'var\.deploy_blob_private_dns_zone\s*\?\s*azurerm_private_dns_zone\.blob\[0\]\.id\s*:\s*""')
+    ok "$connOutFile export is ungated"   ($oBlock.Groups['b'].Value -notmatch 'count')
+}
+
+# Each workload layer: one remote-state read, links through the HUB-scoped
+# provider (the zone is not in the workload subscription), and all three
+# endpoint arguments derived from that one value.
+$wlEndpointFiles = @(
+    'terraform/live/workloads-prod/main.tf',
+    'factory/templates/terraform/live/workloads-prod/main.tf.tmpl',
+    'factory/templates/terraform/live/workloads-nonprod/main.tf.tmpl'
+)
+foreach ($wlFile in $wlEndpointFiles) {
+    $wlSrc = Get-Content "$repo/$wlFile" -Raw
+    ok "$wlFile reads the zone ID"       ($wlSrc -match 'blob_private_dns_zone_id\s*=\s*try\(')
+    ok "$wlFile derives the enable flag" ($wlSrc -match 'blob_private_dns_enabled\s*=\s*local\.blob_private_dns_zone_id\s*!=\s*""')
+    $linkBlocks = @([regex]::Matches($wlSrc, '(?s)resource\s+"azurerm_private_dns_zone_virtual_network_link"\s+"blob_spoke[^"]*"\s*\{(?<b>.*?)\r?\n\}'))
+    ok "$wlFile links its spokes"        ($linkBlocks.Count -ge 1) $linkBlocks.Count
+    $viaHub = @($linkBlocks | Where-Object { $_.Groups['b'].Value -match '(?m)^\s*provider\s*=\s*azurerm\.hub\s*$' })
+    ok "$wlFile links via the hub alias" ($viaHub.Count -eq $linkBlocks.Count) "$($viaHub.Count)/$($linkBlocks.Count)"
+    $gated = @($linkBlocks | Where-Object { $_.Groups['b'].Value -match 'count\s*=\s*local\.blob_private_dns_enabled\s*\?\s*1\s*:\s*0' })
+    ok "$wlFile gates its links"         ($gated.Count -eq $linkBlocks.Count) "$($gated.Count)/$($linkBlocks.Count)"
+
+    # Every flow-log call must set all three endpoint arguments together, or
+    # the module's preconditions reject the plan.
+    $wlFlowCalls = @([regex]::Matches($wlSrc, '(?s)module\s+"nsg_flow_logs[^"]*"\s*\{(?<b>.*?)\r?\n\}'))
+    ok "$wlFile calls the flow module"   ($wlFlowCalls.Count -ge 1) $wlFlowCalls.Count
+    foreach ($call in $wlFlowCalls) {
+        $b = $call.Groups['b'].Value
+        $wired = ($b -match 'enable_private_endpoint\s*=\s*local\.blob_private_dns_enabled') -and
+                 ($b -match 'private_endpoint_subnet_id\s*=\s*\S+pe_subnet') -and
+                 ($b -match 'private_dns_zone_ids\s*=\s*local\.blob_private_dns_enabled\s*\?\s*\[local\.blob_private_dns_zone_id\]\s*:\s*\[\]')
+        ok "$wlFile wires all three args" $wired
+    }
+    # No caller may leave the old hardcoded false behind.
+    ok "$wlFile has no hardcoded false"  ($wlSrc -notmatch 'enable_private_endpoint\s*=\s*false')
+}
+
+# The hub instances stay endpoint-less, and for the NEW reason: hub-network
+# exposes no private-endpoint subnet. If that ever changes this assertion is
+# the reminder to revisit them.
+foreach ($hubOutFile in @('terraform/modules/hub-network/outputs.tf', 'factory/templates/terraform/modules/hub-network/outputs.tf')) {
+    ok "$hubOutFile has no PE subnet" ((Get-Content "$repo/$hubOutFile" -Raw) -notmatch 'pe_subnet_id')
+}
+
+# The renderer honours the client's Private DNS answer rather than a constant,
+# and the rendered tfvars says what it does and does not turn on.
+ok 'gate maps to the wizard answer'  ($vmap.layers.'platform-connectivity'.variables.deploy_blob_private_dns_zone -eq 'connectivity.privateDns.enabled') $vmap.layers.'platform-connectivity'.variables.deploy_blob_private_dns_zone
+$expectedZoneGate = if ($cfg.connectivity.privateDns.enabled) { 'true' } else { 'false' }
+ok 'gate renders the answer'         ($connTfvars -match "(?m)^deploy_blob_private_dns_zone\s*=\s*$expectedZoneGate\s*$") $expectedZoneGate
+ok 'tfvars says endpoints stay off'  ($connTfvars -match 'gated there on')
+
+# The endpoint path must remain inert in a rendered repository: the zone may be
+# on, but the flow-log gate that creates the endpoints is still a constant
+# false, so nothing per-gigabyte appears from a first apply.
+$renderedProd = Get-Content (Join-Path $out 'terraform/live/workloads-prod/terraform.auto.tfvars') -Raw
+ok 'rendered prod flow gate is off'  ($renderedProd -match '(?m)^enable_nsg_flow_logs\s*=\s*false\s*$')
+
 Write-Host "`n== 16. Guard violation stops the render ==" -ForegroundColor Cyan
 $badCfgPath = Join-Path $PSScriptRoot '.out/bad-config.json'
 $bad = Clone $cfg; $bad.connectivity.model = 'virtual-wan'
