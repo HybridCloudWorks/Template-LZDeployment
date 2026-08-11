@@ -148,3 +148,27 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "storage_account_replication_type" {
+  # TODO item 2.8, decision 0009 follow-up (a). This was hardcoded to RAGZRS,
+  # which asynchronously replicates every flow log to the Azure paired region
+  # and makes it READABLE there. For a US estate (scus <-> ncus) that is
+  # unremarkable. Under an EU/UK data boundary or a single-country sovereignty
+  # commitment it moves network metadata across the boundary, and there was no
+  # opt-out short of forking this module.
+  #
+  # The default is unchanged, so no existing plan moves. A residency-
+  # constrained estate sets LRS or ZRS and gets no paired-region copy; both are
+  # single-region and neither leaves the region the account is in.
+  #
+  # Note that the zone-redundant options (ZRS, GZRS, RAGZRS) require a region
+  # with availability zones. LRS is the safe floor everywhere.
+  description = "Replication for the flow-log storage account. LRS and ZRS keep data in one region; GRS/RAGRS/GZRS/RAGZRS replicate to the Azure paired region, which crosses a data-residency boundary."
+  type        = string
+  default     = "RAGZRS"
+
+  validation {
+    condition     = contains(["LRS", "ZRS", "GRS", "RAGRS", "GZRS", "RAGZRS"], var.storage_account_replication_type)
+    error_message = "storage_account_replication_type must be one of: LRS, ZRS, GRS, RAGRS, GZRS, RAGZRS."
+  }
+}

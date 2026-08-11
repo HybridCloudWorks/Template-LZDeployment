@@ -7,6 +7,28 @@ entries below are history and are not rewritten.
 
 ---
 
+## Flow-log storage replication is configurable, so residency is a choice (2026-08-10)
+
+[TODO.md](TODO.md) item 2.8 — decision 0009 follow-up (a), deferred at
+ratification because no engagement was under a data boundary. Its gate offered
+two ways out: such an engagement, **or** an operator election to make residency
+configurable ahead of one. This is the second.
+
+`account_replication_type` was hardcoded `RAGZRS`. Every flow log was
+asynchronously replicated to the Azure paired region and readable there, and
+the only opt-out was forking the module. It is now a validated variable on
+`nsg-flow-logs`, passed through by every layer that calls it — six call sites
+per tree.
+
+**The default is unchanged, so no existing plan moves.** An estate under an
+EU/UK data boundary or a single-country sovereignty commitment sets `LRS` or
+`ZRS` and no flow log leaves its region. The rendered tfvars carries the knob
+commented out with the reason beside it, so a client meets the decision without
+reading the module — which is the point, since the people who need this are
+exactly the ones who would not think to look.
+
+---
+
 ## AzureBastionSubnet carries Microsoft's prescribed NSG (2026-08-10)
 
 First of the six subnets [TODO.md](TODO.md) item 2.16 opened, and the one worth
@@ -18,11 +40,17 @@ explicit denies.
 
 Two things worth knowing rather than burying:
 
-The rules were written from Microsoft Learn's
-[bastion-nsg](https://learn.microsoft.com/azure/bastion/bastion-nsg) page and
-**could not be re-verified against it** — `learn.microsoft.com` is unreachable
-from the environment they were authored in. That page is the authority if the
-two ever disagree, and the module comment says so.
+The rules are **verified** against Microsoft's documented table. They were
+first written from the [bastion-nsg](https://learn.microsoft.com/azure/bastion/bastion-nsg)
+page without being able to re-read it — `learn.microsoft.com` is unreachable
+from this environment — and were then checked line by line against the same
+article's source in `MicrosoftDocs/azure-docs`, which *is* reachable. Every
+source, destination, port and protocol matches. One rule was renamed to the
+documented `AllowHttpOutbound`.
+
+That GitHub route is worth remembering: Microsoft's Azure documentation is open
+source, so "what does Azure require here" is answerable from this environment
+after all — which also closed item 2.17 the same day.
 
 The failure mode is **loud**. Azure validates this NSG when a Bastion *host* is
 deployed and fails the deployment outright if a required rule is missing. This

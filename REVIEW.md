@@ -456,3 +456,30 @@ were done. Neither blocked any deliverable.
 **Owner**: Platform Engineering
 **See also**: [TODO.md](TODO.md) (all action items, phased for handoff),
 [CHANGELOG.md](CHANGELOG.md) (completed work)
+
+---
+
+## Verified blockers (probed 2026-08-10, not inferred)
+
+Every remaining gated item was tested against its actual blocker rather than
+assumed, after several turned out to be reachable when finally checked
+(PowerShell, Terraform, tflint, checkov and shellcheck all installed in a
+sandbox that had been treated as lacking them; Microsoft's docs turned out to
+be readable from `MicrosoftDocs/azure-docs` on GitHub when
+`learn.microsoft.com` was not).
+
+| Blocker | Probe | Result |
+| --- | --- | --- |
+| Azure control plane | `GET management.azure.com` | `000` — blocked |
+| Azure retail pricing | `GET prices.azure.com/api/retail/prices` | `000` — blocked |
+| Microsoft Graph | `GET graph.microsoft.com` | `000` — blocked |
+| `az` CLI session | `az account show` | absent / unauthenticated |
+| `gh` CLI | `command -v gh` | absent |
+| Wiki publish | `git push --dry-run` to `.wiki.git` | **403** — repo not in the session's authorized set (readable, not writable) |
+| Microsoft Learn | `GET learn.microsoft.com/...` | `000` — blocked, **but** the same articles are readable from `MicrosoftDocs/azure-docs` on GitHub, which is how items 2.8 and 2.17 were settled |
+
+Consequently items 3.1, 3.2, 4.1–4.7, 5.1 and 5.2 are blocked on access this
+session does not have, and 2.4, 2.5, 2.6 and the five remaining subnets of 2.16
+are blocked on design or policy input rather than on effort. None of them is
+waiting on work that could be done here.
+

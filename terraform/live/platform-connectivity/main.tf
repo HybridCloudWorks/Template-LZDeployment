@@ -272,8 +272,9 @@ moved {
 # ─────────────────────────────────────────────────────────────────────────────
 
 module "nsg_flow_logs_hub_primary" {
-  source = "../../modules/nsg-flow-logs"
-  count  = var.enable_nsg_flow_logs && length(module.hub_primary.nsg_ids) > 0 ? 1 : 0
+  source                           = "../../modules/nsg-flow-logs"
+  storage_account_replication_type = var.flow_log_storage_replication_type
+  count                            = var.enable_nsg_flow_logs && length(module.hub_primary.nsg_ids) > 0 ? 1 : 0
 
   location             = var.primary_region
   region_code          = var.primary_region_code
@@ -311,8 +312,9 @@ module "nsg_flow_logs_hub_primary" {
 }
 
 module "nsg_flow_logs_hub_dr" {
-  source = "../../modules/nsg-flow-logs"
-  count  = var.enable_nsg_flow_logs && length(module.hub_dr.nsg_ids) > 0 ? 1 : 0
+  source                           = "../../modules/nsg-flow-logs"
+  storage_account_replication_type = var.flow_log_storage_replication_type
+  count                            = var.enable_nsg_flow_logs && length(module.hub_dr.nsg_ids) > 0 ? 1 : 0
 
   location             = var.dr_region
   region_code          = var.dr_region_code

@@ -411,6 +411,7 @@ AzureNetworkAnalytics_CL
 | `environment` | Environment name (e.g., prod, dev) | `string` | — | yes |
 | `resource_group_name` | Resource group name for flow log resources | `string` | — | yes |
 | `storage_account_name` | Override for the flow-log storage account name. Null composes `stflowlogs<region_code><environment>`. Required when a second instance shares a region and environment with an existing one. | `string` | `null` | no |
+| `storage_account_replication_type` | Replication for the flow-log storage account. LRS/ZRS stay in one region; GRS/RAGRS/GZRS/RAGZRS replicate to the Azure paired region. | `string` | `"RAGZRS"` | no |
 | `nsg_ids` | Map of NSG names to NSG resource IDs to enable flow logs on | `map(string)` | `{}` | no |
 | `log_analytics_workspace_id` | Log Analytics workspace ID (short format) | `string` | — | yes |
 | `log_analytics_workspace_resource_id` | Log Analytics workspace resource ID (full ARM format) | `string` | — | yes |
