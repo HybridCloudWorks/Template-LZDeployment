@@ -18,11 +18,17 @@ explicit denies.
 
 Two things worth knowing rather than burying:
 
-The rules were written from Microsoft Learn's
-[bastion-nsg](https://learn.microsoft.com/azure/bastion/bastion-nsg) page and
-**could not be re-verified against it** — `learn.microsoft.com` is unreachable
-from the environment they were authored in. That page is the authority if the
-two ever disagree, and the module comment says so.
+The rules are **verified** against Microsoft's documented table. They were
+first written from the [bastion-nsg](https://learn.microsoft.com/azure/bastion/bastion-nsg)
+page without being able to re-read it — `learn.microsoft.com` is unreachable
+from this environment — and were then checked line by line against the same
+article's source in `MicrosoftDocs/azure-docs`, which *is* reachable. Every
+source, destination, port and protocol matches. One rule was renamed to the
+documented `AllowHttpOutbound`.
+
+That GitHub route is worth remembering: Microsoft's Azure documentation is open
+source, so "what does Azure require here" is answerable from this environment
+after all — which also closed item 2.17 the same day.
 
 The failure mode is **loud**. Azure validates this NSG when a Bastion *host* is
 deployed and fails the deployment outright if a required rule is missing. This

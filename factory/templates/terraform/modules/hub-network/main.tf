@@ -181,10 +181,12 @@ resource "azurerm_subnet_network_security_group_association" "fw_mgmt" {
 # each one is on Microsoft's prescribed list.
 #
 # Source: Microsoft Learn, "Work with NSG access and Azure Bastion"
-# (https://learn.microsoft.com/azure/bastion/bastion-nsg). The rules were
-# written from that documented set; the sandbox this was authored in could not
-# reach learn.microsoft.com to re-verify them line by line, so treat the URL as
-# the authority if the two ever disagree.
+# (https://learn.microsoft.com/azure/bastion/bastion-nsg). VERIFIED against the
+# documented rule table on 2026-08-10 — every source, destination, port and
+# protocol below matches. learn.microsoft.com is unreachable from the authoring
+# sandbox, so the check was made against the same article's source in
+# MicrosoftDocs/azure-docs (articles/bastion/bastion-nsg.md), which is
+# reachable and is what that page is built from.
 #
 # What each rule is for:
 #   inbound  443 from Internet        — operators reaching the Bastion portal
@@ -194,7 +196,8 @@ resource "azurerm_subnet_network_security_group_association" "fw_mgmt" {
 #   outbound 22/3389 to VirtualNetwork — the actual RDP/SSH sessions
 #   outbound 443 to AzureCloud        — dependencies (diagnostics, session mgmt)
 #   outbound 8080/5701 within the VNet — the other half of instance comms
-#   outbound 80 to Internet           — session-information certificate checks
+#   outbound 80 to Internet           — session validation, Shareable Link and
+#                                       certificate validation
 #
 # The explicit deny rules at 4096 mirror the documented example. They are
 # functionally redundant — Azure's default rules already deny at 65500, after
@@ -304,7 +307,7 @@ resource "azurerm_network_security_group" "bastion" {
   }
 
   security_rule {
-    name                       = "AllowGetSessionInformation"
+    name                       = "AllowHttpOutbound"
     priority                   = 130
     direction                  = "Outbound"
     access                     = "Allow"

@@ -541,39 +541,62 @@ change flow-log scope, which decision 0009 set deliberately. That is a
 decision-0009 change, not an NSG change.
 
 **Owner**: `azure-platform-architect` (design) → `terraform-module-engineer`.
-**Gate for the remaining five**: a decision on scope. The DNS-resolver pair is
-straightforward; `fw_trust`/`fw_untrust` need the NVA vendor's guidance and are
-firewall-type conditional; `private_endpoints` needs to know what the endpoints
-in it will be.
+**The remaining five are gated on design input, and that was checked rather
+than assumed (2026-08-10).** Bastion was doable unattended because Microsoft
+prescribes an exact rule table. The others have no equivalent:
+
+- **`dns_inbound` / `dns_outbound`** — Microsoft publishes **no NSG rule set**
+  for DNS Private Resolver subnets. Three articles were read from
+  `MicrosoftDocs/azure-docs`
+  (`dns-private-resolver-overview.md`,
+  `dns-private-resolver-get-started-portal.md`,
+  `private-resolver-endpoints-rulesets.md`) and none mentions network security
+  groups at all; the documented subnet restrictions cover size, delegation and
+  IPv6, not filtering. Correct rules depend on **which client subnets and
+  on-premises ranges will query the resolver** — an input this repository does
+  not hold.
+- **`fw_trust` / `fw_untrust`** — the authority is the NVA vendor (Palo Alto or
+  Fortinet), not Microsoft, and the rules differ per appliance. Also
+  firewall-type conditional, so they only exist on a `palo`/`fortinet` hub.
+- **`private_endpoints`** — an NSG here would genuinely apply (the module sets
+  `private_endpoint_network_policies = "Enabled"`), but the rules depend on
+  which spokes must reach which endpoint. Today the only endpoint is the
+  flow-log storage one.
+
+So this is not "not done yet" — it is **waiting on the client's DNS design and
+firewall choice**. Writing rules without them would be guessing at a security
+control, which is how a subnet ends up with an NSG that looks protective and
+either blocks nothing or blocks the wrong thing.
 **Validation**: as each subnet gains an NSG, its `CKV2_AZURE_31` suppression is
 either removed or rewritten to the count-indexed-association reason; all three
 fixtures strict-pass; a Bastion host actually connects — which this environment
 cannot prove, so that waits on a real estate.
 
-### 2.17 Shared-key authorization stays enabled on flow-log storage
+### 2.17 Shared-key authorization stays enabled on flow-log storage — CLOSED
 
-`terraform/modules/nsg-flow-logs/main.tf` does not set
-`shared_access_key_enabled`, so it defaults to `true` — unlike the Terraform
-state account, which disables it deliberately (contract #3). `CKV2_AZURE_40`
-flags it, and item 2.15 suppressed it rather than flipping it.
+Answered 2026-08-10, the same day it was opened, and the answer is **do not
+disable it**.
 
-**The reason for not flipping it is ignorance, not judgement**, which is worth
-stating plainly: whether Azure Network Watcher can write NSG flow logs to a
-storage account with shared-key authorization disabled could not be confirmed.
-A Microsoft Learn search returned nothing conclusive, and this environment has
-no Azure access to test against. Turning it off on a guess risks flow logs that
-plan clean, apply clean, and silently deliver nothing — the exact failure shape
-decision 0009 was written to avoid.
+Microsoft's NSG flow-log documentation settles it under *Storage account*
+requirements: **"Self-managed key rotation: If you change or rotate the access
+keys to your storage account, NSG flow logs stop working. To fix this problem,
+you must disable and then re-enable NSG flow logs."** Flow logs authenticate to
+the account with its **access keys**, so `shared_access_key_enabled = false`
+does not merely risk breaking delivery — it breaks it.
 
-**Owner**: `terraform-module-engineer`, with `azure-platform-architect` on the
-service-support question.
-**Gate**: a definitive answer — a Microsoft Learn statement on flow-log
-storage requirements, or one test against a real subscription.
-**Validation**: if supported, `shared_access_key_enabled = false` in both
-trees, the `CKV2_AZURE_40` suppression removed, and flow logs observed
-arriving in the account afterwards; if not supported, the suppression text
-replaced with the citation that settles it, so the next reader does not have to
-re-derive this.
+That also explains why the state account can disable shared keys and this one
+cannot: nothing writes to the state account except Terraform, over AAD.
+
+**How it was answered without Azure access.** `learn.microsoft.com` is
+unreachable from this environment, but the same articles are open source in
+`MicrosoftDocs/azure-docs` on GitHub, which is reachable. The citation above is
+from `articles/network-watcher/nsg-flow-logs-overview.md`. That route is worth
+remembering: it answers most "what does Azure require here" questions this
+repository hits, without an Azure subscription.
+
+The `CKV2_AZURE_40` suppression stays and now carries the citation instead of
+an admission of ignorance. **No code changed** — the conservative call made
+under uncertainty turned out to be the correct one.
 
 ### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
 
