@@ -34,7 +34,7 @@ resource "azurerm_storage_account" "flow_logs" {
   resource_group_name      = var.resource_group_name
   location                 = var.location
   account_tier             = "Standard"
-  account_replication_type = "RAGZRS" # Geo-redundant for compliance
+  account_replication_type = var.storage_account_replication_type
   min_tls_version          = "TLS1_2"
 
   # Security settings. Public network access stays ENABLED because the NSG

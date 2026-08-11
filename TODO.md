@@ -126,24 +126,34 @@ retained so cross-references stay stable; record in
 [CHANGELOG.md](CHANGELOG.md). Follow-ups opened as items 2.8–2.10 and folded
 into item 5.2.
 
-### 2.8 Make `nsg-flow-logs` storage replication a variable
+### 2.8 Make `nsg-flow-logs` storage replication a variable — CLOSED
 
-`terraform/modules/nsg-flow-logs/main.tf` hardcodes
-`account_replication_type = "RAGZRS"`, so every flow log is asynchronously
-replicated to the Azure paired region and is readable there, with no opt-out
-short of forking the module. For a US estate (`scus` ↔ `ncus`) that is
-unremarkable; under an EU/UK data boundary or a single-country sovereignty
-commitment it moves network metadata across the boundary. Decision 0009
-follow-up (a), deferred at ratification because Q1 answered "no near-term
-engagement under a data boundary" — deferred, not dismissed.
-**Owner**: `terraform-module-engineer`.
-**Gate**: an engagement under a data-residency boundary, or an operator
-election to make residency configurable ahead of one —
-[decision 0009](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md)
-§Data residency.
-**Validation**: `terraform validate` in both trees; the variable defaults to
-`RAGZRS` so no existing plan changes; a config setting `LRS` or `ZRS` plans a
-storage account with that replication and no paired-region copy.
+Closed 2026-08-10 on the operator election the gate named ("an operator
+election to make residency configurable ahead of one"), rather than waiting for
+a residency-constrained engagement.
+
+`account_replication_type` was hardcoded to `RAGZRS`, so every flow log was
+asynchronously replicated to the Azure paired region **and readable there**,
+with no opt-out short of forking the module. It is now
+`storage_account_replication_type` on the module, validated against the six
+real values, with `flow_log_storage_replication_type` passed through by every
+layer that calls it — `platform-connectivity` and both workload layers, in both
+trees, six call sites in each tree.
+
+**The default is unchanged**, so no existing plan moves a byte. A
+residency-constrained estate sets `LRS` or `ZRS` and gets no paired-region copy.
+The rendered tfvars carries the knob commented out, next to the sentence
+explaining why it matters — because a client under an EU/UK boundary needs to
+see it without reading the module.
+
+Note recorded with the variable: the zone-redundant options (`ZRS`, `GZRS`,
+`RAGZRS`) need a region with availability zones, so `LRS` is the safe floor.
+
+**Validation**: all three fixtures strict-pass 8/0 (which includes
+`terraform validate` in the rendered tree); schema drift `InSync: True` with
+the new variable mapped `literal:operator-supplied` in all three layers,
+matching how `management_ip_ranges` is handled (contract #4); module READMEs
+updated so the module-docs contract passes.
 
 ### 2.9 Make the flow-log storage account name overridable, then cover hub `fw_mgmt` — CLOSED
 

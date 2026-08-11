@@ -197,8 +197,9 @@ resource "azurerm_private_dns_zone_virtual_network_link" "blob_spoke_dr" {
 # ─────────────────────────────────────────────────────────────────────────────
 
 module "nsg_flow_logs_primary" {
-  source = "../../modules/nsg-flow-logs"
-  count  = var.enable_nsg_flow_logs ? 1 : 0
+  source                           = "../../modules/nsg-flow-logs"
+  storage_account_replication_type = var.flow_log_storage_replication_type
+  count                            = var.enable_nsg_flow_logs ? 1 : 0
 
   location            = var.primary_region
   region_code         = var.primary_region_code
@@ -236,8 +237,9 @@ module "nsg_flow_logs_primary" {
 }
 
 module "nsg_flow_logs_dr" {
-  source = "../../modules/nsg-flow-logs"
-  count  = var.enable_nsg_flow_logs ? 1 : 0
+  source                           = "../../modules/nsg-flow-logs"
+  storage_account_replication_type = var.flow_log_storage_replication_type
+  count                            = var.enable_nsg_flow_logs ? 1 : 0
 
   location            = var.dr_region
   region_code         = var.dr_region_code

@@ -211,3 +211,18 @@ variable "enable_private_endpoints" {
   type        = bool
   default     = true
 }
+
+variable "flow_log_storage_replication_type" {
+  # TODO item 2.8. Passed to every nsg-flow-logs call in this layer. The
+  # default matches the module's and changes no existing plan; a
+  # residency-constrained estate sets LRS or ZRS so no flow log is replicated
+  # to the Azure paired region.
+  description = "Replication for this layer's flow-log storage accounts. LRS and ZRS keep data in one region."
+  type        = string
+  default     = "RAGZRS"
+
+  validation {
+    condition     = contains(["LRS", "ZRS", "GRS", "RAGRS", "GZRS", "RAGZRS"], var.flow_log_storage_replication_type)
+    error_message = "flow_log_storage_replication_type must be one of: LRS, ZRS, GRS, RAGRS, GZRS, RAGZRS."
+  }
+}

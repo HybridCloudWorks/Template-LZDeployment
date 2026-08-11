@@ -56,4 +56,12 @@ enable_traffic_analytics = {{FACTORY-BOOL:security.nsgFlowLogs.trafficAnalytics}
 # endpoint is created here even once the zone exists.
 enable_private_endpoints = {{FACTORY-BOOL:connectivity.privateEndpoints.enabled}}
 
+# DATA RESIDENCY (TODO item 2.8). Flow-log storage defaults to RAGZRS, which
+# asynchronously replicates every flow log to the Azure paired region AND makes
+# it readable there. For a US estate that is unremarkable. Under an EU/UK data
+# boundary or a single-country sovereignty commitment it moves network metadata
+# across the boundary — uncomment and set LRS (or ZRS, where the region has
+# availability zones) to keep every copy in one region.
+# flow_log_storage_replication_type = "ZRS"
+
 default_tags = {{FACTORY-MAP:naming.defaultTags}}
