@@ -81,3 +81,9 @@ factory/tests/.out/
 
 # Per-session offsets for the agent-report Stop hook (local runtime state)
 .claude/.agent-report-state/
+
+# Operator scratch notes across sessions. Never committed.
+session-notes.md
+
+# Workshop demo mapping and revert instructions. Never committed.
+demo-workshop-notes.md
