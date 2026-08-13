@@ -75,6 +75,7 @@ locals {
 module "hub_primary" {
   source = "../../modules/hub-network"
 
+  student_resource_group_name    = var.student_resource_group_name
   region                         = var.primary_region
   region_code                    = var.primary_region_code
   environment                    = "prod"
@@ -96,6 +97,7 @@ module "hub_primary" {
 module "hub_dr" {
   source = "../../modules/hub-network"
 
+  student_resource_group_name    = var.student_resource_group_name
   region                         = var.dr_region
   region_code                    = var.dr_region_code
   environment                    = "prod"

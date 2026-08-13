@@ -10,7 +10,7 @@ output "hub_vnet_name" {
 
 output "resource_group_name" {
   description = "Hub resource group name"
-  value       = azurerm_resource_group.hub.name
+  value       = local.rg_name
 }
 
 output "firewall_private_ip" {

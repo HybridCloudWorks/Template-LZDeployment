@@ -3,16 +3,32 @@
 
 # Resource group for spoke
 resource "azurerm_resource_group" "spoke" {
+  count    = var.student_resource_group_name == "" ? 1 : 0
   name     = "rg-${var.spoke_name}-${var.region_code}-${var.environment}-01"
   location = var.region
   tags     = var.tags
 }
 
+# DEMO WIRING (TechCon workshop) — remove after the event.
+# Reads the student's pre-existing group instead of creating one. Students hold
+# Reader and cannot create resource groups; the shared deploying identity could,
+# but 30 students creating identically-named groups in one subscription would
+# collide on the second apply.
+data "azurerm_resource_group" "student" {
+  count = var.student_resource_group_name == "" ? 0 : 1
+  name  = var.student_resource_group_name
+}
+
+locals {
+  rg_name     = var.student_resource_group_name == "" ? azurerm_resource_group.spoke[0].name : data.azurerm_resource_group.student[0].name
+  rg_location = var.student_resource_group_name == "" ? azurerm_resource_group.spoke[0].location : data.azurerm_resource_group.student[0].location
+}
+
 # Spoke virtual network
 resource "azurerm_virtual_network" "spoke" {
   name                = "vnet-${var.spoke_name}-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.spoke.name
-  location            = azurerm_resource_group.spoke.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   address_space       = [var.spoke_address_space]
   tags                = var.tags
 }
@@ -20,7 +36,7 @@ resource "azurerm_virtual_network" "spoke" {
 # Default application subnet
 resource "azurerm_subnet" "app" {
   name                 = "snet-${var.spoke_name}-app-${var.region_code}-${var.environment}-01"
-  resource_group_name  = azurerm_resource_group.spoke.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.spoke.name
   address_prefixes     = [cidrsubnet(var.spoke_address_space, 2, 0)]
 }
@@ -28,7 +44,7 @@ resource "azurerm_subnet" "app" {
 # Data subnet
 resource "azurerm_subnet" "data" {
   name                 = "snet-${var.spoke_name}-data-${var.region_code}-${var.environment}-01"
-  resource_group_name  = azurerm_resource_group.spoke.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.spoke.name
   address_prefixes     = [cidrsubnet(var.spoke_address_space, 2, 1)]
 }
@@ -36,7 +52,7 @@ resource "azurerm_subnet" "data" {
 # Private endpoint subnet
 resource "azurerm_subnet" "pe" {
   name                 = "snet-${var.spoke_name}-pe-${var.region_code}-${var.environment}-01"
-  resource_group_name  = azurerm_resource_group.spoke.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.spoke.name
   address_prefixes     = [cidrsubnet(var.spoke_address_space, 4, 8)]
 }
@@ -44,8 +60,8 @@ resource "azurerm_subnet" "pe" {
 # NSG for application subnet
 resource "azurerm_network_security_group" "app" {
   name                = "nsg-${var.spoke_name}-app-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.spoke.name
-  location            = azurerm_resource_group.spoke.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   tags                = var.tags
 
   # Azure Load Balancer health probes must be allowed above the deny-all
@@ -103,8 +119,8 @@ resource "azurerm_subnet_network_security_group_association" "app" {
 # NSG for data subnet
 resource "azurerm_network_security_group" "data" {
   name                = "nsg-${var.spoke_name}-data-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.spoke.name
-  location            = azurerm_resource_group.spoke.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   tags                = var.tags
 
   security_rule {
@@ -157,8 +173,8 @@ resource "azurerm_subnet_network_security_group_association" "data" {
 # NSG for private endpoint subnet (minimal rules)
 resource "azurerm_network_security_group" "pe" {
   name                = "nsg-${var.spoke_name}-pe-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.spoke.name
-  location            = azurerm_resource_group.spoke.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   tags                = var.tags
 }
 
@@ -171,8 +187,8 @@ resource "azurerm_subnet_network_security_group_association" "pe" {
 resource "azurerm_route_table" "app" {
   count                         = var.enable_forced_tunneling ? 1 : 0
   name                          = "udr-${var.spoke_name}-app-${var.region_code}-${var.environment}-01"
-  resource_group_name           = azurerm_resource_group.spoke.name
-  location                      = azurerm_resource_group.spoke.location
+  resource_group_name           = local.rg_name
+  location                      = local.rg_location
   bgp_route_propagation_enabled = false
   tags                          = var.tags
 
@@ -205,8 +221,8 @@ resource "azurerm_subnet_route_table_association" "app" {
 resource "azurerm_route_table" "data" {
   count                         = var.enable_forced_tunneling ? 1 : 0
   name                          = "udr-${var.spoke_name}-data-${var.region_code}-${var.environment}-01"
-  resource_group_name           = azurerm_resource_group.spoke.name
-  location                      = azurerm_resource_group.spoke.location
+  resource_group_name           = local.rg_name
+  location                      = local.rg_location
   bgp_route_propagation_enabled = false
   tags                          = var.tags
 
@@ -239,7 +255,7 @@ resource "azurerm_subnet_route_table_association" "data" {
 resource "azurerm_virtual_network_peering" "spoke_to_hub" {
   count                        = var.enable_hub_peering ? 1 : 0
   name                         = "peer-${var.spoke_name}-to-hub-${var.region_code}"
-  resource_group_name          = azurerm_resource_group.spoke.name
+  resource_group_name          = local.rg_name
   virtual_network_name         = azurerm_virtual_network.spoke.name
   remote_virtual_network_id    = var.hub_vnet_id
   allow_virtual_network_access = true

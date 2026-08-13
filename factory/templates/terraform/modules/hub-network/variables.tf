@@ -200,3 +200,15 @@ variable "private_endpoint_subnet_prefix" {
     error_message = "private_endpoint_subnet_prefix must be valid CIDR notation, or null."
   }
 }
+
+variable "student_resource_group_name" {
+  # DEMO WIRING (TechCon workshop) — remove after the event; see the operator's
+  # gitignored revert dossier. Empty string is the PRODUCT behaviour: this
+  # module creates its own resource group exactly as designed. A non-empty
+  # value makes it CONSUME a pre-existing resource group instead, which is what
+  # lets many students share one subscription without creating groups they have
+  # no permission to create.
+  description = "Demo only. When set, deploy into this pre-existing resource group instead of creating one. Empty means create, which is the normal behaviour."
+  type        = string
+  default     = ""
+}

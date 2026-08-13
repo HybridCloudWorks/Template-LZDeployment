@@ -64,4 +64,10 @@ enable_private_endpoints = {{FACTORY-BOOL:connectivity.privateEndpoints.enabled}
 # availability zones) to keep every copy in one region.
 # flow_log_storage_replication_type = "ZRS"
 
+# DEMO WIRING (TechCon workshop) — remove after the event.
+# Your GitHub account name doubles as your pre-created Azure resource group, so
+# every layer deploys into it instead of creating groups of its own. Empty
+# means the normal behaviour: each module creates its own resource groups.
+student_resource_group_name = {{FACTORY:github.ownerName}}
+
 default_tags = {{FACTORY-MAP:naming.defaultTags}}

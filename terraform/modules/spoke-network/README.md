@@ -72,6 +72,7 @@ with `enable_hub_peering = false`.
 | Name | Description | Type | Default | Required |
 |---|---|---|---|---|
 | `spoke_name` | Name identifier for the spoke (e.g., `prod-app`) | `string` | — | yes |
+| `student_resource_group_name` | Demo only. When set, deploy into this pre-existing resource group instead of creating one. Empty means create, the normal behaviour. | `string` | `""` | no |
 | `region` | Azure region | `string` | — | yes |
 | `region_code` | Short region code (e.g., scus, ncus) | `string` | — | yes |
 | `environment` | Environment name | `string` | — | yes |

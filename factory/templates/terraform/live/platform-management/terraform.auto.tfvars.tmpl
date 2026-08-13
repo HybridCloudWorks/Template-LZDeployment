@@ -35,4 +35,10 @@ dr_region      = {{FACTORY:azure.drRegion}}
 dr_region_code = {{FACTORY:azure.drRegionCode}}
 #{{ENDIF}}
 
+# DEMO WIRING (TechCon workshop) — remove after the event.
+# Your GitHub account name doubles as your pre-created Azure resource group, so
+# every layer deploys into it instead of creating groups of its own. Empty
+# means the normal behaviour: each module creates its own resource groups.
+student_resource_group_name = {{FACTORY:github.ownerName}}
+
 default_tags = {{FACTORY-MAP:naming.defaultTags}}

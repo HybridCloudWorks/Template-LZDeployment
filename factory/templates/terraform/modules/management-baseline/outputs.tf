@@ -38,7 +38,7 @@ output "action_group_id" {
 
 output "resource_group_name" {
   description = "Management resource group name"
-  value       = azurerm_resource_group.management.name
+  value       = local.rg_name
 }
 
 output "management_summary" {

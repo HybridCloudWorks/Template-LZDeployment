@@ -34,6 +34,7 @@ locals {
 module "management_baseline" {
   source = "../../modules/management-baseline"
 
+  student_resource_group_name = var.student_resource_group_name
   org_prefix            = var.org_prefix
   location              = var.primary_region
   region_code           = var.primary_region_code
@@ -46,6 +47,7 @@ module "management_baseline" {
 module "backup_primary" {
   source = "../../modules/backup-baseline"
 
+  student_resource_group_name = var.student_resource_group_name
   region                  = var.primary_region
   region_code             = var.primary_region_code
   environment             = "prod"
@@ -58,6 +60,7 @@ module "backup_primary" {
 module "backup_dr" {
   source = "../../modules/backup-baseline"
 
+  student_resource_group_name = var.student_resource_group_name
   region                  = var.dr_region
   region_code             = var.dr_region_code
   environment             = "prod"

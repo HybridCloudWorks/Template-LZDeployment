@@ -47,6 +47,7 @@ module "backup_primary" {
 | Name | Description | Type | Default | Required |
 |---|---|---|---|---|
 | `region` | Azure region | `string` | — | yes |
+| `student_resource_group_name` | Demo only. When set, deploy into this pre-existing resource group instead of creating one. Empty means create, the normal behaviour. | `string` | `""` | no |
 | `region_code` | Short region code (e.g., scus, ncus) | `string` | — | yes |
 | `environment` | Environment name | `string` | `"prod"` | no |
 | `storage_redundancy` | Recovery Services Vault storage mode (`GeoRedundant`, `LocallyRedundant`, `ZoneRedundant`) | `string` | `"GeoRedundant"` | no |

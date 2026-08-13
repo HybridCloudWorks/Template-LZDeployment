@@ -32,36 +32,39 @@ locals {
 module "management_baseline" {
   source = "../../modules/management-baseline"
 
-  org_prefix            = var.org_prefix
-  location              = var.primary_region
-  region_code           = var.primary_region_code
-  log_retention_days    = var.log_retention_days
-  alert_email_receivers = var.alert_email_receivers
-  tags                  = local.common_tags
+  student_resource_group_name = var.student_resource_group_name
+  org_prefix                  = var.org_prefix
+  location                    = var.primary_region
+  region_code                 = var.primary_region_code
+  log_retention_days          = var.log_retention_days
+  alert_email_receivers       = var.alert_email_receivers
+  tags                        = local.common_tags
 }
 
 # Primary region backup baseline
 module "backup_primary" {
   source = "../../modules/backup-baseline"
 
-  region                  = var.primary_region
-  region_code             = var.primary_region_code
-  environment             = "prod"
-  storage_redundancy      = "GeoRedundant"
-  backup_vault_redundancy = "GeoRedundant"
-  tags                    = local.common_tags
+  student_resource_group_name = var.student_resource_group_name
+  region                      = var.primary_region
+  region_code                 = var.primary_region_code
+  environment                 = "prod"
+  storage_redundancy          = "GeoRedundant"
+  backup_vault_redundancy     = "GeoRedundant"
+  tags                        = local.common_tags
 }
 
 # DR region backup baseline
 module "backup_dr" {
   source = "../../modules/backup-baseline"
 
-  region                  = var.dr_region
-  region_code             = var.dr_region_code
-  environment             = "prod"
-  storage_redundancy      = "GeoRedundant"
-  backup_vault_redundancy = "GeoRedundant"
-  tags                    = local.common_tags
+  student_resource_group_name = var.student_resource_group_name
+  region                      = var.dr_region
+  region_code                 = var.dr_region_code
+  environment                 = "prod"
+  storage_redundancy          = "GeoRedundant"
+  backup_vault_redundancy     = "GeoRedundant"
+  tags                        = local.common_tags
 }
 
 # Azure Automation Account for sandbox cleanup

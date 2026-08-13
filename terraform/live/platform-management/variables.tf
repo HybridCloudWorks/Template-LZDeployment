@@ -75,3 +75,13 @@ variable "default_tags" {
     managed_by  = "Terraform"
   }
 }
+
+variable "student_resource_group_name" {
+  # DEMO WIRING (TechCon workshop) — remove after the event; see the operator's
+  # gitignored revert dossier. Rendered from github.ownerName, which for the
+  # workshop equals the student's pre-created resource group. Empty is the
+  # PRODUCT behaviour: every module creates its own resource groups as designed.
+  description = "Demo only. When set, this layer's modules deploy into this pre-existing resource group instead of creating their own."
+  type        = string
+  default     = ""
+}

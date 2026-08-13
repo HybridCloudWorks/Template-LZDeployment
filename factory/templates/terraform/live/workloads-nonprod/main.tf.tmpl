@@ -185,6 +185,7 @@ locals {
 #{{IF environments.application contains 'dev'}}
 module "spoke_dev_primary" {
   source                      = "../../modules/spoke-network"
+  student_resource_group_name = var.student_resource_group_name
 #{{IF connectivity.model != 'none'}}
   providers = {
     azurerm     = azurerm
@@ -220,6 +221,7 @@ module "spoke_dev_primary" {
 #{{IF computed.hasDrRegion}}
 module "spoke_dev_dr" {
   source                      = "../../modules/spoke-network"
+  student_resource_group_name = var.student_resource_group_name
 #{{IF connectivity.model != 'none'}}
   providers = {
     azurerm     = azurerm
@@ -258,6 +260,7 @@ module "spoke_dev_dr" {
 #{{IF environments.application contains 'test'}}
 module "spoke_test_primary" {
   source                      = "../../modules/spoke-network"
+  student_resource_group_name = var.student_resource_group_name
 #{{IF connectivity.model != 'none'}}
   providers = {
     azurerm     = azurerm
@@ -293,6 +296,7 @@ module "spoke_test_primary" {
 #{{IF computed.hasDrRegion}}
 module "spoke_test_dr" {
   source                      = "../../modules/spoke-network"
+  student_resource_group_name = var.student_resource_group_name
 #{{IF connectivity.model != 'none'}}
   providers = {
     azurerm     = azurerm
@@ -331,6 +335,7 @@ module "spoke_test_dr" {
 #{{IF environments.application contains 'uat'}}
 module "spoke_uat_primary" {
   source                      = "../../modules/spoke-network"
+  student_resource_group_name = var.student_resource_group_name
 #{{IF connectivity.model != 'none'}}
   providers = {
     azurerm     = azurerm
@@ -366,6 +371,7 @@ module "spoke_uat_primary" {
 #{{IF computed.hasDrRegion}}
 module "spoke_uat_dr" {
   source                      = "../../modules/spoke-network"
+  student_resource_group_name = var.student_resource_group_name
 #{{IF connectivity.model != 'none'}}
   providers = {
     azurerm     = azurerm

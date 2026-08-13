@@ -91,6 +91,7 @@ locals {
 module "spoke_prod_primary" {
   source = "../../modules/spoke-network"
 
+  student_resource_group_name = var.student_resource_group_name
   providers = {
     azurerm     = azurerm
     azurerm.hub = azurerm.hub
@@ -115,6 +116,7 @@ module "spoke_prod_primary" {
 module "spoke_prod_dr" {
   source = "../../modules/spoke-network"
 
+  student_resource_group_name = var.student_resource_group_name
   providers = {
     azurerm     = azurerm
     azurerm.hub = azurerm.hub

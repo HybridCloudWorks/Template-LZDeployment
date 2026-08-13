@@ -37,16 +37,32 @@ locals {
 
 # Resource group for hub
 resource "azurerm_resource_group" "hub" {
+  count    = var.student_resource_group_name == "" ? 1 : 0
   name     = "rg-connectivity-${var.region_code}-${var.environment}-01"
   location = var.region
   tags     = var.tags
 }
 
+# DEMO WIRING (TechCon workshop) — remove after the event.
+# Reads the student's pre-existing group instead of creating one. Students hold
+# Reader and cannot create resource groups; the shared deploying identity could,
+# but 30 students creating identically-named groups in one subscription would
+# collide on the second apply.
+data "azurerm_resource_group" "student" {
+  count = var.student_resource_group_name == "" ? 0 : 1
+  name  = var.student_resource_group_name
+}
+
+locals {
+  rg_name     = var.student_resource_group_name == "" ? azurerm_resource_group.hub[0].name : data.azurerm_resource_group.student[0].name
+  rg_location = var.student_resource_group_name == "" ? azurerm_resource_group.hub[0].location : data.azurerm_resource_group.student[0].location
+}
+
 # Hub virtual network
 resource "azurerm_virtual_network" "hub" {
   name                = "vnet-hub-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.hub.name
-  location            = azurerm_resource_group.hub.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   address_space       = [var.hub_address_space]
   tags                = var.tags
 }
@@ -55,7 +71,7 @@ resource "azurerm_virtual_network" "hub" {
 resource "azurerm_subnet" "azfw" {
   count                = var.firewall_type == "azfw" ? 1 : 0
   name                 = "AzureFirewallSubnet"
-  resource_group_name  = azurerm_resource_group.hub.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [cidrsubnet(var.hub_address_space, 2, 0)]
 }
@@ -64,7 +80,7 @@ resource "azurerm_subnet" "azfw" {
 resource "azurerm_subnet" "fw_mgmt" {
   count                = local.has_nva ? 1 : 0
   name                 = "snet-fw-mgmt-${var.region_code}-${var.environment}-01"
-  resource_group_name  = azurerm_resource_group.hub.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [cidrsubnet(var.hub_address_space, 4, 0)]
 }
@@ -74,7 +90,7 @@ resource "azurerm_subnet" "fw_trust" {
   #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
   count                = local.has_nva ? 1 : 0
   name                 = "snet-fw-trust-${var.region_code}-${var.environment}-01"
-  resource_group_name  = azurerm_resource_group.hub.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [cidrsubnet(var.hub_address_space, 2, 1)]
 }
@@ -84,7 +100,7 @@ resource "azurerm_subnet" "fw_untrust" {
   #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
   count                = local.has_nva ? 1 : 0
   name                 = "snet-fw-untrust-${var.region_code}-${var.environment}-01"
-  resource_group_name  = azurerm_resource_group.hub.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [cidrsubnet(var.hub_address_space, 2, 2)]
 }
@@ -93,7 +109,7 @@ resource "azurerm_subnet" "fw_untrust" {
 resource "azurerm_subnet" "gateway" {
   #checkov:skip=CKV2_AZURE_31:Precautionary, not currently load-bearing - checkov does not flag this subnet today. Kept because the rule would be wrong here if it ever did: Azure rejects an NSG association on GatewaySubnet, and a VPN/ER gateway breaks if one is forced on.
   name                 = "GatewaySubnet"
-  resource_group_name  = azurerm_resource_group.hub.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [cidrsubnet(var.hub_address_space, 4, 12)]
 }
@@ -103,7 +119,7 @@ resource "azurerm_subnet" "bastion" {
   #checkov:skip=CKV2_AZURE_31:This subnet DOES have an NSG - azurerm_network_security_group.bastion, associated below with Microsoft's prescribed Bastion rule set (TODO item 2.16). Checkov does not resolve the association because it is count-indexed, the same graph limitation that hides the SAS policy on flow-log storage. The control is present and reviewable in this file.
   count                = var.deploy_bastion_placeholder ? 1 : 0
   name                 = "AzureBastionSubnet"
-  resource_group_name  = azurerm_resource_group.hub.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [cidrsubnet(var.hub_address_space, 4, 13)]
 }
@@ -113,7 +129,7 @@ resource "azurerm_subnet" "dns_inbound" {
   #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
   count                = var.deploy_dns_placeholder ? 1 : 0
   name                 = "snet-dns-inbound-${var.region_code}-${var.environment}-01"
-  resource_group_name  = azurerm_resource_group.hub.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [cidrsubnet(var.hub_address_space, 4, 14)]
 
@@ -131,7 +147,7 @@ resource "azurerm_subnet" "dns_outbound" {
   #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
   count                = var.deploy_dns_placeholder ? 1 : 0
   name                 = "snet-dns-outbound-${var.region_code}-${var.environment}-01"
-  resource_group_name  = azurerm_resource_group.hub.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [cidrsubnet(var.hub_address_space, 4, 15)]
 
@@ -148,8 +164,8 @@ resource "azurerm_subnet" "dns_outbound" {
 resource "azurerm_network_security_group" "fw_mgmt" {
   count               = local.has_nva ? 1 : 0
   name                = "nsg-fw-mgmt-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.hub.name
-  location            = azurerm_resource_group.hub.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   tags                = var.tags
 
   security_rule {
@@ -206,8 +222,8 @@ resource "azurerm_subnet_network_security_group_association" "fw_mgmt" {
 resource "azurerm_network_security_group" "bastion" {
   count               = var.deploy_bastion_placeholder ? 1 : 0
   name                = "nsg-bastion-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.hub.name
-  location            = azurerm_resource_group.hub.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   tags                = var.tags
 
   security_rule {
@@ -345,8 +361,8 @@ resource "azurerm_subnet_network_security_group_association" "bastion" {
 resource "azurerm_public_ip" "azfw" {
   count               = var.firewall_type == "azfw" ? 1 : 0
   name                = "pip-azfw-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.hub.name
-  location            = azurerm_resource_group.hub.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   allocation_method   = "Static"
   sku                 = "Standard"
   zones               = var.availability_zones
@@ -360,8 +376,8 @@ resource "azurerm_firewall" "hub" {
   #checkov:skip=CKV_AZURE_216:Threat intelligence is set on the attached firewall policy (firewall-threat-intel.tf, threat_intelligence_mode), which governs when a policy is associated - azurerm_firewall's own threat_intel_mode is not consulted. Checkov reads the firewall resource only. TODO item 2.15.
   count               = var.firewall_type == "azfw" ? 1 : 0
   name                = "azfw-hub-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.hub.name
-  location            = azurerm_resource_group.hub.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   sku_name            = "AZFW_VNet"
   sku_tier            = var.azfw_tier
   zones               = var.availability_zones
@@ -387,8 +403,8 @@ locals {
 # deploys a firewall, so there is always an appliance to default-route to.
 resource "azurerm_route_table" "to_firewall" {
   name                = "udr-to-firewall-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.hub.name
-  location            = azurerm_resource_group.hub.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   tags                = var.tags
 
   route {
@@ -457,7 +473,7 @@ resource "azurerm_subnet" "private_endpoints" {
   count = var.private_endpoint_subnet_prefix == null ? 0 : 1
 
   name                 = "snet-private-endpoints-${var.region_code}-${var.environment}-01"
-  resource_group_name  = azurerm_resource_group.hub.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.hub.name
   address_prefixes     = [var.private_endpoint_subnet_prefix]
 

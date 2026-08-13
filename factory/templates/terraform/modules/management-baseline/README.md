@@ -49,6 +49,7 @@ module "management_baseline" {
 | Name | Description | Type | Default | Required |
 |---|---|---|---|---|
 | `org_prefix` | Organization prefix for naming | `string` | — | yes |
+| `student_resource_group_name` | Demo only. When set, deploy into this pre-existing resource group instead of creating one. Empty means create, the normal behaviour. | `string` | `""` | no |
 | `location` | Azure region for management resources | `string` | — | yes |
 | `region_code` | Short region code for naming (e.g., scus, neu) | `string` | — | yes |
 | `log_retention_days` | Log Analytics retention in days (7–730, validated) | `number` | `30` | no |

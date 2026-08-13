@@ -3,16 +3,32 @@
 
 # Management Resource Group
 resource "azurerm_resource_group" "management" {
+  count    = var.student_resource_group_name == "" ? 1 : 0
   name     = "rg-${var.org_prefix}-management"
   location = var.location
   tags     = var.tags
 }
 
+# DEMO WIRING (TechCon workshop) — remove after the event.
+# Reads the student's pre-existing group instead of creating one. Students hold
+# Reader and cannot create resource groups; the shared deploying identity could,
+# but 30 students creating identically-named groups in one subscription would
+# collide on the second apply.
+data "azurerm_resource_group" "student" {
+  count = var.student_resource_group_name == "" ? 0 : 1
+  name  = var.student_resource_group_name
+}
+
+locals {
+  rg_name     = var.student_resource_group_name == "" ? azurerm_resource_group.management[0].name : data.azurerm_resource_group.student[0].name
+  rg_location = var.student_resource_group_name == "" ? azurerm_resource_group.management[0].location : data.azurerm_resource_group.student[0].location
+}
+
 # Log Analytics Workspace - Central logging hub
 resource "azurerm_log_analytics_workspace" "alz" {
   name                = "law-${var.org_prefix}-${var.region_code}"
-  location            = azurerm_resource_group.management.location
-  resource_group_name = azurerm_resource_group.management.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   sku                 = "PerGB2018"
   retention_in_days   = var.log_retention_days
 
@@ -29,8 +45,8 @@ resource "azurerm_automation_account" "alz" {
   }
 
   name                = "aa-${var.org_prefix}-${var.region_code}"
-  location            = azurerm_resource_group.management.location
-  resource_group_name = azurerm_resource_group.management.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   sku_name            = "Basic"
 
   tags = var.tags
@@ -39,8 +55,8 @@ resource "azurerm_automation_account" "alz" {
 # Application Insights - For application-level monitoring
 resource "azurerm_application_insights" "alz" {
   name                = "appi-${var.org_prefix}-${var.region_code}"
-  location            = azurerm_resource_group.management.location
-  resource_group_name = azurerm_resource_group.management.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   application_type    = "other"
   workspace_id        = azurerm_log_analytics_workspace.alz.id
 
@@ -50,7 +66,7 @@ resource "azurerm_application_insights" "alz" {
 # Action Group - For alert notifications
 resource "azurerm_monitor_action_group" "alz" {
   name                = "ag-${var.org_prefix}-${var.region_code}"
-  resource_group_name = azurerm_resource_group.management.name
+  resource_group_name = local.rg_name
   short_name          = substr("alz-${var.org_prefix}", 0, 12)
 
   dynamic "email_receiver" {
@@ -68,7 +84,7 @@ resource "azurerm_monitor_action_group" "alz" {
 # Alert Rule - workspace ingestion volume above threshold
 resource "azurerm_monitor_metric_alert" "ingestion_volume_high" {
   name                = "alert-log-ingestion-${var.org_prefix}"
-  resource_group_name = azurerm_resource_group.management.name
+  resource_group_name = local.rg_name
   scopes              = [azurerm_log_analytics_workspace.alz.id]
   description         = "Alert when workspace ingestion volume exceeds threshold"
   severity            = 2

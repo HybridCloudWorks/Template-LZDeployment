@@ -10,7 +10,7 @@ output "spoke_vnet_name" {
 
 output "resource_group_name" {
   description = "Spoke resource group name"
-  value       = azurerm_resource_group.spoke.name
+  value       = local.rg_name
 }
 
 output "app_subnet_id" {

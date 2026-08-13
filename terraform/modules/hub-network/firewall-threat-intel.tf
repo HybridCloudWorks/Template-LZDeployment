@@ -8,8 +8,8 @@
 resource "azurerm_firewall_policy" "hub" {
   count               = var.firewall_type == "azfw" && var.enable_firewall_threat_intel ? 1 : 0
   name                = "azfwpol-hub-${var.region_code}-${var.environment}-01"
-  resource_group_name = azurerm_resource_group.hub.name
-  location            = azurerm_resource_group.hub.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   sku                 = var.azfw_tier
 
   # Threat Intelligence
@@ -139,8 +139,8 @@ resource "azurerm_monitor_diagnostic_setting" "firewall_threat_intel" {
 resource "azurerm_monitor_scheduled_query_rules_alert_v2" "threat_intel_alert" {
   count               = var.firewall_type == "azfw" && var.enable_firewall_threat_intel && var.enable_threat_intel_alerts && var.log_analytics_workspace_id != "" ? 1 : 0
   name                = "alert-azfw-threatintel-${var.region_code}-${var.environment}"
-  resource_group_name = azurerm_resource_group.hub.name
-  location            = azurerm_resource_group.hub.location
+  resource_group_name = local.rg_name
+  location            = local.rg_location
   description         = "Alert when Azure Firewall blocks threats via Threat Intelligence"
   enabled             = true
 

@@ -10,5 +10,5 @@ output "backup_vault_id" {
 
 output "resource_group_name" {
   description = "Backup resource group name"
-  value       = azurerm_resource_group.backup.name
+  value       = local.rg_name
 }
