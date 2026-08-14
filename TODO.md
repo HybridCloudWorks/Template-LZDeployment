@@ -10,9 +10,12 @@
 > (new-features changelog). Root markdown is limited to four files: README.md,
 > CHANGELOG.md, REVIEW.md, TODO.md.
 
-**Last Updated**: August 7, 2026
-**Status**: 🟢 Phase 1 closed (PR #77); every open item is gated as stated
-per item
+**Last Updated**: August 14, 2026
+**Status**: 🟢 Phases 1–2 closed through PR #92 except 2.16 (five subnets
+remain, gated on client DNS design + firewall choice) and 2.4/2.5/2.6
+(operator-gated — REVIEW.md §14/§16/§13); Phase 3 gated on the authenticated
+toolchain (§7) and wiki write access (§15); Phase 4 deferred (go-live not
+opened); Phase 5 release-time
 **Operator activities & stage checklists**: [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md)
 **External tracking**: [GitHub Issues](https://github.com/HybridCloudWorks/Template-LZDeployment/issues)
 
@@ -526,14 +529,17 @@ difference between *impossible* and *not done*, but suppression is not the fix.
 Not one rule set: three or four different ones, two of them
 vendor-conditional. That is why it is an item rather than a line in 2.15.
 
-**Bastion, done 2026-08-10.** Two caveats stated rather than buried:
+**Bastion, done 2026-08-10.** Two things stated rather than buried:
 
-- **The rules were written from Microsoft Learn's documented set
-  ([bastion-nsg](https://learn.microsoft.com/azure/bastion/bastion-nsg)) and
-  could NOT be re-verified against it** — `learn.microsoft.com` is unreachable
-  from the environment they were authored in (403 through the proxy, on both
-  the docs MCP and the Azure MCP). Treat that page as the authority if the two
-  ever disagree.
+- **The rules are verified against Microsoft's documented set
+  ([bastion-nsg](https://learn.microsoft.com/azure/bastion/bastion-nsg)).**
+  They were first written without being able to re-read that page —
+  `learn.microsoft.com` is unreachable from the authoring environment — and
+  were then checked line by line against the same article's source in
+  `MicrosoftDocs/azure-docs` on GitHub, which *is* reachable (PR #92): every
+  source, destination, port and protocol matches, and one rule was renamed to
+  the documented `AllowHttpOutbound`. That page remains the authority if the
+  two ever disagree.
 - **The failure mode is loud, not silent.** Azure validates this NSG when a
   Bastion *host* is deployed and fails the deployment if a required rule is
   missing. This repository deploys only the placeholder subnet, so no host
@@ -661,21 +667,29 @@ The **standalone** validation gate is done (executed 2026-08-06 — record in
 suites against authenticated `az`/`gh`, and the validate phase inside the full
 engagement wrapper (discovery → broker → render → validate → scaffold,
 `scripts/Invoke-CustomerEngagement.ps1`) with real discovery artifacts.
-Carried forward from item 1.1 (closed 2026-08-07 with this criterion unmet):
-the strict run must confirm V07/V08 pass with real tflint/tfsec and **no
-skips recorded** — the corpus cleanup shipped, but the tools were unavailable
-in the sandbox, so the skip-free pass is unproven.
+Carried forward from item 1.1 (closed 2026-08-07 with this criterion unmet),
+the strict V07/V08 skip-free pass — **discharged by item 2.15 (closed
+2026-08-10)**: tflint 0.64.0 and checkov 3.3.9 installed and ran, the scanner
+is pinned to checkov, and all three fixtures (sample, azurerm, nonprod) pass
+all eight gates `8 passed, 0 skipped` under `LZ_VALIDATE_STRICT=true`. No
+authenticated run is needed for that criterion any more.
 Carried forward from item 2.1 (closed 2026-08-07): confirm against a real
 estate that a broker apply registers the decision-0006 namespaces (audit
 entries `registered`/`already-registered`, none left `pending`) and that the
 first apply into a fresh subscription no longer fails
 `MissingSubscriptionRegistration` — the code path is test-covered, but the
 end-to-end proof needs authenticated `az` and a fresh subscription.
+Carried forward from items 2.3 and 2.9 (closed 2026-08-09), the estate-gated
+flag flips both items fold into this one: `enable_nsg_flow_logs` defaults to
+`false` in both the workload and connectivity layers, so the estate collects
+nothing — and no plan can show the flow-log resources — until a PR flips the
+flags against a real estate whose spoke (and, for the hub instances, NVA)
+NSGs exist.
 **Owner**: `alz-orchestrator` (multi-stage execution).
 **Gate**: provisioned, authenticated toolchain — [REVIEW.md](REVIEW.md) §7.
 **Validation**: suite runs recorded with plan/audit evidence files; wrapper
-completes plan-first end to end; `validate-render.ps1 -Strict` against a
-fresh render passes V07/V08 with no skips recorded.
+completes plan-first end to end; the flag-flip PR's plan shows the flow-log
+resources against the chosen NSGs only (item 2.3's carried criterion).
 
 ### 3.2 Publish the prepared wiki review edits
 
