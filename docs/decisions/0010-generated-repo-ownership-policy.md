@@ -14,13 +14,13 @@
 ## History
 
 - **2026-08-14 (first draft)**: authored as a two-question options paper
-  under the premise that this repository is a CBTS engagement factory —
-  Q-A (which owner CBTS names) with options A/B/C, Q-B (transfer to the
-  client afterward) with options T1/T2.
+  under the premise that this repository is a consultancy engagement
+  factory — Q-A (which owner the consultancy names) with options A/B/C,
+  Q-B (transfer to the client afterward) with options T1/T2.
 - **2026-08-14 (premise correction, operator-supplied)**: the operator
-  corrected the framing in their own words — "this is NOT a CBTS project,
-  this is a personal project… I am the owner since day 1 and have always
-  been." Because the record was unratified and unmerged, it was rewritten
+  corrected the framing in their own words: this is a personal project,
+  not a consultancy engagement — "I am the owner since day 1 and have
+  always been." Because the record was unratified and unmerged, it was rewritten
   in place rather than superseded; the prior options survive only as the
   "Considered under the prior premise" note below.
 
@@ -114,7 +114,8 @@ reason to name the permanent owner at render time.
 ## Considered under the prior premise — dissolved by the correction
 
 The first draft optioned Q-A as A (client-owned org from day one) /
-B (a CBTS-controlled org per engagement) / C (one shared CBTS org), and
+B (a consultancy-controlled org per engagement) / C (one shared
+consultancy org), and
 Q-B as T1 (transfer at handoff) / T2 (no transfer). B, C, and T1 existed
 only to model a two-party engagement and dissolve with it; A and T2 —
 the recommended pair — survive as the single-party recommendation above:

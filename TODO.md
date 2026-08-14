@@ -644,8 +644,9 @@ schema risk GH1 (`personal` on a Free plan silently loses protected
 environments; the OIDC subjects embed the owner literally, so the choice is
 permanent in practice).
 **Premise corrected 2026-08-14**: the operator stated this is a personal
-project (owner since day 1), not a CBTS engagement, so the earlier "which
-owner value CBTS uses / transfer to the client" framing was mis-premised and
+project (owner since day 1), not a consultancy engagement, so the earlier
+"which owner value the consultancy uses / transfer to the client" framing
+was mis-premised and
 0010 was rewritten in place (it was unratified). The remaining work is
 ratification plus the record's follow-ups (wizard/docs references,
 USER-CHECKLIST prerequisite).

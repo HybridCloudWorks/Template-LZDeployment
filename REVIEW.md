@@ -364,9 +364,9 @@ degrades the same controls is unverified from this repo.
 **Update 2026-08-14**: the options paper was authored as
 [decision 0010 (Proposed)](docs/decisions/0010-generated-repo-ownership-policy.md).
 Later the same day the operator corrected its premise in their own words —
-this is a personal project, not a CBTS engagement, and they have owned it
-since day 1 — so the earlier "which value CBTS puts in `ownerName`" framing
-was mis-premised: there is no engagement counterparty, and the transfer
+this is a personal project, not a consultancy engagement, and they have
+owned it since day 1 — so the earlier "which value the consultancy puts in
+`ownerName`" framing was mis-premised: there is no engagement counterparty, and the transfer
 question is moot. 0010 was rewritten accordingly (unratified, so rewritten
 in place with the correction recorded in its History section). **Awaiting
 operator ratification**; nothing is policy until then.

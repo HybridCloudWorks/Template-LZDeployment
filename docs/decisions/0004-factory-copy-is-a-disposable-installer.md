@@ -139,7 +139,8 @@ The sequence is:
    supported configuration today.
 
    What remains open is **engagement policy, not capability**: which value
-   CBTS should put in `ownerName` for a typical engagement, and whether a
+   the operator should put in `ownerName` for a typical engagement, and
+   whether a
    repository created under one owner is expected to be transferred to the
    client afterward. Note that `ownershipModel` is not cosmetic — the schema
    flags risk GH1, that personal accounts on the Free plan cannot use

@@ -5,7 +5,7 @@ and operator-workstation isolation. Model:
 [decision 0004](../decisions/0004-factory-copy-is-a-disposable-installer.md).
 Disposal itself: [engagement-disposal.md](engagement-disposal.md).
 
-Artifact chain per engagement: **upstream repo** (CBTS factory) → **client
+Artifact chain per engagement: **upstream repo** (the factory) → **client
 copy** (private, per [decision 0001](../decisions/0001-private-copy-over-public-fork.md))
 → **local clone** (disposable) → **generated customer repo** (long-lived).
 
@@ -42,7 +42,8 @@ factory/schema versions of the export, and the generated repo carries the
 factory version from `factory-version.json` (also stamped into the generated
 `USER-CHECKLIST.md` header).
 
-Keep a **CBTS-side record of customer → factory version per export**, so that
+Keep an **operator-side record of customer → factory version per export**,
+so that
 when a corpus defect is found, the affected engagements can be enumerated and
 each customer repo upgraded through the draft-PR channel above. Record, at
 minimum: customer, export date, factory version, schema version, and the
