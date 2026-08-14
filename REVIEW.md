@@ -353,15 +353,23 @@ The *mechanism* is settled and needs no change — `github.ownershipModel` and
 `github.ownerName` are required schema fields, and
 `LZFactory.Scaffold.psm1` targets `ownerName/repositoryName`, so ownership is
 explicit per engagement and never inherited from whoever is logged in.
-**Decide**: which value CBTS puts in `ownerName` for a typical engagement, and
-whether a repo created under one owner is transferred to the client afterward.
+**Decide**: operator confirms the `ownerName` policy for generated repos —
+an operator-owned organization (`HybridCloudWorks` is the precedent) with
+`ownershipModel: organization` — and answers the GH1 org-plan-tier question.
 **Watch out**: `ownershipModel: personal` on a Free plan cannot use protected
 environments (schema risk GH1), which silently removes the gate the apply
-identity's `environment:<name>` OIDC subjects depend on.
-**Update 2026-08-14**: the options paper now exists as
-[decision 0010 (Proposed)](docs/decisions/0010-generated-repo-ownership-policy.md)
-— both questions optioned, with client-owned-from-day-one and no-transfer
-recommended. **Awaiting operator ratification**; nothing is policy until then.
+identity's `environment:<name>` OIDC subjects depend on — so even a solo
+owner should use the org model. Whether an *organization* on the Free plan
+degrades the same controls is unverified from this repo.
+**Update 2026-08-14**: the options paper was authored as
+[decision 0010 (Proposed)](docs/decisions/0010-generated-repo-ownership-policy.md).
+Later the same day the operator corrected its premise in their own words —
+this is a personal project, not a CBTS engagement, and they have owned it
+since day 1 — so the earlier "which value CBTS puts in `ownerName`" framing
+was mis-premised: there is no engagement counterparty, and the transfer
+question is moot. 0010 was rewritten accordingly (unratified, so rewritten
+in place with the correction recorded in its History section). **Awaiting
+operator ratification**; nothing is policy until then.
 
 ### 14. Implement `keyvault-cmk` and `sentinel-siem`
 **Operator-accepted deferral as of 2026-08-06** ("leave those key vault and
