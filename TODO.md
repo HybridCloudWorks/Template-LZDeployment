@@ -639,8 +639,15 @@ Mechanism is settled (`github.ownershipModel`/`ownerName` are required schema
 fields); what is open is engagement policy — which owner value CBTS uses and
 whether repos are transferred to the client afterward. Watch schema risk GH1
 (`personal` on a Free plan silently loses protected environments).
+**Drafted 2026-08-14**: the options paper exists as
+[decision 0010 (Proposed)](docs/decisions/0010-generated-repo-ownership-policy.md)
+— both questions optioned against the repo facts (the OIDC subjects embed the
+owner literally; decision 0004 puts the client's `gh` session at the
+keyboard), with client-owned-from-day-one and no-transfer recommended. The
+remaining work is ratification plus the record's follow-ups (wizard/docs
+references, USER-CHECKLIST prerequisite).
 **Owner**: operator decides; `docs-knowledge-curator` records.
-**Gate**: [REVIEW.md](REVIEW.md) §13.
+**Gate**: unchanged — [REVIEW.md](REVIEW.md) §13 (operator ratifies).
 **Validation**: policy recorded in a decision record; wizard/docs reference it.
 
 ### 2.7 Update dot-folder contract text to the 2026-08-07 file contract — CLOSED
