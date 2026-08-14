@@ -636,11 +636,22 @@ it. Two of the three modules it would gate are the item-2.4 scaffolds.
 ### 2.6 Record the generated-repo ownership policy
 
 Mechanism is settled (`github.ownershipModel`/`ownerName` are required schema
-fields); what is open is engagement policy — which owner value CBTS uses and
-whether repos are transferred to the client afterward. Watch schema risk GH1
-(`personal` on a Free plan silently loses protected environments).
+fields); what is open is the operator confirming the rewritten
+[decision 0010 (Proposed)](docs/decisions/0010-generated-repo-ownership-policy.md)
+— an operator-owned organization (`HybridCloudWorks` precedent) with
+`ownershipModel: organization` — plus the GH1 org-plan-tier answer. Watch
+schema risk GH1 (`personal` on a Free plan silently loses protected
+environments; the OIDC subjects embed the owner literally, so the choice is
+permanent in practice).
+**Premise corrected 2026-08-14**: the operator stated this is a personal
+project (owner since day 1), not a consultancy engagement, so the earlier
+"which owner value the consultancy uses / transfer to the client" framing
+was mis-premised and
+0010 was rewritten in place (it was unratified). The remaining work is
+ratification plus the record's follow-ups (wizard/docs references,
+USER-CHECKLIST prerequisite).
 **Owner**: operator decides; `docs-knowledge-curator` records.
-**Gate**: [REVIEW.md](REVIEW.md) §13.
+**Gate**: unchanged — [REVIEW.md](REVIEW.md) §13 (operator ratifies).
 **Validation**: policy recorded in a decision record; wizard/docs reference it.
 
 ### 2.7 Update dot-folder contract text to the 2026-08-07 file contract — CLOSED

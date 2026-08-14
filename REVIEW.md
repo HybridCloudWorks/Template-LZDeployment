@@ -353,11 +353,23 @@ The *mechanism* is settled and needs no change — `github.ownershipModel` and
 `github.ownerName` are required schema fields, and
 `LZFactory.Scaffold.psm1` targets `ownerName/repositoryName`, so ownership is
 explicit per engagement and never inherited from whoever is logged in.
-**Decide**: which value CBTS puts in `ownerName` for a typical engagement, and
-whether a repo created under one owner is transferred to the client afterward.
+**Decide**: operator confirms the `ownerName` policy for generated repos —
+an operator-owned organization (`HybridCloudWorks` is the precedent) with
+`ownershipModel: organization` — and answers the GH1 org-plan-tier question.
 **Watch out**: `ownershipModel: personal` on a Free plan cannot use protected
 environments (schema risk GH1), which silently removes the gate the apply
-identity's `environment:<name>` OIDC subjects depend on.
+identity's `environment:<name>` OIDC subjects depend on — so even a solo
+owner should use the org model. Whether an *organization* on the Free plan
+degrades the same controls is unverified from this repo.
+**Update 2026-08-14**: the options paper was authored as
+[decision 0010 (Proposed)](docs/decisions/0010-generated-repo-ownership-policy.md).
+Later the same day the operator corrected its premise in their own words —
+this is a personal project, not a consultancy engagement, and they have
+owned it since day 1 — so the earlier "which value the consultancy puts in
+`ownerName`" framing was mis-premised: there is no engagement counterparty, and the transfer
+question is moot. 0010 was rewritten accordingly (unratified, so rewritten
+in place with the correction recorded in its History section). **Awaiting
+operator ratification**; nothing is policy until then.
 
 ### 14. Implement `keyvault-cmk` and `sentinel-siem`
 **Operator-accepted deferral as of 2026-08-06** ("leave those key vault and
@@ -390,6 +402,12 @@ write does not.
 **Unblocked by**: `git am` the patch and push from any machine with wiki write
 access (commands in the review README), or approve `add_repo` for the wiki in
 an interactive Claude session.
+**Probed 2026-08-14, confirmed rather than presumed**: `add_repo` for
+`HybridCloudWorks/Template-LZDeployment.wiki` was actually attempted from an
+autonomous session and **denied** — "repository not found or session's GitHub
+credential doesn't have access". Anonymous read still works (`git ls-remote`
+succeeds), so the session credential cannot reach the wiki repo at all rather
+than merely lacking push. Both unblock routes above stand unchanged.
 
 *Noted 2026-08-06, no action needed: the two cancelled CodeQL default-setup
 runs with no logs were GitHub-side runner churn, not repo debt — default setup
@@ -424,6 +442,11 @@ than against the repo.
 release time. The `azure-cost-governance` capability and the `azure-cost`
 skill exist for exactly this, but the figures still need a human to accept
 them.
+**Re-probed 2026-08-14, gate confirmed still closed by both routes**: direct
+HTTPS to `prices.azure.com` remains 403 at the proxy, and the Azure MCP
+`pricing` tool — previously recorded as "refused" — now *executes* but routes
+through the same proxy and fails with the same 403. The item 5.2 gate ("an
+environment with egress to `prices.azure.com`") is unchanged.
 
 ---
 

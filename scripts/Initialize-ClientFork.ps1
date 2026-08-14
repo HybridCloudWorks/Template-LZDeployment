@@ -38,7 +38,7 @@
 
 .PARAMETER Repository
     Target repository as <owner>/<name>. This is the client copy being
-    created or verified, NOT the CBTS upstream.
+    created or verified, NOT the upstream factory.
 
 .PARAMETER SourceRepository
     Source repository as <owner>/<name> to mirror when -CreatePrivateCopy is
@@ -60,7 +60,8 @@
 
 .EXAMPLE
     ./scripts/Initialize-ClientFork.ps1 -Repository clientorg/lz-factory `
-        -SourceRepository cbts/HCW-Plan_LZDeployment -CreatePrivateCopy -Apply
+        -SourceRepository HybridCloudWorks/Template-LZDeployment `
+        -CreatePrivateCopy -Apply
 
     Creates the private copy, mirror-pushes the factory into it, and prints
     the visibility read-back.
@@ -186,7 +187,7 @@ if ($null -eq $repoInfo) {
     }
     if ($Apply) {
         Write-Host ('  Creating PRIVATE repository {0} ...' -f $Repository)
-        & gh repo create $Repository --private --description 'CBTS Landing Zone factory (client instance)' | Out-Host
+        & gh repo create $Repository --private --description 'Landing Zone factory (client instance)' | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "gh repo create $Repository failed (exit $LASTEXITCODE)." }
 
         $mirrorPath = Join-Path ([System.IO.Path]::GetTempPath()) ("lz-fork-mirror-{0}" -f [guid]::NewGuid())
