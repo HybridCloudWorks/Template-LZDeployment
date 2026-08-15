@@ -32,7 +32,7 @@ It reads `TODO.md` and `docs/` first, decomposes the request, and delegates.
 | --- | --- | --- |
 | `alz-orchestrator` | Cross-domain routing and sequencing | "stand up the landing zone", "review the whole pipeline" |
 | `azure-platform-architect` | Azure design — topology, SKUs, identity, readiness | "how should this be built on Azure" |
-| `terraform-module-engineer` | `terraform/modules/`, `terraform/live/`, tests, imports | "refactor this module", "add a spoke" |
+| `terraform-module-engineer` | `factory/templates/terraform/` — the emitted AVM template corpus (generator-only model, [ADR 0013](decisions/0013-generator-only-avm-architecture.md)); tests, plan reading | "adjust an emitted layer", "read this plan" |
 | `github-actions-engineer` | `.github/workflows/`, OIDC, pinning, PR gates | "fix this workflow", "add a check" |
 | `azure-cost-governance` | Cost, quotas, Azure Policy, compliance audits | "what will this cost", "check quotas" |
 | `deployment-troubleshooter` | Root-causing failed runs, applies, auth, drift | "the deploy failed" |

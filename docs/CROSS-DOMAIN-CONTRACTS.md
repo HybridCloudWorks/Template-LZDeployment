@@ -1,5 +1,13 @@
 # Cross-Domain Contracts
 
+> **STALE — pending post-refactor reconciliation.** Several contracts below
+> name `terraform/live` / `terraform/modules` paths that the generator-only
+> refactor deleted (ADR 0013, 2026-08-15). The contracts' *principles* (AAD-only
+> state access, schema↔variable drift, layer isolation) survive and are
+> enforced by the current gates; the file inventories need re-verification
+> against the AVM corpus. Tracked in TODO.md; rewrite goes through
+> `alz-orchestrator` so no side is edited in isolation.
+
 **Purpose**: This is a reference of the load-bearing contracts that span more than
 one domain (schema, wizard, factory templates, Terraform, CI). Each entry lists
 every file that participates. If you edit **one** side of a contract, you must

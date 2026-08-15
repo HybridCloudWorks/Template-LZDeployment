@@ -26,6 +26,35 @@ Phase 5 release-time
 
 ---
 
+## 2026-08-15 — generator-only refactor supersessions (ADR 0013–0017)
+
+The operator-directed generator-only refactor
+([ADR 0013](docs/decisions/0013-generator-only-avm-architecture.md) –
+[ADR 0017](docs/decisions/0017-wizard-scope-vs-emitted-architecture.md),
+factory 0.10.0) deleted the bespoke `terraform/` tree, the vendored module
+mirror, and the self-deploying pipeline. Open items below that referenced
+that corpus are **superseded in place** — their text is retained as history,
+marked here rather than rewritten:
+
+- **Item 2.4** (`keyvault-cmk` / `sentinel-siem` scaffolds) — the scaffold
+  modules no longer exist; the answers are now **recorded-not-deployed**
+  (ADR 0017: wizard warns, guards G02/G03 warn, answers preserved in the
+  committed `lz-config.json` answer record). Re-opening the deferral now
+  means AVM resource modules or per-estate work, not finishing a stub.
+  Item 2.5's gate (which waited on 2.4) inherits the same supersession.
+- **Item 2.16** (`fw_trust`/`fw_untrust` NSG residual) — the `hub-network`
+  module is deleted and the firewall narrowed to Azure Firewall (ADR 0017),
+  where those subnets never exist. The residual is void, not merely
+  vendor-conditional.
+- **Dogfood / Stage 13 items** (4.7, the Stage 13 references inside 3.1,
+  and item 5.1's gate chain) — the self-deploying dogfood instance is
+  deleted; the release gate is now the **end-to-end generation proof**
+  (`factory-version.json` `releaseGates.endToEndGenerationProofPasses`;
+  ADR 0013). Per-estate verifications formerly parked "at the Stage 13
+  dogfood" execute at first real instantiation instead.
+
+---
+
 ## What this repo is
 
 The **Landing Zone Factory** (see [README.md](README.md)): a disposable
@@ -34,8 +63,12 @@ from `lz-config.json` (`site/` wizard → discovery → broker → render →
 validate → scaffold). The client runs it once, on their own machine, and the
 copy is deleted; the **generated** repository is the deliverable
 ([decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)).
-The legacy self-deploying path (`terraform/live/` + numbered workflows) is
-retained as the Stage 13 dogfood instance.
+The legacy self-deploying path (`terraform/live/` + numbered workflows) was
+**deleted by the 2026-08-15 generator-only refactor**
+([ADR 0013](docs/decisions/0013-generator-only-avm-architecture.md)); the
+generator emits three AVM-referencing layers, and the former Stage 13
+dogfood gate is replaced by the end-to-end generation proof (see the
+supersession section above).
 
 ---
 
