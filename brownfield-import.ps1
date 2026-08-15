@@ -8,14 +8,6 @@
     blocks/commands into the rendered tree and registers them in
     render-manifest.json; it never executes Terraform import.
 #>
-throw @'
-brownfield-import is quarantined (docs/refactor/CLASSIFICATION.md, UNRESOLVED-2).
-Its import-block generation targets the retired bespoke module resource
-addresses; the emitted architecture now references Azure Verified Modules,
-whose internal resource addresses differ. Re-targeting requires verifying
-those addresses against the pinned module versions. Track ADR 0013.
-'@
-
 [CmdletBinding()]
 param(
     [string]$ConfigPath = $(if ($env:LZ_CONFIG_PATH) { $env:LZ_CONFIG_PATH } else { './lz-config.json' }),
@@ -26,6 +18,14 @@ param(
     [switch]$Apply,
     [switch]$AllowStaleInventory
 )
+
+throw @'
+brownfield-import is quarantined (docs/refactor/CLASSIFICATION.md, UNRESOLVED-2).
+Its import-block generation targets the retired bespoke module resource
+addresses; the emitted architecture now references Azure Verified Modules,
+whose internal resource addresses differ. Re-targeting requires verifying
+those addresses against the pinned module versions. Track ADR 0013.
+'@
 
 $module = Join-Path $PSScriptRoot 'factory/import/LZFactory.Import.psm1'
 Import-Module $module -Force

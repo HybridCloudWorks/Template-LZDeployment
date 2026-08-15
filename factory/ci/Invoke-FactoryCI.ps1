@@ -26,11 +26,11 @@ $skipStaticRequested = $SkipStatic -or $env:LZ_FACTORY_CI_SKIP_STATIC -eq 'true'
 $terraformRoots = if ($env:LZ_FACTORY_CI_TERRAFORM_ROOTS) {
     @($env:LZ_FACTORY_CI_TERRAFORM_ROOTS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 } else {
-    # Both trees. The live tree was left out originally, which is why the
-    # dependabot provider split-brain reached `main` without any terraform
-    # check objecting to it: the only workflow that runs credential-free
-    # simply did not look at terraform/.
-    @('factory/templates/terraform', 'terraform')
+    # Generator-only model (ADR 0013): the template corpus is the only
+    # Terraform tree. The rendered-output init/validate (which downloads and
+    # verifies the AVM pins) runs in terraform-policy-checks.yml and the e2e
+    # generation proof.
+    @('factory/templates/terraform')
 }
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -133,7 +133,6 @@ try {
         'Test-Validate.ps1',
         'Test-Import.ps1',
         'Test-CI.ps1',
-        'Test-Dogfood.ps1',
         'Test-Release.ps1'
     )) {
         Invoke-LzFactoryCheck $suite pwsh @('-NoLogo', '-NoProfile', '-File', "factory/tests/$suite") -Category 'tests' | Out-Null

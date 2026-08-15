@@ -94,9 +94,9 @@
       "description": "Root module referencing Azure/avm-ptn-alz by pinned registry version, with the ALZ library pinned through the alz provider, plus subscription placement."
     },
     {
-      "source": "terraform/live/global/outputs.tf",
+      "source": "terraform/live/global/outputs.tf.tmpl",
       "destination": "terraform/live/global/outputs.tf",
-      "mode": "copy",
+      "mode": "render",
       "when": "always",
       "description": "Management-group resource IDs and placement associations."
     },

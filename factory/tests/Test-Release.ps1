@@ -19,12 +19,12 @@ Write-Host "`n== Stage 14 release-readiness static contract ==" -ForegroundColor
 ok 'workflow is manual only' ($workflow -match 'workflow_dispatch:' -and $workflow -notmatch 'pull_request:|push:')
 ok 'workflow has no cloud identity permission' ($workflow -notmatch 'id-token:\s*write|azure/login')
 ok 'workflow actions are SHA pinned' ($workflow -notmatch 'uses:\s*[^\s]+@(v\d+|main|master|latest)')
-ok 'attestation pins both reports' ($schema -match 'factoryCiReportSha256' -and $schema -match 'dogfoodReportSha256')
-ok 'runner checks full eligible apply' ($runner -match 'releaseGateEligible' -and $runner -match "requestedLayer.*all")
+ok 'attestation pins both reports' ($schema -match 'factoryCiReportSha256' -and $schema -match 'e2eReportSha256')
+ok 'runner checks the full e2e proof' ($runner -match 'zeroResidualPlaceholders' -and $runner -match 'terraformInitValidatePassed' -and $runner -match 'zeroGuids')
 ok 'runner checks evidence freshness' ($runner -match 'LZ_RELEASE_MAX_EVIDENCE_AGE_HOURS')
 ok 'runner computes all five gates' (
-    @('schemaVariableDriftCheckPasses','dogfoodInstanceAppliesGreen',
-      'oidcTokenExchangeVerifiedLive','allEmittedModulesImplemented',
+    @('schemaVariableDriftCheckPasses','endToEndGenerationProofPasses',
+      'oidcTokenExchangeVerifiedLive','avmPinsVerifiedByInit',
       'siteMakesZeroNetworkRequests') |
         ForEach-Object { $runner -match $_ } | Where-Object { -not $_ } |
         Measure-Object | Select-Object -ExpandProperty Count |
