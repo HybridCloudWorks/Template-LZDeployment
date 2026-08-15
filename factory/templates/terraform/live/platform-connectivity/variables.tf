@@ -100,8 +100,8 @@ variable "private_dns_zones" {
 
 variable "availability_zones" {
   description = "Availability zones for zone-redundant hub components."
-  type        = list(number)
-  default     = [1, 2, 3]
+  type        = list(string)
+  default     = ["1", "2", "3"]
 }
 
 variable "hub_and_spoke_networks_settings" {
