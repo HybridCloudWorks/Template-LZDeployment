@@ -161,6 +161,27 @@ with real discovery artifacts. Tracked as [TODO.md](TODO.md) item 3.1 — whose
 V07/V08 criterion is now **answered rather than pending**, by item 2.15.
 **Unblocked by**: a provisioned toolchain with real `az` and `gh` sessions.
 
+**Update 2026-08-15 — the provisioning half is satisfied; the tenant-bound
+half is re-scoped, not blocked.** The authoring sandbox provisioned the full
+toolchain — `pwsh` 7.4.6 and `gh` 2.63.2 from their GitHub releases, `az`
+2.89.1 from PyPI, the same proxy route items 2.15/2.17 used — and all nine
+local PowerShell suites ran green in one environment for the first time:
+Bootstrap 85/0, Renderer 455/0, Discovery 60/0, Scaffold 16/0, Validate 18/0,
+Import 10/0, Dogfood 10/0, Release 10/0, CI 12/0. The session held a working
+GitHub token (`GH_TOKEN`; `gh api user` ran as the operator), so this entry's
+"no `gh` session" premise is partially stale. An `az` device-code login was
+started and then **cancelled on the operator's directive** before completing
+— no Azure credential was ever stored (verified: empty account list, no token
+cache). That directive, in the operator's own words, re-scopes the remainder:
+**"Do not tie yourself to a specific azure tenant/sub ID, this is meant to be
+a template."** The broker/import/scaffold-apply suites against real `az`, the
+item-2.1 fresh-subscription proof, and the item-2.3/2.9 flag flips are
+therefore **per-estate verification performed when the template is
+instantiated against an estate** — not template-repo debt — and would first
+actually run at the Stage 13 dogfood (§4) when the operator opens go-live.
+This entry survives only as that per-estate pointer; [TODO.md](TODO.md) item
+3.1 records the narrowed scope.
+
 ### 8. Set GitHub Pages source to "GitHub Actions"
 `deploy-pages.yml` exists and is SHA-pinned; the repository setting is a
 one-time manual prerequisite.
@@ -446,6 +467,16 @@ autonomous session and **denied** — "repository not found or session's GitHub
 credential doesn't have access". Anonymous read still works (`git ls-remote`
 succeeds), so the session credential cannot reach the wiki repo at all rather
 than merely lacking push. Both unblock routes above stand unchanged.
+**Probed again 2026-08-15, this time holding a working token — a third layer
+of the same block.** The session had a valid GitHub token (`gh api user` ran
+as the operator) and the prepared patch applied cleanly to a local clone of
+the wiki; the push was still refused, this time by the **git proxy itself**,
+which injects/permits credentials only for repositories in the session's
+authorized set — and the wiki cannot be added to that set. The block is
+architectural to the remote sandbox, not a credential gap a better token
+fixes. Publication remains a local run of the commands in
+[docs/wiki-review/README.md](docs/wiki-review/README.md) from any machine
+with wiki write access.
 
 *Noted 2026-08-06, no action needed: the two cancelled CodeQL default-setup
 runs with no logs were GitHub-side runner churn, not repo debt — default setup
@@ -539,8 +570,19 @@ be readable from `MicrosoftDocs/azure-docs` on GitHub when
 | Wiki publish | `git push --dry-run` to `.wiki.git` | **403** — repo not in the session's authorized set (readable, not writable) |
 | Microsoft Learn | `GET learn.microsoft.com/...` | `000` — blocked, **but** the same articles are readable from `MicrosoftDocs/azure-docs` on GitHub, which is how items 2.8 and 2.17 were settled |
 
-Consequently items 3.1, 3.2, 4.1–4.7, 5.1 and 5.2 are blocked on access this
-session does not have, and 2.4, 2.5 and the two remaining subnets of 2.16
+*Re-probed 2026-08-15: `pwsh` 7.4.6, `gh` 2.63.2 and `az` 2.89.1 now install
+and run in the sandbox, and the session held a working GitHub token — the
+`az`-session and `gh` rows above are superseded (§7). The wiki-publish row
+gained a third confirming layer: even with a valid token, the git proxy
+refuses the push (§15). No Azure credential exists — an `az` login was
+cancelled on the operator's directive, and per that directive ("Do not tie
+yourself to a specific azure tenant/sub ID, this is meant to be a template")
+the template deliberately stays tenant-agnostic.*
+
+Consequently items 3.2, 4.1–4.7, 5.1 and 5.2 are blocked on access this
+session does not have (item 3.1 was re-scoped 2026-08-15 — its provisioning
+half is proven and its tenant-bound half is per-estate work at
+instantiation, §7), and 2.4, 2.5 and the two remaining subnets of 2.16
 are blocked on design or policy input rather than on effort (2.6 closed
 2026-08-15 by operator ratification of decision 0010; 2.16's DNS and
 private-endpoint subnets closed 2026-08-15 by the operator's design answers,

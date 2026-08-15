@@ -14,9 +14,11 @@
 **Status**: 🟢 Phases 1–2 closed except 2.16 (`fw_trust`/`fw_untrust` only —
 vendor-conditional palo/fortinet work, nil estate-need on the operator's azfw
 estate; decision 0012) and 2.4/2.5
-(operator-gated — REVIEW.md §14/§16); Phase 3 gated on the authenticated
-toolchain (§7) and wiki write access (§15); Phase 4 deferred (go-live not
-opened); Phase 5 release-time
+(operator-gated — REVIEW.md §14/§16); Phase 3: 3.1 re-scoped 2026-08-15 —
+toolchain provisioning proven, tenant-bound residuals are per-estate work by
+operator directive (§7) — and 3.2 blocked on wiki write access, architectural
+to the remote sandbox (§15); Phase 4 deferred (go-live not opened); Phase 5
+release-time
 **Operator activities & stage checklists**: [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md)
 **External tracking**: [GitHub Issues](https://github.com/HybridCloudWorks/Template-LZDeployment/issues)
 
@@ -676,45 +678,74 @@ Item number retained so cross-references stay stable; record in
 
 ## Phase 3 — Authenticated-toolchain execution
 
-Needs a provisioned toolchain with real `az`/`gh` sessions (or the named
-external access); no Azure estate mutation implied.
+Originally gated on a provisioned toolchain with real `az`/`gh` sessions (or
+the named external access); no Azure estate mutation implied. The
+provisioning half of that gate was proven 2026-08-15 (item 3.1), and the
+operator's directive the same day — *"Do not tie yourself to a specific azure
+tenant/sub ID, this is meant to be a template"* — re-scopes the tenant-bound
+remainder to per-estate verification at instantiation. Item 3.2 stays blocked
+on wiki write access, now known to be architectural to the remote sandbox
+([REVIEW.md](REVIEW.md) §15).
 
-### 3.1 Execute the Stage 9/10/11 suites and the engagement-wrapped validation gate
+### 3.1 Execute the Stage 9/10/11 suites and the engagement-wrapped validation gate — RE-SCOPED (2026-08-15)
 
-The **standalone** validation gate is done (executed 2026-08-06 — record in
-[REVIEW.md](REVIEW.md) §7). What remains: the broker/import/scaffold-apply
-suites against authenticated `az`/`gh`, and the validate phase inside the full
-engagement wrapper (discovery → broker → render → validate → scaffold,
-`scripts/Invoke-CustomerEngagement.ps1`) with real discovery artifacts.
-Carried forward from item 1.1 (closed 2026-08-07 with this criterion unmet),
-the strict V07/V08 skip-free pass — **discharged by item 2.15 (closed
-2026-08-10)**: tflint 0.64.0 and checkov 3.3.9 installed and ran, the scanner
-is pinned to checkov, and all three fixtures (sample, azurerm, nonprod) pass
-all eight gates `8 passed, 0 skipped` under `LZ_VALIDATE_STRICT=true`. No
-authenticated run is needed for that criterion any more.
-Carried forward from item 2.1 (closed 2026-08-07): confirm against a real
-estate that a broker apply registers the decision-0006 namespaces (audit
-entries `registered`/`already-registered`, none left `pending`) and that the
-first apply into a fresh subscription no longer fails
-`MissingSubscriptionRegistration` — the code path is test-covered, but the
-end-to-end proof needs authenticated `az` and a fresh subscription.
-Carried forward from items 2.3 and 2.9 (closed 2026-08-09), the estate-gated
-flag flips both items fold into this one: `enable_nsg_flow_logs` defaults to
-`false` in both the workload and connectivity layers, so the estate collects
-nothing — and no plan can show the flow-log resources — until a PR flips the
-flags against a real estate whose spoke (and, for the hub instances, NVA)
-NSGs exist.
-**Owner**: `alz-orchestrator` (multi-stage execution).
-**Gate**: provisioned, authenticated toolchain — [REVIEW.md](REVIEW.md) §7.
-**Validation**: suite runs recorded with plan/audit evidence files; wrapper
-completes plan-first end to end; the flag-flip PR's plan shows the flow-log
-resources against the chosen NSGs only (item 2.3's carried criterion).
+**Re-scoped 2026-08-15 by operator directive**, in their own words: *"Do not
+tie yourself to a specific azure tenant/sub ID, this is meant to be a
+template."* The gate had two halves; one is now proven, the other is
+per-estate work by design, not template-repo debt.
+
+**Proven — the toolchain-provisioning half.** The authoring sandbox
+provisioned the full toolchain on 2026-08-15 — `pwsh` 7.4.6 and `gh` 2.63.2
+from their GitHub releases, `az` 2.89.1 from PyPI, the same proxy route items
+2.15/2.17 used — and all nine local PowerShell suites ran green in one
+environment for the first time: Bootstrap 85/0, Renderer 455/0, Discovery
+60/0, Scaffold 16/0, Validate 18/0, Import 10/0, Dogfood 10/0, Release 10/0,
+CI 12/0. The session also held a working GitHub token (`gh api user` ran as
+the operator), so the gate's "no `gh` session" premise is partially stale
+([REVIEW.md](REVIEW.md) §7 records the update). An `az` device-code login was
+started and **cancelled on the operator's directive** before completing — no
+Azure credential was ever stored (verified: empty account list, no token
+cache). That cancellation is the directive in action, not a failed step. The
+strict V07/V08 skip-free criterion carried from item 1.1 was already
+discharged by item 2.15 (closed 2026-08-10) and needs nothing here.
+
+**Re-scoped to per-estate — the tenant-bound half.** The residuals below need
+a real tenant and subscription, which the template deliberately never
+carries. They are **executed per-estate at instantiation**, when the template
+is run against an estate — the Stage 13 dogfood (item 4.7) is where they
+would first actually run, when the operator opens go-live. Listed here,
+cross-referenced rather than duplicated, so they are not lost:
+
+- the broker/import/scaffold-apply suites against authenticated `az`, and
+  the validate phase inside the full engagement wrapper (discovery → broker
+  → render → validate → scaffold, `scripts/Invoke-CustomerEngagement.ps1`)
+  with real discovery artifacts;
+- item 2.1's carried criterion: a broker apply registers the decision-0006
+  namespaces (audit entries `registered`/`already-registered`, none left
+  `pending`) and the first apply into a fresh subscription no longer fails
+  `MissingSubscriptionRegistration`;
+- items 2.3/2.9's carried flag flips: `enable_nsg_flow_logs` defaults to
+  `false` in both the workload and connectivity layers, so nothing is
+  collected — and no plan can show the flow-log resources — until a PR flips
+  the flags against an estate whose spoke (and, for the hub instances, NVA)
+  NSGs exist.
+
+**Owner**: `alz-orchestrator` (per-estate, sequenced with item 4.7).
+**Gate**: an instantiated estate — [REVIEW.md](REVIEW.md) §7 survives as the
+per-estate pointer.
+**Validation** (per estate): suite runs recorded with plan/audit evidence
+files; wrapper completes plan-first end to end; the flag-flip PR's plan shows
+the flow-log resources against the chosen NSGs only (item 2.3's carried
+criterion).
 
 ### 3.2 Publish the prepared wiki review edits
 
 The 2026-08-06 content review of the 11 migrated wiki docs is complete;
 verdicts and the ready-to-apply patch live in
-[docs/wiki-review/](docs/wiki-review/README.md). Only the push is blocked.
+[docs/wiki-review/](docs/wiki-review/README.md). Only the push is blocked —
+and the 2026-08-15 probe with a working token confirmed the block is
+architectural to the remote sandbox, so publication is a local run of the
+review README's commands ([REVIEW.md](REVIEW.md) §15).
 **Owner**: `docs-knowledge-curator`.
 **Gate**: wiki write access — [REVIEW.md](REVIEW.md) §15 (commands in the
 review README).
