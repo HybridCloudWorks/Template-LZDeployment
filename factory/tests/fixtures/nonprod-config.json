@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2.0.0",
-  "factoryVersion": "0.9.0",
+  "schemaVersion": "2.1.0",
+  "factoryVersion": "0.10.0",
   "generatedAt": "2026-07-25T00:00:00.000Z",
   "organization": {
     "companyName": "Contoso Health Group",
@@ -46,13 +46,12 @@
     "useSelfHostedRunners": false
   },
   "backend": {
-    "type": "hcp-terraform",
-    "hcpTerraform": {
-      "organization": "contoso",
-      "workspacePrefix": "contoso",
-      "executionMode": "remote",
-      "useDynamicProviderCredentials": true,
-      "acknowledgedResourceLimit": true
+    "type": "azurerm",
+    "azurerm": {
+      "resourceGroupName": "rg-tfstate-scus-prod-01",
+      "storageAccountName": "stchgtfstateabcd",
+      "containerName": "tfstate",
+      "subscriptionId": "aaaaaaaa-0000-0000-0000-000000000001"
     }
   },
   "deploymentStrategy": {
@@ -123,8 +122,16 @@
     "deployIdentitySubscription": false,
     "privilegedAccessModel": "pim-eligible",
     "breakGlassAccounts": [
-      { "name": "bg-admin-1@contoso.onmicrosoft.com", "email": "secops@contoso.com", "role": "Global Administrator" },
-      { "name": "bg-admin-2@contoso.onmicrosoft.com", "email": "secops@contoso.com", "role": "Global Administrator" }
+      {
+        "name": "bg-admin-1@contoso.onmicrosoft.com",
+        "email": "secops@contoso.com",
+        "role": "Global Administrator"
+      },
+      {
+        "name": "bg-admin-2@contoso.onmicrosoft.com",
+        "email": "secops@contoso.com",
+        "role": "Global Administrator"
+      }
     ]
   },
   "security": {
@@ -206,12 +213,19 @@
     "platformTeam": {
       "name": "Cloud Platform",
       "contacts": [
-        { "name": "Alex Fictional", "email": "alex@contoso.com", "role": "Lead" }
+        {
+          "name": "Alex Fictional",
+          "email": "alex@contoso.com",
+          "role": "Lead"
+        }
       ]
     },
     "approvalChain": [],
     "breakGlassContacts": [
-      { "name": "Dana Fictional", "email": "dana@contoso.com" }
+      {
+        "name": "Dana Fictional",
+        "email": "dana@contoso.com"
+      }
     ]
   },
   "finops": {

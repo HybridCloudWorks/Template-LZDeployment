@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2.0.0",
+  "schemaVersion": "2.1.0",
   "factoryVersion": "0.9.0",
   "generatedAt": "2026-07-25T00:00:00Z",
   "organization": {
@@ -46,13 +46,10 @@
     "useSelfHostedRunners": false
   },
   "backend": {
-    "type": "hcp-terraform",
-    "hcpTerraform": {
-      "organization": "contoso",
-      "workspacePrefix": "contoso",
-      "executionMode": "remote",
-      "useDynamicProviderCredentials": true,
-      "acknowledgedResourceLimit": true
+    "type": "azurerm",
+    "azurerm": {
+      "resourceGroupName": "",
+      "storageAccountName": ""
     }
   },
   "deploymentStrategy": {

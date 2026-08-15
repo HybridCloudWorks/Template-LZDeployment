@@ -3,7 +3,7 @@
   "factoryVersion": "0.10.0",
   "generatedAt": "2026-07-25T00:00:00.000Z",
   "organization": {
-    "companyName": "Contoso Health Group",
+    "companyName": "Contoso Health Group vWAN",
     "companyShortName": "chg",
     "businessUnit": "Platform",
     "outputDirectoryName": "contoso"
@@ -71,7 +71,7 @@
     "approvals": {}
   },
   "connectivity": {
-    "model": "hub-spoke",
+    "model": "virtual-wan",
     "hubSpoke": {
       "primaryHubAddressSpace": "10.0.0.0/16",
       "drHubAddressSpace": "10.10.0.0/16",
@@ -95,11 +95,11 @@
       "enabled": false
     },
     "bastion": {
-      "enabled": true,
+      "enabled": false,
       "sku": "Standard"
     },
     "privateDns": {
-      "enabled": true,
+      "enabled": false,
       "centralizedInHub": true,
       "zones": []
     },

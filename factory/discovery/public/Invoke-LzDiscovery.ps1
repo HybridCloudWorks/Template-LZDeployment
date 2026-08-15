@@ -99,14 +99,11 @@ function Invoke-LzDiscovery {
 
     if ('Terraform' -notin $SkipDomain -and $config) {
         $terraform = Invoke-LzDomainSafely -Name 'Terraform' -Action {
-            $p = @{ BackendType = $config.backend.type }
-            if ($config.backend.type -eq 'hcp-terraform') {
-                $p['HcpOrganization'] = $config.backend.hcpTerraform.organization
-                $p['WorkspacePrefix'] = $config.backend.hcpTerraform.workspacePrefix
-            }
-            else {
-                $p['StorageAccountName']     = $config.backend.azurerm.storageAccountName
-                $p['StateResourceGroupName'] = $config.backend.azurerm.resourceGroupName
+            # azurerm is the only backend (ADR 0015).
+            $p = @{
+                BackendType            = 'azurerm'
+                StorageAccountName     = $config.backend.azurerm.storageAccountName
+                StateResourceGroupName = $config.backend.azurerm.resourceGroupName
             }
             Get-LzTerraformInventory @p
         }
