@@ -3,13 +3,13 @@
     Stage 14 release evidence attestation and promotion planning.
 
     This command reads existing evidence only. It never contacts Azure, GitHub,
-    or HCP Terraform and never edits factory-version.json. A successful report
+    or the network and never edits factory-version.json. A successful report
     is a review input, not an automatic release or v1.0.0 declaration.
 #>
 [CmdletBinding()]
 param(
     [string]$FactoryCiReport = $env:LZ_RELEASE_FACTORY_CI_REPORT,
-    [string]$DogfoodReport = $env:LZ_RELEASE_DOGFOOD_REPORT,
+    [string]$E2eReport = $env:LZ_RELEASE_E2E_REPORT,
     [string]$AttestationPath = $env:LZ_RELEASE_ATTESTATION_PATH,
     [string]$OutputDirectory = $env:LZ_RELEASE_EVIDENCE,
     [switch]$AllowIncomplete
@@ -70,7 +70,7 @@ function ConvertTo-LzReleaseUtcInstant {
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $FactoryCiReport = Get-LzReleaseValue $FactoryCiReport 'LZ_RELEASE_FACTORY_CI_REPORT'
-$DogfoodReport = Get-LzReleaseValue $DogfoodReport 'LZ_RELEASE_DOGFOOD_REPORT'
+$E2eReport = Get-LzReleaseValue $E2eReport 'LZ_RELEASE_E2E_REPORT'
 $AttestationPath = Get-LzReleaseValue $AttestationPath 'LZ_RELEASE_ATTESTATION_PATH'
 $OutputDirectory = Get-LzReleaseValue $OutputDirectory 'LZ_RELEASE_EVIDENCE' (Join-Path $repo 'release-evidence')
 $allowIncompleteRequested = $AllowIncomplete -or
@@ -83,7 +83,7 @@ if ($maximumAgeHours -lt 1) {
 
 foreach ($evidenceInput in @(
     @{ Name = 'Factory CI report'; Path = $FactoryCiReport },
-    @{ Name = 'Dogfood report'; Path = $DogfoodReport },
+    @{ Name = 'E2E generation report'; Path = $E2eReport },
     @{ Name = 'Release attestation'; Path = $AttestationPath }
 )) {
     if ([string]::IsNullOrWhiteSpace($evidenceInput.Path) -or -not (Test-Path $evidenceInput.Path -PathType Leaf)) {
@@ -94,13 +94,13 @@ foreach ($evidenceInput in @(
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $factoryVersion = Get-Content (Join-Path $repo 'factory-version.json') -Raw | ConvertFrom-Json -Depth 20
 $factory = Get-Content $FactoryCiReport -Raw | ConvertFrom-Json -Depth 50
-$dogfood = Get-Content $DogfoodReport -Raw | ConvertFrom-Json -Depth 50
+$e2e = Get-Content $E2eReport -Raw | ConvertFrom-Json -Depth 50
 $attestation = Get-Content $AttestationPath -Raw | ConvertFrom-Json -Depth 20
 $requiredAttestationProperties = @(
     'schemaVersion', 'repository', 'factoryVersion', 'issuedAt', 'reviewer',
-    'approvalReference', 'factoryCiReportSha256', 'dogfoodReportSha256',
-    'dogfoodReadBackVerified', 'oidcTokenExchangeVerifiedLive',
-    'allEmittedModulesImplemented', 'branchProtectionVerified'
+    'approvalReference', 'factoryCiReportSha256', 'e2eReportSha256',
+    'e2eEvidenceVerified', 'oidcTokenExchangeVerifiedLive',
+    'avmPinsVerifiedByInit', 'branchProtectionVerified'
 )
 $allowedAttestationProperties = @($requiredAttestationProperties + 'notes')
 $actualAttestationProperties = @($attestation.PSObject.Properties.Name)
@@ -115,19 +115,19 @@ if ($missingAttestationProperties.Count -gt 0 -or $unexpectedAttestationProperti
 }
 if ("$($attestation.schemaVersion)" -ne '1.0.0' -or
     "$($attestation.factoryCiReportSha256)" -notmatch '^[a-f0-9]{64}$' -or
-    "$($attestation.dogfoodReportSha256)" -notmatch '^[a-f0-9]{64}$') {
+    "$($attestation.e2eReportSha256)" -notmatch '^[a-f0-9]{64}$') {
     throw 'Release attestation schema version or SHA-256 format is invalid.'
 }
 foreach ($booleanProperty in @(
-    'dogfoodReadBackVerified', 'oidcTokenExchangeVerifiedLive',
-    'allEmittedModulesImplemented', 'branchProtectionVerified'
+    'e2eEvidenceVerified', 'oidcTokenExchangeVerifiedLive',
+    'avmPinsVerifiedByInit', 'branchProtectionVerified'
 )) {
     if ($attestation.$booleanProperty -isnot [bool]) {
         throw "Release attestation property '$booleanProperty' must be a JSON boolean."
     }
 }
 $factoryHash = Get-LzReleaseHash $FactoryCiReport
-$dogfoodHash = Get-LzReleaseHash $DogfoodReport
+$e2eHash = Get-LzReleaseHash $E2eReport
 $now = (Get-Date).ToUniversalTime()
 
 $findings = [Collections.Generic.List[object]]::new()
@@ -142,13 +142,13 @@ function Add-LzReleaseFinding {
 }
 
 $factoryCompleted = ConvertTo-LzReleaseUtcInstant "$($factory.generatedAt)"
-$dogfoodCompleted = ConvertTo-LzReleaseUtcInstant "$($dogfood.completedAt)"
+$e2eCompleted = ConvertTo-LzReleaseUtcInstant "$($e2e.completedAt)"
 $attestedAt = ConvertTo-LzReleaseUtcInstant "$($attestation.issuedAt)"
 $factoryAge = ($now - $factoryCompleted).TotalHours
-$dogfoodAge = ($now - $dogfoodCompleted).TotalHours
+$e2eAge = ($now - $e2eCompleted).TotalHours
 $attestationAge = ($now - $attestedAt).TotalHours
 $factoryFresh = $factoryAge -ge 0 -and $factoryAge -le $maximumAgeHours
-$dogfoodFresh = $dogfoodAge -ge 0 -and $dogfoodAge -le $maximumAgeHours
+$e2eFresh = $e2eAge -ge 0 -and $e2eAge -le $maximumAgeHours
 $attestationFresh = $attestationAge -ge 0 -and $attestationAge -le $maximumAgeHours
 
 Add-LzReleaseFinding 'R01' 'Factory CI report targets the current factory version.' `
@@ -164,17 +164,17 @@ Add-LzReleaseFinding 'R02' 'Factory CI completed successfully without skipped ch
     "success=$(Get-LzReleaseProperty $factory 'success' $false); terraformSkipped=$factoryTerraformSkipped; staticSkipped=$factoryStaticSkipped"
 Add-LzReleaseFinding 'R03' 'Factory CI evidence is within the allowed age.' $factoryFresh `
     "completed=$($factoryCompleted.ToString('o')); maxHours=$maximumAgeHours"
-Add-LzReleaseFinding 'R04' 'Dogfood report targets this repository and current factory version.' `
-    ("$($dogfood.repository)" -eq $expectedRepository -and
-     "$($dogfood.factoryVersion)" -eq "$($factoryVersion.factoryVersion)") `
-    "repository=$($dogfood.repository); version=$($dogfood.factoryVersion)"
-Add-LzReleaseFinding 'R05' 'Dogfood is a successful full protected apply eligible for release evidence.' `
-    ([bool]$dogfood.success -and "$($dogfood.mode)" -eq 'apply' -and
-     "$($dogfood.requestedLayer)" -eq 'all' -and [bool]$dogfood.externalMutation -and
-     [bool]$dogfood.releaseGateEligible) `
-    "success=$($dogfood.success); mode=$($dogfood.mode); layer=$($dogfood.requestedLayer)"
-Add-LzReleaseFinding 'R06' 'Dogfood evidence is within the allowed age.' $dogfoodFresh `
-    "completed=$($dogfoodCompleted.ToString('o')); maxHours=$maximumAgeHours"
+Add-LzReleaseFinding 'R04' 'E2E generation report targets this repository and current factory version.' `
+    ("$($e2e.repository)" -eq $expectedRepository -and
+     "$($e2e.factoryVersion)" -eq "$($factoryVersion.factoryVersion)") `
+    "repository=$($e2e.repository); version=$($e2e.factoryVersion)"
+Add-LzReleaseFinding 'R05' 'E2E generation proof passed every gate: UI-driven config, zero residual placeholders, manifest match, init+validate, zero GUIDs.' `
+    ([bool]$e2e.success -and [bool]$e2e.uiDriven -and
+     [bool]$e2e.zeroResidualPlaceholders -and [bool]$e2e.manifestMatch -and
+     [bool]$e2e.terraformInitValidatePassed -and [bool]$e2e.zeroGuids) `
+    "success=$($e2e.success); uiDriven=$($e2e.uiDriven); placeholders=$($e2e.zeroResidualPlaceholders); manifest=$($e2e.manifestMatch); initValidate=$($e2e.terraformInitValidatePassed); guids=$($e2e.zeroGuids)"
+Add-LzReleaseFinding 'R06' 'E2E generation evidence is within the allowed age.' $e2eFresh `
+    "completed=$($e2eCompleted.ToString('o')); maxHours=$maximumAgeHours"
 Add-LzReleaseFinding 'R07' 'Attestation identity and approval metadata are complete.' `
     ("$($attestation.repository)" -eq $expectedRepository -and
      "$($attestation.factoryVersion)" -eq "$($factoryVersion.factoryVersion)" -and
@@ -183,13 +183,13 @@ Add-LzReleaseFinding 'R07' 'Attestation identity and approval metadata are compl
     "reviewer=$($attestation.reviewer); approval=$($attestation.approvalReference)"
 Add-LzReleaseFinding 'R08' 'Attestation is pinned to the exact input evidence.' `
     ("$($attestation.factoryCiReportSha256)" -eq $factoryHash -and
-     "$($attestation.dogfoodReportSha256)" -eq $dogfoodHash) `
-    "factory=$factoryHash; dogfood=$dogfoodHash"
+     "$($attestation.e2eReportSha256)" -eq $e2eHash) `
+    "factory=$factoryHash; e2e=$e2eHash"
 Add-LzReleaseFinding 'R09' 'Attestation is within the allowed age.' $attestationFresh `
     "issued=$($attestedAt.ToString('o')); maxHours=$maximumAgeHours"
-Add-LzReleaseFinding 'R10' 'Independent dogfood and branch-protection read-back is approved.' `
-    ([bool]$attestation.dogfoodReadBackVerified -and [bool]$attestation.branchProtectionVerified) `
-    "dogfoodReadBack=$($attestation.dogfoodReadBackVerified); branchProtection=$($attestation.branchProtectionVerified)"
+Add-LzReleaseFinding 'R10' 'Independent e2e-evidence and branch-protection read-back is approved.' `
+    ([bool]$attestation.e2eEvidenceVerified -and [bool]$attestation.branchProtectionVerified) `
+    "e2eEvidence=$($attestation.e2eEvidenceVerified); branchProtection=$($attestation.branchProtectionVerified)"
 
 $schemaCheck = Get-LzReleaseCheck $factory 'Schema variable drift'
 $networkCheck = Get-LzReleaseCheck $factory 'Site no network'
@@ -197,12 +197,12 @@ $gates = [ordered]@{
     schemaVariableDriftCheckPasses = (
         $schemaCheck.Count -eq 1 -and "$($schemaCheck[0].status)" -eq 'passed'
     )
-    dogfoodInstanceAppliesGreen = (
-        [bool]$dogfood.success -and [bool]$dogfood.releaseGateEligible -and
-        [bool]$attestation.dogfoodReadBackVerified
+    endToEndGenerationProofPasses = (
+        [bool]$e2e.success -and [bool]$e2e.uiDriven -and
+        [bool]$attestation.e2eEvidenceVerified
     )
     oidcTokenExchangeVerifiedLive = [bool]$attestation.oidcTokenExchangeVerifiedLive
-    allEmittedModulesImplemented = [bool]$attestation.allEmittedModulesImplemented
+    avmPinsVerifiedByInit = [bool]$attestation.avmPinsVerifiedByInit
     siteMakesZeroNetworkRequests = (
         $networkCheck.Count -eq 1 -and "$($networkCheck[0].status)" -eq 'passed'
     )
@@ -222,8 +222,8 @@ $report = [ordered]@{
     sourceEvidence = [ordered]@{
         factoryCiReport = $FactoryCiReport
         factoryCiSha256 = $factoryHash
-        dogfoodReport = $DogfoodReport
-        dogfoodSha256 = $dogfoodHash
+        e2eReport = $E2eReport
+        e2eSha256 = $e2eHash
         attestation = $AttestationPath
         attestationSha256 = Get-LzReleaseHash $AttestationPath
     }

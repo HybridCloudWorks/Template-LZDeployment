@@ -23,43 +23,9 @@ updates:
         patterns:
           - "*"
 
-  # Terraform dependency updates.
-  #
-  # ONE grouped entry, not one entry per directory. The previous config listed
-  # six directories separately, which meant six independent PRs against a tree
-  # that declares the same azurerm constraint in ~35 files. Merging a subset
-  # left a root stack on `~> 4.2` while a module it calls moved to `~> 5.0` —
-  # mutually exclusive constraints that fail at `terraform init`. That is
-  # exactly how PRs #63-#68 broke `main`.
-  #
-  # `directories` (plural) with globs keeps every root and shared module in a
-  # single PR, so the live tree moves together or not at all.
-  #
-  # factory/templates/terraform is deliberately NOT listed. Four of its root
-  # stacks are `.tf.tmpl` files that dependabot cannot parse, so including the
-  # corpus would guarantee a partial update. The corpus is updated by hand in
-  # the same change, and factory/ci/Test-ProviderConstraints.ps1 fails CI until
-  # it is — including on dependabot's own PRs.
-  - package-ecosystem: "terraform"
-    directories:
-      - "/terraform/backend-bootstrap"
-      - "/terraform/live/*"
-      - "/terraform/modules/*"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "02:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "saulpatinojr"
-    labels:
-      - "dependencies"
-      - "terraform"
-      - "infrastructure"
-    commit-message:
-      prefix: "chore(terraform)"
-      include: "scope"
-    groups:
-      terraform-providers:
-        patterns:
-          - "*"
+  # No terraform entry: this repository carries no working Terraform tree
+  # (generator-only model, ADR 0013). The AVM module and provider pins live in
+  # factory/templates/**/*.tf.tmpl, which dependabot cannot parse; they are
+  # bumped by hand alongside factory-version.json's avm block, and every
+  # GENERATED repository receives its own renovate.json so pins update there
+  # forever without the factory.

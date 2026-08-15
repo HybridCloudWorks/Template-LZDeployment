@@ -156,10 +156,11 @@ if (-not $result.InSync) { exit 1 }
     # Corpus-vs-broker resource-provider drift (decision 0006): a template
     # module adding an azurerm type whose namespace the broker does not
     # register must fail here, not at a client site mid-first-apply.
+    # AVM pattern modules manage most resources; this check now covers only
+    # the azurerm_* types declared directly in the emitted root modules. The
+    # namespaces the AVM modules' internal resources need are maintained by
+    # hand in the broker list (ADR 0013 — see Get-LzRequiredResourceProviders).
     Invoke-LzFactoryCheck 'Resource provider coverage' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ResourceProviderCoverage.ps1') -Category 'policy' | Out-Null
-    # Module READMEs are the interface documentation that ships into customer
-    # repositories, so a stale variable table is a customer-facing defect.
-    Invoke-LzFactoryCheck 'Module docs' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ModuleDocs.ps1') -Category 'contract' | Out-Null
 
     # Parse sweep: every PowerShell file in the repository must parse cleanly.
     # This runs unconditionally (unlike PSScriptAnalyzer) because it needs no

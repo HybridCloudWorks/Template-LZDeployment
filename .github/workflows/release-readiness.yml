@@ -7,8 +7,8 @@ on:
         description: Successful Factory CI workflow run ID
         required: true
         type: string
-      dogfood_run_id:
-        description: Successful full dogfood Apply workflow run ID
+      e2e_run_id:
+        description: Successful end-to-end generation proof workflow run ID
         required: true
         type: string
       allow_incomplete:
@@ -32,7 +32,7 @@ jobs:
       contents: read
     env:
       LZ_RELEASE_FACTORY_CI_REPORT: release-input/factory-ci/factory-ci-report.json
-      LZ_RELEASE_DOGFOOD_REPORT: release-input/dogfood/dogfood-report.json
+      LZ_RELEASE_E2E_REPORT: release-input/e2e/e2e-report.json
       LZ_RELEASE_ATTESTATION_PATH: release-attestation.json
       LZ_RELEASE_EVIDENCE: release-evidence
       LZ_RELEASE_EXPECTED_REPOSITORY: ${{ github.repository }}
@@ -52,13 +52,13 @@ jobs:
           pattern: factory-ci-*
           path: release-input/factory-ci
           merge-multiple: true
-      - name: Download dogfood evidence
+      - name: Download e2e generation evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           github-token: ${{ github.token }}
-          run-id: ${{ inputs.dogfood_run_id }}
-          pattern: dogfood-*-apply-all
-          path: release-input/dogfood
+          run-id: ${{ inputs.e2e_run_id }}
+          pattern: e2e-generation-*
+          path: release-input/e2e
           merge-multiple: true
       - name: Materialize reviewed attestation
         shell: pwsh
