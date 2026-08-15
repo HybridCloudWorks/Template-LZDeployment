@@ -18,9 +18,8 @@
         <header>
             <div class="header-content">
                 <h1>Azure Landing Zone .tfvars Generator</h1>
-                <p class="legacy-banner"><strong>Legacy tool.</strong> The <a class="wizard-link" href="../index.html">Landing Zone Factory wizard</a> (<code>site/</code>) is the primary path and produces the full artifact set.
-                   This page only generates <code>terraform.auto.tfvars</code> (global layer) and <code>connectivity.auto.tfvars</code> (platform-connectivity layer)
-                   for the legacy in-repo pipeline. See <a href="README.md">frontend/README.md</a> for the usage guide.</p>
+                <p class="legacy-banner"><strong>Deprecated.</strong> The <a class="wizard-link" href="../index.html">Landing Zone Factory wizard</a> (<code>site/</code>) is the only supported path: it asks every landing-zone question and exports the full <code>lz-config.json</code> artifact set the generator consumes.
+                   This page predates the factory; the tfvars it emits target the retired self-deploy pipeline (removed by ADR&nbsp;0013) and are <em>not</em> consumed by the AVM generator. It is kept for reference only. See <a href="README.md">frontend/README.md</a>.</p>
             </div>
         </header>
 

@@ -30,7 +30,8 @@ c.azure.subscriptions.workloadProd = 'aaaaaaaa-0000-0000-0000-000000000003';
 c.azure.managementGroups.rootId = 'mg-contoso';
 c.github.ownerName = 'contoso-platform';
 c.github.repositoryName = 'contoso_LZ_Deployment';
-c.backend.hcpTerraform.organization = 'contoso';
+c.backend.azurerm.resourceGroupName = 'rg-contoso-tfstate';
+c.backend.azurerm.storageAccountName = 'contosotfstate01';
 c.identity.breakGlassAccounts = [
   { name: 'bg1@contoso.onmicrosoft.com', email: 'secops@contoso.com', role: 'GA' },
   { name: 'bg2@contoso.onmicrosoft.com', email: 'secops@contoso.com', role: 'GA' }
@@ -50,59 +51,23 @@ A.defaultTagRows = [
 v = A.validate();
 ok('valid config has zero blocking errors', v.errors.length === 0, JSON.stringify(v.errors, null, 1));
 
-console.log('\n== 4. RUM estimate + free-tier gate ==');
+console.log('\n== 4. Managed-resource estimate (sizing signal) ==');
+// The HCP free-tier gate retired with the backend (ADR 0015); the estimate
+// survives in deployment-metadata.json as a sizing signal.
 const rum = A.estimateRum();
 console.log('  estimate =', rum, 'resources');
 ok('estimate is a positive number', rum > 0);
-ok('a minimal 2-region ALZ stays under the 500 cap', rum <= 500, rum);
-ok('minimal config needs no acknowledgement', !A.validate().errors.some(e => /free tier/.test(e.message)));
+ok('no backend billing gate fires', !A.validate().errors.some(e => /free tier/.test(e.message)));
 
-// Property test: the gate must fire exactly when the estimate exceeds the cap,
-// whatever the estimate happens to be. Scale scope up until it does.
-c.governance.complianceFrameworks = ['cis-azure','nist-800-53','iso-27001','pci-dss','hipaa-hitrust','soc2','fedramp-moderate'];
-c.security.defender.enabled = true;
-c.security.defender.plans = ['CloudPosture','VirtualMachines','StorageAccounts','SqlServers','AppServices','KeyVaults','Containers','Arm','CosmosDbs','Api','OpenSourceRelationalDatabases'];
-c.security.defender.securityContactEmail = 'secops@contoso.com';
-c.environments.application = ['sandbox','dev','test','uat','prod'];
-c.environments.platform = ['bootstrap','identity','connectivity','management','shared-services'];
-c.connectivity.vpn.enabled = true;
-c.connectivity.expressRoute.enabled = true;
-c.connectivity.expressRoute.peeringLocation = 'Dallas';
-c.connectivity.privateDns.zones = Array.from({length:30},(_,i)=>'privatelink.svc'+i+'.azure.net');
-const rumBig = A.estimateRum();
-console.log('  large-scope estimate =', rumBig, 'resources');
-ok('large scope exceeds the 500 free cap', rumBig > 500, rumBig);
-
-c.backend.hcpTerraform.acknowledgedResourceLimit = false;
-let gateFires = A.validate().errors.some(e => /free tier/.test(e.message));
-ok('gate fires exactly when estimate > cap', gateFires === (rumBig > 500), 'estimate=' + rumBig + ' gate=' + gateFires);
-c.backend.hcpTerraform.acknowledgedResourceLimit = true;
-ok('acknowledging clears the block', !A.validate().errors.some(e => /free tier/.test(e.message)));
-
-// Converse: a small scope must not fire the gate.
-c.governance.complianceFrameworks = [];
-c.security.defender.enabled = false; c.security.defender.plans = [];
-c.environments.application = ['dev','prod'];
-c.environments.platform = ['bootstrap','connectivity','management'];
-c.connectivity.vpn.enabled = false;
-c.connectivity.expressRoute.enabled = false;
-c.connectivity.privateDns.zones = [];
-c.backend.hcpTerraform.acknowledgedResourceLimit = false;
-const rumSmall = A.estimateRum();
-gateFires = A.validate().errors.some(e => /free tier/.test(e.message));
-ok('small scope is under the cap', rumSmall <= 500, rumSmall);
-ok('gate silent when under the cap', gateFires === false);
-c.backend.hcpTerraform.acknowledgedResourceLimit = true;
-
-console.log('\n== 5. Scaffold-module guards ==');
+console.log('\n== 5. Recorded-not-deployed answers stay exportable (ADR 0017) ==');
 c.security.sentinel.enabled = true;
-ok('sentinel blocked (scaffold module)', A.validate().errors.some(e => /sentinel-siem/.test(e.message)));
+ok('sentinel is a warning, not an export block', !A.validate().errors.some(e => /[Ss]entinel/.test(e.message)) && A.validate().warnings.some(e => /Sentinel/.test(e.message)));
 c.security.sentinel.enabled = false;
 c.security.keyVault.customerManagedKeys = true;
-ok('CMK blocked (scaffold module)', A.validate().errors.some(e => /keyvault-cmk/.test(e.message)));
+ok('CMK is a warning, not an export block', !A.validate().errors.some(e => /[Cc]ustomer-managed/.test(e.message)) && A.validate().warnings.some(e => /keys/.test(e.message)));
 c.security.keyVault.customerManagedKeys = false;
 c.connectivity.model = 'virtual-wan';
-ok('virtual-wan blocked (no module)', A.validate().errors.some(e => /Virtual WAN/.test(e.message)));
+ok('virtual-wan exports cleanly (AVM pattern module)', !A.validate().errors.some(e => /Virtual WAN/.test(e.message)));
 c.connectivity.model = 'hub-spoke';
 
 console.log('\n== 6. Tag-coverage guard (policy would deny its own apply) ==');
@@ -123,21 +88,22 @@ console.log('\n== 8. Artifact generation ==');
 const cfg = A.buildConfig();
 ok('buildConfig stamps generatedAt', !!cfg.generatedAt);
 ok('buildConfig folds default tags', cfg.naming.defaultTags.owner === 'platform');
-ok('hcp backend drops the azurerm block', cfg.backend.azurerm === undefined);
-ok('workspacePrefix defaults to short name', cfg.backend.hcpTerraform.workspacePrefix === 'contoso');
+ok('backend is azurerm-only', cfg.backend.type === 'azurerm' && cfg.backend.hcpTerraform === undefined);
+ok('state subscription defaults to management', cfg.backend.azurerm.subscriptionId === 'aaaaaaaa-0000-0000-0000-000000000001');
 ok('empty optional subs are stripped', cfg.azure.subscriptions.sandbox === undefined);
 
 const tfg = A.tfvarsGlobal(cfg);
-ok('global tfvars sets org_prefix', /org_prefix\s+= "contoso"/.test(tfg), tfg.split('\n').find(l=>/org_prefix/.test(l)));
-ok('global tfvars sets allowed_locations', /allowed_locations\s+= \["southcentralus", "northcentralus"\]/.test(tfg));
+ok('global tfvars sets the management subscription', /management_subscription_id\s+= "aaaaaaaa-0000-0000-0000-000000000001"/.test(tfg), tfg.split('\n').find(l=>/management_subscription_id/.test(l)));
+ok('global tfvars carries the state coordinates', /state_storage_account_name = "contosotfstate01"/.test(tfg));
 
 const tfc = A.tfvarsConnectivity(cfg);
-ok('connectivity tfvars sets firewall_type', /firewall_type\s+= "azfw"/.test(tfc));
+ok('connectivity tfvars sets azfw_tier', /azfw_tier\s+= "Standard"/.test(tfc));
 ok('connectivity tfvars emits default_tags map', /default_tags = \{/.test(tfc) && /owner = "platform"/.test(tfc));
 ok('connectivity tfvars includes DR when set', /dr_region\s+= "northcentralus"/.test(tfc));
+ok('connectivity tfvars wires the gateways', /deploy_vpn_gateway\s+= false/.test(tfc) && /deploy_expressroute_gateway = false/.test(tfc));
 
 const bh = A.backendHcl(cfg);
-ok('backend.hcl uses TFC org', /organization = "contoso"/.test(bh));
+ok('backend.hcl authenticates with OIDC + Entra', /use_oidc\s+= true/.test(bh) && /use_azuread_auth\s+= true/.test(bh));
 ok('backend.hcl parameterises the layer', /<layer>/.test(bh));
 
 const envs = A.environmentDefinitions(cfg);
@@ -241,10 +207,10 @@ const tierOptions = Array.from(tierSelect.matchAll(/option value="([^"]+)"/g)).m
 ok('wizard tier options are exactly the schema enum', JSON.stringify(tierOptions.sort()) === JSON.stringify([...tierDecl.enum].sort()), JSON.stringify(tierOptions));
 // Both connectivity layers must reject Basic (contract #7 right-hand side,
 // narrowed in lockstep with the schema).
-for (const varsPath of ['../../terraform/live/platform-connectivity/variables.tf', '../templates/terraform/live/platform-connectivity/variables.tf']) {
+for (const varsPath of ['../templates/terraform/live/platform-connectivity/variables.tf']) {
   const hcl = require('fs').readFileSync(require('path').resolve(__dirname, varsPath), 'utf8');
   const tierBlock = (hcl.match(/variable "azfw_tier" \{[\s\S]*?\n\}/) || [''])[0];
-  ok(`${varsPath.includes('templates') ? 'template' : 'live'} layer validates ["Standard", "Premium"]`,
+  ok('template layer validates ["Standard", "Premium"]',
     /contains\(\["Standard", "Premium"\], var\.azfw_tier\)/.test(tierBlock) && !/Basic/.test(tierBlock.match(/condition[^\n]*/)[0]),
     tierBlock.split('\n').find(l => /condition/.test(l)));
 }
@@ -260,8 +226,11 @@ console.log('\n== 14. A landing zone requires a firewall ==');
 // briefly offered in the wizard while the connectivity layer rejected it — a
 // clean export that failed at plan. Assert all three together.
 const fwDecl = schema.properties.connectivity.properties.firewall.properties.type;
-ok('schema firewall enum excludes none',
-  JSON.stringify(fwDecl.enum) === '["azfw","palo","fortinet"]', JSON.stringify(fwDecl.enum));
+// ADR 0017: the AVM connectivity patterns deploy Azure Firewall; NVA options
+// retired with the bespoke hub-network module. "none" stays excluded — a
+// landing zone requires at least one firewall (operator decision 2026-08-06).
+ok('schema firewall enum is exactly [azfw]',
+  JSON.stringify(fwDecl.enum) === '["azfw"]', JSON.stringify(fwDecl.enum));
 const fwSelect = (html.match(/<select id="cn_fwType"[\s\S]*?<\/select>/) || [''])[0];
 const fwOptions = Array.from(fwSelect.matchAll(/option value="([^"]+)"/g)).map(m => m[1]);
 ok('wizard firewall options are exactly the schema enum',
@@ -270,28 +239,17 @@ ok('wizard firewall options are exactly the schema enum',
 // different, supported choice from a hub with unfiltered egress.
 const modelSelect = (html.match(/<select id="cn_model"[\s\S]*?<\/select>/) || [''])[0];
 ok('topology None survives (it drops the layer entirely)', /option value="none"/.test(modelSelect));
-for (const varsPath of ['../../terraform/live/platform-connectivity/variables.tf', '../templates/terraform/live/platform-connectivity/variables.tf']) {
-  const hcl = require('fs').readFileSync(require('path').resolve(__dirname, varsPath), 'utf8');
-  const fwBlock = (hcl.match(/variable "firewall_type" \{[\s\S]*?\n\}/) || [''])[0];
-  ok(`${varsPath.includes('templates') ? 'template' : 'live'} layer rejects none`,
-    /contains\(\["azfw", "palo", "fortinet"\], var\.firewall_type\)/.test(fwBlock) && !/"none"/.test(fwBlock),
-    fwBlock.split('\n').find(l => /condition/.test(l)));
-}
-// hub-network must still gate NVA resources on membership rather than on
-// "not azfw": with the enum bounded the two are equivalent today, but the
-// negation is what let an out-of-set value be treated as an NVA.
-for (const modPath of ['../../terraform/modules/hub-network/main.tf', '../templates/terraform/modules/hub-network/main.tf']) {
-  const hcl = require('fs').readFileSync(require('path').resolve(__dirname, modPath), 'utf8');
-  const tree = modPath.includes('templates') ? 'template' : 'live';
-  ok(`${tree} hub gates NVA on membership`, /has_nva\s*=\s*contains\(\["palo", "fortinet"\], var\.firewall_type\)/.test(hcl));
-  ok(`${tree} hub has no "!= azfw" gate`, !/var\.firewall_type != "azfw"/.test(hcl));
-  ok(`${tree} hub route table is unconditional`, !/resource "azurerm_route_table" "to_firewall" \{\s*\n\s*count/.test(hcl));
+// The template corpus keeps firewall_enabled always-true composition; the
+// firewall the AVM patterns deploy is Azure Firewall, tier-bounded above.
+{
+  const hcl = require('fs').readFileSync(require('path').resolve(__dirname, '../templates/terraform/live/platform-connectivity/variables.tf'), 'utf8');
+  ok('template layer defaults firewall_enabled = true', /variable "firewall_enabled" \{[\s\S]*?default\s*=\s*true/.test(hcl));
 }
 // Imported/drafted configs from while "none" was offered must block export.
 c.connectivity.firewall.type = 'none';
-ok('imported firewall "none" blocks export', A.validate().errors.some(e => /requires at least one firewall/.test(e.message)));
+ok('imported firewall "none" blocks export', A.validate().errors.some(e => /at least one (Azure )?[Ff]irewall/.test(e.message)));
 c.connectivity.firewall.type = 'azfw';
-ok('azfw clears the firewall block', !A.validate().errors.some(e => /requires at least one firewall/.test(e.message)));
+ok('azfw clears the firewall block', !A.validate().errors.some(e => /at least one (Azure )?[Ff]irewall/.test(e.message)));
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

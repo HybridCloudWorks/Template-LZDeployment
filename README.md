@@ -19,7 +19,12 @@ promotion proposal.
 
 **How it works**:
 
-1. `site/` exports the versioned `lz-config.json` contract.
+1. `site/` exports the versioned `lz-config.json` contract. **One command to
+   start the wizard** (no server, no build, no network):
+
+   ```bash
+   xdg-open site/index.html   # macOS: open site/index.html — or use the GitHub Pages deployment
+   ```
 2. `factory/discovery/` produces a read-only readiness report and
    `discovery-inventory.json`.
 3. `factory/renderer/` emits Terraform, workflows, documentation, and
