@@ -1314,6 +1314,22 @@ function buildConfig() {
   for (const k of ['identity', 'workloadNonProd', 'sandbox']) {
     if (!out.azure.subscriptions[k]) delete out.azure.subscriptions[k];
   }
+  // Feature-detail blocks travel only when the feature is on: an untouched
+  // number input exports null and an untouched text input exports '', both of
+  // which fail the schema's typed/format checks (caught by render gate G00).
+  if (!out.connectivity.expressRoute.enabled) out.connectivity.expressRoute = { enabled: false };
+  if (!out.connectivity.vpn.enabled) out.connectivity.vpn = { enabled: false };
+  if (!out.security.defender.securityContactEmail) delete out.security.defender.securityContactEmail;
+  if (!out.github.enterpriseSlug) delete out.github.enterpriseSlug;
+  if (!out.azure.drRegion) { delete out.azure.drRegion; delete out.azure.drRegionCode; }
+  // Nulls are never meaningful in this contract — they are unfilled inputs.
+  const stripNulls = (o) => {
+    for (const key of Object.keys(o)) {
+      if (o[key] === null) delete o[key];
+      else if (typeof o[key] === 'object' && !Array.isArray(o[key])) stripNulls(o[key]);
+    }
+  };
+  stripNulls(out);
   return out;
 }
 
