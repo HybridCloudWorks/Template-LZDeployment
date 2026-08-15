@@ -10,10 +10,10 @@
 > (new-features changelog). Root markdown is limited to four files: README.md,
 > CHANGELOG.md, REVIEW.md, TODO.md.
 
-**Last Updated**: August 14, 2026
-**Status**: 🟢 Phases 1–2 closed through PR #92 except 2.16 (five subnets
-remain, gated on client DNS design + firewall choice) and 2.4/2.5/2.6
-(operator-gated — REVIEW.md §14/§16/§13); Phase 3 gated on the authenticated
+**Last Updated**: August 15, 2026
+**Status**: 🟢 Phases 1–2 closed except 2.16 (five subnets
+remain, gated on client DNS design + firewall choice) and 2.4/2.5
+(operator-gated — REVIEW.md §14/§16); Phase 3 gated on the authenticated
 toolchain (§7) and wiki write access (§15); Phase 4 deferred (go-live not
 opened); Phase 5 release-time
 **Operator activities & stage checklists**: [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md)
@@ -633,26 +633,29 @@ it. Two of the three modules it would gate are the item-2.4 scaffolds.
 **Gate**: item 2.4 ships first — [REVIEW.md](REVIEW.md) §16.
 **Validation**: enabling an option in the YAML changes the corresponding plan.
 
-### 2.6 Record the generated-repo ownership policy
+### 2.6 Record the generated-repo ownership policy — CLOSED
 
-Mechanism is settled (`github.ownershipModel`/`ownerName` are required schema
-fields); what is open is the operator confirming the rewritten
-[decision 0010 (Proposed)](docs/decisions/0010-generated-repo-ownership-policy.md)
-— an operator-owned organization (`HybridCloudWorks` precedent) with
-`ownershipModel: organization` — plus the GH1 org-plan-tier answer. Watch
-schema risk GH1 (`personal` on a Free plan silently loses protected
-environments; the OIDC subjects embed the owner literally, so the choice is
-permanent in practice).
-**Premise corrected 2026-08-14**: the operator stated this is a personal
-project (owner since day 1), not a consultancy engagement, so the earlier
-"which owner value the consultancy uses / transfer to the client" framing
-was mis-premised and
-0010 was rewritten in place (it was unratified). The remaining work is
-ratification plus the record's follow-ups (wizard/docs references,
-USER-CHECKLIST prerequisite).
-**Owner**: operator decides; `docs-knowledge-curator` records.
-**Gate**: unchanged — [REVIEW.md](REVIEW.md) §13 (operator ratifies).
-**Validation**: policy recorded in a decision record; wizard/docs reference it.
+Closed 2026-08-15: the gate lifted when the operator ratified
+[decision 0010](docs/decisions/0010-generated-repo-ownership-policy.md)
+in-session (explicit instruction, the day after merging PR #94, which
+carried the record as Proposed). As recommended: `ownerName` is an
+organization the operator owns (`HybridCloudWorks` precedent) with
+`ownershipModel: organization`; `personal` is never used for a real
+deployment, because schema risk GH1 silently removes the
+protected-environment gate the apply OIDC subjects depend on, and the
+owner choice is permanent in practice (the OIDC subjects embed the owner
+literally). The transfer question dissolved with the 2026-08-14 premise
+correction (personal project, no counterparty). The validation criterion
+was met the same day: the policy is in the ratified record, and the
+wizard's ownership hint (`site/app.js`) and
+[docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md) now reference it.
+**Residual, named here rather than re-phased**: decision 0010 open
+question 2 — whether an *organization* on the Free plan degrades the same
+controls GH1 records for personal accounts — needs a GitHub-docs check
+from an environment with the access ([REVIEW.md](REVIEW.md) §13 records
+who holds it); until answered, the policy is an ownership-model statement,
+not a minimum-plan statement. Item number retained so cross-references
+stay stable.
 
 ### 2.7 Update dot-folder contract text to the 2026-08-07 file contract — CLOSED
 
