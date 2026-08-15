@@ -7,6 +7,50 @@ entries below are history and are not rewritten.
 
 ---
 
+## The DNS resolver and private-endpoint hub subnets carry NSGs (2026-08-15)
+
+[TODO.md](TODO.md) item 2.16, narrowed to its vendor-conditional residual by
+the operator's three in-session design answers, recorded as
+[decision 0012](docs/decisions/0012-hub-subnet-nsg-scope.md): the estate's
+firewall is azfw, the DNS Private Resolver is queried from spoke VNets only,
+and the hub's private endpoints are reached over 443 from the
+flow-log-hosting spoke ranges only. Estate answers, not factory constraints —
+the module stays generic.
+
+What shipped, in `hub-network` in both trees at byte parity, all on the
+Bastion NSG's pattern (count-gated with its subnet, explicit deny
+terminators, count-indexed association):
+
+- **`nsg-dns-inbound` / `nsg-dns-outbound`** — Microsoft publishes no rule
+  set for resolver subnets, so the rules derive from the operator's answer:
+  53 TCP+UDP inbound from `VirtualNetwork` (covers every peered spoke; TCP
+  included because DNS falls back to it for truncated responses), the
+  AzureLoadBalancer probe allow, `DenyAllInbound` at 4096. Deliberately no
+  custom outbound rules: the delegated NICs' platform path (Azure DNS at
+  168.63.129.16, resolver control plane) is not enumerable from published
+  docs, and an outbound deny would be guessing at a control that can
+  silently break every lookup in the estate.
+- **`nsg-private-endpoints`** — genuinely effective because the subnet sets
+  `private_endpoint_network_policies = "Enabled"` (item 2.11). 443 TCP from
+  the new `private_endpoint_allowed_source_prefixes` (operator-supplied
+  spoke CIDRs, wildcard-rejecting, threaded through `platform-connectivity`
+  in both trees, mapped `literal:operator-supplied` with a commented tfvars
+  placeholder like the subnet prefix itself), then `DenyAllInbound`. An
+  empty list associates the NSG with **no** custom rules — Azure's defaults
+  govern — because an unpopulated allowlist would silently cut the spokes
+  off from the flow-log storage endpoints.
+
+The three subnets' `CKV2_AZURE_31` suppressions are rewritten to the
+count-indexed-association truth (the Bastion precedent);
+`fw_trust`/`fw_untrust` keep theirs, rewritten to the vendor-conditional
+residual reason. None of the new NSGs joins `nsg_ids` — that output sets
+flow-log scope, which decision 0009 owns. `node factory/tests/test.js` green
+locally; `terraform fmt/validate`, the PowerShell suites, and the checkov
+fixture passes fall to CI (no `terraform`/`pwsh` in the authoring
+environment).
+
+---
+
 ## The live tree has one state backend, and it is azurerm (2026-08-15)
 
 [TODO.md](TODO.md) item 4.6 / GitHub Issue #11, resolved by

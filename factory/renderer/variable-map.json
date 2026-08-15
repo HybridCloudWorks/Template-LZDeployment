@@ -57,6 +57,7 @@
         "flow_log_storage_replication_type": "literal:operator-supplied",
         "primary_private_endpoint_subnet_prefix": "literal:operator-supplied",
         "dr_private_endpoint_subnet_prefix": "literal:operator-supplied",
+        "private_endpoint_allowed_source_prefixes": "literal:operator-supplied",
         "primary_availability_zones": "connectivity.hubSpoke.availabilityZones",
         "dr_availability_zones": "connectivity.hubSpoke.availabilityZones",
         "default_tags": "naming.defaultTags"

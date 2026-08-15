@@ -75,42 +75,44 @@ locals {
 module "hub_primary" {
   source = "../../modules/hub-network"
 
-  region                         = var.primary_region
-  region_code                    = var.primary_region_code
-  environment                    = "prod"
-  hub_address_space              = var.primary_hub_address_space
-  firewall_type                  = var.firewall_type
-  azfw_tier                      = var.azfw_tier
-  firewall_threat_intel_mode     = var.firewall_threat_intel_mode
-  nva_trust_ip_placeholder       = var.primary_nva_trust_ip
-  deploy_bastion_placeholder     = var.deploy_bastion
-  deploy_dns_placeholder         = var.deploy_dns
-  management_ip_ranges           = var.management_ip_ranges
-  availability_zones             = var.primary_availability_zones
-  log_analytics_workspace_id     = local.effective_law_id
-  private_endpoint_subnet_prefix = var.primary_private_endpoint_subnet_prefix
-  tags                           = local.common_tags
+  region                                   = var.primary_region
+  region_code                              = var.primary_region_code
+  environment                              = "prod"
+  hub_address_space                        = var.primary_hub_address_space
+  firewall_type                            = var.firewall_type
+  azfw_tier                                = var.azfw_tier
+  firewall_threat_intel_mode               = var.firewall_threat_intel_mode
+  nva_trust_ip_placeholder                 = var.primary_nva_trust_ip
+  deploy_bastion_placeholder               = var.deploy_bastion
+  deploy_dns_placeholder                   = var.deploy_dns
+  management_ip_ranges                     = var.management_ip_ranges
+  availability_zones                       = var.primary_availability_zones
+  log_analytics_workspace_id               = local.effective_law_id
+  private_endpoint_subnet_prefix           = var.primary_private_endpoint_subnet_prefix
+  private_endpoint_allowed_source_prefixes = var.private_endpoint_allowed_source_prefixes
+  tags                                     = local.common_tags
 }
 
 # DR hub (North Central US)
 module "hub_dr" {
   source = "../../modules/hub-network"
 
-  region                         = var.dr_region
-  region_code                    = var.dr_region_code
-  environment                    = "prod"
-  hub_address_space              = var.dr_hub_address_space
-  firewall_type                  = var.firewall_type
-  azfw_tier                      = var.azfw_tier
-  firewall_threat_intel_mode     = var.firewall_threat_intel_mode
-  nva_trust_ip_placeholder       = var.dr_nva_trust_ip
-  deploy_bastion_placeholder     = var.deploy_bastion
-  deploy_dns_placeholder         = var.deploy_dns
-  management_ip_ranges           = var.management_ip_ranges
-  availability_zones             = var.dr_availability_zones
-  log_analytics_workspace_id     = local.effective_law_id
-  private_endpoint_subnet_prefix = var.dr_private_endpoint_subnet_prefix
-  tags                           = local.common_tags
+  region                                   = var.dr_region
+  region_code                              = var.dr_region_code
+  environment                              = "prod"
+  hub_address_space                        = var.dr_hub_address_space
+  firewall_type                            = var.firewall_type
+  azfw_tier                                = var.azfw_tier
+  firewall_threat_intel_mode               = var.firewall_threat_intel_mode
+  nva_trust_ip_placeholder                 = var.dr_nva_trust_ip
+  deploy_bastion_placeholder               = var.deploy_bastion
+  deploy_dns_placeholder                   = var.deploy_dns
+  management_ip_ranges                     = var.management_ip_ranges
+  availability_zones                       = var.dr_availability_zones
+  log_analytics_workspace_id               = local.effective_law_id
+  private_endpoint_subnet_prefix           = var.dr_private_endpoint_subnet_prefix
+  private_endpoint_allowed_source_prefixes = var.private_endpoint_allowed_source_prefixes
+  tags                                     = local.common_tags
 }
 
 # Global VNet peering between hubs

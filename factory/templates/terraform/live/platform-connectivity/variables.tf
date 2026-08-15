@@ -305,6 +305,27 @@ variable "dr_private_endpoint_subnet_prefix" {
   nullable    = true
 }
 
+variable "private_endpoint_allowed_source_prefixes" {
+  # Operator-supplied like the two prefix variables above, and for a related
+  # reason: these are the spoke CIDRs hosting flow-log storage (decision 0012),
+  # and this layer does not know them — the workload layers read connectivity's
+  # state, never the reverse, and inverting that read would be a cycle. Empty
+  # means the hub private-endpoint NSGs associate without custom rules (Azure
+  # defaults govern); once set, the hubs allow 443 from these ranges only.
+  # One list serves both hubs: the sources are an estate-wide answer, not a
+  # per-region one.
+  description = "Spoke CIDR ranges allowed to reach hub private endpoints on 443 (the flow-log-hosting spokes). Empty leaves the private-endpoint NSGs without custom rules. Wildcard sources are rejected."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for r in var.private_endpoint_allowed_source_prefixes : !contains(["*", "0.0.0.0/0"], r)
+    ])
+    error_message = "private_endpoint_allowed_source_prefixes must not include '*' or '0.0.0.0/0' - supply the explicit spoke CIDRs."
+  }
+}
+
 variable "enable_private_endpoints" {
   # Same wizard answer the workload layers consume (item 2.14). The hub's
   # endpoints honour it too, so unticking the box turns off every private

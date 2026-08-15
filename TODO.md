@@ -11,8 +11,9 @@
 > CHANGELOG.md, REVIEW.md, TODO.md.
 
 **Last Updated**: August 15, 2026
-**Status**: 🟢 Phases 1–2 closed except 2.16 (five subnets
-remain, gated on client DNS design + firewall choice) and 2.4/2.5
+**Status**: 🟢 Phases 1–2 closed except 2.16 (`fw_trust`/`fw_untrust` only —
+vendor-conditional palo/fortinet work, nil estate-need on the operator's azfw
+estate; decision 0012) and 2.4/2.5
 (operator-gated — REVIEW.md §14/§16); Phase 3 gated on the authenticated
 toolchain (§7) and wiki write access (§15); Phase 4 deferred (go-live not
 opened); Phase 5 release-time
@@ -512,7 +513,7 @@ finds them at the resource rather than in a changelog.
 skipped`, checkov exiting clean. Full `Invoke-FactoryCI.ps1` green except
 PSScriptAnalyzer (PS Gallery blocked here).
 
-### 2.16 Six hub subnets carry no NSG — BASTION DONE, FIVE REMAIN
+### 2.16 Six hub subnets carry no NSG — FOUR DONE, `fw_trust`/`fw_untrust` REMAIN (VENDOR-CONDITIONAL)
 
 `CKV2_AZURE_31` fires on **six subnets per hub**, both regions — twelve
 findings — and every one of them can take a network security group. They are
@@ -522,9 +523,9 @@ difference between *impossible* and *not done*, but suppression is not the fix.
 | Subnet | What an NSG has to allow |
 | --- | --- |
 | ~~`bastion` (`AzureBastionSubnet`)~~ | **Done 2026-08-10.** `azurerm_network_security_group.bastion` carries Microsoft's prescribed set — 443 inbound from Internet, GatewayManager and AzureLoadBalancer, 8080/5701 within the VNet; 22/3389 outbound to VirtualNetwork, 443 to AzureCloud, 8080/5701 within the VNet, 80 to Internet — plus the documented explicit denies. |
-| `dns_inbound` / `dns_outbound` | Delegated to `Microsoft.Network/dnsResolvers`. Azure permits an NSG; it must not block resolver traffic on 53/UDP+TCP. |
-| `fw_trust` / `fw_untrust` | NVA data-path subnets (palo/fortinet only). Rules follow the appliance vendor's guidance, so this half is firewall-type dependent. |
-| `private_endpoints` | Arrived with item 2.11. Private endpoints ignore NSGs unless the subnet sets `private_endpoint_network_policies = "Enabled"` — which this module already does, so an NSG here would actually apply. |
+| ~~`dns_inbound` / `dns_outbound`~~ | **Done 2026-08-15** (decision 0012). 53 TCP+UDP inbound from `VirtualNetwork` (the operator's answer: queried from spoke VNets only, no on-premises ranges), AzureLoadBalancer probes, explicit DenyAllInbound; deliberately no custom outbound rules — the resolver's platform path is not enumerable from published docs and NSGs are stateful. |
+| `fw_trust` / `fw_untrust` | **The residual.** NVA data-path subnets (palo/fortinet only). Rules follow the appliance vendor's guidance, so this half is firewall-type dependent — and the operator's own estate is azfw (decision 0012), where these subnets never exist. |
+| ~~`private_endpoints`~~ | **Done 2026-08-15** (decision 0012). An NSG here genuinely applies (`private_endpoint_network_policies = "Enabled"`); 443 inbound from the flow-log-hosting spoke ranges via the new operator-supplied `private_endpoint_allowed_source_prefixes`, empty list = association with no custom rules so nothing shipped breaks. |
 
 Not one rule set: three or four different ones, two of them
 vendor-conditional. That is why it is an item rather than a line in 2.15.
@@ -556,37 +557,41 @@ output feeds the connectivity layer's flow-log calls, and widening it would
 change flow-log scope, which decision 0009 set deliberately. That is a
 decision-0009 change, not an NSG change.
 
+**DNS resolver + private endpoints, done 2026-08-15.** The design input the
+2026-08-10 check identified as missing was supplied by the operator
+in-session and recorded as
+[decision 0012](docs/decisions/0012-hub-subnet-nsg-scope.md): the resolver is
+queried from **spoke VNets only** (no on-premises ranges → 53 TCP+UDP from
+`VirtualNetwork`, no client-subnet enumeration needed), and the
+private-endpoint subnet serves **443 from the flow-log-hosting spoke ranges
+only** (→ the new operator-supplied
+`private_endpoint_allowed_source_prefixes`; empty associates the NSG with no
+custom rules, because an allowlist nobody populated would silently break the
+flow-log endpoints). All three NSGs follow the Bastion pattern —
+count-gated on the same condition as their subnet, explicit DenyAllInbound
+terminators, count-indexed associations — and, like Bastion, are
+deliberately **not** added to `nsg_ids` (that output sets flow-log scope,
+which is decision-0009 territory). Their `CKV2_AZURE_31` suppressions are
+rewritten to the count-indexed-association truth.
+
 **Owner**: `azure-platform-architect` (design) → `terraform-module-engineer`.
-**The remaining five are gated on design input, and that was checked rather
-than assumed (2026-08-10).** Bastion was doable unattended because Microsoft
-prescribes an exact rule table. The others have no equivalent:
+**The residual — `fw_trust` / `fw_untrust` — stays open, re-scoped
+(2026-08-15, decision 0012) as vendor-conditional product work:**
 
-- **`dns_inbound` / `dns_outbound`** — Microsoft publishes **no NSG rule set**
-  for DNS Private Resolver subnets. Three articles were read from
-  `MicrosoftDocs/azure-docs`
-  (`dns-private-resolver-overview.md`,
-  `dns-private-resolver-get-started-portal.md`,
-  `private-resolver-endpoints-rulesets.md`) and none mentions network security
-  groups at all; the documented subnet restrictions cover size, delegation and
-  IPv6, not filtering. Correct rules depend on **which client subnets and
-  on-premises ranges will query the resolver** — an input this repository does
-  not hold.
-- **`fw_trust` / `fw_untrust`** — the authority is the NVA vendor (Palo Alto or
-  Fortinet), not Microsoft, and the rules differ per appliance. Also
-  firewall-type conditional, so they only exist on a `palo`/`fortinet` hub.
-- **`private_endpoints`** — an NSG here would genuinely apply (the module sets
-  `private_endpoint_network_policies = "Enabled"`), but the rules depend on
-  which spokes must reach which endpoint. Today the only endpoint is the
-  flow-log storage one.
+- The authority is the NVA vendor (Palo Alto or Fortinet), not Microsoft,
+  and the rules differ per appliance. Firewall-type conditional: the subnets
+  only exist on a `palo`/`fortinet` hub.
+- The operator's own estate is **azfw** (decision 0012), so these subnets
+  never exist there and the estate-need is nil. Authoring the vendor rule
+  sets is product work for a future NVA estate, not a gap in any deployed
+  hub.
 
-So this is not "not done yet" — it is **waiting on the client's DNS design and
-firewall choice**. Writing rules without them would be guessing at a security
-control, which is how a subnet ends up with an NSG that looks protective and
-either blocks nothing or blocks the wrong thing.
-**Validation**: as each subnet gains an NSG, its `CKV2_AZURE_31` suppression is
-either removed or rewritten to the count-indexed-association reason; all three
-fixtures strict-pass; a Bastion host actually connects — which this environment
-cannot prove, so that waits on a real estate.
+**Validation**: `fw_trust`/`fw_untrust` keep their suppressions, rewritten to
+the vendor-conditional reason; when they eventually gain NSGs the suppression
+is removed or rewritten to the count-indexed-association reason like the four
+done subnets; all three fixtures strict-pass; a Bastion host actually
+connects — which this environment cannot prove, so that waits on a real
+estate.
 
 ### 2.17 Shared-key authorization stays enabled on flow-log storage — CLOSED
 

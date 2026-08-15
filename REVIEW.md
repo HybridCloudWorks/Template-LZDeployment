@@ -540,8 +540,11 @@ be readable from `MicrosoftDocs/azure-docs` on GitHub when
 | Microsoft Learn | `GET learn.microsoft.com/...` | `000` — blocked, **but** the same articles are readable from `MicrosoftDocs/azure-docs` on GitHub, which is how items 2.8 and 2.17 were settled |
 
 Consequently items 3.1, 3.2, 4.1–4.7, 5.1 and 5.2 are blocked on access this
-session does not have, and 2.4, 2.5 and the five remaining subnets of 2.16
+session does not have, and 2.4, 2.5 and the two remaining subnets of 2.16
 are blocked on design or policy input rather than on effort (2.6 closed
-2026-08-15 by operator ratification of decision 0010). None of them is
+2026-08-15 by operator ratification of decision 0010; 2.16's DNS and
+private-endpoint subnets closed 2026-08-15 by the operator's design answers,
+decision 0012 — the `fw_trust`/`fw_untrust` residual is vendor-conditional
+palo/fortinet work with nil estate-need on an azfw estate). None of them is
 waiting on work that could be done here.
 

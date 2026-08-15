@@ -200,3 +200,24 @@ variable "private_endpoint_subnet_prefix" {
     error_message = "private_endpoint_subnet_prefix must be valid CIDR notation, or null."
   }
 }
+
+variable "private_endpoint_allowed_source_prefixes" {
+  # Consumed by the private-endpoint subnet's NSG (TODO item 2.16, decision
+  # 0012). Operator-supplied for the same reason private_endpoint_subnet_prefix
+  # is: the ranges are spoke CIDRs, which live in the workload layers and are
+  # not derivable here. Empty means the NSG carries NO custom rules — the
+  # association exists but Azure's default rules govern — because an allowlist
+  # nobody populated would deny everything and silently break the flow-log
+  # storage endpoints. Wildcards are rejected like management_ip_ranges;
+  # a wildcard allowlist is no allowlist.
+  description = "CIDR ranges allowed to reach the hub's private endpoints on 443 (the flow-log-hosting spoke ranges). Empty associates the NSG without custom rules. Wildcard sources are rejected."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for r in var.private_endpoint_allowed_source_prefixes : !contains(["*", "0.0.0.0/0"], r)
+    ])
+    error_message = "private_endpoint_allowed_source_prefixes must not include '*' or '0.0.0.0/0' - supply the explicit spoke CIDRs."
+  }
+}

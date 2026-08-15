@@ -71,7 +71,7 @@ resource "azurerm_subnet" "fw_mgmt" {
 
 # Firewall Trust (internal) subnet (for Palo/Fortinet)
 resource "azurerm_subnet" "fw_trust" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
+  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet - deliberately. It exists only on a palo/fortinet hub, and its rules are the NVA vendor's data-path guidance, not Microsoft's, so authoring them is vendor-conditional product work done when an NVA estate needs it (TODO item 2.16 residual; decision 0012).
   count                = local.has_nva ? 1 : 0
   name                 = "snet-fw-trust-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
@@ -81,7 +81,7 @@ resource "azurerm_subnet" "fw_trust" {
 
 # Firewall Untrust (external) subnet (for Palo/Fortinet)
 resource "azurerm_subnet" "fw_untrust" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
+  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet - deliberately. It exists only on a palo/fortinet hub, and its rules are the NVA vendor's data-path guidance, not Microsoft's, so authoring them is vendor-conditional product work done when an NVA estate needs it (TODO item 2.16 residual; decision 0012).
   count                = local.has_nva ? 1 : 0
   name                 = "snet-fw-untrust-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
@@ -110,7 +110,7 @@ resource "azurerm_subnet" "bastion" {
 
 # DNS resolver inbound subnet
 resource "azurerm_subnet" "dns_inbound" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
+  #checkov:skip=CKV2_AZURE_31:This subnet DOES have an NSG - azurerm_network_security_group.dns_inbound, associated below with 53 TCP+UDP allowed from VirtualNetwork (TODO item 2.16, decision 0012). Checkov does not resolve the association because it is count-indexed - the same graph limitation that hides the Bastion NSG's. The control is present and reviewable in this file.
   count                = var.deploy_dns_placeholder ? 1 : 0
   name                 = "snet-dns-inbound-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
@@ -128,7 +128,7 @@ resource "azurerm_subnet" "dns_inbound" {
 
 # DNS resolver outbound subnet
 resource "azurerm_subnet" "dns_outbound" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet. Suppressed to keep the gate honest about the difference between "impossible" and "not done"; authoring correct rules per subnet is follow-up work, tracked as TODO item 2.16.
+  #checkov:skip=CKV2_AZURE_31:This subnet DOES have an NSG - azurerm_network_security_group.dns_outbound, associated below with 53 TCP+UDP allowed from VirtualNetwork (TODO item 2.16, decision 0012). Checkov does not resolve the association because it is count-indexed - the same graph limitation that hides the Bastion NSG's. The control is present and reviewable in this file.
   count                = var.deploy_dns_placeholder ? 1 : 0
   name                 = "snet-dns-outbound-${var.region_code}-${var.environment}-01"
   resource_group_name  = azurerm_resource_group.hub.name
@@ -337,6 +337,171 @@ resource "azurerm_subnet_network_security_group_association" "bastion" {
   network_security_group_id = azurerm_network_security_group.bastion[0].id
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DNS Private Resolver subnet NSGs — TODO item 2.16, decision 0012.
+#
+# Unlike Bastion, Microsoft publishes NO NSG rule set for DNS Private Resolver
+# subnets — the documented subnet restrictions cover size, delegation and
+# IPv6, not filtering (checked 2026-08-10 against three articles in
+# MicrosoftDocs/azure-docs; see TODO item 2.16). The allow set below is
+# therefore derived from the operator's design answer (in-session 2026-08-15,
+# decision 0012) rather than copied from a documented table: the resolver is
+# queried from peered spoke VNets only, with no on-premises ranges, so
+# resolver traffic is DNS from the VirtualNetwork service tag — which covers
+# the hub and every peered spoke — and nothing else needs to reach these
+# subnets. An on-premises range, if one ever arrives, is one added allow rule
+# per NSG, not a redesign.
+#
+# What each rule is for:
+#   inbound 53 TCP+UDP from VirtualNetwork — the resolver traffic itself. TCP
+#     is not optional: DNS falls back to it for truncated responses, and a
+#     UDP-only allow breaks large-record lookups.
+#   inbound * from AzureLoadBalancer — the platform's health probes to the
+#     resolver NICs. Bastion's probe rule pins 443 because Microsoft documents
+#     that port; none is documented for the resolver, so the whole tag is
+#     allowed — it carries only Azure's probes. Custom rules evaluate BEFORE
+#     Azure's default rules, so without this explicit allow the deny below
+#     would cut the probes off.
+#   DenyAllInbound 4096 — the explicit terminator, stated exactly as the
+#     Bastion NSG states its denies: functionally redundant against Azure's
+#     default 65500 deny, kept because an explicit terminator states the
+#     intent.
+#
+# Deliberately NO custom outbound rules, stated rather than implied: the
+# delegated resolver NICs talk to Azure DNS (168.63.129.16) and the resolver
+# control plane over a path Microsoft does not enumerate, NSGs are stateful so
+# responses to the allowed inbound queries need no outbound rule, and an
+# outbound deny here would be guessing at a control that can silently break
+# every lookup in the estate. Azure's default outbound rules govern.
+#
+# Both NSGs carry the same set. The inbound endpoint is what receives the
+# queries; on the outbound endpoint the 53 allow is inert today (that endpoint
+# originates queries, nothing listens on it), and keeping the pair identical
+# means the two subnets cannot drift apart when one is edited.
+resource "azurerm_network_security_group" "dns_inbound" {
+  count               = var.deploy_dns_placeholder ? 1 : 0
+  name                = "nsg-dns-inbound-${var.region_code}-${var.environment}-01"
+  resource_group_name = azurerm_resource_group.hub.name
+  location            = azurerm_resource_group.hub.location
+  tags                = var.tags
+
+  security_rule {
+    name                       = "AllowDnsTcpInbound"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "53"
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "VirtualNetwork"
+  }
+
+  security_rule {
+    name                       = "AllowDnsUdpInbound"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Udp"
+    source_port_range          = "*"
+    destination_port_range     = "53"
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "VirtualNetwork"
+  }
+
+  security_rule {
+    name                       = "AllowAzureLoadBalancerInbound"
+    priority                   = 120
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "AzureLoadBalancer"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "DenyAllInbound"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "dns_inbound" {
+  count                     = var.deploy_dns_placeholder ? 1 : 0
+  subnet_id                 = azurerm_subnet.dns_inbound[0].id
+  network_security_group_id = azurerm_network_security_group.dns_inbound[0].id
+}
+
+resource "azurerm_network_security_group" "dns_outbound" {
+  count               = var.deploy_dns_placeholder ? 1 : 0
+  name                = "nsg-dns-outbound-${var.region_code}-${var.environment}-01"
+  resource_group_name = azurerm_resource_group.hub.name
+  location            = azurerm_resource_group.hub.location
+  tags                = var.tags
+
+  security_rule {
+    name                       = "AllowDnsTcpInbound"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "53"
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "VirtualNetwork"
+  }
+
+  security_rule {
+    name                       = "AllowDnsUdpInbound"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Udp"
+    source_port_range          = "*"
+    destination_port_range     = "53"
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "VirtualNetwork"
+  }
+
+  security_rule {
+    name                       = "AllowAzureLoadBalancerInbound"
+    priority                   = 120
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "AzureLoadBalancer"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "DenyAllInbound"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "dns_outbound" {
+  count                     = var.deploy_dns_placeholder ? 1 : 0
+  subnet_id                 = azurerm_subnet.dns_outbound[0].id
+  network_security_group_id = azurerm_network_security_group.dns_outbound[0].id
+}
+
 # GatewaySubnet deliberately has no NSG: Azure does not support NSG
 # associations on GatewaySubnet. Traffic inspection for gateway-transiting
 # flows is handled by the hub firewall and spoke UDRs instead.
@@ -453,7 +618,7 @@ resource "azurerm_monitor_diagnostic_setting" "azfw" {
 # subnet and no hub private endpoints, which is the behaviour before this
 # variable existed.
 resource "azurerm_subnet" "private_endpoints" {
-  #checkov:skip=CKV2_AZURE_31:This subnet CAN take an NSG and does not have one yet - same gap as the other hub subnets, and it arrived with the subnet itself (TODO item 2.11). Authoring correct per-subnet rules is tracked as TODO item 2.16.
+  #checkov:skip=CKV2_AZURE_31:This subnet DOES have an NSG - azurerm_network_security_group.private_endpoints, associated below and gated on the same prefix variable as this subnet (TODO item 2.16, decision 0012). Checkov does not resolve the association because it is count-indexed - the same graph limitation that hides the Bastion NSG's. The control is present and reviewable in this file.
   count = var.private_endpoint_subnet_prefix == null ? 0 : 1
 
   name                 = "snet-private-endpoints-${var.region_code}-${var.environment}-01"
@@ -466,4 +631,75 @@ resource "azurerm_subnet" "private_endpoints" {
   # private endpoints — which is what an operator putting endpoints in a hub
   # subnet almost certainly wants.
   private_endpoint_network_policies = "Enabled"
+}
+
+# NSG for the private-endpoint subnet — TODO item 2.16, decision 0012.
+#
+# An NSG here genuinely applies: the subnet above sets
+# private_endpoint_network_policies = "Enabled" precisely so one can. The
+# endpoints hosted today are the hub flow-log storage blob endpoints (items
+# 2.10/2.11), and the operator's design answer (in-session 2026-08-15,
+# decision 0012) is that they are reached over 443 from the
+# flow-log-hosting spoke ranges only.
+#
+# This module cannot derive those ranges: spoke address spaces live in the
+# workload layers, and the dependency deliberately runs the other way — the
+# workload layers read connectivity's state, never the reverse (contract #9).
+# So they arrive as private_endpoint_allowed_source_prefixes,
+# operator-supplied exactly like private_endpoint_subnet_prefix itself, and
+# BOTH rules below are gated on the list being non-empty:
+#
+#   non-empty — 443 TCP from those prefixes, then DenyAllInbound 4096: the
+#     allowlist the operator asked for, terminated the way the Bastion NSG
+#     terminates its rule set.
+#   empty     — the NSG associates with NO custom rules, so Azure's default
+#     rules govern and the subnet behaves exactly as it did before this NSG
+#     existed. An unconditional DenyAllInbound with no allow would silently
+#     cut every spoke off from the flow-log storage endpoints the moment an
+#     operator supplied a subnet prefix without the source list.
+#
+# No custom outbound rules: a private endpoint NIC answers, it does not
+# originate, so there is no outbound flow to allow or deny.
+resource "azurerm_network_security_group" "private_endpoints" {
+  count               = var.private_endpoint_subnet_prefix == null ? 0 : 1
+  name                = "nsg-private-endpoints-${var.region_code}-${var.environment}-01"
+  resource_group_name = azurerm_resource_group.hub.name
+  location            = azurerm_resource_group.hub.location
+  tags                = var.tags
+
+  dynamic "security_rule" {
+    for_each = length(var.private_endpoint_allowed_source_prefixes) > 0 ? [1] : []
+    content {
+      name                       = "AllowHttpsInbound"
+      priority                   = 100
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "443"
+      source_address_prefixes    = var.private_endpoint_allowed_source_prefixes
+      destination_address_prefix = "VirtualNetwork"
+    }
+  }
+
+  dynamic "security_rule" {
+    for_each = length(var.private_endpoint_allowed_source_prefixes) > 0 ? [1] : []
+    content {
+      name                       = "DenyAllInbound"
+      priority                   = 4096
+      direction                  = "Inbound"
+      access                     = "Deny"
+      protocol                   = "*"
+      source_port_range          = "*"
+      destination_port_range     = "*"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    }
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "private_endpoints" {
+  count                     = var.private_endpoint_subnet_prefix == null ? 0 : 1
+  subnet_id                 = azurerm_subnet.private_endpoints[0].id
+  network_security_group_id = azurerm_network_security_group.private_endpoints[0].id
 }
