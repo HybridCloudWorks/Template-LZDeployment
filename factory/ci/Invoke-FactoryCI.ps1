@@ -153,6 +153,8 @@ if (-not $result.InSync) { exit 1 }
     # `terraform init` long before any plan. Runs in the 'policy' category so
     # it still reports when LZ_FACTORY_CI_SKIP_TERRAFORM is set.
     Invoke-LzFactoryCheck 'Provider constraints' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ProviderConstraints.ps1') -Category 'policy' | Out-Null
+    # An orphaned template silently ships nothing (output-contract violation).
+    Invoke-LzFactoryCheck 'Template coverage' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-TemplateCoverage.ps1') -Category 'contract' | Out-Null
     # Corpus-vs-broker resource-provider drift (decision 0006): a template
     # module adding an azurerm type whose namespace the broker does not
     # register must fail here, not at a client site mid-first-apply.
