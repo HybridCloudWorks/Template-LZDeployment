@@ -25,14 +25,19 @@ kinds:
 
 ---
 
-## 🔐 Requires Azure or GitHub access — **OUT OF SCOPE THIS PHASE**
+## 🔐 Requires Azure or GitHub access — **GO-LIVE OPENED 2026-08-15**
 
-> **Phase scoping (operator, 2026-08-06).** Items 1–9 are the **go-live
-> chain**, and go-live is explicitly out of scope for the current phase. They
-> are recorded here so they are not re-derived, but they are **deferred, not
-> pending**: do not treat tenant confirmation, the identity estate, required
-> status checks, or the Stage 13/14 gates as next steps until the operator
-> opens the go-live phase.
+> **Phase opened (operator, 2026-08-15, in-session).** The 2026-08-06
+> deferral on items 1–9 is lifted: the go-live chain is now **pending**,
+> each item on its existing unblock text, sequenced by the execution kit at
+> [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md).
+> This coexists with the operator's same-day tenant-agnostic directive
+> ("Do not tie yourself to a specific azure tenant/sub ID, this is meant to
+> be a template"): opening go-live authorizes *executing* the chain, while
+> tenant-agnosticism governs *where the values live* — the estate
+> tenant/subscription is chosen at execution time, under the operator's own
+> `gh`/`az` sessions on their machine (decision 0004), and never lands in
+> template files. The two directives are not in tension.
 
 These items share one root cause: **no landing-zone identity estate exists**,
 and the engagement tenant has not been confirmed.
@@ -65,6 +70,17 @@ solo operation continues.
 **Retarget note**: this applies to the **upstream factory repo only**. Under
 [decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)
 client copies are disposable and are never hardened.
+**Payload prepared + probe evidence, 2026-08-15.** The "prepared protection
+payload" this entry referenced was prose until now; it exists as a file:
+[docs/runbooks/branch-protection-payload.json](docs/runbooks/branch-protection-payload.json)
+(required context `Factory CI` only — the `azure/login`-dependent contexts
+join after §1 exists, else every merge deadlocks; approvals 0 per the caveat
+above; `enforce_admins: true`, `strict: false`, reasons in the runbook). The
+remote sandbox **cannot apply it**, even holding the operator's token:
+`gh api repos/…/branches/main/protection` → HTTP 403 "GitHub access is not
+enabled for this session" (App-level block on admin endpoints). This is an
+operator-local action — commands and read-back in
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 1.
 
 ### 3. Verify the pipeline runs green end to end (TODO.md item 4.5, `[BLOCKER]`)
 No recorded successful run of `010-terraform-init.yml`,
@@ -186,6 +202,12 @@ This entry survives only as that per-estate pointer; [TODO.md](TODO.md) item
 `deploy-pages.yml` exists and is SHA-pinned; the repository setting is a
 one-time manual prerequisite.
 **Unblocked by**: repository administration (Settings → Pages).
+**Probe evidence, 2026-08-15.** The remote sandbox cannot flip the setting,
+even holding the operator's token: `gh api repos/…/pages` → HTTP 403
+"Access to this GitHub API path is not permitted through this proxy". This
+is an operator-local action — Settings → Pages, or the `gh api`
+POST/PUT `build_type: workflow` routes in
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 2.
 
 ### 9. Resolve the backend duality / TFC migration
 Tracked as GitHub Issue #11; blocked on interactive Terraform Cloud
@@ -582,7 +604,11 @@ the template deliberately stays tenant-agnostic.*
 Consequently items 3.2, 4.1–4.7, 5.1 and 5.2 are blocked on access this
 session does not have (item 3.1 was re-scoped 2026-08-15 — its provisioning
 half is proven and its tenant-bound half is per-estate work at
-instantiation, §7), and 2.4, 2.5 and the two remaining subnets of 2.16
+instantiation, §7; go-live opened the same day, so the Phase 4 chain is now
+**pending operator-local execution** with the prepared kit at
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) — the
+4.2/4.3 admin endpoints were probed from the sandbox that day and are
+App/proxy-blocked, §2/§8), and 2.4, 2.5 and the two remaining subnets of 2.16
 are blocked on design or policy input rather than on effort (2.6 closed
 2026-08-15 by operator ratification of decision 0010; 2.16's DNS and
 private-endpoint subnets closed 2026-08-15 by the operator's design answers,

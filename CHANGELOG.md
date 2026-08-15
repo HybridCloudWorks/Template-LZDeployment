@@ -7,6 +7,33 @@ entries below are history and are not rewritten.
 
 ---
 
+## The go-live execution kit exists (2026-08-15)
+
+Two shipped artifacts, prepared when the operator opened the go-live phase
+in-session (the phase flip itself is registry state, recorded in
+[REVIEW.md](REVIEW.md) §§1–9 and [TODO.md](TODO.md) Phase 4, not repeated
+here):
+
+- **[docs/runbooks/branch-protection-payload.json](docs/runbooks/branch-protection-payload.json)**
+  — the branch-protection payload REVIEW.md §2 had referenced only as prose
+  since decision 0007 retired the script route. Requires the `Factory CI`
+  context alone (the `azure/login`-dependent contexts stay non-required
+  until item 4.1 exists, else every merge deadlocks), approvals 0
+  (single-owner caveat), `enforce_admins: true` (the defect being fixed was
+  red merges under the sole admin account), `strict: false` (single-owner
+  serial PRs don't race; up-to-date enforcement would only force CI
+  re-runs).
+- **[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md)**
+  — the Phase 4 pre-flight runbook sequencing the operator-local steps
+  4.2 → 4.3 → 4.1 (+4.4) → 4.5 → 4.7 with exact commands and read-backs,
+  recording the 2026-08-15 sandbox probes (protection and Pages endpoints
+  both 403 even with the operator's token — App/proxy blocks, so the steps
+  are operator-local by architecture, per decision 0004's execution model)
+  and the coexistence of go-live execution with the tenant-agnostic
+  directive.
+
+---
+
 ## The DNS resolver and private-endpoint hub subnets carry NSGs (2026-08-15)
 
 [TODO.md](TODO.md) item 2.16, narrowed to its vendor-conditional residual by
