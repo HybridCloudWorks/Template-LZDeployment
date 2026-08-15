@@ -10,10 +10,11 @@
 > (new-features changelog). Root markdown is limited to four files: README.md,
 > CHANGELOG.md, REVIEW.md, TODO.md.
 
-**Last Updated**: August 14, 2026
-**Status**: 🟢 Phases 1–2 closed through PR #92 except 2.16 (five subnets
-remain, gated on client DNS design + firewall choice) and 2.4/2.5/2.6
-(operator-gated — REVIEW.md §14/§16/§13); Phase 3 gated on the authenticated
+**Last Updated**: August 15, 2026
+**Status**: 🟢 Phases 1–2 closed except 2.16 (`fw_trust`/`fw_untrust` only —
+vendor-conditional palo/fortinet work, nil estate-need on the operator's azfw
+estate; decision 0012) and 2.4/2.5
+(operator-gated — REVIEW.md §14/§16); Phase 3 gated on the authenticated
 toolchain (§7) and wiki write access (§15); Phase 4 deferred (go-live not
 opened); Phase 5 release-time
 **Operator activities & stage checklists**: [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md)
@@ -512,7 +513,7 @@ finds them at the resource rather than in a changelog.
 skipped`, checkov exiting clean. Full `Invoke-FactoryCI.ps1` green except
 PSScriptAnalyzer (PS Gallery blocked here).
 
-### 2.16 Six hub subnets carry no NSG — BASTION DONE, FIVE REMAIN
+### 2.16 Six hub subnets carry no NSG — FOUR DONE, `fw_trust`/`fw_untrust` REMAIN (VENDOR-CONDITIONAL)
 
 `CKV2_AZURE_31` fires on **six subnets per hub**, both regions — twelve
 findings — and every one of them can take a network security group. They are
@@ -522,9 +523,9 @@ difference between *impossible* and *not done*, but suppression is not the fix.
 | Subnet | What an NSG has to allow |
 | --- | --- |
 | ~~`bastion` (`AzureBastionSubnet`)~~ | **Done 2026-08-10.** `azurerm_network_security_group.bastion` carries Microsoft's prescribed set — 443 inbound from Internet, GatewayManager and AzureLoadBalancer, 8080/5701 within the VNet; 22/3389 outbound to VirtualNetwork, 443 to AzureCloud, 8080/5701 within the VNet, 80 to Internet — plus the documented explicit denies. |
-| `dns_inbound` / `dns_outbound` | Delegated to `Microsoft.Network/dnsResolvers`. Azure permits an NSG; it must not block resolver traffic on 53/UDP+TCP. |
-| `fw_trust` / `fw_untrust` | NVA data-path subnets (palo/fortinet only). Rules follow the appliance vendor's guidance, so this half is firewall-type dependent. |
-| `private_endpoints` | Arrived with item 2.11. Private endpoints ignore NSGs unless the subnet sets `private_endpoint_network_policies = "Enabled"` — which this module already does, so an NSG here would actually apply. |
+| ~~`dns_inbound` / `dns_outbound`~~ | **Done 2026-08-15** (decision 0012). 53 TCP+UDP inbound from `VirtualNetwork` (the operator's answer: queried from spoke VNets only, no on-premises ranges), AzureLoadBalancer probes, explicit DenyAllInbound; deliberately no custom outbound rules — the resolver's platform path is not enumerable from published docs and NSGs are stateful. |
+| `fw_trust` / `fw_untrust` | **The residual.** NVA data-path subnets (palo/fortinet only). Rules follow the appliance vendor's guidance, so this half is firewall-type dependent — and the operator's own estate is azfw (decision 0012), where these subnets never exist. |
+| ~~`private_endpoints`~~ | **Done 2026-08-15** (decision 0012). An NSG here genuinely applies (`private_endpoint_network_policies = "Enabled"`); 443 inbound from the flow-log-hosting spoke ranges via the new operator-supplied `private_endpoint_allowed_source_prefixes`, empty list = association with no custom rules so nothing shipped breaks. |
 
 Not one rule set: three or four different ones, two of them
 vendor-conditional. That is why it is an item rather than a line in 2.15.
@@ -556,37 +557,41 @@ output feeds the connectivity layer's flow-log calls, and widening it would
 change flow-log scope, which decision 0009 set deliberately. That is a
 decision-0009 change, not an NSG change.
 
+**DNS resolver + private endpoints, done 2026-08-15.** The design input the
+2026-08-10 check identified as missing was supplied by the operator
+in-session and recorded as
+[decision 0012](docs/decisions/0012-hub-subnet-nsg-scope.md): the resolver is
+queried from **spoke VNets only** (no on-premises ranges → 53 TCP+UDP from
+`VirtualNetwork`, no client-subnet enumeration needed), and the
+private-endpoint subnet serves **443 from the flow-log-hosting spoke ranges
+only** (→ the new operator-supplied
+`private_endpoint_allowed_source_prefixes`; empty associates the NSG with no
+custom rules, because an allowlist nobody populated would silently break the
+flow-log endpoints). All three NSGs follow the Bastion pattern —
+count-gated on the same condition as their subnet, explicit DenyAllInbound
+terminators, count-indexed associations — and, like Bastion, are
+deliberately **not** added to `nsg_ids` (that output sets flow-log scope,
+which is decision-0009 territory). Their `CKV2_AZURE_31` suppressions are
+rewritten to the count-indexed-association truth.
+
 **Owner**: `azure-platform-architect` (design) → `terraform-module-engineer`.
-**The remaining five are gated on design input, and that was checked rather
-than assumed (2026-08-10).** Bastion was doable unattended because Microsoft
-prescribes an exact rule table. The others have no equivalent:
+**The residual — `fw_trust` / `fw_untrust` — stays open, re-scoped
+(2026-08-15, decision 0012) as vendor-conditional product work:**
 
-- **`dns_inbound` / `dns_outbound`** — Microsoft publishes **no NSG rule set**
-  for DNS Private Resolver subnets. Three articles were read from
-  `MicrosoftDocs/azure-docs`
-  (`dns-private-resolver-overview.md`,
-  `dns-private-resolver-get-started-portal.md`,
-  `private-resolver-endpoints-rulesets.md`) and none mentions network security
-  groups at all; the documented subnet restrictions cover size, delegation and
-  IPv6, not filtering. Correct rules depend on **which client subnets and
-  on-premises ranges will query the resolver** — an input this repository does
-  not hold.
-- **`fw_trust` / `fw_untrust`** — the authority is the NVA vendor (Palo Alto or
-  Fortinet), not Microsoft, and the rules differ per appliance. Also
-  firewall-type conditional, so they only exist on a `palo`/`fortinet` hub.
-- **`private_endpoints`** — an NSG here would genuinely apply (the module sets
-  `private_endpoint_network_policies = "Enabled"`), but the rules depend on
-  which spokes must reach which endpoint. Today the only endpoint is the
-  flow-log storage one.
+- The authority is the NVA vendor (Palo Alto or Fortinet), not Microsoft,
+  and the rules differ per appliance. Firewall-type conditional: the subnets
+  only exist on a `palo`/`fortinet` hub.
+- The operator's own estate is **azfw** (decision 0012), so these subnets
+  never exist there and the estate-need is nil. Authoring the vendor rule
+  sets is product work for a future NVA estate, not a gap in any deployed
+  hub.
 
-So this is not "not done yet" — it is **waiting on the client's DNS design and
-firewall choice**. Writing rules without them would be guessing at a security
-control, which is how a subnet ends up with an NSG that looks protective and
-either blocks nothing or blocks the wrong thing.
-**Validation**: as each subnet gains an NSG, its `CKV2_AZURE_31` suppression is
-either removed or rewritten to the count-indexed-association reason; all three
-fixtures strict-pass; a Bastion host actually connects — which this environment
-cannot prove, so that waits on a real estate.
+**Validation**: `fw_trust`/`fw_untrust` keep their suppressions, rewritten to
+the vendor-conditional reason; when they eventually gain NSGs the suppression
+is removed or rewritten to the count-indexed-association reason like the four
+done subnets; all three fixtures strict-pass; a Bastion host actually
+connects — which this environment cannot prove, so that waits on a real
+estate.
 
 ### 2.17 Shared-key authorization stays enabled on flow-log storage — CLOSED
 
@@ -633,26 +638,29 @@ it. Two of the three modules it would gate are the item-2.4 scaffolds.
 **Gate**: item 2.4 ships first — [REVIEW.md](REVIEW.md) §16.
 **Validation**: enabling an option in the YAML changes the corresponding plan.
 
-### 2.6 Record the generated-repo ownership policy
+### 2.6 Record the generated-repo ownership policy — CLOSED
 
-Mechanism is settled (`github.ownershipModel`/`ownerName` are required schema
-fields); what is open is the operator confirming the rewritten
-[decision 0010 (Proposed)](docs/decisions/0010-generated-repo-ownership-policy.md)
-— an operator-owned organization (`HybridCloudWorks` precedent) with
-`ownershipModel: organization` — plus the GH1 org-plan-tier answer. Watch
-schema risk GH1 (`personal` on a Free plan silently loses protected
-environments; the OIDC subjects embed the owner literally, so the choice is
-permanent in practice).
-**Premise corrected 2026-08-14**: the operator stated this is a personal
-project (owner since day 1), not a consultancy engagement, so the earlier
-"which owner value the consultancy uses / transfer to the client" framing
-was mis-premised and
-0010 was rewritten in place (it was unratified). The remaining work is
-ratification plus the record's follow-ups (wizard/docs references,
-USER-CHECKLIST prerequisite).
-**Owner**: operator decides; `docs-knowledge-curator` records.
-**Gate**: unchanged — [REVIEW.md](REVIEW.md) §13 (operator ratifies).
-**Validation**: policy recorded in a decision record; wizard/docs reference it.
+Closed 2026-08-15: the gate lifted when the operator ratified
+[decision 0010](docs/decisions/0010-generated-repo-ownership-policy.md)
+in-session (explicit instruction, the day after merging PR #94, which
+carried the record as Proposed). As recommended: `ownerName` is an
+organization the operator owns (`HybridCloudWorks` precedent) with
+`ownershipModel: organization`; `personal` is never used for a real
+deployment, because schema risk GH1 silently removes the
+protected-environment gate the apply OIDC subjects depend on, and the
+owner choice is permanent in practice (the OIDC subjects embed the owner
+literally). The transfer question dissolved with the 2026-08-14 premise
+correction (personal project, no counterparty). The validation criterion
+was met the same day: the policy is in the ratified record, and the
+wizard's ownership hint (`site/app.js`) and
+[docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md) now reference it.
+**Residual, named here rather than re-phased**: decision 0010 open
+question 2 — whether an *organization* on the Free plan degrades the same
+controls GH1 records for personal accounts — needs a GitHub-docs check
+from an environment with the access ([REVIEW.md](REVIEW.md) §13 records
+who holds it); until answered, the policy is an ownership-model statement,
+not a minimum-plan statement. Item number retained so cross-references
+stay stable.
 
 ### 2.7 Update dot-folder contract text to the 2026-08-07 file contract — CLOSED
 
@@ -762,14 +770,30 @@ No recorded successful run of `010-terraform-init.yml`,
 **Gate**: item 4.1 — [REVIEW.md](REVIEW.md) §3.
 **Validation**: successful runs of all four workflows on a real PR/push.
 
-### 4.6 Resolve the backend duality / TFC migration (Issue #11)
+### 4.6 Resolve the backend duality / TFC migration (Issue #11) — CLOSED
 
-HCP Terraform is the recorded default; `terraform/live/*` is azurerm; the
-bootloader and workflow 010 assume TFC.
-**Owner**: `github-actions-engineer`. **Gate**: interactive TFC
-org/workspace/token setup — [REVIEW.md](REVIEW.md) §9,
-[Issue #11](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/11).
-**Validation**: one backend per stack, init green against it.
+Closed 2026-08-15: the operator resolved
+[Issue #11](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/11)
+in-session as **standardize, don't migrate** —
+[decision 0011](docs/decisions/0011-standardize-live-tree-on-azurerm.md):
+azurerm everywhere in the live tree, chosen over the TFC migration the
+issue title named, because azurerm removes the external org/token
+dependency and matches the state `terraform/live/*` already holds. The
+gate **dissolved rather than lifted**: the interactive TFC
+org/workspace/token setup no longer applies to anything on the live path,
+so no operator TFC session is needed. Shipped the same day:
+`terraform/live/sandbox/backend.hcl` rewritten from its TFC-shaped
+contradiction to the azurerm form its `main.tf` already declared;
+workflow 010 initializes every layer with `-backend-config=backend.hcl`
+under `ARM_USE_OIDC` as the plan SP, with `TF_API_TOKEN` and all TFC
+references removed; the bootloader defaults to azurerm with the
+interactive backend prompt retired (hcp-terraform survives only as a
+warned, explicit legacy override). The factory's dual-backend render
+capability is explicitly unaffected — that is a product feature. The
+validation criterion's first half (one backend per stack) is met; "init
+green against it" is carried by items 4.1/4.5, which own the identity
+estate and secrets the init needs. Item number retained so
+cross-references stay stable; record in [CHANGELOG.md](CHANGELOG.md).
 
 ### 4.7 Execute and accept the Stage 13 dogfood instance
 

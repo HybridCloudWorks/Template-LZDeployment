@@ -20,6 +20,11 @@ through that layer's remote state.
   inbound/outbound subnets (placeholder toggles)
 - Management NSG locked to `var.management_ip_ranges` (wildcards rejected by
   validation)
+- NSGs on the optional subnets, each created and associated with its subnet:
+  Bastion (Microsoft's prescribed rule set), DNS resolver inbound/outbound
+  (53 TCP+UDP from `VirtualNetwork` — decision 0012), and private-endpoint
+  (443 from `var.private_endpoint_allowed_source_prefixes` when supplied;
+  no custom rules when empty)
 - Route table for spokes with default route to the firewall's private IP
 
 **When `firewall_type = "azfw"`**
@@ -92,6 +97,7 @@ module "hub_primary" {
 | `firewall_tls_certificate_key_vault_secret_id` | Key Vault secret for TLS inspection cert | `string` | `""` | no |
 | `log_analytics_workspace_id` | Workspace for diagnostics; empty disables diagnostics/alerts | `string` | `""` | no |
 | `private_endpoint_subnet_prefix` | CIDR for the hub private-endpoint subnet, supplied from your own address plan (no cidrsubnet index is free under both firewall layouts). Null creates no subnet. | `string` | `null` | no |
+| `private_endpoint_allowed_source_prefixes` | Spoke CIDRs allowed to reach hub private endpoints on 443; `*`/`0.0.0.0/0` rejected. Empty associates the NSG without custom rules. | `list(string)` | `[]` | no |
 | `enable_threat_intel_alerts` | Alert on threat-intelligence hits | `bool` | `true` | no |
 | `security_action_group_ids` | Action Groups for security alerts | `list(string)` | `[]` | no |
 

@@ -1131,7 +1131,7 @@ function describeCron(expr) {
 function updateHints() {
   const oh = $('#gh_ownershipHint');
   oh.textContent = {
-    organization: 'Organizations support environments, branch protection, and team-based reviewers. This is the recommended model.',
+    organization: 'Organizations support environments, branch protection, and team-based reviewers. This is the recommended model — and the ratified ownership policy (decision 0010): the owner is an organization the operator controls.',
     enterprise: 'Enterprise Cloud adds internal visibility, enterprise-level Actions policies, and enterprise SSO. Discovery reads the enterprise Actions policy during readiness checks.',
     personal: 'Personal accounts on the Free plan cannot use environments or branch protection on private repositories, so approval gates and protected applies are unavailable. Every control the broker cannot apply is named explicitly in the bootstrap report.'
   }[config.github.ownershipModel];

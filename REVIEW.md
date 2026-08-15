@@ -170,6 +170,25 @@ one-time manual prerequisite.
 Tracked as GitHub Issue #11; blocked on interactive Terraform Cloud
 org/workspace/token setup.
 **Unblocked by**: an operator with TFC access.
+**Update 2026-08-15 — resolved; the blocker dissolved rather than
+lifted.** The operator decided in-session, from the presented pair, to
+**standardize the live tree on azurerm** rather than migrate to TFC —
+[decision 0011](docs/decisions/0011-standardize-live-tree-on-azurerm.md)
+(Accepted): azurerm removes the external org/token dependency and matches
+the state `terraform/live/*` already holds, so no operator TFC session is
+needed at all. Implemented the same day: the TFC-shaped
+`terraform/live/sandbox/backend.hcl` (which contradicted its own stack's
+`backend "azurerm" {}` declaration) now matches its four azurerm
+siblings; `010-terraform-init.yml` drops `TF_API_TOKEN` and every TFC
+reference and initializes each layer with `-backend-config=backend.hcl`
+under `ARM_USE_OIDC` as the plan SP (contract #2); the bootloader
+defaults to azurerm, its interactive backend prompt retired, with
+hcp-terraform surviving only as a warned explicit legacy override. Issue
+#11 closes as **standardize-not-migrate**; the factory's dual-backend
+render capability (both backends remain valid `lz-config.json` choices)
+is explicitly unaffected. "Init green" against the standardized backend
+remains with §1/§3 (TODO items 4.1/4.5), which own the identity estate
+and secrets. [TODO.md](TODO.md) item 4.6 closed.
 
 ---
 
@@ -370,6 +389,25 @@ owned it since day 1 — so the earlier "which value the consultancy puts in
 question is moot. 0010 was rewritten accordingly (unratified, so rewritten
 in place with the correction recorded in its History section). **Awaiting
 operator ratification**; nothing is policy until then.
+**Update 2026-08-15 — ratified; no longer awaiting a decision.** The gate
+lifted when the operator ratified
+[decision 0010](docs/decisions/0010-generated-repo-ownership-policy.md)
+in-session by explicit instruction, the day after merging PR #94 (which
+carried the record as Proposed): as recommended — `ownerName` is an
+organization the operator owns (`HybridCloudWorks` precedent) with
+`ownershipModel: organization`, `personal` is never used for a real
+deployment (GH1), and the transfer question stays moot. No tooling change
+was needed to comply — the wizard already defaults to `organization` — and
+the record's references shipped the same day: the wizard's ownership hint
+(`site/app.js`) and the pre-engagement prerequisite line in
+[docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md) now cite the record.
+[TODO.md](TODO.md) item 2.6 is closed.
+**What remains and who holds it**: the GH1 org-plan-tier boundary (0010
+open question 2 / follow-up 3) — whether an *organization* on the Free
+plan degrades the same controls on private repos — needs a GitHub-docs
+check from an environment with the access; it is carried as a named
+residual inside TODO item 2.6's closure note. Until it is answered, the
+policy is an ownership-model statement, not a minimum-plan statement.
 
 ### 14. Implement `keyvault-cmk` and `sentinel-siem`
 **Operator-accepted deferral as of 2026-08-06** ("leave those key vault and
@@ -502,7 +540,11 @@ be readable from `MicrosoftDocs/azure-docs` on GitHub when
 | Microsoft Learn | `GET learn.microsoft.com/...` | `000` — blocked, **but** the same articles are readable from `MicrosoftDocs/azure-docs` on GitHub, which is how items 2.8 and 2.17 were settled |
 
 Consequently items 3.1, 3.2, 4.1–4.7, 5.1 and 5.2 are blocked on access this
-session does not have, and 2.4, 2.5, 2.6 and the five remaining subnets of 2.16
-are blocked on design or policy input rather than on effort. None of them is
+session does not have, and 2.4, 2.5 and the two remaining subnets of 2.16
+are blocked on design or policy input rather than on effort (2.6 closed
+2026-08-15 by operator ratification of decision 0010; 2.16's DNS and
+private-endpoint subnets closed 2026-08-15 by the operator's design answers,
+decision 0012 — the `fw_trust`/`fw_untrust` residual is vendor-conditional
+palo/fortinet work with nil estate-need on an azfw estate). None of them is
 waiting on work that could be done here.
 

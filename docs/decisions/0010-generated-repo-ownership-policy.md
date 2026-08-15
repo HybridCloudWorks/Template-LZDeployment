@@ -1,13 +1,14 @@
 # Decision 0010 — Generated-repository ownership policy
 
-- **Status**: **Proposed — awaiting operator ratification.** Nothing below is
-  policy until the operator ratifies it in-session; the
-  [REVIEW.md](../../REVIEW.md) §13 gate stays closed until then. The
-  operator's 2026-08-14 message corrected this record's *premise* (see
-  History); it did not ratify the record.
+- **Status**: **Accepted** — operator-ratified in-session 2026-08-15, as
+  recommended: `ownerName` is an organization the operator owns
+  (`HybridCloudWorks` precedent) with `ownershipModel: organization`;
+  `personal` is never used for a real deployment (GH1). The transfer
+  question is moot. See the [Ratification](#ratification) section; the GH1
+  org-plan-tier boundary (open question 2) remains open.
 - **Date**: 2026-08-14 (authored); 2026-08-14 (rewritten on premise
-  correction, same day)
-- **Deciders**: operator (ratification pending); `docs-knowledge-curator`
+  correction, same day); 2026-08-15 (ratified)
+- **Deciders**: operator (ratified 2026-08-15); `docs-knowledge-curator`
   (authored both versions)
 - **Technical depth**: L200 (ownership policy over a settled mechanism)
 
@@ -23,6 +24,8 @@
   always been." Because the record was unratified and unmerged, it was rewritten
   in place rather than superseded; the prior options survive only as the
   "Considered under the prior premise" note below.
+- **2026-08-15 (ratified)**: the operator ratified the rewritten record
+  in-session by explicit instruction; see [Ratification](#ratification).
 
 ## Context and Problem Statement
 
@@ -165,8 +168,25 @@ record's git history.
 
 ## Ratification
 
-*Pending.* This section is deliberately empty: the body above is the paper
-the decision will be taken on, and — per the decision 0009 precedent — it
-will not be edited after the fact (the 2026-08-14 rewrite predates
-ratification and is recorded in History). Ratification is recorded here, in
-the Status line, and in REVIEW.md §13 when the operator answers.
+Ratified by the operator, in-session, **2026-08-15** — by explicit
+instruction, the day after the operator merged PR #94 carrying this record
+as Proposed. Ratified **as recommended**: `ownerName` is a GitHub
+organization the operator owns (`HybridCloudWorks` is the standing
+precedent) with `ownershipModel: organization`; `personal` is never used
+for a real deployment, even as a solo owner — GH1's silent loss of the
+protected-environment gate is the reason, and fact 1 makes the owner
+choice permanent in practice. The transfer question (formerly Q-B) is
+confirmed moot.
+
+Open question 1 is thereby answered. Open question 2 — the GH1
+org-plan-tier boundary — **remains open** (follow-up 3) and is carried as
+a named residual in [TODO.md](../../TODO.md) item 2.6's closure note. Of
+the follow-ups, 1 and 2 shipped the same day (the wizard's ownership hint
+in `site/app.js` and the [USER-CHECKLIST](../USER-CHECKLIST.md)
+prerequisite line now reference this record) and 4 is the same pass
+(REVIEW.md §13, TODO.md item 2.6).
+
+Per this record's own rule — the decision 0009 precedent — the body above
+is unchanged: it is the paper the decision was taken on. Ratification is
+recorded here, in the Status line, and in [REVIEW.md](../../REVIEW.md)
+§13.

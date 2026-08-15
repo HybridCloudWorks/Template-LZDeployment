@@ -3,7 +3,100 @@
 **Purpose**: Historical record of completed work. **Going forward (operator
 contract, 2026-08-07): new entries record shipped features only.** Existing
 entries below are history and are not rewritten.
-**Last Updated**: August 10, 2026
+**Last Updated**: August 15, 2026
+
+---
+
+## The DNS resolver and private-endpoint hub subnets carry NSGs (2026-08-15)
+
+[TODO.md](TODO.md) item 2.16, narrowed to its vendor-conditional residual by
+the operator's three in-session design answers, recorded as
+[decision 0012](docs/decisions/0012-hub-subnet-nsg-scope.md): the estate's
+firewall is azfw, the DNS Private Resolver is queried from spoke VNets only,
+and the hub's private endpoints are reached over 443 from the
+flow-log-hosting spoke ranges only. Estate answers, not factory constraints —
+the module stays generic.
+
+What shipped, in `hub-network` in both trees at byte parity, all on the
+Bastion NSG's pattern (count-gated with its subnet, explicit deny
+terminators, count-indexed association):
+
+- **`nsg-dns-inbound` / `nsg-dns-outbound`** — Microsoft publishes no rule
+  set for resolver subnets, so the rules derive from the operator's answer:
+  53 TCP+UDP inbound from `VirtualNetwork` (covers every peered spoke; TCP
+  included because DNS falls back to it for truncated responses), the
+  AzureLoadBalancer probe allow, `DenyAllInbound` at 4096. Deliberately no
+  custom outbound rules: the delegated NICs' platform path (Azure DNS at
+  168.63.129.16, resolver control plane) is not enumerable from published
+  docs, and an outbound deny would be guessing at a control that can
+  silently break every lookup in the estate.
+- **`nsg-private-endpoints`** — genuinely effective because the subnet sets
+  `private_endpoint_network_policies = "Enabled"` (item 2.11). 443 TCP from
+  the new `private_endpoint_allowed_source_prefixes` (operator-supplied
+  spoke CIDRs, wildcard-rejecting, threaded through `platform-connectivity`
+  in both trees, mapped `literal:operator-supplied` with a commented tfvars
+  placeholder like the subnet prefix itself), then `DenyAllInbound`. An
+  empty list associates the NSG with **no** custom rules — Azure's defaults
+  govern — because an unpopulated allowlist would silently cut the spokes
+  off from the flow-log storage endpoints.
+
+The three subnets' `CKV2_AZURE_31` suppressions are rewritten to the
+count-indexed-association truth (the Bastion precedent);
+`fw_trust`/`fw_untrust` keep theirs, rewritten to the vendor-conditional
+residual reason. None of the new NSGs joins `nsg_ids` — that output sets
+flow-log scope, which decision 0009 owns. `node factory/tests/test.js` green
+locally; `terraform fmt/validate`, the PowerShell suites, and the checkov
+fixture passes fall to CI (no `terraform`/`pwsh` in the authoring
+environment).
+
+---
+
+## The live tree has one state backend, and it is azurerm (2026-08-15)
+
+[TODO.md](TODO.md) item 4.6 / GitHub Issue #11, resolved by
+[decision 0011](docs/decisions/0011-standardize-live-tree-on-azurerm.md) as
+**standardize, don't migrate**: the operator chose azurerm everywhere in
+the live tree over the TFC migration the issue title named. azurerm
+removes the external org/token dependency — the `TF_API_TOKEN` static
+credential would have been the only non-OIDC credential in the estate —
+and matches the state `terraform/live/*` already holds. The TFC setup
+gate did not lift; it dissolved.
+
+What shipped:
+
+`terraform/live/sandbox/backend.hcl` was TFC-shaped (`hostname =
+"app.terraform.io"`, an organization, a workspace) while the stack's own
+`main.tf` declared `backend "azurerm" {}` — an init that could never have
+succeeded. It now matches its four siblings: container `sandbox`, key
+`terraform.tfstate`, `use_azuread_auth = true` (contract #3).
+
+`010-terraform-init.yml` no longer assumes TFC anywhere:
+`cli_config_credentials_token: TF_API_TOKEN` is gone from every
+`setup-terraform` step, the "Verify Terraform Cloud Connection" step is
+replaced, and init/validate/providers-lock now run per layer with
+`-backend-config=backend.hcl` under `ARM_USE_OIDC` as the plan SP —
+every job in 010 is read-only, so contract #2 puts the branch subject on
+the plan identity. The global-layer plan runs in `terraform/live/global`
+instead of the configuration-less `terraform/live` root, and the summary
+names Azure Storage. The workflow still references the same Azure
+secrets as before; going green end to end stays with the identity estate
+(items 4.1/4.5) — backend consistency, not go-live, was the deliverable.
+
+The bootloader (`Start-LandingZoneBootstrap.ps1`) defaults to azurerm and
+no longer asks: the interactive backend prompt is retired, an unseeded
+run records `backend_type = azurerm`, and `TERRAFORM_CLOUD_ENABLED`
+defaults to `false`. The hcp-terraform path survives only behind an
+explicit `-Backend`/`-ConfigPath` override for estates bootstrapped
+before this decision, and warns that workflow 010 no longer initializes
+a TFC backend.
+
+Deliberately untouched: the factory's dual-backend render capability —
+both backends remain valid `lz-config.json` choices, the hcp-terraform
+fixtures and their tests stand, the broker still reconciles HCP
+workspaces for configs that ask, and `dogfood-instance.yml` keeps its
+`TF_API_TOKEN` pass-through because a dogfood config may legitimately
+render an hcp-terraform estate. That is a product feature, not a
+duality.
 
 ---
 

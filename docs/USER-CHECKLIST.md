@@ -24,6 +24,12 @@ code; no customer render was validated or published while building it.
 
 ## Required variables and authentication
 
+- [ ] Confirm the GitHub owner follows the ratified ownership policy
+  ([decision 0010](decisions/0010-generated-repo-ownership-policy.md)):
+  `github.ownerName` is an organization the operator controls with
+  `ownershipModel: organization`, the org exists before bootstrap, and its
+  plan tier supports the protected environments and branch protection the
+  broker sets. Readiness check R09 fails on a model/account-type mismatch.
 - [ ] Export `LZ_CONFIG_PATH` with the path to the approved `lz-config.json`.
 - [ ] Export `LZ_DISCOVERY_PATH` with the path to the matching
   `discovery-inventory.json`.

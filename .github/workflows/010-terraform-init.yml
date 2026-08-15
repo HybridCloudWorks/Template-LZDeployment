@@ -25,6 +25,12 @@ permissions:
 
 env:
   TF_VERSION: 1.9
+  # azurerm backend (decision 0011: the live tree is azurerm everywhere).
+  # Every job in this workflow is read-only (push-to-main / dispatch without
+  # an environment:), so backend auth is the plan SP per contract #2.
+  ARM_USE_OIDC: true
+  ARM_CLIENT_ID: ${{ secrets.AZURE_PLAN_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
 jobs:
   init-and-validate:
@@ -39,13 +45,11 @@ jobs:
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
-          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-      - name: Verify Terraform Cloud Connection
+      - name: Verify Terraform CLI
         run: |
-          echo "Checking Terraform Cloud connectivity..."
+          echo "Verifying Terraform CLI (state backend is azurerm — no TFC login involved)..."
           terraform version
-          terraform cloud config show 2>/dev/null || echo "Note: Run 'terraform login' if needed"
 
       - name: Azure Login (OIDC)
         uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca  # v3.0.1
@@ -119,7 +123,6 @@ jobs:
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
-          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Azure Login (OIDC)
         uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca  # v3.0.1
@@ -132,15 +135,16 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Terraform Init
+      - name: Terraform Init (azurerm backend, all layers)
         working-directory: ./terraform/live
         run: |
-          echo "Initializing Terraform with TFC backend..."
-          terraform init -input=false -upgrade
-
-          echo ""
-          echo "Backend configuration:"
-          terraform backend show || true
+          # One backend per stack (decision 0011): each root layer carries
+          # its own azurerm backend.hcl (AAD-auth state, contract #3).
+          for layer in global platform-connectivity platform-management workloads-prod sandbox; do
+            echo "::group::terraform init — ${layer}"
+            terraform -chdir="${layer}" init -input=false -backend-config=backend.hcl
+            echo "::endgroup::"
+          done
 
       - name: Terraform Format Check
         working-directory: ./terraform
@@ -155,18 +159,25 @@ jobs:
       - name: Terraform Validate
         working-directory: ./terraform/live
         run: |
-          echo "Validating Terraform configuration..."
-          terraform validate
+          for layer in global platform-connectivity platform-management workloads-prod sandbox; do
+            echo "::group::terraform validate — ${layer}"
+            terraform -chdir="${layer}" validate
+            echo "::endgroup::"
+          done
 
       - name: Terraform Providers Lock
         working-directory: ./terraform/live
         run: |
           echo "Checking provider locks..."
-          terraform providers lock \
-            -platform=linux_amd64 \
-            -platform=windows_amd64 \
-            -platform=darwin_amd64 \
-            -platform=darwin_arm64
+          for layer in global platform-connectivity platform-management workloads-prod sandbox; do
+            echo "::group::terraform providers lock — ${layer}"
+            terraform -chdir="${layer}" providers lock \
+              -platform=linux_amd64 \
+              -platform=windows_amd64 \
+              -platform=darwin_amd64 \
+              -platform=darwin_arm64
+            echo "::endgroup::"
+          done
 
   plan-workload-setup:
     name: Plan Workload Resource Groups
@@ -181,7 +192,6 @@ jobs:
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
-          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Azure Login (OIDC)
         uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca  # v3.0.1
@@ -194,32 +204,30 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Terraform Init
-        working-directory: ./terraform/live
-        run: terraform init -input=false -backend-config="skip_metadata_api_check=true"
+      - name: Terraform Init (global layer)
+        working-directory: ./terraform/live/global
+        run: terraform init -input=false -backend-config=backend.hcl
 
-      - name: Terraform Plan (Global/Workload)
-        working-directory: ./terraform/live
+      - name: Terraform Plan (Global Layer)
+        working-directory: ./terraform/live/global
         run: |
-          echo "Planning global layer (resource groups, tags, etc.)..."
+          echo "Planning global layer (management groups, policy baseline, tags)..."
           # -lock=false: this job authenticates as the read-only plan
           # identity, which cannot take state lock leases (contract #2).
           terraform plan \
             -input=false \
             -lock=false \
-            -out=tfplan.global \
-            -target='module.global' \
-            -var-file="terraform.tfvars"
+            -out=tfplan.global
 
       - name: Save Plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: terraform-plans
-          path: terraform/live/tfplan.global
+          path: terraform/live/global/tfplan.global
           retention-days: 1
 
       - name: Display Plan Summary
-        working-directory: ./terraform/live
+        working-directory: ./terraform/live/global
         run: |
           echo "Plan Summary:"
           echo "============="
@@ -245,7 +253,7 @@ jobs:
           ✓ CLI prerequisites validated
           ✓ Azure OIDC authentication successful
           ✓ Service principal RBAC verified
-          ✓ Terraform initialized with TFC backend
+          ✓ Terraform initialized with the azurerm backend (per-layer backend.hcl)
           ✓ Terraform configuration validated
           ✓ Global resources planned
 
@@ -256,19 +264,19 @@ jobs:
 
           3. ⏭ Phase 1: Security Remediations
              - Run workflow 020-terraform-apply to deploy workload resources
-             - Or run manually: cd terraform/live && terraform apply tfplan.global
+             - Or run manually: cd terraform/live/global && terraform apply tfplan.global
 
           4. ⏭ Phase 2-4: Infrastructure & Operations
              - Deploy connectivity (networking)
              - Deploy management (policies, logging)
              - Deploy workloads (applications)
 
-          STATE LOCATION: Terraform Cloud (${{ vars.TF_CLOUD_ORGANIZATION || 'configured' }})
-          WORKSPACE: landing-zone
+          STATE LOCATION: Azure Storage (azurerm backend, AAD-auth — decision 0011)
+          STATE LAYOUT: one container per layer, key terraform.tfstate
+                        (see terraform/live/<layer>/backend.hcl)
 
           For issues, check:
           - GitHub Actions logs: https://github.com/${{ github.repository }}/actions
-          - Terraform Cloud: https://app.terraform.io
 
           ╚════════════════════════════════════════════════════════════════════════╝
           EOF

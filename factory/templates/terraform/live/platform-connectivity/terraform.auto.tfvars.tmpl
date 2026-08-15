@@ -87,6 +87,15 @@ enable_private_endpoints = {{FACTORY-BOOL:connectivity.privateEndpoints.enabled}
 # primary_private_endpoint_subnet_prefix = "10.0.80.0/24"
 # dr_private_endpoint_subnet_prefix      = "10.10.80.0/24"
 
+# OPTIONAL, operator-supplied like the prefixes above: the spoke ranges that
+# host flow-log storage, allowed to reach the hub's private endpoints on 443
+# (decision 0012). This layer cannot derive them — spoke address spaces live in
+# the workload layers, which read this layer's state, never the reverse. Left
+# unset, the private-endpoint NSGs associate with no custom rules and Azure's
+# default rules govern; set, the hubs allow 443 from these ranges only.
+# Wildcards are rejected.
+# private_endpoint_allowed_source_prefixes = ["10.1.0.0/16", "10.11.0.0/16"]
+
 # NSG flow logs for the hub's firewall-management NSG. Your wizard answer for
 # "NSG flow logs" was {{FACTORY-BOOL:security.nsgFlowLogs.enabled}} — it is
 # recorded in lz-config.json, and this flag is still rendered false, exactly as
