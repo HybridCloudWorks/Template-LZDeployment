@@ -17,8 +17,10 @@ estate; decision 0012) and 2.4/2.5
 (operator-gated — REVIEW.md §14/§16); Phase 3: 3.1 re-scoped 2026-08-15 —
 toolchain provisioning proven, tenant-bound residuals are per-estate work by
 operator directive (§7) — and 3.2 blocked on wiki write access, architectural
-to the remote sandbox (§15); Phase 4 deferred (go-live not opened); Phase 5
-release-time
+to the remote sandbox (§15); Phase 4 **opened 2026-08-15** (go-live;
+operator-local execution kit:
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md));
+Phase 5 release-time
 **Operator activities & stage checklists**: [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md)
 **External tracking**: [GitHub Issues](https://github.com/HybridCloudWorks/Template-LZDeployment/issues)
 
@@ -756,8 +758,16 @@ labels corrected.
 
 ## Phase 4 — Go-live chain
 
-**Deferred, not pending** — the operator has not opened the go-live phase
-([REVIEW.md](REVIEW.md) §§1–9 banner). Chronological order within the chain:
+**Opened 2026-08-15** (operator, in-session) — the 2026-08-06 deferral is
+lifted ([REVIEW.md](REVIEW.md) §§1–9 banner); the chronological chain below
+is unchanged. Execution is operator-local, sequenced by
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md): the
+sandbox probes of 2026-08-15 confirmed the 4.2/4.3 admin endpoints are
+App/proxy-blocked even with the operator's token (REVIEW.md §2/§8). The
+same-day tenant-agnostic directive stands alongside this: the estate
+tenant/subscription is chosen at execution time on the operator's machine
+and never lands in template files — opening go-live and staying
+tenant-agnostic are not in tension.
 
 ### 4.1 Confirm the engagement tenant and create the live identity estate
 
@@ -776,6 +786,11 @@ bootstrap run. **Gate**: [REVIEW.md](REVIEW.md) §1.
 scanning, required approvals).
 **Owner**: `github-actions-engineer`. **Gate**: repository administration —
 [REVIEW.md](REVIEW.md) §2 (single-owner approval caveat noted there).
+**Kit** (2026-08-15): the prepared payload is
+[docs/runbooks/branch-protection-payload.json](docs/runbooks/branch-protection-payload.json)
+(`Factory CI` required; `azure/login` contexts join after 4.1); apply and
+read-back commands in
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 1.
 **Validation**: GitHub API read-back shows the required contexts enforced.
 
 ### 4.3 Set GitHub Pages source to "GitHub Actions"
