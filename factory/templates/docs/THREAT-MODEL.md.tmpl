@@ -13,12 +13,9 @@ assignments, diagnostic data, network boundaries, and production workloads.
 
 1. Contributor workstation → GitHub pull request.
 2. GitHub Actions → Entra workload identity federation.
-#{{IF computed.backendIsHcp}}
-3. GitHub Actions → HCP Terraform.
-4. HCP Terraform → Azure dynamic provider credentials.
-#{{ELSE}}
 3. GitHub Actions → Azure Storage state backend using Entra ID.
-#{{ENDIF}}
+4. Terraform Registry → pinned Azure Verified Modules and the pinned ALZ
+   library reference (integrity governed by version pins and Renovate review).
 5. Platform subscriptions → workload subscriptions.
 6. Hub network → spokes and private endpoints.
 7. Azure control plane → diagnostic destinations.

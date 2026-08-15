@@ -1,125 +1,30 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Platform connectivity layer — hub networking and egress filtering.
+# platform-connectivity layer variables.
 #
-# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
-# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+# GENERATED FILE. Do not hand-edit. Rendered by Landing Zone Factory
+# {{FACTORY-RAW:computed.factoryVersion}} on {{FACTORY-RAW:computed.generatedAt}}.
 # ─────────────────────────────────────────────────────────────────────────────
 
 connectivity_subscription_id = {{FACTORY:azure.subscriptions.connectivity}}
-
-# REQUIRED before the first plan: operator source ranges allowed to reach
-# firewall management interfaces. Deliberately not collected by the wizard
-# (contract #4) — uncomment and set your ranges. Wildcards are rejected.
-# management_ip_ranges = ["203.0.113.0/24"]
-
-# Flip to true in a PR AFTER platform-management's first apply: hub
-# diagnostics then read the central Log Analytics workspace ID from that
-# layer's state instead of requiring a hand-pasted resource ID.
-wire_management_workspace = false
-#{{IF computed.backendIsAzurerm}}
-# Addresses the platform-management state read above (azurerm backend only;
-# under HCP Terraform the read is addressed by organization and workspace and
-# these are unused).
-state_resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
-state_storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
-state_container_name       = {{FACTORY:backend.azurerm.containerName}}
-#{{ENDIF}}
-
-primary_region      = {{FACTORY:azure.primaryRegion}}
-primary_region_code = {{FACTORY:azure.primaryRegionCode}}
+org_prefix                   = {{FACTORY:organization.companyShortName}}
+primary_region               = {{FACTORY:azure.primaryRegion}}
+primary_region_code          = {{FACTORY:azure.primaryRegionCode}}
 #{{IF computed.hasDrRegion}}
 dr_region      = {{FACTORY:azure.drRegion}}
 dr_region_code = {{FACTORY:azure.drRegionCode}}
 #{{ENDIF}}
 
 primary_hub_address_space = {{FACTORY:connectivity.hubSpoke.primaryHubAddressSpace}}
-#{{IF computed.hasDrRegion}}
+#{{IF computed.hasDrRegion && defined connectivity.hubSpoke.drHubAddressSpace && connectivity.hubSpoke.drHubAddressSpace}}
 dr_hub_address_space = {{FACTORY:connectivity.hubSpoke.drHubAddressSpace}}
 #{{ENDIF}}
 
-firewall_type = {{FACTORY:connectivity.firewall.type}}
-#{{IF connectivity.firewall.type == 'azfw'}}
-azfw_tier                  = {{FACTORY:connectivity.firewall.azfwTier}}
-firewall_threat_intel_mode = {{FACTORY:connectivity.firewall.threatIntelligenceMode}}
-#{{ELSEIF connectivity.firewall.type == 'palo'}}
-primary_nva_trust_ip = {{FACTORY:connectivity.firewall.nvaTrustIpPrimary}}
-#{{IF computed.hasDrRegion}}
-dr_nva_trust_ip = {{FACTORY:connectivity.firewall.nvaTrustIpDr}}
-#{{ENDIF}}
-#{{ELSEIF connectivity.firewall.type == 'fortinet'}}
-primary_nva_trust_ip = {{FACTORY:connectivity.firewall.nvaTrustIpPrimary}}
-#{{IF computed.hasDrRegion}}
-dr_nva_trust_ip = {{FACTORY:connectivity.firewall.nvaTrustIpDr}}
-#{{ENDIF}}
-#{{ENDIF}}
-
-deploy_bastion = {{FACTORY-BOOL:connectivity.bastion.enabled}}
-deploy_dns     = {{FACTORY-BOOL:connectivity.privateDns.enabled}}
-
-# Creates the private DNS zones listed below in this subscription and links
-# both hub VNets to each. Rendered from the same "Private DNS zones" answer as
-# deploy_dns above, because a zone has no per-gigabyte meter and nothing it
-# depends on can make a first plan fail — unlike the flow-log flag below.
-#
-# On its own this creates zones and links and nothing else. The private
-# endpoints it unblocks live in the workload layers and are gated there on
-# their own NSG flow-log flag, which is rendered false, so nothing that bills
-# by volume appears until you flip that.
-deploy_private_dns_zones = {{FACTORY-BOOL:connectivity.privateDns.enabled}}
-
-# The zones you listed in the wizard. Blank renders an empty list, which the
-# layer reads as privatelink.blob.core.windows.net alone — the one zone this
-# repository's own wiring consumes. It does NOT expand to a default set derived
-# from the services you enabled; nothing has ever implemented that.
-private_dns_zones = {{FACTORY-LIST:connectivity.privateDns.zones}}
-
-# Your "Private endpoints" answer, honoured by the hub's own NSG flow-log
-# storage as well as the spokes'.
-enable_private_endpoints = {{FACTORY-BOOL:connectivity.privateEndpoints.enabled}}
-
-# OPTIONAL, and operator-supplied on purpose: the hub subnet a private
-# endpoint would live in. Every other hub subnet is derived from your hub
-# address space, but no derived index is free under BOTH firewall layouts —
-# an Azure Firewall hub consumes the first quarter of the space, while a
-# palo/fortinet hub consumes the second and third. Pick a free /24 (or larger)
-# from your own plan and uncomment. Left unset, no subnet is created and the
-# hub's flow-log storage keeps its network-rule protection without an endpoint.
-# primary_private_endpoint_subnet_prefix = "10.0.80.0/24"
-# dr_private_endpoint_subnet_prefix      = "10.10.80.0/24"
-
-# OPTIONAL, operator-supplied like the prefixes above: the spoke ranges that
-# host flow-log storage, allowed to reach the hub's private endpoints on 443
-# (decision 0012). This layer cannot derive them — spoke address spaces live in
-# the workload layers, which read this layer's state, never the reverse. Left
-# unset, the private-endpoint NSGs associate with no custom rules and Azure's
-# default rules govern; set, the hubs allow 443 from these ranges only.
-# Wildcards are rejected.
-# private_endpoint_allowed_source_prefixes = ["10.1.0.0/16", "10.11.0.0/16"]
-
-# NSG flow logs for the hub's firewall-management NSG. Your wizard answer for
-# "NSG flow logs" was {{FACTORY-BOOL:security.nsgFlowLogs.enabled}} — it is
-# recorded in lz-config.json, and this flag is still rendered false, exactly as
-# it is in the workload layers. That is deliberate, not a rendering bug: the
-# module reads NetworkWatcher_<region> in NetworkWatcherRG, which Azure creates
-# only once this subscription's first VNet exists, so an enabled-on-day-one
-# flow-log call would make your very first plan fail. Flip this to true in a PR
-# after the hubs' first apply and after wire_management_workspace above is on,
-# which supplies the Log Analytics workspace Traffic Analytics needs. It has an
-# effect only on a palo/fortinet hub — an Azure Firewall hub has no
-# firewall-management NSG to log.
-enable_nsg_flow_logs = false
-
-primary_availability_zones = {{FACTORY-LIST:connectivity.hubSpoke.availabilityZones}}
-#{{IF computed.hasDrRegion}}
-dr_availability_zones = {{FACTORY-LIST:connectivity.hubSpoke.availabilityZones}}
-#{{ENDIF}}
-
-# DATA RESIDENCY (TODO item 2.8). Flow-log storage defaults to RAGZRS, which
-# asynchronously replicates every flow log to the Azure paired region AND makes
-# it readable there. For a US estate that is unremarkable. Under an EU/UK data
-# boundary or a single-country sovereignty commitment it moves network metadata
-# across the boundary — uncomment and set LRS (or ZRS, where the region has
-# availability zones) to keep every copy in one region.
-# flow_log_storage_replication_type = "ZRS"
+azfw_tier                   = {{FACTORY:connectivity.firewall.azfwTier}}
+deploy_bastion              = {{FACTORY-BOOL:connectivity.bastion.enabled}}
+deploy_vpn_gateway          = {{FACTORY-BOOL:connectivity.vpn.enabled}}
+deploy_expressroute_gateway = {{FACTORY-BOOL:connectivity.expressRoute.enabled}}
+deploy_private_dns          = {{FACTORY-BOOL:connectivity.privateDns.enabled}}
+private_dns_zones           = {{FACTORY-LIST:connectivity.privateDns.zones}}
+availability_zones          = {{FACTORY-JSON:connectivity.hubSpoke.availabilityZones}}
 
 default_tags = {{FACTORY-MAP:naming.defaultTags}}

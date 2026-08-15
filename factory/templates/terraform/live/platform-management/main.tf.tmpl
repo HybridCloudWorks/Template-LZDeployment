@@ -1,162 +1,47 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Platform management layer — backup baseline and platform automation.
+# platform-management — Azure Verified Modules root module.
 #
-# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
-# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+# GENERATED FILE. Do not hand-edit. Rendered by Landing Zone Factory
+# {{FACTORY-RAW:computed.factoryVersion}} on {{FACTORY-RAW:computed.generatedAt}}.
+#
+# This layer deploys the ALZ management baseline (Log Analytics workspace,
+# Automation Account, and their linkage) by REFERENCE to the Azure Verified
+# Modules pattern module — no module source is vendored into this repository.
+# `terraform init` downloads the pinned version from the Terraform Registry;
+# Renovate keeps the pin current from then on.
+#
+# Deploy order: this layer FIRST. The global layer reads this layer's state to
+# feed workspace IDs into the ALZ policy defaults.
 # ─────────────────────────────────────────────────────────────────────────────
 
 terraform {
+  required_version = ">= 1.9.0"
+
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 5.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
   features {}
-  # Stated 5.0 default (decision 0006): the provider registers no resource
-  # providers — the broker registers the required namespaces at bootstrap.
   subscription_id                 = var.management_subscription_id
   resource_provider_registrations = "none"
 }
 
-locals {
-  common_tags = merge(var.default_tags, {
-    layer = "platform-management"
-  })
+module "management" {
+  source  = "Azure/avm-ptn-alz-management/azurerm"
+  version = "0.9.0"
+
+  location            = var.primary_region
+  resource_group_name = "rg-${var.org_prefix}-management-${var.primary_region_code}"
+
+  log_analytics_workspace_name = "log-${var.org_prefix}-management-${var.primary_region_code}"
+  automation_account_name      = "aa-${var.org_prefix}-management-${var.primary_region_code}"
+
+  log_analytics_workspace_retention_in_days = var.log_retention_days
+
+  tags = var.default_tags
 }
-
-# Management baseline — central Log Analytics workspace, automation account,
-# Application Insights, and alerting for the platform. Unconditional: a
-# central workspace is this layer's reason to exist (decision record 0003).
-module "management_baseline" {
-  source = "../../modules/management-baseline"
-
-  org_prefix            = var.org_prefix
-  location              = var.primary_region
-  region_code           = var.primary_region_code
-  log_retention_days    = var.log_retention_days
-  alert_email_receivers = var.alert_email_receivers
-  tags                  = local.common_tags
-}
-
-#{{IF security.backup.enabled}}
-module "backup_primary" {
-  source = "../../modules/backup-baseline"
-
-  region                  = var.primary_region
-  region_code             = var.primary_region_code
-  environment             = "prod"
-  storage_redundancy      = {{FACTORY:computed.backupRedundancy}}
-  backup_vault_redundancy = {{FACTORY:computed.backupRedundancy}}
-  tags                    = local.common_tags
-}
-
-#{{IF computed.hasDrRegion}}
-module "backup_dr" {
-  source = "../../modules/backup-baseline"
-
-  region                  = var.dr_region
-  region_code             = var.dr_region_code
-  environment             = "prod"
-  storage_redundancy      = {{FACTORY:computed.backupRedundancy}}
-  backup_vault_redundancy = {{FACTORY:computed.backupRedundancy}}
-  tags                    = local.common_tags
-}
-#{{ENDIF}}
-#{{ENDIF}}
-
-#{{IF defined azure.subscriptions.sandbox && azure.subscriptions.sandbox}}
-# ── Sandbox cleanup automation ───────────────────────────────────────────────
-# Emitted only when a sandbox subscription exists. Without one the runbook
-# would be scheduled against an empty subscription ID and fail on every run,
-# producing a daily automation failure nobody can act on.
-
-resource "azurerm_resource_group" "automation" {
-  name     = "rg-automation-${var.primary_region_code}-prod-01"
-  location = var.primary_region
-  tags     = local.common_tags
-}
-
-resource "azurerm_automation_account" "main" {
-  name                = "aa-platform-${var.primary_region_code}-prod-01"
-  resource_group_name = azurerm_resource_group.automation.name
-  location            = azurerm_resource_group.automation.location
-  sku_name            = "Basic"
-  tags                = local.common_tags
-
-  identity {
-    type = "SystemAssigned"
-  }
-}
-
-resource "azurerm_automation_runbook" "sandbox_cleanup" {
-  name                    = "Cleanup-ExpiredSandboxResources"
-  resource_group_name     = azurerm_resource_group.automation.name
-  automation_account_name = azurerm_automation_account.main.name
-  location                = azurerm_resource_group.automation.location
-  runbook_type            = "PowerShell"
-  log_verbose             = true
-  log_progress            = true
-  description             = "Deletes sandbox resources with expiry_date older than 30 days"
-
-  content = file("${path.module}/../../scripts/Cleanup-ExpiredSandboxResources.ps1")
-
-  tags = local.common_tags
-}
-
-resource "azurerm_automation_schedule" "sandbox_cleanup_daily" {
-  name                    = "Daily-Sandbox-Cleanup"
-  resource_group_name     = azurerm_resource_group.automation.name
-  automation_account_name = azurerm_automation_account.main.name
-  frequency               = "Day"
-  interval                = 1
-  timezone                = "UTC"
-  description             = "Daily sandbox cleanup"
-
-  # Azure rejects a start_time in the past, so a literal date baked into the
-  # template expires the moment the factory ships. Derived at plan time and
-  # then ignored, because otherwise every subsequent plan shows a diff on a
-  # value that only matters once.
-  start_time = timeadd(plantimestamp(), "1h")
-
-  lifecycle {
-    ignore_changes = [start_time]
-  }
-}
-
-resource "azurerm_automation_job_schedule" "sandbox_cleanup" {
-  resource_group_name     = azurerm_resource_group.automation.name
-  automation_account_name = azurerm_automation_account.main.name
-  runbook_name            = azurerm_automation_runbook.sandbox_cleanup.name
-  schedule_name           = azurerm_automation_schedule.sandbox_cleanup_daily.name
-
-  # Keys must match the runbook's param() block exactly. DryRun defaults to
-  # "true": flipping it to "false" (real deletions) is a deliberate operator
-  # decision, not a default.
-  parameters = {
-    SandboxSubscriptionId = var.sandbox_subscription_id
-    DryRun                = "true"
-  }
-}
-
-# The runbook enumerates and deletes expired sandbox resource groups, so the
-# automation account's system-assigned identity needs rights in the sandbox
-# subscription; without this assignment every run fails at login.
-# Least-privilege note: the granting identity's RBAC Administrator role carries
-# an ABAC delegation condition (role = Contributor
-# b24988ac-6180-42a0-ab88-20f7382dd24c, principalType = ServicePrincipal) —
-# this assignment is exactly what that condition permits. principal_type must
-# be set explicitly: the condition evaluates PrincipalType from the create
-# request, and the provider omits it unless this argument is set — the grant
-# would be denied. skip_service_principal_aad_check is deliberately off; if
-# the same-apply MSI hits AAD replication lag, retry the apply.
-resource "azurerm_role_assignment" "sandbox_cleanup" {
-  scope                = "/subscriptions/${var.sandbox_subscription_id}"
-  role_definition_name = "Contributor"
-  principal_id         = azurerm_automation_account.main.identity[0].principal_id
-  principal_type       = "ServicePrincipal"
-}
-#{{ENDIF}}

@@ -1,27 +1,24 @@
 {
-  "$comment": "Version contract for the Azure Landing Zone Factory. This file is read by site/ (stamped into every exported lz-config.json), by scaffold-copy (written into the generated repository root), and by the generated repo's upgrade-check workflow (diffed against the factory's published version to open an upgrade PR). Bump factoryVersion on any change to the schema, templates, or scripts.",
+  "$comment": "Version contract for the Azure Landing Zone Factory. This file is read by site/ (stamped into every exported lz-config.json) and by the renderer, which emits a factory-version.json stamp into the generated repository root (manifest mode version-stamp). Bump factoryVersion on any change to the schema, templates, or scripts.",
 
-  "factoryVersion": "0.9.0",
+  "factoryVersion": "0.10.0",
   "status": "pre-release",
-  "releasedAt": "2026-07-26",
+  "releasedAt": "2026-08-15",
 
   "contracts": {
-    "configSchemaVersion": "2.0.0",
+    "configSchemaVersion": "2.1.0",
     "$comment": "Must match the const value of schemaVersion in factory/schema/lz-config.schema.json. The renderer refuses any config whose schemaVersion it does not implement."
   },
 
   "landingZone": {
-    "version": "0.9.0",
+    "version": "0.10.0",
     "$comment": "Version of the emitted landing-zone content (templates + workflows + docs). Tracked separately from factoryVersion so tooling-only changes do not force customer-repo upgrades.",
-    "architecture": "caf-enterprise-scale",
-    "$layersComment": "Layers the template corpus can actually emit. Guard G21 reads this list and refuses to render a configuration selecting anything absent from it. workloads-nonprod is implemented; platform-identity remains deliberately absent because no Terraform exists for it.",
+    "architecture": "avm-alz",
+    "$layersComment": "Layers the template corpus can actually emit. Guard G21 reads this list and refuses to render a configuration selecting anything absent from it. Workload spokes and sandbox estates are per-estate work inside the generated repository (ADR 0017), not generator layers.",
     "layers": [
-      "global",
-      "platform-connectivity",
       "platform-management",
-      "workloads-prod",
-      "workloads-nonprod",
-      "sandbox"
+      "global",
+      "platform-connectivity"
     ]
   },
 
@@ -32,9 +29,8 @@
     },
     "providers": {
       "hashicorp/azurerm": "~> 4.0",
-      "hashicorp/azuread": "~> 3.0",
-      "hashicorp/random": "~> 3.6",
-      "hashicorp/time": "~> 0.12"
+      "Azure/alz": "~> 0.21.0",
+      "Azure/azapi": "~> 2.12"
     },
     "cli": {
       "az": ">= 2.69.0",
@@ -44,32 +40,31 @@
     }
   },
 
-  "modules": {
-    "$comment": "Version and implementation status of each Terraform module in the template corpus. status=scaffold means the module has no real resources yet; the renderer REFUSES to emit a configuration that enables a scaffold module, rather than producing a silent no-op. Source of truth for these statuses is TODO.md.",
-    "management-groups": { "version": "1.0.0", "status": "implemented" },
-    "policy-baseline": { "version": "1.0.0", "status": "implemented" },
-    "hub-network": { "version": "1.0.0", "status": "implemented" },
-    "spoke-network": { "version": "1.0.0", "status": "implemented" },
-    "management-baseline": { "version": "1.0.0", "status": "implemented" },
-    "backup-baseline": { "version": "1.0.0", "status": "implemented" },
-    "nsg-flow-logs": { "version": "1.0.0", "status": "implemented" },
-    "defender-baseline": { "version": "1.0.0", "status": "implemented-not-wired" },
-    "sandbox": { "version": "1.0.0", "status": "implemented" },
-    "keyvault-cmk": { "version": "0.0.1", "status": "scaffold" },
-    "sentinel-siem": { "version": "0.0.1", "status": "scaffold" }
+  "avm": {
+    "$comment": "Azure Verified Modules pattern-module pins the emitted root modules reference, and the pinned ALZ library ref. These set the INITIAL pins only — Renovate owns them inside the generated repository from delivery onward. Verified snapshot of 2026-08; every pin is re-verified at execution time by terraform init on generated output.",
+    "modules": {
+      "Azure/avm-ptn-alz/azurerm": "0.21.0",
+      "Azure/avm-ptn-alz-management/azurerm": "0.9.0",
+      "Azure/avm-ptn-alz-connectivity-hub-and-spoke-vnet/azurerm": "0.17.3",
+      "Azure/avm-ptn-alz-connectivity-virtual-wan/azurerm": "0.17.1"
+    },
+    "alzLibrary": {
+      "path": "platform/alz",
+      "ref": "2026.04.2"
+    }
   },
 
   "compatibility": {
-    "upgradesFrom": ["0.8.0"],
-    "$comment": "Ordered list of prior factoryVersions this release can upgrade a generated repo from. Only N-1 upgrades are supported (assumption A4)."
+    "upgradesFrom": [],
+    "$comment": "0.10.0 is the generator-only refactor (ADR 0013): the emitted architecture changed from vendored bespoke modules to AVM registry references. No in-place upgrade path exists from 0.9.0-generated repositories; regenerate, or migrate state manually."
   },
 
   "releaseGates": {
-    "$comment": "v1.0.0 cannot be declared until every gate below is true. Gate 2 reflects risk OR2: as of 2026-07-24 the pipeline has no recorded successful run (TODO.md), so the factory must not ship on an unproven deployment path.",
+    "$comment": "v1.0.0 cannot be declared until every gate below is true. The dogfood gate was replaced by the end-to-end generation proof (docs/refactor/VALIDATION.md) when the self-deploying live tree was removed.",
     "schemaVariableDriftCheckPasses": false,
-    "dogfoodInstanceAppliesGreen": false,
+    "endToEndGenerationProofPasses": false,
     "oidcTokenExchangeVerifiedLive": false,
-    "allEmittedModulesImplemented": false,
+    "avmPinsVerifiedByInit": false,
     "siteMakesZeroNetworkRequests": false
   }
 }

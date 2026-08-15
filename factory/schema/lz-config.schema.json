@@ -76,8 +76,8 @@
 
   "properties": {
     "schemaVersion": {
-      "const": "2.0.0",
-      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement."
+      "const": "2.1.0",
+      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement. 2.1.0: azurerm-only backend (ADR 0015), Virtual WAN topology supported, AVM three-layer architecture (ADR 0013)."
     },
     "factoryVersion": {
       "type": "string",
@@ -242,33 +242,9 @@
     "backend": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type"],
-      "description": "Resolves the split-brain recorded in TODO.md / Issue #11: exactly one backend is selected here and it drives both the rendered backend.tf and which broker steps run.",
+      "description": "azurerm is the only backend (ADR 0015, superseding decision 0011's render-path scope-out). State authenticates with OIDC + Azure AD; values are emitted into per-layer backend.hcl files.",
       "properties": {
-        "type": { "enum": ["hcp-terraform", "azurerm"] },
-        "hcpTerraform": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["organization"],
-          "properties": {
-            "organization": { "type": "string", "minLength": 1 },
-            "workspacePrefix": {
-              "type": "string",
-              "description": "Workspaces are created as {prefix}-{layer}. Defaults to companyShortName."
-            },
-            "executionMode": { "enum": ["remote", "local"], "default": "remote" },
-            "useDynamicProviderCredentials": {
-              "type": "boolean",
-              "default": true,
-              "description": "TFC->Azure OIDC. Eliminates static Azure credentials in the workspace (trust relationship 3 in the identity matrix)."
-            },
-            "acknowledgedResourceLimit": {
-              "type": "boolean",
-              "default": false,
-              "description": "The HCP Terraform free tier is capped at 500 managed resources (RUM). A full CAF landing zone commonly exceeds this. The wizard computes an estimate and requires explicit acknowledgement before allowing hcp-terraform when the estimate exceeds the cap."
-            }
-          }
-        },
+        "type": { "const": "azurerm" },
         "azurerm": {
           "type": "object",
           "additionalProperties": false,
@@ -286,16 +262,7 @@
           }
         }
       },
-      "allOf": [
-        {
-          "if": { "properties": { "type": { "const": "hcp-terraform" } }, "required": ["type"] },
-          "then": { "required": ["hcpTerraform"] }
-        },
-        {
-          "if": { "properties": { "type": { "const": "azurerm" } }, "required": ["type"] },
-          "then": { "required": ["azurerm"] }
-        }
-      ]
+      "required": ["type", "azurerm"]
     },
 
     "deploymentStrategy": {

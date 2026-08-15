@@ -26,35 +26,27 @@ without editing broker or scaffold source; provide values through
 - [ ] Confirm every planned identity is repo-scoped and no OIDC subject contains
   a wildcard.
 
-#{{IF computed.backendIsHcp}}
-## HCP Terraform
-
-- [ ] Export `TFE_TOKEN` from a secure secret source. Do not put it in
-  `lz-config.json`, shell history, generated output, or Terraform variables.
-- [ ] Confirm HCP organization
-  `{{FACTORY-RAW:backend.hcpTerraform.organization}}` and workspace prefix
-  `{{FACTORY-RAW:backend.hcpTerraform.workspacePrefix}}`.
-#{{ELSE}}
 ## Azure Storage backend
 
 - [ ] Confirm the backend subscription, resource group, storage account, and
   container names are approved and globally unique where required.
 - [ ] Confirm the operator can create the backend resources and data-plane
-  container using Entra authentication.
-#{{ENDIF}}
+  container using Entra authentication. State access is OIDC + Azure AD only
+  (`use_oidc`, `use_azuread_auth`) — no shared keys, no SAS tokens.
 
-## HCW dogfood provenance
+## Module pins
 
-- [ ] If this repository is the HCW dogfood instance, store its approved
-  configuration in `LZ_DOGFOOD_CONFIG_JSON` and set
-  `LZ_DOGFOOD_TENANT_ID`, `LZ_DOGFOOD_SUBSCRIPTION_ID`,
-  `LZ_DOGFOOD_PLAN_CLIENT_ID`, and `LZ_DOGFOOD_TERRAFORM_VERSION`.
-- [ ] Keep `AZURE_APPLY_CLIENT_ID` and any required `TF_API_TOKEN` scoped to
-  protected apply environments.
+- [ ] The Azure Verified Modules pattern-module pins and the ALZ library
+  reference in this repository were set by the generator at render time.
+  Re-verify them on the first `terraform init` and let Renovate manage them
+  from then on — module updates never involve the factory.
+
+## Apply provenance
+
 - [ ] Run render and read-only plan before apply; review the configuration hash,
   every layer log, and destructive-change result.
 - [ ] Approve apply only through the exact protected environment and preserve
-  `dogfood-report.json` plus independent Azure/state/OIDC/GitHub read-back.
+  independent Azure/state/OIDC/GitHub read-back evidence.
 - [ ] Do not mark `dogfoodInstanceAppliesGreen` from code completion, skipped
   execution, render-only output, or plan success.
 

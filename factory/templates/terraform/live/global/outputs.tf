@@ -1,9 +1,11 @@
-output "management_group_ids" {
-  description = "Management group IDs"
-  value       = module.management_groups.management_group_map
+# Outputs of the global (ALZ core) layer.
+
+output "management_group_resource_ids" {
+  description = "Resource IDs of the management groups the ALZ pattern module created."
+  value       = module.alz.management_group_resource_ids
 }
 
-output "policy_assignments" {
-  description = "Policy assignment IDs"
-  value       = module.policy_baseline.policy_assignments
+output "subscription_placements" {
+  description = "Subscription-to-management-group associations this layer manages."
+  value       = { for slot, assoc in azurerm_management_group_subscription_association.placement : slot => assoc.id }
 }

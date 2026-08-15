@@ -1,0 +1,135 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# global — Azure Verified Modules root module (ALZ core).
+#
+# GENERATED FILE. Do not hand-edit. Rendered by Landing Zone Factory
+# {{FACTORY-RAW:computed.factoryVersion}} on {{FACTORY-RAW:computed.generatedAt}}.
+#
+# Management-group hierarchy, policy definitions, and policy assignments come
+# from the Azure Landing Zones library (pinned below) through the ALZ provider
+# and the avm-ptn-alz pattern module — by REFERENCE, never vendored. The
+# module downloads the library into .alzlib/ at plan time; that directory is
+# gitignored and must never be committed.
+#
+# Deploy order: platform-management FIRST (this layer reads its state for the
+# Log Analytics workspace policy default), then this layer, then connectivity.
+# ─────────────────────────────────────────────────────────────────────────────
+
+terraform {
+  required_version = ">= 1.9.0"
+
+  required_providers {
+    alz = {
+      source  = "Azure/alz"
+      version = "~> 0.21.0"
+    }
+    azapi = {
+      source  = "Azure/azapi"
+      version = "~> 2.12"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+  subscription_id                 = var.management_subscription_id
+  resource_provider_registrations = "none"
+}
+
+provider "azapi" {}
+
+provider "alz" {
+  # Pinned ALZ library release. Bumped deliberately, never implicitly — the
+  # library defines the policy surface of the whole estate.
+  library_references = [
+    {
+      path = "platform/alz"
+      ref  = "2026.04.2"
+    }
+  ]
+}
+
+data "azurerm_client_config" "current" {}
+
+# The management layer owns the workspace; its state is the only permitted
+# source for the policy default. Applying this layer before platform-management
+# fails here, by design, rather than assigning policies with a dangling scope.
+data "terraform_remote_state" "management" {
+  backend = "azurerm"
+
+  config = {
+    resource_group_name  = var.state_resource_group_name
+    storage_account_name = var.state_storage_account_name
+    container_name       = var.state_container_name
+    key                  = "platform-management.tfstate"
+    use_oidc             = true
+    use_azuread_auth     = true
+  }
+}
+
+module "alz" {
+  source  = "Azure/avm-ptn-alz/azurerm"
+  version = "0.21.0"
+
+  architecture_name  = var.architecture_name
+  location           = var.primary_region
+  parent_resource_id = var.root_parent_management_group_id != "" ? var.root_parent_management_group_id : data.azurerm_client_config.current.tenant_id
+
+  policy_default_values = {
+    log_analytics_workspace_id = jsonencode({
+      value = data.terraform_remote_state.management.outputs.log_analytics_workspace_id
+    })
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Subscription placement. The pattern module owns the hierarchy; the root
+# module places each supplied subscription under its management group. A slot
+# left empty in the configuration places nothing.
+# ─────────────────────────────────────────────────────────────────────────────
+
+locals {
+  subscription_placements = {
+    management = {
+      subscription_id     = var.management_subscription_id
+      management_group_id = var.management_management_group_id
+    }
+    connectivity = {
+      subscription_id     = var.connectivity_subscription_id
+      management_group_id = var.connectivity_management_group_id
+    }
+    identity = {
+      subscription_id     = var.identity_subscription_id
+      management_group_id = var.identity_management_group_id
+    }
+    workload_prod = {
+      subscription_id     = var.workload_prod_subscription_id
+      management_group_id = var.landing_zones_management_group_id
+    }
+    workload_nonprod = {
+      subscription_id     = var.workload_nonprod_subscription_id
+      management_group_id = var.landing_zones_management_group_id
+    }
+    sandbox = {
+      subscription_id     = var.sandbox_subscription_id
+      management_group_id = var.sandbox_management_group_id
+    }
+  }
+
+  active_placements = {
+    for slot, placement in local.subscription_placements :
+    slot => placement if placement.subscription_id != ""
+  }
+}
+
+resource "azurerm_management_group_subscription_association" "placement" {
+  for_each = local.active_placements
+
+  management_group_id = "/providers/Microsoft.Management/managementGroups/${each.value.management_group_id}"
+  subscription_id     = "/subscriptions/${each.value.subscription_id}"
+
+  depends_on = [module.alz]
+}

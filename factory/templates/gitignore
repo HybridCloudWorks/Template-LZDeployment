@@ -1,0 +1,19 @@
+# Terraform working files — state never belongs in git.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Local overrides and variable files that may carry credentials.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.auto.tfvars.local
+
+# ALZ library cache. The avm-ptn-alz module downloads the pinned Azure Landing
+# Zones library here at init/plan time; it is a build artifact and must never
+# be committed.
+.alzlib/

@@ -95,12 +95,11 @@ jobs:
           # Without this, the wrapper echoes a "[command]..." line ahead of
           # stdout, corrupting the `terraform show -json` redirect below.
           terraform_wrapper: false
-#{{IF computed.backendIsHcp}}
-          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
-#{{ENDIF}}
+      # Backend values live in the layer's backend.hcl; authentication is
+      # OIDC + Azure AD from the login step above — no state keys anywhere.
       - name: Initialize
         working-directory: terraform/live/${{ inputs.layer }}
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=backend.hcl
       - name: Create reviewed plan
         working-directory: terraform/live/${{ inputs.layer }}
         run: terraform plan -input=false -no-color -out=tfplan
