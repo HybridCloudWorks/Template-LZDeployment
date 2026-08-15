@@ -228,6 +228,58 @@ function Copy-LzScaffoldTree {
     return $backup
 }
 
+function Initialize-LzDeliveryAuth {
+    <#
+    .SYNOPSIS
+        Establish GitHub authentication for delivery, in preference order:
+        GitHub App installation token, fine-grained PAT, interactive gh session.
+    .DESCRIPTION
+        App path: set LZ_GITHUB_APP_ID, LZ_GITHUB_APP_INSTALLATION_ID, and
+        LZ_GITHUB_APP_PRIVATE_KEY_PATH. A short-lived RS256 app JWT is minted
+        locally and exchanged for an installation token, exported as GH_TOKEN
+        so every subsequent gh invocation uses it. Required App permissions:
+        Contents RW, Pull requests RW, Metadata R (+ Administration RW only
+        when the App must CREATE the repository).
+        PAT path: set GH_TOKEN (or GITHUB_TOKEN) to a fine-grained token with
+        the same permissions; gh honors it natively.
+        Fallback: the operator's interactive gh session (decision 0004's
+        client-runs-it-locally model) remains fully supported.
+    #>
+    if ($env:LZ_GITHUB_APP_ID -and $env:LZ_GITHUB_APP_INSTALLATION_ID -and $env:LZ_GITHUB_APP_PRIVATE_KEY_PATH) {
+        if (-not (Test-Path $env:LZ_GITHUB_APP_PRIVATE_KEY_PATH)) {
+            throw "LZ_GITHUB_APP_PRIVATE_KEY_PATH does not exist: $env:LZ_GITHUB_APP_PRIVATE_KEY_PATH"
+        }
+        $header = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{"alg":"RS256","typ":"JWT"}')).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        $claims = @{ iat = $now - 60; exp = $now + 540; iss = $env:LZ_GITHUB_APP_ID } | ConvertTo-Json -Compress
+        $payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($claims)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        $rsa = [System.Security.Cryptography.RSA]::Create()
+        $rsa.ImportFromPem((Get-Content $env:LZ_GITHUB_APP_PRIVATE_KEY_PATH -Raw))
+        $signature = [Convert]::ToBase64String($rsa.SignData(
+                [Text.Encoding]::UTF8.GetBytes("$header.$payload"),
+                [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+                [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+            )).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        $jwt = "$header.$payload.$signature"
+        $response = Invoke-RestMethod -Method Post `
+            -Uri "https://api.github.com/app/installations/$($env:LZ_GITHUB_APP_INSTALLATION_ID)/access_tokens" `
+            -Headers @{ Authorization = "Bearer $jwt"; Accept = 'application/vnd.github+json' }
+        $env:GH_TOKEN = $response.token
+        Write-LzScaffoldEvent INFO "Delivery auth: GitHub App installation token (app $env:LZ_GITHUB_APP_ID, expires $($response.expires_at))."
+        return 'app'
+    }
+    if ($env:GH_TOKEN -or $env:GITHUB_TOKEN) {
+        Write-LzScaffoldEvent INFO 'Delivery auth: token from GH_TOKEN/GITHUB_TOKEN.'
+        return 'token'
+    }
+    $auth = Invoke-LzScaffoldCommand gh @('auth', 'status') -AllowFailure
+    if ($auth.ExitCode -ne 0) {
+        throw 'No GitHub authentication available: authenticate gh interactively, set GH_TOKEN to a fine-grained PAT, or supply LZ_GITHUB_APP_* for App delivery. See docs/USER-CHECKLIST.md.'
+    }
+    Write-LzScaffoldEvent INFO 'Delivery auth: interactive gh session.'
+    return 'gh-session'
+}
+
 function Publish-LzScaffoldRepository {
     param(
         [Parameter(Mandatory)][object]$Plan,
@@ -238,8 +290,7 @@ function Publish-LzScaffoldRepository {
             throw "Required publication tool '$tool' is unavailable. See docs/USER-CHECKLIST.md."
         }
     }
-    $auth = Invoke-LzScaffoldCommand gh @('auth', 'status') -AllowFailure
-    if ($auth.ExitCode -ne 0) { throw 'GitHub CLI is not authenticated. See docs/USER-CHECKLIST.md.' }
+    $null = Initialize-LzDeliveryAuth
 
     $repoView = Invoke-LzScaffoldCommand gh @('repo', 'view', $Plan.repository, '--json', 'nameWithOwner') -AllowFailure
     $repositoryExists = $repoView.ExitCode -eq 0
@@ -475,4 +526,5 @@ Export-ModuleMember -Function @(
     'New-LzScaffoldPlan'
     'Test-LzScaffoldValidation'
     'Invoke-LzScaffold'
+    'Initialize-LzDeliveryAuth'
 )

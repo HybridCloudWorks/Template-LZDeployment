@@ -36,8 +36,21 @@ code; no customer render was validated or published while building it.
 - [ ] Export `LZ_BOOTSTRAP_OUTPUT` to a protected local evidence directory.
 - [ ] Authenticate Azure CLI to the configured tenant with app-registration,
   federated-credential, RBAC, and backend permissions.
-- [ ] Authenticate GitHub CLI with repository administration, Actions,
-  environments, variables/secrets, and branch-protection permissions.
+- [ ] Authenticate to GitHub through ONE of the delivery-auth paths
+  (checked in this order by `Initialize-LzDeliveryAuth`):
+  - **GitHub App (preferred for automated delivery):** export
+    `LZ_GITHUB_APP_ID`, `LZ_GITHUB_APP_INSTALLATION_ID`, and
+    `LZ_GITHUB_APP_PRIVATE_KEY_PATH`. Required App permissions:
+    Contents Read & write, Pull requests Read & write, Metadata Read —
+    plus Administration Read & write only if the App must CREATE the
+    generated repository. Protect the generated repo's default branch with
+    a ruleset so the App delivers regenerations through pull requests.
+  - **Fine-grained PAT:** export `GH_TOKEN` with the same permission set
+    (or a classic token with the `repo` scope).
+  - **Interactive `gh` session:** `gh auth login` with repository
+    administration, Actions, environments, variables/secrets, and
+    branch-protection permissions (decision 0004's client-runs-it-locally
+    model).
 - [ ] For HCP Terraform, export `TFE_TOKEN` from a secure secret source.
 - [ ] Optionally export `LZ_REQUIRED_STATUS_CHECKS` as a comma-separated list;
   the default is `repository-scan` — the generated corpus's Security Scan

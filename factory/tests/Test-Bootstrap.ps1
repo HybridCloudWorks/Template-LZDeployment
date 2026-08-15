@@ -50,8 +50,12 @@ ok 'bootstrap apply uses management-group policy roles' (
         @($_.roles) -contains 'Resource Policy Contributor'
     }).Count -eq 1
 )
-ok 'plan subjects are exact pull_request subjects' (
-    @($plan.identities | Where-Object { $_.kind -eq 'plan' -and $_.subject -notmatch ':pull_request$' }).Count -eq 0
+ok 'plan subjects are pull_request plus the default branch (exact, no wildcards)' (
+    @($plan.identities | Where-Object kind -eq 'plan' | Where-Object {
+        @($_.subject).Count -ne 2 -or
+        @($_.subject | Where-Object { $_ -match ':pull_request$' }).Count -ne 1 -or
+        @($_.subject | Where-Object { $_ -match ':ref:refs/heads/[^*]+$' }).Count -ne 1
+    }).Count -eq 0
 )
 ok 'apply subjects are exact environment subjects' (
     @($plan.identities | Where-Object { $_.kind -eq 'apply' -and $_.subject -notmatch ':environment:[^*]+$' }).Count -eq 0
@@ -116,8 +120,10 @@ ok 'minimal emits one plan and one apply record' ($planRecord.Count -eq 1 -and $
 ok 'minimal display names have no environment segment' (
     $planRecord[0].displayName -eq 'sp-chg-plan' -and $applyRecord[0].displayName -eq 'sp-chg-apply'
 )
-ok 'minimal plan subject is the single pull_request subject' (
-    @($planRecord[0].subject).Count -eq 1 -and $planRecord[0].subject -match ':pull_request$'
+ok 'minimal plan subjects are pull_request plus the default branch' (
+    @($planRecord[0].subject).Count -eq 2 -and
+    @($planRecord[0].subject | Where-Object { $_ -match ':pull_request$' }).Count -eq 1 -and
+    @($planRecord[0].subject | Where-Object { $_ -match ':ref:refs/heads/[^*]+$' }).Count -eq 1
 )
 ok 'minimal plan identity is Reader at the MG root' (
     @($planRecord[0].roleAssignments | Where-Object { $_.role -eq 'Reader' -and $_.scope -eq $mgRootScope }).Count -eq 1
@@ -191,7 +197,9 @@ function ConvertTo-AzurermBackendConfig([object]$Config) {
     })
     return $Config
 }
-$stateScope = '/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-chg-tfstate/providers/Microsoft.Storage/storageAccounts/chgtfstate'
+# Container scope (not account scope): each identity touches exactly its own
+# state container.
+$stateScope = '/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-chg-tfstate/providers/Microsoft.Storage/storageAccounts/chgtfstate/blobServices/default/containers/tfstate'
 
 $cfgAzMin = ConvertTo-AzurermBackendConfig (Get-SampleConfig)
 $planAzMin = New-LzBootstrapPlan -Config $cfgAzMin
