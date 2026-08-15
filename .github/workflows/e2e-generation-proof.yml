@@ -9,11 +9,19 @@ name: E2E Generation Proof
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'factory/**'
+      - 'factory-version.json'
+      - '.github/workflows/e2e-generation-proof.yml'
   push:
     branches: [main]
     paths:
       - 'site/**'
       - 'factory/**'
+      - 'factory-version.json'
       - '.github/workflows/e2e-generation-proof.yml'
 
 permissions:
