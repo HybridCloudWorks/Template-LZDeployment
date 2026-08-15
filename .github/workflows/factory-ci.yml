@@ -40,7 +40,9 @@ jobs:
       LZ_FACTORY_CI_FAIL_FAST: ${{ vars.LZ_FACTORY_CI_FAIL_FAST || 'false' }}
       LZ_FACTORY_CI_SKIP_TERRAFORM: ${{ vars.LZ_FACTORY_CI_SKIP_TERRAFORM || 'false' }}
       LZ_FACTORY_CI_SKIP_STATIC: ${{ vars.LZ_FACTORY_CI_SKIP_STATIC || 'false' }}
-      LZ_FACTORY_CI_TERRAFORM_ROOTS: ${{ vars.LZ_FACTORY_CI_TERRAFORM_ROOTS || 'factory/templates/terraform,terraform' }}
+      # Generator-only model (ADR 0013): the template corpus is the only
+      # Terraform tree in the repository.
+      LZ_FACTORY_CI_TERRAFORM_ROOTS: ${{ vars.LZ_FACTORY_CI_TERRAFORM_ROOTS || 'factory/templates/terraform' }}
       LZ_PSSCRIPTANALYZER_VERSION: ${{ vars.LZ_PSSCRIPTANALYZER_VERSION || '1.24.0' }}
     steps:
       - name: Checkout
