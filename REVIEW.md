@@ -170,6 +170,25 @@ one-time manual prerequisite.
 Tracked as GitHub Issue #11; blocked on interactive Terraform Cloud
 org/workspace/token setup.
 **Unblocked by**: an operator with TFC access.
+**Update 2026-08-15 — resolved; the blocker dissolved rather than
+lifted.** The operator decided in-session, from the presented pair, to
+**standardize the live tree on azurerm** rather than migrate to TFC —
+[decision 0011](docs/decisions/0011-standardize-live-tree-on-azurerm.md)
+(Accepted): azurerm removes the external org/token dependency and matches
+the state `terraform/live/*` already holds, so no operator TFC session is
+needed at all. Implemented the same day: the TFC-shaped
+`terraform/live/sandbox/backend.hcl` (which contradicted its own stack's
+`backend "azurerm" {}` declaration) now matches its four azurerm
+siblings; `010-terraform-init.yml` drops `TF_API_TOKEN` and every TFC
+reference and initializes each layer with `-backend-config=backend.hcl`
+under `ARM_USE_OIDC` as the plan SP (contract #2); the bootloader
+defaults to azurerm, its interactive backend prompt retired, with
+hcp-terraform surviving only as a warned explicit legacy override. Issue
+#11 closes as **standardize-not-migrate**; the factory's dual-backend
+render capability (both backends remain valid `lz-config.json` choices)
+is explicitly unaffected. "Init green" against the standardized backend
+remains with §1/§3 (TODO items 4.1/4.5), which own the identity estate
+and secrets. [TODO.md](TODO.md) item 4.6 closed.
 
 ---
 

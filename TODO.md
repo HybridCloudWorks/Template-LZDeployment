@@ -765,14 +765,30 @@ No recorded successful run of `010-terraform-init.yml`,
 **Gate**: item 4.1 — [REVIEW.md](REVIEW.md) §3.
 **Validation**: successful runs of all four workflows on a real PR/push.
 
-### 4.6 Resolve the backend duality / TFC migration (Issue #11)
+### 4.6 Resolve the backend duality / TFC migration (Issue #11) — CLOSED
 
-HCP Terraform is the recorded default; `terraform/live/*` is azurerm; the
-bootloader and workflow 010 assume TFC.
-**Owner**: `github-actions-engineer`. **Gate**: interactive TFC
-org/workspace/token setup — [REVIEW.md](REVIEW.md) §9,
-[Issue #11](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/11).
-**Validation**: one backend per stack, init green against it.
+Closed 2026-08-15: the operator resolved
+[Issue #11](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/11)
+in-session as **standardize, don't migrate** —
+[decision 0011](docs/decisions/0011-standardize-live-tree-on-azurerm.md):
+azurerm everywhere in the live tree, chosen over the TFC migration the
+issue title named, because azurerm removes the external org/token
+dependency and matches the state `terraform/live/*` already holds. The
+gate **dissolved rather than lifted**: the interactive TFC
+org/workspace/token setup no longer applies to anything on the live path,
+so no operator TFC session is needed. Shipped the same day:
+`terraform/live/sandbox/backend.hcl` rewritten from its TFC-shaped
+contradiction to the azurerm form its `main.tf` already declared;
+workflow 010 initializes every layer with `-backend-config=backend.hcl`
+under `ARM_USE_OIDC` as the plan SP, with `TF_API_TOKEN` and all TFC
+references removed; the bootloader defaults to azurerm with the
+interactive backend prompt retired (hcp-terraform survives only as a
+warned, explicit legacy override). The factory's dual-backend render
+capability is explicitly unaffected — that is a product feature. The
+validation criterion's first half (one backend per stack) is met; "init
+green against it" is carried by items 4.1/4.5, which own the identity
+estate and secrets the init needs. Item number retained so
+cross-references stay stable; record in [CHANGELOG.md](CHANGELOG.md).
 
 ### 4.7 Execute and accept the Stage 13 dogfood instance
 
