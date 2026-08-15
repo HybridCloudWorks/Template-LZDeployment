@@ -268,9 +268,9 @@ $mustNotDelete = @(
 $forkDisplay = if ($ForkRepository) { $ForkRepository } else { '<owner>/<fork>' }
 $forkCommands = @(
     "gh secret list --repo $forkDisplay"
-    "gh secret delete <NAME> --repo $forkDisplay                # for each AZURE_* secret and TF_API_TOKEN"
+    "gh secret delete <NAME> --repo $forkDisplay                # for each AZURE_* secret (and TF_API_TOKEN on pre-0.10.0 legacy estates)"
     "gh variable list --repo $forkDisplay"
-    "gh variable delete <NAME> --repo $forkDisplay              # for each AZURE_*, TF_CLOUD_*, FACTORY_VERSION variable"
+    "gh variable delete <NAME> --repo $forkDisplay              # for each AZURE_*, FACTORY_VERSION variable (and TF_CLOUD_* on legacy estates)"
     "gh api repos/$forkDisplay/environments --jq '.environments[].name'"
     "gh api --method DELETE repos/$forkDisplay/environments/<name>"
     "gh api repos/$forkDisplay/branches --jq '.[].name'"

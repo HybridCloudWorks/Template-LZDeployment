@@ -7,19 +7,10 @@ rendered {{FACTORY-RAW:computed.generatedAt}}.
 
 Backend type: **{{FACTORY-RAW:backend.type}}**.
 
-#{{IF computed.backendIsHcp}}
-| Setting | Value |
-|---|---|
-| HCP organization | {{FACTORY-RAW:backend.hcpTerraform.organization}} |
-| Workspace prefix | `{{FACTORY-RAW:backend.hcpTerraform.workspacePrefix}}` |
-| Execution mode | {{FACTORY-RAW:backend.hcpTerraform.executionMode}} |
-| Dynamic Azure credentials | {{FACTORY-BOOL:backend.hcpTerraform.useDynamicProviderCredentials}} |
-
-Each active layer maps to an isolated HCP Terraform workspace.
-#{{ELSE}}
-State uses Azure Storage with Entra authentication. Shared keys and embedded
-backend credentials are prohibited.
-#{{ENDIF}}
+State uses Azure Storage with Entra authentication (`use_oidc = true`,
+`use_azuread_auth = true`, supplied through each layer's `backend.hcl`).
+Shared keys and embedded backend credentials are prohibited; the committed
+`backend "azurerm" {}` block is deliberately empty.
 
 ## Isolation model
 

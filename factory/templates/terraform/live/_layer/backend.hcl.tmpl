@@ -1,0 +1,14 @@
+# Backend partial configuration for the "{{FACTORY-RAW:layer}}" layer.
+# GENERATED FILE. Supplied at init time: terraform init -backend-config=backend.hcl
+# Authentication is OIDC + Azure AD only — no access keys, no SAS tokens.
+
+resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
+storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
+container_name       = {{FACTORY:backend.azurerm.containerName}}
+key                  = "{{FACTORY-RAW:layer}}.tfstate"
+#{{IF defined backend.azurerm.subscriptionId && backend.azurerm.subscriptionId}}
+subscription_id      = {{FACTORY:backend.azurerm.subscriptionId}}
+#{{ENDIF}}
+tenant_id            = {{FACTORY:azure.tenantId}}
+use_oidc             = true
+use_azuread_auth     = true

@@ -1,26 +1,35 @@
 name: Terraform Policy Checks
 
+# The repository carries no working Terraform tree (generator-only model,
+# ADR 0013). This workflow is the execution-time verification of the emitted
+# corpus: it renders both topology fixtures and runs fmt/init/validate on the
+# RENDERED output. `terraform init` here is what re-verifies every AVM module
+# pin and provider constraint against the live Terraform Registry — the gate
+# the pins document requires before delivery.
+
 on:
   pull_request:
     branches: [main]
     paths:
-      - "terraform/**"
-      - ".github/workflows/terraform-*.yml"
+      - "factory/**"
       - ".github/workflows/terraform-policy-checks.yml"
   push:
     branches: [main]
     paths:
-      - "terraform/**"
-      - ".github/workflows/terraform-*.yml"
+      - "factory/**"
       - ".github/workflows/terraform-policy-checks.yml"
 
 permissions:
   contents: read
 
 jobs:
-  fmt-validate:
-    name: fmt + validate
+  render-validate:
+    name: render + fmt + init + validate (${{ matrix.fixture }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture: [azurerm-config, vwan-config]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -30,73 +39,37 @@ jobs:
         with:
           terraform_version: 1.9.8
 
-      - name: Terraform fmt (fail-fast)
-        run: terraform fmt -check -recursive terraform
+      - name: Render fixture
+        shell: pwsh
+        run: |
+          Import-Module ./factory/renderer/LZFactory.Renderer.psd1
+          Invoke-LzRender -ConfigPath "factory/tests/fixtures/${{ matrix.fixture }}.json" `
+                          -OutputDirectory rendered-fixture -Quiet | Out-Null
 
-      - name: Terraform validate modules (fail-fast)
+      - name: Terraform fmt (rendered output, fail-fast)
+        run: terraform fmt -check -recursive rendered-fixture
+
+      - name: Terraform init + validate (verifies AVM pins against the registry)
         shell: bash
         run: |
           set -euo pipefail
-          for d in terraform/modules/*; do
+          for d in rendered-fixture/terraform/live/*; do
             [ -d "$d" ] || continue
-            echo "Validating module: $d"
+            echo "Validating layer: $d"
             terraform -chdir="$d" init -backend=false -input=false -no-color >/dev/null
             terraform -chdir="$d" validate -no-color
           done
 
-      - name: Terraform validate live stacks (fail-fast)
+      - name: Zero residual placeholders
         shell: bash
         run: |
           set -euo pipefail
-          for d in terraform/live/*; do
-            [ -d "$d" ] || continue
-            echo "Validating stack: $d"
-            terraform -chdir="$d" init -backend=false -input=false -no-color >/dev/null
-            terraform -chdir="$d" validate -no-color
-          done
-
-  tflint:
-    name: tflint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-
-      - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@6e1e0642c0289bd619021bf6b34e3c08ed1e005a  # v6.3.0
-
-      - name: Init TFLint plugins
-        run: tflint --chdir=terraform --init
-
-      - name: Run TFLint on modules (fail-fast)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for d in terraform/modules/*; do
-            [ -d "$d" ] || continue
-            echo "Linting module: $d"
-            tflint --chdir="$d"
-          done
-
-      - name: Run TFLint on live stacks (fail-fast)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for d in terraform/live/*; do
-            [ -d "$d" ] || continue
-            echo "Linting stack: $d"
-            tflint --chdir="$d"
-          done
-
-  tfsec:
-    name: tfsec
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-
-      - name: tfsec scan (fail-fast)
-        uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d83891162a721f2d6  # v1.0.3
-        with:
-          working_directory: terraform/
-          soft_fail: false
+          if grep -rn '__[A-Z0-9_]\+__' rendered-fixture; then
+            echo "::error::Unfilled placeholder tokens survived rendering."
+            exit 1
+          fi
+          if grep -rnP '(?<!\$)\{\{[^}]*\}\}' rendered-fixture; then
+            echo "::error::Unresolved factory tokens survived rendering."
+            exit 1
+          fi
+          echo "No residual placeholders."

@@ -1,0 +1,60 @@
+name: E2E Generation Proof
+
+# The release-evidence source that replaced the dogfood apply (ADR 0013): a
+# REAL end-to-end generation — the actual wizard driven headlessly produces
+# the answer record (never hand-authored), the renderer and validation gates
+# run, and the six proofs from docs/refactor/VALIDATION.md are evaluated.
+# GitHub-hosted runners reach the Terraform Registry, so gate (c) here also
+# re-verifies every AVM module pin via terraform init.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'factory/**'
+      - '.github/workflows/e2e-generation-proof.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    name: Generate + prove (${{ matrix.topology }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        topology: [hub-spoke, virtual-wan]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Install headless browser driver
+        run: |
+          npm install --no-audit --no-fund playwright-core@1
+          npx playwright-core install --with-deps chromium
+
+      - name: Run the proof
+        shell: pwsh
+        env:
+          LZ_E2E_NODE_MODULES: ${{ github.workspace }}/node_modules
+        run: ./factory/e2e/Invoke-E2EGenerationProof.ps1 -OutputDirectory e2e-output -Topology ${{ matrix.topology }}
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-generation-${{ matrix.topology }}-${{ github.run_id }}
+          path: |
+            e2e-output/e2e-report.json
+            e2e-output/evidence/
+          if-no-files-found: error
+          retention-days: 90

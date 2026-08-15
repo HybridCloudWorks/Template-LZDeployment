@@ -1,10 +1,10 @@
 {
-  "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||.",
+  "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||. This manifest is the OUTPUT CONTRACT (docs/refactor/OUTPUT-CONTRACT.md): generation fails if a produced file is not listed here or a listed file is missing (validation gate V01). No generator machinery is ever listed.",
 
-  "manifestVersion": "1.9.0",
-  "targetSchemaVersion": "2.0.0",
+  "manifestVersion": "2.0.0",
+  "targetSchemaVersion": "2.1.0",
 
-  "$statusComment": "Stages 6–14 promoted the Terraform, workflow, documentation, bootstrap, scaffold, brownfield-adoption, Factory CI, HCW dogfood, and release-attestation corpus. Six live layers, seven generated workflows, ten generated operational documents, and the Stage 14 user checklist are emitted. Factory CI is credential-free; dogfood is protected; release promotion remains evidence-driven and review-only. Stage 11 registers import artifacts only for explicit Adopt classifications. platform-identity remains blocked by guard G21; guard G22 validates non-production workload CIDRs.",
+  "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored — the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
 
   "files": [
     {
@@ -19,65 +19,35 @@
       "destination": "USER-CHECKLIST.md",
       "mode": "render",
       "when": "always",
-      "description": "Non-blocking operator activities, secure runtime variables, and required live verification for bootstrap, scaffold, and brownfield adoption."
+      "description": "Non-blocking operator activities, secure runtime variables, and required live verification."
     },
-
     {
-      "source": "terraform/live/global/variables.tf",
-      "destination": "terraform/live/global/variables.tf",
+      "source": "gitignore",
+      "destination": ".gitignore",
       "mode": "copy",
       "when": "always",
-      "description": "Variable declarations. Copied verbatim — this file is the contract the schema-drift check validates against, so it must never be templated."
+      "description": "Ignores Terraform working files and the .alzlib/ library cache the avm-ptn-alz module downloads at init."
     },
     {
-      "source": "terraform/live/global/main.tf",
-      "destination": "terraform/live/global/main.tf",
+      "source": "renovate.json",
+      "destination": "renovate.json",
       "mode": "copy",
       "when": "always",
-      "description": "Management group hierarchy and policy baseline. Nothing in it varies with configuration."
+      "description": "Renovate configuration. The terraform manager bumps AVM module and provider pins from the Terraform Registry forever, with no dependency on the factory."
     },
     {
-      "source": "terraform/live/global/outputs.tf",
-      "destination": "terraform/live/global/outputs.tf",
-      "mode": "copy",
+      "source": "$config",
+      "destination": "lz-config.json",
+      "mode": "config-snapshot",
       "when": "always",
-      "description": "Management group and policy assignment IDs."
+      "description": "The answer record — the validated configuration that produced this repository, secrets excluded by construction. Committed so provenance survives the factory copy's deletion."
     },
     {
-      "source": "terraform/live/global/terraform.auto.tfvars.tmpl",
-      "destination": "terraform/live/global/terraform.auto.tfvars",
-      "mode": "render",
+      "source": "$factory-version",
+      "destination": "factory-version.json",
+      "mode": "version-stamp",
       "when": "always",
-      "description": "Global layer variables: org prefix, subscriptions, allowed locations."
-    },
-
-    {
-      "source": "terraform/live/platform-connectivity/variables.tf",
-      "destination": "terraform/live/platform-connectivity/variables.tf",
-      "mode": "copy",
-      "when": "connectivity.model != 'none'",
-      "description": "Connectivity variable declarations. Drift-checked against the schema."
-    },
-    {
-      "source": "terraform/live/platform-connectivity/main.tf.tmpl",
-      "destination": "terraform/live/platform-connectivity/main.tf",
-      "mode": "render",
-      "when": "connectivity.model != 'none'",
-      "description": "Regional hubs. The DR hub and the hub-to-hub peering are emitted only for a dual-region configuration."
-    },
-    {
-      "source": "terraform/live/platform-connectivity/outputs.tf.tmpl",
-      "destination": "terraform/live/platform-connectivity/outputs.tf",
-      "mode": "render",
-      "when": "connectivity.model != 'none'",
-      "description": "Hub identifiers. This is the contract the workload layers read through remote state."
-    },
-    {
-      "source": "terraform/live/platform-connectivity/terraform.auto.tfvars.tmpl",
-      "destination": "terraform/live/platform-connectivity/terraform.auto.tfvars",
-      "mode": "render",
-      "when": "connectivity.model != 'none'",
-      "description": "Connectivity layer variables. Omitted entirely when no platform networking is deployed."
+      "description": "Generator version stamp: factory release, schema version, and generation timestamp."
     },
 
     {
@@ -85,21 +55,21 @@
       "destination": "terraform/live/platform-management/variables.tf",
       "mode": "copy",
       "when": "always",
-      "description": "Management variable declarations. Drift-checked against the schema."
+      "description": "Management variable declarations. Copied verbatim — this file is the contract the schema-drift check validates against, so it must never be templated."
     },
     {
       "source": "terraform/live/platform-management/main.tf.tmpl",
       "destination": "terraform/live/platform-management/main.tf",
       "mode": "render",
       "when": "always",
-      "description": "Backup baseline and sandbox-cleanup automation. Both sections are conditional."
+      "description": "Root module referencing Azure/avm-ptn-alz-management by pinned registry version. Deployed first — the global layer reads its state."
     },
     {
       "source": "terraform/live/platform-management/outputs.tf.tmpl",
       "destination": "terraform/live/platform-management/outputs.tf",
       "mode": "render",
       "when": "always",
-      "description": "Vault and automation identifiers, matching whichever sections main.tf emitted."
+      "description": "Workspace and automation identifiers — the remote-state contract the global layer reads."
     },
     {
       "source": "terraform/live/platform-management/terraform.auto.tfvars.tmpl",
@@ -110,89 +80,61 @@
     },
 
     {
-      "source": "terraform/live/workloads-prod/variables.tf",
-      "destination": "terraform/live/workloads-prod/variables.tf",
+      "source": "terraform/live/global/variables.tf",
+      "destination": "terraform/live/global/variables.tf",
       "mode": "copy",
-      "when": "environments.application contains 'prod'",
-      "description": "Production workload variable declarations. Drift-checked against the schema."
+      "when": "always",
+      "description": "Global (ALZ core) variable declarations. Drift-checked against the schema."
     },
     {
-      "source": "terraform/live/workloads-prod/main.tf.tmpl",
-      "destination": "terraform/live/workloads-prod/main.tf",
+      "source": "terraform/live/global/main.tf.tmpl",
+      "destination": "terraform/live/global/main.tf",
       "mode": "render",
-      "when": "environments.application contains 'prod'",
-      "description": "Production spokes. The remote-state read of the connectivity layer takes whichever form the configured backend supports."
+      "when": "always",
+      "description": "Root module referencing Azure/avm-ptn-alz by pinned registry version, with the ALZ library pinned through the alz provider, plus subscription placement."
     },
     {
-      "source": "terraform/live/workloads-prod/outputs.tf.tmpl",
-      "destination": "terraform/live/workloads-prod/outputs.tf",
+      "source": "terraform/live/global/outputs.tf.tmpl",
+      "destination": "terraform/live/global/outputs.tf",
       "mode": "render",
-      "when": "environments.application contains 'prod'",
-      "description": "Spoke VNet identifiers."
+      "when": "always",
+      "description": "Management-group resource IDs and placement associations."
     },
     {
-      "source": "terraform/live/workloads-prod/terraform.auto.tfvars.tmpl",
-      "destination": "terraform/live/workloads-prod/terraform.auto.tfvars",
+      "source": "terraform/live/global/terraform.auto.tfvars.tmpl",
+      "destination": "terraform/live/global/terraform.auto.tfvars",
       "mode": "render",
-      "when": "environments.application contains 'prod'",
-      "description": "Production workload layer variables."
-    },
-    {
-      "source": "terraform/live/workloads-nonprod/variables.tf",
-      "destination": "terraform/live/workloads-nonprod/variables.tf",
-      "mode": "copy",
-      "when": "environments.application contains 'dev' || environments.application contains 'test' || environments.application contains 'uat'",
-      "description": "Non-production workload variable declarations."
-    },
-    {
-      "source": "terraform/live/workloads-nonprod/main.tf.tmpl",
-      "destination": "terraform/live/workloads-nonprod/main.tf",
-      "mode": "render",
-      "when": "environments.application contains 'dev' || environments.application contains 'test' || environments.application contains 'uat'",
-      "description": "Selected dev, test, and UAT spokes in the shared non-production subscription."
-    },
-    {
-      "source": "terraform/live/workloads-nonprod/outputs.tf.tmpl",
-      "destination": "terraform/live/workloads-nonprod/outputs.tf",
-      "mode": "render",
-      "when": "environments.application contains 'dev' || environments.application contains 'test' || environments.application contains 'uat'",
-      "description": "Selected non-production spoke VNet identifiers."
-    },
-    {
-      "source": "terraform/live/workloads-nonprod/terraform.auto.tfvars.tmpl",
-      "destination": "terraform/live/workloads-nonprod/terraform.auto.tfvars",
-      "mode": "render",
-      "when": "environments.application contains 'dev' || environments.application contains 'test' || environments.application contains 'uat'",
-      "description": "Non-production subscription, region, CIDR, backend, and tag values."
+      "when": "always",
+      "description": "Global layer variables: parent MG, subscriptions, state-read coordinates."
     },
 
     {
-      "source": "terraform/live/sandbox/variables.tf",
-      "destination": "terraform/live/sandbox/variables.tf",
+      "source": "terraform/live/platform-connectivity/variables.tf",
+      "destination": "terraform/live/platform-connectivity/variables.tf",
       "mode": "copy",
-      "when": "environments.application contains 'sandbox' && defined azure.subscriptions.sandbox && azure.subscriptions.sandbox",
-      "description": "Sandbox variable declarations. Drift-checked against the schema."
+      "when": "connectivity.model != 'none'",
+      "description": "Connectivity variable declarations (union of both topologies). Drift-checked against the schema."
     },
     {
-      "source": "terraform/live/sandbox/main.tf",
-      "destination": "terraform/live/sandbox/main.tf",
-      "mode": "copy",
-      "when": "environments.application contains 'sandbox' && defined azure.subscriptions.sandbox && azure.subscriptions.sandbox",
-      "description": "A single time-boxed resource group. Nothing in it varies with configuration."
-    },
-    {
-      "source": "terraform/live/sandbox/outputs.tf",
-      "destination": "terraform/live/sandbox/outputs.tf",
-      "mode": "copy",
-      "when": "environments.application contains 'sandbox' && defined azure.subscriptions.sandbox && azure.subscriptions.sandbox",
-      "description": "Sandbox resource group identifiers."
-    },
-    {
-      "source": "terraform/live/sandbox/terraform.auto.tfvars.tmpl",
-      "destination": "terraform/live/sandbox/terraform.auto.tfvars",
+      "source": "terraform/live/platform-connectivity/main.tf.tmpl",
+      "destination": "terraform/live/platform-connectivity/main.tf",
       "mode": "render",
-      "when": "environments.application contains 'sandbox' && defined azure.subscriptions.sandbox && azure.subscriptions.sandbox",
-      "description": "Sandbox layer variables, including the lifecycle tags the cleanup runbook sweeps on."
+      "when": "connectivity.model != 'none'",
+      "description": "Root module referencing the hub-and-spoke OR Virtual WAN AVM pattern module by pinned registry version — one topology per estate, never both."
+    },
+    {
+      "source": "terraform/live/platform-connectivity/outputs.tf.tmpl",
+      "destination": "terraform/live/platform-connectivity/outputs.tf",
+      "mode": "render",
+      "when": "connectivity.model != 'none'",
+      "description": "Connectivity identifiers for workload spokes built later in the generated repository."
+    },
+    {
+      "source": "terraform/live/platform-connectivity/terraform.auto.tfvars.tmpl",
+      "destination": "terraform/live/platform-connectivity/terraform.auto.tfvars",
+      "mode": "render",
+      "when": "connectivity.model != 'none'",
+      "description": "Connectivity layer variables. Omitted entirely when no platform networking is deployed."
     },
 
     {
@@ -235,7 +177,7 @@
       "destination": ".github/workflows/policy-diff-guardrails.yml",
       "mode": "render",
       "when": "always",
-      "description": "Rejects policy enforcement downgrades and floating module sources."
+      "description": "Rejects ALZ library reference downgrades and floating module sources."
     },
     {
       "source": ".github/workflows/azure-auth-test.yml.tmpl",
@@ -244,6 +186,7 @@
       "when": "always",
       "description": "Verifies the live plan identity federates and remains read-only."
     },
+
     {
       "source": "docs/IDENTITY.md.tmpl",
       "destination": "docs/identity-trust-matrix.md",
@@ -305,7 +248,7 @@
       "destination": "docs/upgrade-guide.md",
       "mode": "render",
       "when": "always",
-      "description": "Supported factory upgrade, validation, rollback, drift, and evidence procedure."
+      "description": "Module-pin and library-reference upgrade procedure — Renovate-driven, with no dependency on the factory."
     },
     {
       "source": "docs/PHASE-MODEL.md.tmpl",
@@ -321,41 +264,13 @@
       "source": "terraform/live/_layer/backend.tf.tmpl",
       "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.tf",
       "when": "always",
-      "description": "Backend configuration, rendered once per active layer. Each layer keeps an isolated state file — layers are never merged (control AR3)."
-    }
-  ],
-
-  "$directoriesComment": "Whole-tree copies. The module corpus is dozens of static files with no per-configuration variation; listing each one here would add no decision while creating a trap where a newly added .tf is silently not shipped. Anything that DOES vary belongs in `files`, where its condition is visible. `exclude` patterns are matched against the path relative to `source`, with forward slashes.",
-
-  "directories": [
+      "description": "Empty azurerm backend block, rendered once per active layer. Values live in backend.hcl (control AR3: layers are never merged)."
+    },
     {
-      "source": "terraform/modules",
-      "destination": "terraform/modules",
+      "source": "terraform/live/_layer/backend.hcl.tmpl",
+      "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.hcl",
       "when": "always",
-      "exclude": [
-        "*/.terraform.lock.hcl",
-        "sentinel-siem/*",
-        "keyvault-cmk/*"
-      ],
-      "description": "The reusable module corpus, copied verbatim. Lock files are excluded because a dependency lock is only meaningful at the root module; the ones under modules/ are leftovers from running terraform inside a module directory and would mislead anyone who trusted them. The two scaffold modules are excluded here and re-added below only when the feature that needs them is enabled."
-    },
-    {
-      "source": "terraform/modules/sentinel-siem",
-      "destination": "terraform/modules/sentinel-siem",
-      "when": "security.sentinel.enabled",
-      "description": "Scaffold module. Guard G02 refuses to render at all when Sentinel is enabled and this module is still scaffold-only, so reaching this entry means it has been implemented."
-    },
-    {
-      "source": "terraform/modules/keyvault-cmk",
-      "destination": "terraform/modules/keyvault-cmk",
-      "when": "security.keyVault.customerManagedKeys",
-      "description": "Scaffold module. Guard G03 covers it the way G02 covers sentinel-siem."
-    },
-    {
-      "source": "terraform/scripts",
-      "destination": "terraform/scripts",
-      "when": "defined azure.subscriptions.sandbox && azure.subscriptions.sandbox",
-      "description": "Runbook content the platform-management layer loads with file(). Emitted only alongside the automation that reads it — file() resolves at plan time, so a missing script fails the plan, not the apply."
+      "description": "Per-layer backend partial configuration: state coordinates plus use_oidc and use_azuread_auth. Supplied via terraform init -backend-config=backend.hcl."
     }
   ]
 }

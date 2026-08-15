@@ -1,38 +1,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Platform management layer — backup baseline and platform automation.
+# platform-management layer variables.
 #
-# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
-# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+# GENERATED FILE. Do not hand-edit. Rendered by Landing Zone Factory
+# {{FACTORY-RAW:computed.factoryVersion}} on {{FACTORY-RAW:computed.generatedAt}}.
 # ─────────────────────────────────────────────────────────────────────────────
 
 management_subscription_id = {{FACTORY:azure.subscriptions.management}}
-
-org_prefix = {{FACTORY:organization.companyShortName}}
-#{{IF defined observability.logAnalytics.retentionDays}}
-log_retention_days = {{FACTORY-NUM:observability.logAnalytics.retentionDays}}
-#{{ENDIF}}
-#{{IF defined observability.alerting.actionGroupEmails}}
-# Composed from observability.alerting.actionGroupEmails — the only contact
-# list that feeds Azure Monitor enrollment (decision record 0003).
-alert_email_receivers = [
-#{{FOREACH receiver IN computed.alertEmailReceivers}}
-  { name = {{FACTORY:receiver.name}}, email_address = {{FACTORY:receiver.email_address}} },
-#{{ENDFOREACH}}
-]
-#{{ENDIF}}
-#{{IF defined azure.subscriptions.sandbox && azure.subscriptions.sandbox}}
-sandbox_subscription_id = {{FACTORY:azure.subscriptions.sandbox}}
-#{{ELSE}}
-# No sandbox subscription is configured, so the sandbox-cleanup runbook and its
-# schedule are not emitted by this layer at all.
-sandbox_subscription_id = ""
-#{{ENDIF}}
-
-primary_region      = {{FACTORY:azure.primaryRegion}}
-primary_region_code = {{FACTORY:azure.primaryRegionCode}}
-#{{IF computed.hasDrRegion}}
-dr_region      = {{FACTORY:azure.drRegion}}
-dr_region_code = {{FACTORY:azure.drRegionCode}}
-#{{ENDIF}}
+org_prefix                 = {{FACTORY:organization.companyShortName}}
+primary_region             = {{FACTORY:azure.primaryRegion}}
+primary_region_code        = {{FACTORY:azure.primaryRegionCode}}
+log_retention_days         = {{FACTORY-NUM:observability.logAnalytics.retentionDays}}
 
 default_tags = {{FACTORY-MAP:naming.defaultTags}}

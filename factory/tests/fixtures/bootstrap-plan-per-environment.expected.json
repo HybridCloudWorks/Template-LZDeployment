@@ -11,21 +11,29 @@
     "prod"
   ],
   "layers": [
-    "global",
-    "platform-connectivity",
     "platform-management",
-    "workloads-prod"
+    "global",
+    "platform-connectivity"
   ],
   "identities": [
     {
       "environment": "bootstrap",
       "kind": "plan",
       "displayName": "sp-chg-bootstrap-plan",
-      "subject": "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+      "subject": [
+        "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+        "repo:contoso-platform/contoso_LZ_Deployment:ref:refs/heads/main"
+      ],
       "roles": [
         "Reader"
       ],
-      "scope": "/providers/Microsoft.Management/managementGroups/mg-contoso"
+      "scope": "/providers/Microsoft.Management/managementGroups/mg-contoso",
+      "stateRoleAssignments": [
+        {
+          "role": "Storage Blob Data Reader",
+          "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-tfstate-scus-prod-01/providers/Microsoft.Storage/storageAccounts/stchgtfstateabcd/blobServices/default/containers/tfstate"
+        }
+      ]
     },
     {
       "environment": "bootstrap",
@@ -36,17 +44,32 @@
         "Management Group Contributor",
         "Resource Policy Contributor"
       ],
-      "scope": "/providers/Microsoft.Management/managementGroups/mg-contoso"
+      "scope": "/providers/Microsoft.Management/managementGroups/mg-contoso",
+      "stateRoleAssignments": [
+        {
+          "role": "Storage Blob Data Contributor",
+          "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-tfstate-scus-prod-01/providers/Microsoft.Storage/storageAccounts/stchgtfstateabcd/blobServices/default/containers/tfstate"
+        }
+      ]
     },
     {
       "environment": "connectivity",
       "kind": "plan",
       "displayName": "sp-chg-connectivity-plan",
-      "subject": "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+      "subject": [
+        "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+        "repo:contoso-platform/contoso_LZ_Deployment:ref:refs/heads/main"
+      ],
       "roles": [
         "Reader"
       ],
-      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000002"
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000002",
+      "stateRoleAssignments": [
+        {
+          "role": "Storage Blob Data Reader",
+          "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-tfstate-scus-prod-01/providers/Microsoft.Storage/storageAccounts/stchgtfstateabcd/blobServices/default/containers/tfstate"
+        }
+      ]
     },
     {
       "environment": "connectivity",
@@ -54,17 +77,32 @@
       "displayName": "sp-chg-connectivity-apply",
       "subject": "repo:contoso-platform/contoso_LZ_Deployment:environment:connectivity",
       "roles": "Contributor",
-      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000002"
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000002",
+      "stateRoleAssignments": [
+        {
+          "role": "Storage Blob Data Contributor",
+          "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-tfstate-scus-prod-01/providers/Microsoft.Storage/storageAccounts/stchgtfstateabcd/blobServices/default/containers/tfstate"
+        }
+      ]
     },
     {
       "environment": "management",
       "kind": "plan",
       "displayName": "sp-chg-management-plan",
-      "subject": "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+      "subject": [
+        "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+        "repo:contoso-platform/contoso_LZ_Deployment:ref:refs/heads/main"
+      ],
       "roles": [
         "Reader"
       ],
-      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001"
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001",
+      "stateRoleAssignments": [
+        {
+          "role": "Storage Blob Data Reader",
+          "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-tfstate-scus-prod-01/providers/Microsoft.Storage/storageAccounts/stchgtfstateabcd/blobServices/default/containers/tfstate"
+        }
+      ]
     },
     {
       "environment": "management",
@@ -72,17 +110,32 @@
       "displayName": "sp-chg-management-apply",
       "subject": "repo:contoso-platform/contoso_LZ_Deployment:environment:management",
       "roles": "Contributor",
-      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001"
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001",
+      "stateRoleAssignments": [
+        {
+          "role": "Storage Blob Data Contributor",
+          "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-tfstate-scus-prod-01/providers/Microsoft.Storage/storageAccounts/stchgtfstateabcd/blobServices/default/containers/tfstate"
+        }
+      ]
     },
     {
       "environment": "prod",
       "kind": "plan",
       "displayName": "sp-chg-prod-plan",
-      "subject": "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+      "subject": [
+        "repo:contoso-platform/contoso_LZ_Deployment:pull_request",
+        "repo:contoso-platform/contoso_LZ_Deployment:ref:refs/heads/main"
+      ],
       "roles": [
         "Reader"
       ],
-      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000003"
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000003",
+      "stateRoleAssignments": [
+        {
+          "role": "Storage Blob Data Reader",
+          "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-tfstate-scus-prod-01/providers/Microsoft.Storage/storageAccounts/stchgtfstateabcd/blobServices/default/containers/tfstate"
+        }
+      ]
     },
     {
       "environment": "prod",
@@ -90,8 +143,14 @@
       "displayName": "sp-chg-prod-apply",
       "subject": "repo:contoso-platform/contoso_LZ_Deployment:environment:prod",
       "roles": "Contributor",
-      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000003"
+      "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000003",
+      "stateRoleAssignments": [
+        {
+          "role": "Storage Blob Data Contributor",
+          "scope": "/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-tfstate-scus-prod-01/providers/Microsoft.Storage/storageAccounts/stchgtfstateabcd/blobServices/default/containers/tfstate"
+        }
+      ]
     }
   ],
-  "backend": "hcp-terraform"
+  "backend": "azurerm"
 }

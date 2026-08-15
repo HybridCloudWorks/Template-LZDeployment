@@ -19,20 +19,14 @@
  * Constants
  * ------------------------------------------------------------------- */
 
-const SCHEMA_VERSION = '2.0.0';
+const SCHEMA_VERSION = '2.1.0';
 
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
  * so the value is mirrored here and a factory CI check asserts the two match. */
-const FACTORY_VERSION = '0.9.0';
+const FACTORY_VERSION = '0.10.0';
 
 const DRAFT_KEY = 'alz-factory-draft-v1';
-
-/* HCP Terraform free tier, verified 2026-07: the legacy free plan ended
- * 31 March 2026 and was replaced by a pay-as-you-go free tier capped at 500
- * managed resources with unlimited users and one policy set of up to five
- * policies. Billing above that is on peak hourly resource count. */
-const HCP_FREE_RUM_CAP = 500;
 
 /* Region -> conventional CAF abbreviation. Not exhaustive; unknown regions
  * simply leave the code field for the user to fill. */
@@ -100,8 +94,8 @@ const DEFAULT_ENV_ABBREV = {
  * policy-baseline 17, defender-baseline 13, management-groups 10, management-
  * baseline 6, nsg-flow-logs 6, backup-baseline 5.
  *
- * These are estimates, not a plan. Treat the output as a signal to check your
- * HCP Terraform usage, never as a billing figure. */
+ * These are estimates, not a plan. Treat the output as a rough sizing signal
+ * for the estate, never as a billing figure. */
 const RUM_WEIGHTS = {
   managementGroupsCafStandard: 9,
   managementGroupsCafMinimal: 4,
@@ -170,11 +164,7 @@ function defaultConfig() {
       useSelfHostedRunners: false
     },
     backend: {
-      type: 'hcp-terraform',
-      hcpTerraform: {
-        organization: '', workspacePrefix: '', executionMode: 'remote',
-        useDynamicProviderCredentials: true, acknowledgedResourceLimit: false
-      },
+      type: 'azurerm',
       azurerm: {
         resourceGroupName: '', storageAccountName: '', containerName: 'tfstate',
         subscriptionId: '', useAzureAdAuth: true
@@ -207,7 +197,6 @@ function defaultConfig() {
       },
       firewall: {
         type: 'azfw', azfwTier: 'Standard', threatIntelligenceMode: 'Deny',
-        nvaTrustIpPrimary: '', nvaTrustIpDr: ''
       },
       expressRoute: { enabled: false, circuitName: '', peeringLocation: '', bandwidthMbps: null, serviceProvider: '' },
       vpn: { enabled: false, sku: 'VpnGw1AZ', activeActive: true },
@@ -456,15 +445,8 @@ function validate() {
 
   // --- Backend
   const b = config.backend;
-  if (b.type === 'hcp-terraform') {
-    if (!b.hcpTerraform.organization.trim()) err('backend', 'HCP Terraform organization is required.');
-    const rum = estimateRum();
-    if (rum > HCP_FREE_RUM_CAP && !b.hcpTerraform.acknowledgedResourceLimit) {
-      err('backend', `Estimated ${rum} managed resources exceeds the ${HCP_FREE_RUM_CAP}-resource free tier. Acknowledge the billing exposure, reduce scope, or switch to the azurerm backend.`);
-    }
-    if (!b.hcpTerraform.useDynamicProviderCredentials) {
-      warn('backend', 'Dynamic provider credentials are off, so Azure credentials must be stored in the HCP Terraform workspace. The generated threat model records this as a finding.');
-    }
+  if (b.type !== 'azurerm') {
+    err('backend', 'azurerm is the only supported state backend (ADR 0015).');
   } else {
     if (!b.azurerm.resourceGroupName.trim()) err('backend', 'State resource group name is required.');
     if (!RE.storageAccount.test(b.azurerm.storageAccountName || '')) {
@@ -490,7 +472,8 @@ function validate() {
   // --- Connectivity
   const c = config.connectivity;
   if (c.model === 'virtual-wan') {
-    err('connectivity', 'Virtual WAN is not implemented in the current module corpus. The renderer rejects it rather than emitting a broken layer — choose hub-and-spoke, or contribute a virtual-wan module first.');
+    if (c.bastion.enabled) warn('connectivity', 'Bastion is composed for hub-and-spoke only; with Virtual WAN, deploy Bastion per-spoke inside the generated repository.');
+    if (c.privateDns.enabled) warn('connectivity', 'Centralized private DNS zones are composed for hub-and-spoke only; with Virtual WAN, create them inside the generated repository.');
   }
   if (c.model === 'hub-spoke') {
     const spaces = [
@@ -545,12 +528,6 @@ function validate() {
       err('connectivity', 'Centralizing Private DNS in the hub cannot be turned off: the generated Terraform creates the zones in the connectivity layer. Untick "Private DNS zones" instead if you do not want them.');
     }
   }
-  if (['palo', 'fortinet'].includes(c.firewall.type)) {
-    if (!RE.ipv4.test(c.firewall.nvaTrustIpPrimary || '')) err('connectivity', 'An NVA firewall requires a primary trust IP.');
-    if (config.azure.drRegion && !RE.ipv4.test(c.firewall.nvaTrustIpDr || '')) {
-      err('connectivity', 'A DR region is set, so a DR NVA trust IP is required.');
-    }
-  }
   if (c.firewall.type === 'azfw' && !['Standard', 'Premium'].includes(c.firewall.azfwTier)) {
     // Guards imported/drafted configs from before Basic was removed: the
     // hub-network module does not provision the dedicated management subnet
@@ -561,13 +538,13 @@ function validate() {
   if (c.firewall.type === 'azfw' && c.firewall.threatIntelligenceMode === 'Off') {
     warn('connectivity', 'Azure Firewall threat intelligence is Off. The secure default is Deny; this needs a recorded governance exception.');
   }
-  if (!['azfw', 'palo', 'fortinet'].includes(c.firewall.type)) {
+  if (!['azfw'].includes(c.firewall.type)) {
     // A landing zone always deploys at least one firewall (operator decision
     // 2026-08-06). This also guards configs drafted while "none" was briefly
     // offered here: it exported firewall_type = "none", which the connectivity
     // layer rejects. To run without platform networking at all, set Topology
     // to None — that drops the layer rather than leaving egress unfiltered.
-    err('connectivity', `Firewall type "${c.firewall.type}" cannot be deployed — a landing zone requires at least one firewall (azfw, palo or fortinet). To deploy without platform networking entirely, set Topology to None.`);
+    err('connectivity', `Firewall type "${c.firewall.type}" cannot be deployed — the AVM connectivity patterns require at least one Azure Firewall (ADR 0017). To deploy without platform networking entirely, set Topology to None.`);
   }
   if (c.expressRoute.enabled && !c.expressRoute.peeringLocation.trim()) {
     err('connectivity', 'ExpressRoute is enabled but no peering location was given.');
@@ -586,10 +563,10 @@ function validate() {
   // --- Security
   const s = config.security;
   if (s.sentinel.enabled) {
-    err('security', 'Sentinel cannot be emitted: the sentinel-siem module is scaffold-only and declares no resources. Implement the module first, or clear this to record it as a future intent only.');
+    warn('security', 'Sentinel is recorded in the answer record but not deployed by the generator (ADR 0017): onboard it inside the generated repository against the management workspace.');
   }
   if (s.keyVault.customerManagedKeys) {
-    err('security', 'Customer-managed keys cannot be emitted: the keyvault-cmk module is scaffold-only and declares no resources.');
+    warn('security', 'Customer-managed keys are recorded in the answer record but not deployed by the generator (ADR 0017): implement the CMK estate inside the generated repository.');
   }
   if (s.defender.enabled) {
     if (!s.defender.plans.length) err('security', 'Defender is enabled but no plans were selected.');
@@ -609,11 +586,8 @@ function validate() {
   if (gv.policyBaseline.enforcementMode === 'deny' && config.deploymentStrategy.mode === 'brownfield') {
     warn('governance', 'Deny enforcement on a brownfield tenant will block deployments against existing non-compliant resources. Start at Audit, clear the compliance report, then promote to Deny.');
   }
-  if (gv.policyAsCodeEngines.includes('sentinel') && config.backend.type !== 'hcp-terraform') {
-    err('governance', 'Sentinel policy enforcement requires the HCP Terraform backend.');
-  }
-  if (gv.policyAsCodeEngines.includes('sentinel') && config.backend.type === 'hcp-terraform') {
-    warn('governance', 'The HCP Terraform free tier allows one policy set of up to five policies. Beyond that requires a paid tier.');
+  if (gv.policyAsCodeEngines.includes('sentinel')) {
+    err('governance', 'Sentinel policy enforcement was a Terraform Cloud feature; the azurerm-only pipeline (ADR 0015) does not support it. Use Azure Policy or OPA.');
   }
   if (gv.dataResidencyRegions.length) {
     const outside = config.azure.allowedLocations.filter((r) => !gv.dataResidencyRegions.includes(r));
@@ -1139,7 +1113,7 @@ function updateHints() {
   const cm = $('#cn_modelHint');
   cm.textContent = {
     'hub-spoke': 'Uses the hub-network and spoke-network modules already present in this repository.',
-    'virtual-wan': 'Not implemented — there is no virtual-wan module in the corpus. Selecting this blocks export rather than emitting a layer that cannot apply.',
+    'virtual-wan': 'Emits the Azure Verified Modules Virtual WAN pattern (virtual hubs + Azure Firewall). Bastion and centralized private DNS are hub-and-spoke features.',
     none: 'No platform networking is emitted. Workload subscriptions will have no connectivity from the platform.'
   }[config.connectivity.model];
 
@@ -1147,7 +1121,7 @@ function updateHints() {
 
   const sth = $('#sentinelTierHint');
   sth.textContent = config.governance.policyAsCodeEngines.includes('sentinel')
-    ? 'Sentinel requires the HCP Terraform backend. The free tier allows one policy set of up to five policies; more requires a paid tier.'
+    ? 'Sentinel policy enforcement was a Terraform Cloud feature and is not supported by the azurerm-only pipeline (ADR 0015). Use Azure Policy or OPA.'
     : '';
 
   // Tag coverage against the required-tag list.
@@ -1166,30 +1140,9 @@ function updateHints() {
     cov.className = 'coverage coverage-ok';
   }
 
-  // RUM estimate.
-  const rum = estimateRum();
-  const rv = $('#rumValue');
-  if (rv) {
-    rv.textContent = String(rum);
-    const verdict = $('#rumVerdict');
-    if (rum <= HCP_FREE_RUM_CAP * 0.7) {
-      verdict.textContent = 'fits the free tier';
-      verdict.className = 'pill pill-ok';
-    } else if (rum <= HCP_FREE_RUM_CAP) {
-      verdict.textContent = 'close to the 500 cap';
-      verdict.className = 'pill pill-warn';
-    } else {
-      /* Public HashiCorp pricing does not state whether paid (Essentials)
-       * billing exempts the first HCP_FREE_RUM_CAP resources, so show the
-       * honest range: low assumes only the overage is billed, high assumes
-       * every managed resource is billed. Range presentation approved
-       * 2026-08-01 pending vendor confirmation of the exemption. */
-      const low = (Math.max(0, rum - HCP_FREE_RUM_CAP) * 0.10).toFixed(0);
-      const high = (rum * 0.10).toFixed(0);
-      verdict.textContent = `over the cap — roughly $${low}–$${high}/mo at the $0.10 Essentials rate`;
-      verdict.className = 'pill pill-bad';
-    }
-  }
+  // The managed-resource estimate survives in deployment-metadata.json as a
+  // sizing signal; the HCP free-tier verdict UI retired with the backend
+  // (ADR 0015).
 
   // CI/CD identity estate: recomputed live, because the count depends on the
   // environment selections made on the Environments step.
@@ -1347,16 +1300,8 @@ function buildConfig() {
   if (!out.github.repositoryName) {
     out.github.repositoryName = `${out.organization.companyShortName}_LZ_Deployment`;
   }
-  if (out.backend.type === 'hcp-terraform') {
-    delete out.backend.azurerm;
-    if (!out.backend.hcpTerraform.workspacePrefix) {
-      out.backend.hcpTerraform.workspacePrefix = out.organization.companyShortName;
-    }
-  } else {
-    delete out.backend.hcpTerraform;
-    if (!out.backend.azurerm.subscriptionId) {
-      out.backend.azurerm.subscriptionId = out.azure.subscriptions.management;
-    }
+  if (!out.backend.azurerm.subscriptionId) {
+    out.backend.azurerm.subscriptionId = out.azure.subscriptions.management;
   }
   if (out.azure.managementGroups.strategy !== 'custom') delete out.azure.managementGroups.customHierarchy;
   if (out.deploymentStrategy.mode !== 'brownfield') delete out.deploymentStrategy.brownfield;
@@ -1369,6 +1314,22 @@ function buildConfig() {
   for (const k of ['identity', 'workloadNonProd', 'sandbox']) {
     if (!out.azure.subscriptions[k]) delete out.azure.subscriptions[k];
   }
+  // Feature-detail blocks travel only when the feature is on: an untouched
+  // number input exports null and an untouched text input exports '', both of
+  // which fail the schema's typed/format checks (caught by render gate G00).
+  if (!out.connectivity.expressRoute.enabled) out.connectivity.expressRoute = { enabled: false };
+  if (!out.connectivity.vpn.enabled) out.connectivity.vpn = { enabled: false };
+  if (!out.security.defender.securityContactEmail) delete out.security.defender.securityContactEmail;
+  if (!out.github.enterpriseSlug) delete out.github.enterpriseSlug;
+  if (!out.azure.drRegion) { delete out.azure.drRegion; delete out.azure.drRegionCode; }
+  // Nulls are never meaningful in this contract — they are unfilled inputs.
+  const stripNulls = (o) => {
+    for (const key of Object.keys(o)) {
+      if (o[key] === null) delete o[key];
+      else if (typeof o[key] === 'object' && !Array.isArray(o[key])) stripNulls(o[key]);
+    }
+  };
+  stripNulls(out);
   return out;
 }
 
@@ -1647,17 +1608,22 @@ function tfvarsHeader(cfg, layer, sourceFile) {
 
 function tfvarsGlobal(cfg) {
   const s = cfg.azure.subscriptions;
-  return tfvarsHeader(cfg, 'global', 'terraform/live/global/variables.tf') + [
-    `org_prefix                     = ${hclString(cfg.organization.companyShortName)}`,
-    `management_subscription_id     = ${hclString(s.management)}`,
-    `identity_subscription_id       = ${hclString(s.identity || '')}`,
-    `connectivity_subscription_id   = ${hclString(s.connectivity)}`,
-    `workload_prod_subscription_id  = ${hclString(s.workloadProd)}`,
-    `workload_nonprod_subscription_id = ${hclString(s.workloadNonProd || '')}`,
-    `sandbox_subscription_id        = ${hclString(s.sandbox || '')}`,
-    `allowed_locations              = ${hclList(cfg.azure.allowedLocations)}`,
-    ''
-  ].join('\n');
+  const a = cfg.backend.azurerm;
+  const out = [
+    `root_parent_management_group_id = ${hclString(cfg.azure.managementGroups.rootId || '')}`,
+    `primary_region                  = ${hclString(cfg.azure.primaryRegion)}`,
+    `management_subscription_id      = ${hclString(s.management)}`
+  ];
+  if (s.connectivity) out.push(`connectivity_subscription_id     = ${hclString(s.connectivity)}`);
+  if (s.identity) out.push(`identity_subscription_id         = ${hclString(s.identity)}`);
+  if (s.workloadProd) out.push(`workload_prod_subscription_id    = ${hclString(s.workloadProd)}`);
+  if (s.workloadNonProd) out.push(`workload_nonprod_subscription_id = ${hclString(s.workloadNonProd)}`);
+  if (s.sandbox) out.push(`sandbox_subscription_id          = ${hclString(s.sandbox)}`);
+  out.push(`state_resource_group_name  = ${hclString(a.resourceGroupName)}`);
+  out.push(`state_storage_account_name = ${hclString(a.storageAccountName)}`);
+  out.push(`state_container_name       = ${hclString(a.containerName || 'tfstate')}`);
+  out.push('');
+  return tfvarsHeader(cfg, 'global', 'terraform/live/global/variables.tf') + out.join('\n');
 }
 
 function tfvarsConnectivity(cfg) {
@@ -1665,40 +1631,24 @@ function tfvarsConnectivity(cfg) {
   const hs = c.hubSpoke || {};
   const out = [
     `connectivity_subscription_id = ${hclString(cfg.azure.subscriptions.connectivity)}`,
-    `primary_region              = ${hclString(cfg.azure.primaryRegion)}`,
-    `primary_region_code         = ${hclString(cfg.azure.primaryRegionCode)}`
+    `org_prefix                   = ${hclString(cfg.organization.companyShortName)}`,
+    `primary_region               = ${hclString(cfg.azure.primaryRegion)}`,
+    `primary_region_code          = ${hclString(cfg.azure.primaryRegionCode)}`
   ];
   if (cfg.azure.drRegion) {
-    out.push(`dr_region                   = ${hclString(cfg.azure.drRegion)}`);
-    out.push(`dr_region_code              = ${hclString(cfg.azure.drRegionCode)}`);
+    out.push(`dr_region      = ${hclString(cfg.azure.drRegion)}`);
+    out.push(`dr_region_code = ${hclString(cfg.azure.drRegionCode)}`);
   }
-  if (hs.primaryHubAddressSpace) out.push(`primary_hub_address_space   = ${hclString(hs.primaryHubAddressSpace)}`);
-  if (hs.drHubAddressSpace && cfg.azure.drRegion) out.push(`dr_hub_address_space        = ${hclString(hs.drHubAddressSpace)}`);
-  out.push(`firewall_type               = ${hclString(c.firewall.type)}`);
-  if (c.firewall.type === 'azfw') {
-    out.push(`azfw_tier                   = ${hclString(c.firewall.azfwTier)}`);
-    out.push(`firewall_threat_intel_mode  = ${hclString(c.firewall.threatIntelligenceMode)}`);
-  }
-  if (['palo', 'fortinet'].includes(c.firewall.type)) {
-    out.push(`primary_nva_trust_ip        = ${hclString(c.firewall.nvaTrustIpPrimary)}`);
-    if (cfg.azure.drRegion) out.push(`dr_nva_trust_ip             = ${hclString(c.firewall.nvaTrustIpDr)}`);
-  }
+  if (hs.primaryHubAddressSpace) out.push(`primary_hub_address_space = ${hclString(hs.primaryHubAddressSpace)}`);
+  if (hs.drHubAddressSpace && cfg.azure.drRegion) out.push(`dr_hub_address_space      = ${hclString(hs.drHubAddressSpace)}`);
+  out.push(`azfw_tier                   = ${hclString(c.firewall.azfwTier)}`);
   out.push(`deploy_bastion              = ${c.bastion.enabled}`);
-  out.push(`deploy_dns                  = ${c.privateDns.enabled}`);
-  out.push(`primary_availability_zones  = ${hclList(hs.availabilityZones || [])}`);
-  if (cfg.azure.drRegion) out.push(`dr_availability_zones       = ${hclList(hs.availabilityZones || [])}`);
+  out.push(`deploy_vpn_gateway          = ${(c.vpn || {}).enabled === true}`);
+  out.push(`deploy_expressroute_gateway = ${(c.expressRoute || {}).enabled === true}`);
+  out.push(`deploy_private_dns          = ${c.privateDns.enabled}`);
+  out.push(`private_dns_zones           = ${hclList((c.privateDns || {}).zones || [])}`);
+  out.push(`availability_zones          = ${hclList(hs.availabilityZones || [])}`);
   out.push(`default_tags = ${hclMap(cfg.naming.defaultTags)}`);
-  out.push('');
-  out.push('# REQUIRED — operator-supplied; terraform plan fails until this is set.');
-  out.push('# CIDR ranges permitted to reach firewall management interfaces. The wizard');
-  out.push('# deliberately does not collect operator network ranges (see');
-  out.push("# factory/renderer/variable-map.json); '*' and '0.0.0.0/0' are rejected.");
-  out.push('# management_ip_ranges = ["203.0.113.0/24"]');
-  out.push('');
-  out.push('# RECOMMENDED — Log Analytics workspace ID from the platform-management');
-  out.push('# layer. Left unset, hub firewall diagnostics and threat-intel alerts are');
-  out.push('# not created, and nothing else will warn about it.');
-  out.push('# log_analytics_workspace_id = "<platform-management output log_analytics_workspace_id>"');
   out.push('');
   return tfvarsHeader(cfg, 'platform-connectivity', 'terraform/live/platform-connectivity/variables.tf') + out.join('\n');
 }
@@ -1715,23 +1665,6 @@ function backendHcl(cfg) {
     ''
   ].join('\n');
 
-  if (cfg.backend.type === 'hcp-terraform') {
-    const t = cfg.backend.hcpTerraform;
-    return head + [
-      `organization = ${hclString(t.organization)}`,
-      '',
-      'workspaces {',
-      `  name = ${hclString(t.workspacePrefix + '-<layer>')}`,
-      '}',
-      '',
-      '# Execution mode: ' + t.executionMode,
-      '# Dynamic provider credentials: ' + (t.useDynamicProviderCredentials
-        ? 'enabled — no static Azure credentials are stored in the workspace.'
-        : 'DISABLED — Azure credentials must be stored in the workspace. Recorded as a finding in the generated threat model.'),
-      ''
-    ].join('\n');
-  }
-
   const a = cfg.backend.azurerm;
   return head + [
     `resource_group_name  = ${hclString(a.resourceGroupName)}`,
@@ -1739,7 +1672,8 @@ function backendHcl(cfg) {
     `container_name       = ${hclString(a.containerName || 'tfstate')}`,
     `key                  = ${hclString('<layer>.tfstate')}`,
     `subscription_id      = ${hclString(a.subscriptionId)}`,
-    `use_azuread_auth     = ${a.useAzureAdAuth}`,
+    `use_oidc             = true`,
+    `use_azuread_auth     = true`,
     ''
   ].join('\n');
 }
@@ -1759,10 +1693,7 @@ function environmentDefinitions(cfg) {
     plane,
     abbreviation: own(cfg.naming.environmentAbbreviations, name) || name,
     approvals: own(cfg.environments.approvals, name) || { requiredReviewers: [], waitTimerMinutes: 0, preventSelfReview: true },
-    workspace: cfg.backend.type === 'hcp-terraform'
-      ? `${cfg.backend.hcpTerraform.workspacePrefix}-${name}`
-      : null,
-    stateKey: cfg.backend.type === 'azurerm' ? `${name}.tfstate` : null,
+    stateKey: `${name}.tfstate`,
     oidcSubject: `repo:${cfg.github.ownerName}/${cfg.github.repositoryName}:environment:${name}`,
     identities: {
       plan: {
@@ -1817,7 +1748,6 @@ function deploymentMetadata(cfg) {
     backend: cfg.backend.type,
     deploymentMode: cfg.deploymentStrategy.mode,
     estimatedManagedResources: estimateRum(),
-    hcpFreeTierCap: HCP_FREE_RUM_CAP,
     unmetDependencies: unmetDependencies(cfg),
     generatedBy: 'site/index.html (offline wizard)',
     dataHandling: 'This configuration was produced entirely on the operator workstation. The wizard makes no network requests.'
@@ -1828,16 +1758,13 @@ function deploymentMetadata(cfg) {
 function unmetDependencies(cfg) {
   const out = [];
   if (cfg.security.sentinel && cfg.security.sentinel.enabled) {
-    out.push({ feature: 'Microsoft Sentinel', module: 'sentinel-siem', status: 'scaffold', impact: 'Cannot be emitted. Implement the module before enabling.' });
+    out.push({ feature: 'Microsoft Sentinel', module: '(per-estate)', status: 'recorded-not-deployed', impact: 'Preserved in lz-config.json; onboard inside the generated repository against the management workspace (ADR 0017).' });
   }
   if (cfg.security.keyVault.customerManagedKeys) {
-    out.push({ feature: 'Customer-managed keys', module: 'keyvault-cmk', status: 'scaffold', impact: 'Cannot be emitted. Implement the module before enabling.' });
-  }
-  if (cfg.connectivity.model === 'virtual-wan') {
-    out.push({ feature: 'Virtual WAN', module: '(none)', status: 'missing', impact: 'No module exists. Choose hub-and-spoke or contribute the module.' });
+    out.push({ feature: 'Customer-managed keys', module: '(per-estate)', status: 'recorded-not-deployed', impact: 'Preserved in lz-config.json; implement inside the generated repository (ADR 0017).' });
   }
   if (cfg.security.defender.enabled) {
-    out.push({ feature: 'Defender for Cloud', module: 'defender-baseline', status: 'implemented-not-wired', impact: 'Available, not auto-deployed: no terraform/live layer calls this module and the renderer does not wire it in. After scaffolding, add a module call to a live layer and plan it deliberately.' });
+    out.push({ feature: 'Defender for Cloud plans', module: '(per-estate)', status: 'recorded-not-deployed', impact: 'ALZ policy archetypes govern Defender configuration; plan-level enablement is per-estate work recorded in lz-config.json (ADR 0017).' });
   }
   if (cfg.github.useSelfHostedRunners) {
     out.push({ feature: 'Self-hosted runners', module: '(workflows)', status: 'unsupported', impact: 'v1 emits GitHub-hosted workflows only.' });
@@ -1896,24 +1823,13 @@ function configurationMarkdown(cfg) {
     '',
     '## State backend',
     '',
-    cfg.backend.type === 'hcp-terraform'
-      ? md(
-          `HCP Terraform, organization \`${cfg.backend.hcpTerraform.organization}\`, workspace prefix \`${cfg.backend.hcpTerraform.workspacePrefix}\`.`,
-          '',
-          `Dynamic provider credentials: **${cfg.backend.hcpTerraform.useDynamicProviderCredentials ? 'enabled' : 'disabled'}**.`,
-          '',
-          `Estimated managed resources: **${estimateRum()}** against a free-tier cap of ${HCP_FREE_RUM_CAP}.`,
-          'The HCP Terraform legacy free plan ended 31 March 2026; the current free tier allows 500 managed',
-          'resources, unlimited users, and one policy set of up to five policies. Paid tiers bill on the peak',
-          'hourly resource count, starting at $0.10 per resource per month.'
-        )
-      : md(
-          `Azure Storage — \`${cfg.backend.azurerm.storageAccountName}\` in \`${cfg.backend.azurerm.resourceGroupName}\`,`,
-          `container \`${cfg.backend.azurerm.containerName}\`, Entra ID auth ${cfg.backend.azurerm.useAzureAdAuth ? 'enabled' : '**disabled**'}.`,
-          '',
-          'One state key per layer. The storage account is created by `terraform/backend-bootstrap/` with local',
-          'state, then the state is migrated — that ordering is unavoidable with this backend.'
-        ),
+    md(
+      `Azure Storage — \`${cfg.backend.azurerm.storageAccountName}\` in \`${cfg.backend.azurerm.resourceGroupName}\`,`,
+      `container \`${cfg.backend.azurerm.containerName}\`, OIDC + Entra ID auth (no storage keys).`,
+      '',
+      'One state key per layer, supplied through each layer\'s `backend.hcl`. The state resource group,',
+      'account, and containers are created by the bootstrap broker before the first layer initialises.'
+    ),
     '',
     '## Environments',
     '',
@@ -2056,7 +1972,7 @@ function nextStepsMarkdown(cfg) {
     '```bash',
     `az login --tenant ${cfg.azure.tenantId}`,
     'gh auth login',
-    cfg.backend.type === 'hcp-terraform' ? 'terraform login' : '# no Terraform Cloud login needed for the azurerm backend',
+    '# state auth is OIDC + Entra ID — no separate backend login step',
     '```',
     '',
     `The account you sign in with needs, at minimum: Application Administrator in Entra (to create app registrations and federated credentials), and Owner or User Access Administrator at \`${cfg.azure.managementGroups.rootId}\` (to create management groups and assign roles).`,
@@ -2090,7 +2006,7 @@ function nextStepsMarkdown(cfg) {
     '',
     'Idempotent — safe to re-run after fixing a failure. It creates the app registrations and federated',
     `credentials, the private repository \`${cfg.github.ownerName}/${cfg.github.repositoryName}\`, branch protection,`,
-    'environments, variables, RBAC assignments' + (cfg.backend.type === 'hcp-terraform' ? ', and the Terraform Cloud workspaces.' : ', and the state storage account.'),
+    'environments, variables, RBAC assignments, and the state storage account.',
     '',
     'For CI, the environment-variable equivalents are `LZ_CONFIG_PATH`, `LZ_DISCOVERY_PATH`,',
     '`LZ_BOOTSTRAP_OUTPUT`, and `LZ_BOOTSTRAP_APPLY=true`. `-AllowNotReady` overrides a failed',

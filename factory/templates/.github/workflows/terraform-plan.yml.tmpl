@@ -51,68 +51,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # First-apply pre-flight. management_ip_ranges is a deliberate commented
-      # operator placeholder (the wizard never collects operator network
-      # ranges — contract #4, docs/CROSS-DOMAIN-CONTRACTS.md). Left unfilled
-      # it surfaces later as a raw "No value for required variable" Terraform
-      # error; this step fails fast, before login and init, with an
-      # explanation. (The variable is required and wildcard-rejecting — the
-      # old wide-open '*' default no longer exists.)
-      - name: Pre-flight connectivity operator inputs
-        if: matrix.layer == 'platform-connectivity'
-        working-directory: terraform/live/${{ matrix.layer }}
-        shell: bash
-        run: |
-          shopt -s nullglob
-          set_in=""
-          for f in *.tfvars; do
-            if grep -Eq '^[[:space:]]*management_ip_ranges[[:space:]]*=' "$f"; then
-              set_in="$f"
-            fi
-          done
-          if [ -z "$set_in" ]; then
-            echo "::error::management_ip_ranges is not set in terraform/live/platform-connectivity/*.tfvars."
-            echo "The wizard deliberately exports it as a commented placeholder in connectivity.auto.tfvars;"
-            echo "it must be filled by the operator BEFORE the first connectivity plan. Uncomment the line"
-            echo "and supply your management source ranges, for example:"
-            echo '  management_ip_ranges = ["203.0.113.0/24"]'
-            echo "Wildcards ('*', '0.0.0.0/0') are rejected: they expose firewall management interfaces"
-            echo "to every source address. Do not delete the placeholder comment block - fill it in."
-            exit 1
-          fi
-          if grep -Eq '^[[:space:]]*management_ip_ranges[[:space:]]*=[[:space:]]*(\[[[:space:]]*)?"(\*|0\.0\.0\.0/0)"' "$set_in"; then
-            echo "::error::management_ip_ranges in $set_in is a wildcard ('*' or '0.0.0.0/0')."
-            echo "That exposes firewall management interfaces to every source address. Replace it with"
-            echo "the operator's real management CIDR ranges before planning this layer."
-            exit 1
-          fi
-          echo "management_ip_ranges is set in $set_in."
-
-          # Management-workspace wiring. The SUPPORTED path is the remote-state
-          # wire: after platform-management's first apply, flip
-          # wire_management_workspace = true and the layer reads the workspace
-          # ID from platform-management's state — no ID is ever pasted by hand.
-          # An explicit log_analytics_workspace_id value remains a deliberate
-          # override of the wire (e.g. an externally-owned workspace).
-          if grep -Eq '^[[:space:]]*log_analytics_workspace_id[[:space:]]*=[[:space:]]*"?<' *.tfvars; then
-            echo "::error::log_analytics_workspace_id still contains the '<...>' placeholder text."
-            echo "Do not paste workspace IDs by hand. Re-comment the line; after the platform-management"
-            echo "layer applies, set wire_management_workspace = true instead - the value is then read"
-            echo "from that layer's remote state. Only set log_analytics_workspace_id explicitly to"
-            echo "OVERRIDE the wire with an externally-owned workspace."
-            exit 1
-          fi
-          if grep -Eq '^[[:space:]]*wire_management_workspace[[:space:]]*=[[:space:]]*true' *.tfvars; then
-            echo "wire_management_workspace = true: workspace ID is supplied by platform-management remote state."
-          elif grep -Eq '^[[:space:]]*log_analytics_workspace_id[[:space:]]*=' *.tfvars; then
-            echo "log_analytics_workspace_id set explicitly (deliberate override of the remote-state wire)."
-          else
-            echo "::warning::No management workspace is wired; hub firewall diagnostics and threat-intel"
-            echo "::warning::alerts will not be created. Expected before the first apply: once the"
-            echo "::warning::platform-management layer applies, set wire_management_workspace = true"
-            echo "::warning::(do not paste the workspace ID into tfvars)."
-          fi
-
       - name: Azure login (plan identity, read-only)
         uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
         with:
@@ -128,13 +66,12 @@ jobs:
           # stdout, corrupting `terraform show -json` (destroy gate) and the
           # rendered plan.txt that gets posted to the pull request.
           terraform_wrapper: false
-#{{IF computed.backendIsHcp}}
-          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
-#{{ENDIF}}
 
+      # Backend values live in the layer's backend.hcl; authentication is
+      # OIDC + Azure AD from the login step above — no state keys anywhere.
       - name: Terraform init
         working-directory: terraform/live/${{ matrix.layer }}
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=backend.hcl
 
       - name: Terraform format check
         working-directory: terraform/live/${{ matrix.layer }}

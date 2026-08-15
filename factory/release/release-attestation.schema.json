@@ -12,10 +12,10 @@
     "reviewer",
     "approvalReference",
     "factoryCiReportSha256",
-    "dogfoodReportSha256",
-    "dogfoodReadBackVerified",
+    "e2eReportSha256",
+    "e2eEvidenceVerified",
     "oidcTokenExchangeVerifiedLive",
-    "allEmittedModulesImplemented",
+    "avmPinsVerifiedByInit",
     "branchProtectionVerified"
   ],
   "properties": {
@@ -26,10 +26,10 @@
     "reviewer": { "type": "string", "minLength": 3 },
     "approvalReference": { "type": "string", "minLength": 3 },
     "factoryCiReportSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-    "dogfoodReportSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-    "dogfoodReadBackVerified": { "type": "boolean" },
+    "e2eReportSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "e2eEvidenceVerified": { "type": "boolean" },
     "oidcTokenExchangeVerifiedLive": { "type": "boolean" },
-    "allEmittedModulesImplemented": { "type": "boolean" },
+    "avmPinsVerifiedByInit": { "type": "boolean" },
     "branchProtectionVerified": { "type": "boolean" },
     "notes": { "type": "string" }
   }

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "matchManagers": ["terraform"],
+      "matchDatasources": ["terraform-module", "terraform-provider"]
+    }
+  ]
+}

@@ -19,6 +19,14 @@ param(
     [switch]$AllowStaleInventory
 )
 
+throw @'
+brownfield-import is quarantined (docs/refactor/CLASSIFICATION.md, UNRESOLVED-2).
+Its import-block generation targets the retired bespoke module resource
+addresses; the emitted architecture now references Azure Verified Modules,
+whose internal resource addresses differ. Re-targeting requires verifying
+those addresses against the pinned module versions. Track ADR 0013.
+'@
+
 $module = Join-Path $PSScriptRoot 'factory/import/LZFactory.Import.psm1'
 Import-Module $module -Force
 

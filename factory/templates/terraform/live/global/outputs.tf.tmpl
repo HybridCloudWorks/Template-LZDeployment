@@ -1,0 +1,18 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# global (ALZ core) outputs.
+#
+# GENERATED FILE. Do not hand-edit. Rendered by Landing Zone Factory
+# {{FACTORY-RAW:computed.factoryVersion}}.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Outputs of the global (ALZ core) layer.
+
+output "management_group_resource_ids" {
+  description = "Resource IDs of the management groups the ALZ pattern module created."
+  value       = module.alz.management_group_resource_ids
+}
+
+output "subscription_placements" {
+  description = "Subscription-to-management-group associations this layer manages."
+  value       = { for slot, assoc in azurerm_management_group_subscription_association.placement : slot => assoc.id }
+}

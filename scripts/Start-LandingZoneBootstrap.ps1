@@ -13,8 +13,7 @@
       4. Create federated OIDC credentials (scoped to branches/environments)
       5. Set up GitHub secrets and variables
       6. Create GitHub environments with proper protection
-      7. Configure the state backend (azurerm standard — decision 0011; the
-         legacy TFC phase runs only on an explicit hcp-terraform override)
+      7. Confirm the state backend (azurerm only — ADR 0015)
       8. Generate deployment report
       9. Create a ready-to-merge PR with all generated files
 
@@ -45,10 +44,8 @@
 
 .EXAMPLE
     # Customer engagement: org-owned fork, wizard-exported config, team-gated
-    # environments. azurerm is the standard backend (decision 0011); the TFC
-    # phases run only when the config explicitly says backend.type =
-    # hcp-terraform (legacy estates), and TERRAFORM_CLOUD_ENABLED is false
-    # otherwise.
+    # environments. azurerm is the only backend (ADR 0015);
+    # TERRAFORM_CLOUD_ENABLED is always false.
     .\scripts\Start-LandingZoneBootstrap.ps1 `
         -Repository contoso-org/contoso-lz `
         -ConfigPath .\lz-config.json `
@@ -79,14 +76,10 @@ param(
     # anything the config does not provide is prompted for interactively.
     [string]$ConfigPath = '',
 
-    # Explicit state-backend override: 'azurerm' (Azure Storage, AAD-auth —
-    # the standard since decision 0011 and the default when nothing seeds
-    # backend_type) or 'hcp-terraform' (HCP Terraform / TFC — legacy estates
-    # only; workflow 010 no longer initializes a TFC backend). Outranks the
-    # lz-config.json backend.type. With 'azurerm' the TFC auth phase (2.3)
-    # and the TFC org/workspace/TF_API_TOKEN phase (7) are skipped and
-    # TERRAFORM_CLOUD_ENABLED is set to 'false'.
-    [ValidateSet('', 'hcp-terraform', 'azurerm')]
+    # State-backend selector. azurerm (Azure Storage, OIDC + AAD auth) is
+    # the ONLY backend (ADR 0015); the parameter survives so a caller passing
+    # a retired value gets a validation error, not silent acceptance.
+    [ValidateSet('', 'azurerm')]
     [string]$Backend = '',
 
     # Required reviewers for the dev/prod/hub GitHub environments: user logins
@@ -405,39 +398,6 @@ function Confirm-Auth-GitHub {
     return $user
 }
 
-function Confirm-Auth-TerraformCloud {
-    Write-Section "2.3" "Terraform Cloud (Optional)"
-
-    Write-Step "Checking Terraform Cloud configuration..."
-
-    $tfc = @{
-        organization = ""
-        workspace    = ""
-        token        = ""
-    }
-
-    # Check if .terraformrc exists
-    $terraformrc = if ($IsWindows) {
-        Join-Path $env:APPDATA 'terraform' '.terraformrc'
-    } else {
-        Join-Path $env:HOME '.terraformrc'
-    }
-
-    if (Test-Path $terraformrc) {
-        $content = Get-Content $terraformrc -Raw
-        if ($content -match 'app\.terraform\.io') {
-            Write-OK "Terraform Cloud credentials found in $terraformrc"
-            $tfc['token_source'] = '.terraformrc'
-        }
-    }
-
-    return $tfc
-}
-
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║                    CONFIGURATION GATHERING                              ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
-
 function Import-LzConfig {
     <#
         Seeds the bootloader state from a wizard-exported lz-config.json
@@ -490,34 +450,12 @@ function Import-LzConfig {
         }
     }
 
-    # backend.type → backend_type; hcpTerraform block → TFC org + workspace
+    # backend.type → backend_type (azurerm only — ADR 0015)
     if (-not $State.ContainsKey('backend_type') -and
         $config.ContainsKey('backend') -and $config['backend'].ContainsKey('type')) {
         $backendCfg = $config['backend']
         $State['backend_type'] = $backendCfg['type']
         Write-OK "State backend (from config): $($State['backend_type'])"
-
-        if ($State['backend_type'] -eq 'hcp-terraform' -and $backendCfg.ContainsKey('hcpTerraform')) {
-            $hcp = $backendCfg['hcpTerraform']
-            if (-not $State.ContainsKey('tfc_organization') -and $hcp.ContainsKey('organization')) {
-                $State['tfc_organization'] = $hcp['organization']
-                Write-OK "TFC organization (from config): $($State['tfc_organization'])"
-            }
-            if (-not $State.ContainsKey('tfc_workspace')) {
-                # Schema convention: workspaces are {workspacePrefix}-{layer};
-                # this legacy script manages the single 'landing-zone' layer.
-                $wsPrefix = if ($hcp.ContainsKey('workspacePrefix') -and
-                    -not [string]::IsNullOrWhiteSpace($hcp['workspacePrefix'])) {
-                    $hcp['workspacePrefix']
-                } elseif ($State.ContainsKey('org_prefix')) {
-                    $State['org_prefix']
-                } else {
-                    ''
-                }
-                $State['tfc_workspace'] = if ($wsPrefix) { "$wsPrefix-landing-zone" } else { 'landing-zone' }
-                Write-OK "TFC workspace (from config): $($State['tfc_workspace'])"
-            }
-        }
     }
 
     # backend.azurerm → state storage account coordinates (drive the state
@@ -716,11 +654,8 @@ function Gather-DeploymentConfig {
     }
     Write-OK "Repository: $($State['repo_name'])"
 
-    # State backend (seeded by -Backend or -ConfigPath). azurerm is the
-    # standard (decision 0011: the live tree is azurerm everywhere), so an
-    # unseeded run gets it without prompting — the interactive TFC choice is
-    # retired. hcp-terraform survives only as an explicit override for legacy
-    # estates and is warned about at phase 2.3.
+    # State backend (seeded by -Backend or -ConfigPath). azurerm is the only
+    # backend (ADR 0015); an unseeded run gets it without prompting.
     if (-not $State.ContainsKey('backend_type')) {
         $State['backend_type'] = 'azurerm'
     }
@@ -852,7 +787,10 @@ function Build-LzPlanConfig {
             }
         }
     } else {
-        [pscustomobject]@{ type = 'hcp-terraform' }
+        # backend_type is validated to azurerm before this point (ADR 0015);
+        # an empty coordinates object only means the storage names were not
+        # seeded, which the identity plan reports as a pending activity.
+        [pscustomobject]@{ type = 'azurerm' }
     }
 
     return [pscustomobject]@{
@@ -1403,12 +1341,12 @@ function Set-GitHubSecrets {
         }
     }
 
-    # GitHub Variables. TERRAFORM_CLOUD_ENABLED is 'true' only on an explicit
-    # legacy hcp-terraform override; azurerm (the decision-0011 standard,
-    # including any run where backend_type was never recorded) is 'false'.
+    # GitHub Variables. TERRAFORM_CLOUD_ENABLED is always 'false' (ADR 0015);
+    # the variable survives one release so older generated workflows that
+    # still read it see an explicit false rather than an absent variable.
     Write-Step "Setting GitHub variables..."
 
-    $tfcEnabled = if ($State.ContainsKey('backend_type') -and $State['backend_type'] -eq 'hcp-terraform') { 'true' } else { 'false' }
+    $tfcEnabled = 'false'
 
     $variables = @{
         'AZURE_REGION'            = $State['region']
@@ -1529,95 +1467,6 @@ function Setup-GitHub-Environments {
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                    TERRAFORM CLOUD                                      ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
-
-function Setup-TerraformCloud {
-    param(
-        [hashtable]$State,
-        [string]$GithubOwner,
-        [string]$RepoName
-    )
-
-    Write-Section "7" "Terraform Cloud Configuration"
-
-    # Honor the backend decision: azurerm state lives in Azure Storage
-    # (AAD-auth) — no TFC organization, workspace, or TF_API_TOKEN is needed.
-    if ($State.ContainsKey('backend_type') -and $State['backend_type'] -eq 'azurerm') {
-        Write-OK "Skipped: azurerm backend selected — state is in Azure Storage, no TFC org/workspace/TF_API_TOKEN required"
-        return
-    }
-
-    $repo = "$GithubOwner/$RepoName"
-
-    # Prompt for TFC organization (seeded by -ConfigPath when supplied)
-    if (-not $State.ContainsKey('tfc_organization')) {
-        $tfc_org = Read-Host "  Terraform Cloud organization name (e.g., my-company)"
-        if ([string]::IsNullOrEmpty($tfc_org)) {
-            Write-Warn "Skipping TFC setup (you can configure manually later)"
-            return
-        }
-        $State['tfc_organization'] = $tfc_org
-    }
-
-    $tfc_org = $State['tfc_organization']
-
-    # Workspace name (seeded by -ConfigPath; the old hardcoded 'landing-zone'
-    # remains the interactive default only)
-    if (-not $State.ContainsKey('tfc_workspace')) {
-        $workspace_input = Read-Host "  Terraform Cloud workspace name (default: landing-zone)"
-        if ([string]::IsNullOrEmpty($workspace_input)) { $workspace_input = 'landing-zone' }
-        $State['tfc_workspace'] = $workspace_input
-    }
-    $workspace = $State['tfc_workspace']
-
-    Write-Step "TFC Organization: $tfc_org"
-    Write-Step "TFC Workspace: $workspace"
-
-    # Prompt for API token
-    if (-not $State.ContainsKey('tfc_token_set')) {
-        Write-Manual "You need a Terraform Cloud API token."
-        Write-Info "  1. Log in to app.terraform.io"
-        Write-Info "  2. Go to Settings → Tokens"
-        Write-Info "  3. Create a new API token"
-        Write-Info "  4. Paste it below (input will be hidden)"
-        Write-Host ""
-
-        $token_secure = Read-Host "  Paste your TFC API token" -AsSecureString
-        $token = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($token_secure))
-
-        if ([string]::IsNullOrEmpty($token)) {
-            Write-Warn "No token provided - skipping TFC setup"
-            return
-        }
-
-        # Set GitHub secret for TFC token
-        Write-Step "Storing TFC API token in GitHub secrets..."
-        $token | gh secret set TF_API_TOKEN --repo $repo 2>&1 | Out-Null
-
-        if ($LASTEXITCODE -eq 0) {
-            Write-OK "TFC API token stored securely"
-        } else {
-            Write-Warn "Could not store TFC token in GitHub"
-        }
-
-        $State['tfc_token_set'] = $true
-    }
-
-    # Set GitHub variables for TFC
-    Write-Step "Setting TFC configuration variables..."
-    gh variable set TF_CLOUD_ORGANIZATION --repo $repo --body $tfc_org 2>&1 | Out-Null
-    gh variable set TF_CLOUD_WORKSPACE --repo $repo --body $workspace 2>&1 | Out-Null
-
-    Write-OK "Terraform Cloud configured"
-    Write-Info "Organization: $tfc_org"
-    Write-Info "Workspace: $workspace"
-    Write-Warn "Workflow 010 initializes only the azurerm backend (decision 0011) — this TFC configuration serves a legacy estate, not the numbered workflow chain."
-
-    Save-BootloaderState $State
-}
-
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║                    BOOTSTRAP REPORT & PR                                ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 function Generate-BootstrapReport {
@@ -1845,10 +1694,7 @@ $mgGrantCommands
         @"
 | Setting | Value |
 |---------|-------|
-| Backend | hcp-terraform (LEGACY override — decision 0011 standardizes on azurerm) |
-| Organization | $($State['tfc_organization'] ?? 'Not configured') |
-| Workspace | $($State['tfc_workspace'] ?? 'landing-zone') |
-| API Token | Stored in GitHub secret: TF_API_TOKEN |
+| Backend | azurerm (state coordinates not seeded — supply backend.azurerm in lz-config.json) |
 "@
     }
 
@@ -2069,14 +1915,11 @@ function Main {
         $repoOwner = $state['github_owner']
         $repoName = $state['repo_name']
 
-        # Phase 2.3 (runs after Phase 3 by design): the TFC auth check only
-        # applies when the hcp-terraform backend is explicitly overridden
-        if ($state['backend_type'] -eq 'hcp-terraform') {
-            Write-Warn "backend_type=hcp-terraform is a LEGACY override: decision 0011 standardized the live tree on azurerm, and workflow 010 initializes only the azurerm backend."
-            Confirm-Auth-TerraformCloud
-            Mark-StepComplete $state "tfc-auth"
-        } else {
-            Write-Info "Skipping Terraform Cloud auth check (backend: $($state['backend_type']))"
+        # azurerm is the only backend (ADR 0015): the legacy hcp-terraform
+        # override and its auth phase were retired with the render path's
+        # dual-backend feature.
+        if ($state['backend_type'] -ne 'azurerm') {
+            throw "backend_type '$($state['backend_type'])' is not supported: azurerm is the only state backend (ADR 0015)."
         }
 
         # Sandbox RBAC enforcement: sandbox enabled + no subscription ID is a
@@ -2138,13 +1981,8 @@ function Main {
 
         Mark-StepComplete $state "github-environments"
 
-        # Phase 7: Terraform Cloud (skips itself when backend_type=azurerm)
-        Setup-TerraformCloud `
-            -State $state `
-            -GithubOwner $repoOwner `
-            -RepoName $repoName
-
-        Mark-StepComplete $state "tfc-setup"
+        # Phase 7 (Terraform Cloud) was retired by ADR 0015: state lives in
+        # Azure Storage with OIDC + Azure AD auth; there is nothing to set up.
 
         # Phase 8: Report
         $reportPath = Generate-BootstrapReport -State $state -ReportDir $ReportDirectory
@@ -2163,11 +2001,7 @@ function Main {
         Write-OK "✓ Federated credentials configured"
         Write-OK "✓ GitHub secrets set"
         Write-OK "✓ GitHub environments created"
-        if ($state['backend_type'] -eq 'azurerm') {
-            Write-OK "✓ State backend: azurerm (Terraform Cloud phases skipped)"
-        } else {
-            Write-OK "✓ Terraform Cloud configured"
-        }
+        Write-OK "✓ State backend: azurerm (OIDC + Azure AD auth)"
         Write-OK "✓ Bootstrap report generated"
 
         Write-Host ""

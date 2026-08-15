@@ -7,6 +7,68 @@ entries below are history and are not rewritten.
 
 ---
 
+## Factory 0.10.0 — the generator-only refactor (2026-08-15)
+
+Operator-directed (superseding refactor directive, ratified "complete every
+effort point"): the repository is now a **generator only**. Recorded as
+[ADR 0013](docs/decisions/0013-generator-only-avm-architecture.md) through
+[ADR 0017](docs/decisions/0017-wizard-scope-vs-emitted-architecture.md),
+with the refactor's own gate documents under
+[docs/refactor/](docs/refactor/) (classification, grep findings, output
+contract, coverage, placeholders, UI self-containment). What shipped:
+
+- **The bespoke architecture is gone from both trees**
+  ([ADR 0013](docs/decisions/0013-generator-only-avm-architecture.md)): the
+  working `terraform/` tree (11 modules, ~3,958 HCL lines, 5 live layers,
+  `backend-bootstrap/`) and the vendored `factory/templates/terraform`
+  module mirror were deleted. The generator now emits three root-module
+  layers referencing Azure Verified Modules by pinned registry
+  source+version (`avm-ptn-alz` 0.21.0 with ALZ library `platform/alz` @
+  2026.04.2, `avm-ptn-alz-management` 0.9.0, and per topology answer
+  `avm-ptn-alz-connectivity-hub-and-spoke-vnet` 0.17.3 **or**
+  `avm-ptn-alz-connectivity-virtual-wan` 0.17.1). The emitted
+  `renovate.json` owns the pins in the generated repository from delivery
+  onward. Deploy order: `platform-management` → `global` →
+  `platform-connectivity`.
+- **The self-deploying pipeline is deleted**: workflows 010/020,
+  `terraform-plan`/`terraform-apply`/`azure-auth-test`, and
+  `dogfood-instance` plus its entry points. The dogfood release gate is
+  replaced by the end-to-end generation proof (`factory-version.json`
+  `releaseGates.endToEndGenerationProofPasses`);
+  `terraform-policy-checks.yml` now renders both topology fixtures and runs
+  `init`/`validate` on the rendered output — the execution-time AVM pin
+  verification. `brownfield-import` is quarantined pending AVM re-targeting
+  ([docs/refactor/CLASSIFICATION.md](docs/refactor/CLASSIFICATION.md)
+  UNRESOLVED-2).
+- **Delivery auth and instantiation**
+  ([ADR 0014](docs/decisions/0014-delivery-auth-app-pat-and-template-instantiation.md)):
+  `Initialize-LzDeliveryAuth` supports GitHub App installation token →
+  fine-grained PAT → interactive `gh` session, amending decision 0004 so
+  delivery no longer requires an interactive session; per-client GitHub
+  template-repo instantiation is recorded alongside the private-copy
+  mechanic.
+- **azurerm is the only backend anywhere**
+  ([ADR 0015](docs/decisions/0015-azurerm-only-emitted-backend.md),
+  superseding decision 0011's render-path scope-out): schema 2.1.0
+  `backend.type` const, azurerm-only wizard step, empty backend block +
+  per-layer `backend.hcl` with `use_oidc`/`use_azuread_auth`, all TFC
+  surfaces removed (`TF_API_TOKEN` was the system's last static
+  credential).
+- **Emitted workflows stay self-contained**
+  ([ADR 0016](docs/decisions/0016-self-contained-emitted-workflows.md)):
+  the directive's thin-caller pattern was ratified against — SHA-pinned,
+  least-privilege workflow definitions are emitted whole, enforced by gate
+  V05 and the emitted action-pinning policy.
+- **Wizard scope preserved, consumption reclassified**
+  ([ADR 0017](docs/decisions/0017-wizard-scope-vs-emitted-architecture.md)):
+  all 15 steps stay; `deploy_vpn_gateway`/`deploy_expressroute_gateway` are
+  newly Terraform-consumed; Defender/Sentinel/CMK/naming/budget answers are
+  recorded-not-deployed with wizard and guard warnings; firewall narrows to
+  Azure Firewall; Virtual WAN topology is now fully supported (previously
+  export-blocked).
+
+---
+
 ## The go-live execution kit exists (2026-08-15)
 
 Two shipped artifacts, prepared when the operator opened the go-live phase

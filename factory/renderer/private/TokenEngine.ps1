@@ -136,12 +136,15 @@ function New-LzRenderContext {
     $map['computed.layers'] = Get-LzActiveLayers -Config $Config
     $map['computed.layersCsv'] = (@($map['computed.layers']) -join ',')
 
-    $map['computed.backendIsHcp'] = ($Config.backend.type -eq 'hcp-terraform')
-    $map['computed.backendIsAzurerm'] = ($Config.backend.type -eq 'azurerm')
+    # The emitted backend is azurerm-only (ADR 0015); the flag survives for
+    # templates that want to state it explicitly.
+    $map['computed.backendIsAzurerm'] = $true
 
-    if ($Config.backend.type -eq 'hcp-terraform') {
-        $map['computed.workspacePrefix'] = $Config.backend.hcpTerraform.workspacePrefix
-    }
+    # Network topology drives which connectivity pattern module is emitted —
+    # hub-and-spoke or Virtual WAN, never both. Computed once so no template
+    # can disagree about the topology.
+    $map['computed.topologyIsHubSpoke'] = ($Config.connectivity.model -eq 'hub-spoke')
+    $map['computed.topologyIsVwan'] = ($Config.connectivity.model -eq 'virtual-wan')
 
     # OIDC subjects. Computed centrally so no template can invent its own.
     $map['computed.oidcSubjectPullRequest'] = "repo:${slug}:pull_request"
@@ -202,30 +205,14 @@ function Get-LzActiveLayers {
     #>
     param([Parameter(Mandatory)][object]$Config)
 
-    $layers = @('global')
+    # The AVM architecture emits exactly three layers (ADR 0013/0017).
+    # Order is the deploy order: platform-management first, because the global
+    # layer reads its state for the Log Analytics policy default. Workload
+    # spokes and sandboxes are per-estate work done inside the generated
+    # repository, not generator architecture.
+    $layers = @('platform-management', 'global')
 
     if ($Config.connectivity.model -ne 'none') { $layers += 'platform-connectivity' }
-    $layers += 'platform-management'
-
-    if ((Test-LzHasProperty $Config.azure.subscriptions 'identity') -and
-        $Config.azure.subscriptions.identity) {
-        $layers += 'platform-identity'
-    }
-
-    if ($Config.environments.application -contains 'prod') { $layers += 'workloads-prod' }
-    if ($Config.environments.application -contains 'dev' -or
-        $Config.environments.application -contains 'test' -or
-        $Config.environments.application -contains 'uat') {
-        $layers += 'workloads-nonprod'
-    }
-
-    # The sandbox layer needs its own subscription; emitting it without one
-    # produces a layer that cannot plan.
-    if ($Config.environments.application -contains 'sandbox' -and
-        (Test-LzHasProperty $Config.azure.subscriptions 'sandbox') -and
-        $Config.azure.subscriptions.sandbox) {
-        $layers += 'sandbox'
-    }
 
     return $layers
 }

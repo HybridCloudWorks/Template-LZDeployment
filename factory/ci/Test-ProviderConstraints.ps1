@@ -41,8 +41,9 @@ $ErrorActionPreference = 'Stop'
 # ── Canonical provider registry ──────────────────────────────────────────────
 # One constraint per provider across the entire repository (live + corpus).
 $CANONICAL_CONSTRAINTS = [ordered]@{
-    'hashicorp/azurerm' = '~> 5.0'
-    'hashicorp/random'  = '~> 3.6'
+    'hashicorp/azurerm' = '~> 4.0'
+    'Azure/alz'         = '~> 0.21.0'
+    'Azure/azapi'       = '~> 2.12'
 }
 
 # ── Deliberate, reasoned divergences ─────────────────────────────────────────
@@ -53,8 +54,9 @@ $EXCEPTIONS = @()
 # ─────────────────────────────────────────────────────────────────────────────
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+# Generator-only model (ADR 0013): the template corpus is the only Terraform
+# tree in the repository.
 $roots = @(
-    (Join-Path $repo 'terraform'),
     (Join-Path $repo 'factory/templates/terraform')
 )
 

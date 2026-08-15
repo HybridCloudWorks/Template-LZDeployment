@@ -4,6 +4,10 @@ set -euo pipefail
 # Stage 11 launcher. It generates reviewable artifacts only and never runs
 # terraform import. All customer-specific values come from files or variables.
 
+echo "brownfield-import is quarantined (docs/refactor/CLASSIFICATION.md, UNRESOLVED-2):" >&2
+echo "its import targets reference the retired bespoke modules, not the AVM corpus." >&2
+exit 1
+
 import_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 config_path="${LZ_CONFIG_PATH:-./lz-config.json}"
 discovery_path="${LZ_DISCOVERY_PATH:-./discovery-inventory.json}"

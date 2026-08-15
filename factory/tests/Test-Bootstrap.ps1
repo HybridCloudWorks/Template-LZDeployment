@@ -50,8 +50,12 @@ ok 'bootstrap apply uses management-group policy roles' (
         @($_.roles) -contains 'Resource Policy Contributor'
     }).Count -eq 1
 )
-ok 'plan subjects are exact pull_request subjects' (
-    @($plan.identities | Where-Object { $_.kind -eq 'plan' -and $_.subject -notmatch ':pull_request$' }).Count -eq 0
+ok 'plan subjects are pull_request plus the default branch (exact, no wildcards)' (
+    @($plan.identities | Where-Object kind -eq 'plan' | Where-Object {
+        @($_.subject).Count -ne 2 -or
+        @($_.subject | Where-Object { $_ -match ':pull_request$' }).Count -ne 1 -or
+        @($_.subject | Where-Object { $_ -match ':ref:refs/heads/[^*]+$' }).Count -ne 1
+    }).Count -eq 0
 )
 ok 'apply subjects are exact environment subjects' (
     @($plan.identities | Where-Object { $_.kind -eq 'apply' -and $_.subject -notmatch ':environment:[^*]+$' }).Count -eq 0
@@ -60,7 +64,7 @@ ok 'no wildcard subjects' (
     @($plan.identities | Where-Object { $_.subject -match '\*' }).Count -eq 0
 )
 ok 'repository derived from config' ($plan.repository -eq 'contoso-platform/contoso_LZ_Deployment')
-ok 'active layers retained' ($plan.layers -contains 'platform-connectivity' -and $plan.layers -contains 'workloads-prod')
+ok 'active layers retained' ($plan.layers -contains 'platform-connectivity' -and $plan.layers -contains 'platform-management' -and $plan.layers -contains 'global')
 
 # Deployment branch policy: every GitHub environment the plan will reconcile
 # must show protected_branches=true in plan-first mode (a workflow_dispatch
@@ -78,10 +82,10 @@ ok 'plan surfaces protected-branches deployment policy for every environment (pe
     Test-BranchPolicyCoverage $plan
 )
 
-# Byte parity: with an hcp-terraform backend, per-environment output must be
-# byte-for-byte the pre-change broker output, so existing generated estates
-# re-run idempotently with zero drift. The fixture was captured from the
-# pre-change module with generatedAt normalized.
+# Byte parity: per-environment output must be byte-for-byte the pinned broker
+# output, so generated estates re-run idempotently with zero drift. The
+# fixture was captured from the 0.10.0 module (azurerm-only, three-layer AVM
+# architecture) with generatedAt normalized.
 #
 # DOCUMENTED DELTA (2026-08-02): githubEnvironments is stripped before the
 # comparison. It is new GitHub-path metadata added so plan-first mode shows the
@@ -116,8 +120,10 @@ ok 'minimal emits one plan and one apply record' ($planRecord.Count -eq 1 -and $
 ok 'minimal display names have no environment segment' (
     $planRecord[0].displayName -eq 'sp-chg-plan' -and $applyRecord[0].displayName -eq 'sp-chg-apply'
 )
-ok 'minimal plan subject is the single pull_request subject' (
-    @($planRecord[0].subject).Count -eq 1 -and $planRecord[0].subject -match ':pull_request$'
+ok 'minimal plan subjects are pull_request plus the default branch' (
+    @($planRecord[0].subject).Count -eq 2 -and
+    @($planRecord[0].subject | Where-Object { $_ -match ':pull_request$' }).Count -eq 1 -and
+    @($planRecord[0].subject | Where-Object { $_ -match ':ref:refs/heads/[^*]+$' }).Count -eq 1
 )
 ok 'minimal plan identity is Reader at the MG root' (
     @($planRecord[0].roleAssignments | Where-Object { $_.role -eq 'Reader' -and $_.scope -eq $mgRootScope }).Count -eq 1
@@ -140,10 +146,11 @@ ok 'no wildcard subjects in minimal mode' (
 )
 
 # Union RBAC: MG-root roles from the bootstrap entry plus Contributor once per
-# distinct subscription. Fixture: management ...001, connectivity ...002,
-# prod ...003 => 2 MG-root roles + 3 Contributor assignments = 5, no dupes.
+# distinct subscription, plus the state data-plane grant (azurerm backend —
+# ADR 0015). Fixture: management ...001, connectivity ...002, prod ...003 =>
+# 2 MG-root roles + 3 Contributor + 1 Storage Blob Data Contributor = 6.
 $applyAssignments = @($applyRecord[0].roleAssignments)
-ok 'minimal apply RBAC is the deduplicated union (5 assignments)' ($applyAssignments.Count -eq 5) ($applyAssignments | ConvertTo-Json -Compress)
+ok 'minimal apply RBAC is the deduplicated union (6 assignments)' ($applyAssignments.Count -eq 6) ($applyAssignments | ConvertTo-Json -Compress)
 ok 'minimal apply keeps both MG-root bootstrap roles' (
     @($applyAssignments | Where-Object { $_.scope -eq $mgRootScope -and $_.role -in @('Management Group Contributor', 'Resource Policy Contributor') }).Count -eq 2
 )
@@ -165,13 +172,14 @@ ok 'explicit minimal equals absent-key default' (
 )
 
 # ---------------------------------------------------------------------------
-# hcp-terraform backend: NO state storage roles in either mode
+# azurerm is the only backend (ADR 0015): state data-plane roles are ALWAYS
+# planned, in both identity modes.
 # ---------------------------------------------------------------------------
-ok 'hcp-terraform minimal plan emits no storage data-plane roles' (
-    ($planMin | ConvertTo-Json -Depth 30) -notmatch 'Storage Blob Data'
+ok 'minimal plan grants storage data-plane roles' (
+    ($planMin | ConvertTo-Json -Depth 30) -match 'Storage Blob Data'
 )
-ok 'hcp-terraform per-environment plan emits no storage data-plane roles' (
-    $actual -notmatch 'Storage Blob Data'
+ok 'per-environment plan grants storage data-plane roles' (
+    $actual -match 'Storage Blob Data'
 )
 
 # ---------------------------------------------------------------------------
@@ -180,7 +188,7 @@ ok 'hcp-terraform per-environment plan emits no storage data-plane roles' (
 # ---------------------------------------------------------------------------
 function ConvertTo-AzurermBackendConfig([object]$Config) {
     $Config.backend.type = 'azurerm'
-    $Config.backend | Add-Member -NotePropertyName azurerm -NotePropertyValue ([pscustomobject]@{
+    $Config.backend | Add-Member -Force -NotePropertyName azurerm -NotePropertyValue ([pscustomobject]@{
         resourceGroupName = 'rg-chg-tfstate'
         storageAccountName = 'chgtfstate'
         containerName = 'tfstate'
@@ -189,7 +197,9 @@ function ConvertTo-AzurermBackendConfig([object]$Config) {
     })
     return $Config
 }
-$stateScope = '/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-chg-tfstate/providers/Microsoft.Storage/storageAccounts/chgtfstate'
+# Container scope (not account scope): each identity touches exactly its own
+# state container.
+$stateScope = '/subscriptions/aaaaaaaa-0000-0000-0000-000000000001/resourceGroups/rg-chg-tfstate/providers/Microsoft.Storage/storageAccounts/chgtfstate/blobServices/default/containers/tfstate'
 
 $cfgAzMin = ConvertTo-AzurermBackendConfig (Get-SampleConfig)
 $planAzMin = New-LzBootstrapPlan -Config $cfgAzMin
@@ -284,8 +294,8 @@ ok 'sandbox minimal: exactly one RBAC Administrator grant on the shared apply' (
 ok 'sandbox minimal: grant is sandbox-scoped with the exact ABAC condition' (
     $sbxGrants.Count -eq 1 -and (Test-SandboxGrant $sbxGrants[0])
 ) ($sbxGrants | ConvertTo-Json -Compress)
-ok 'sandbox minimal: union is otherwise unchanged (5 + 1 assignments)' (
-    @($sbxApply.roleAssignments).Count -eq 6
+ok 'sandbox minimal: union is otherwise unchanged (6 + 1 assignments)' (
+    @($sbxApply.roleAssignments).Count -eq 7
 )
 ok 'sandbox minimal: plan identity never carries the grant' (
     ($sbxPlan.roleAssignments | ConvertTo-Json -Depth 10) -notmatch 'Role Based Access Control Administrator'

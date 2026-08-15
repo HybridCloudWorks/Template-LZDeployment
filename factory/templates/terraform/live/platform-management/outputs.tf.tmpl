@@ -1,49 +1,19 @@
-# GENERATED FILE. Do not hand-edit. Rendered from lz-config.json by
-# Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}.
+# ─────────────────────────────────────────────────────────────────────────────
+# platform-management outputs.
+#
+# GENERATED FILE. Do not hand-edit. Rendered by Landing Zone Factory
+# {{FACTORY-RAW:computed.factoryVersion}}.
+#
+# These outputs are the contract the global layer reads through remote state to
+# feed ALZ policy defaults. Renaming one breaks the global layer's plan.
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Unconditional, like the module that feeds it. This is the value the
-# connectivity layer's wire_management_workspace remote-state read consumes.
 output "log_analytics_workspace_id" {
-  description = "Central Log Analytics workspace resource ID (consumed by the connectivity layer for hub diagnostics)"
-  value       = module.management_baseline.log_analytics_workspace_id
+  description = "Resource ID of the management Log Analytics workspace."
+  value       = module.management.log_analytics_workspace.id
 }
 
-# Also unconditional. Traffic Analytics needs the short GUID and the workspace
-# region as well as the ARM ID above; the connectivity layer re-exports all
-# three so the workload layers can reach them through the connectivity read
-# they already perform, rather than opening a second remote-state read.
-output "log_analytics_workspace_guid" {
-  description = "Central Log Analytics workspace GUID (short customer ID), required by NSG flow-log Traffic Analytics"
-  value       = module.management_baseline.log_analytics_workspace_guid
-}
-
-output "log_analytics_workspace_location" {
-  description = "Region of the central Log Analytics workspace, required by NSG flow-log Traffic Analytics"
-  value       = module.management_baseline.log_analytics_workspace_location
-}
-
-#{{IF security.backup.enabled}}
-output "backup_primary_rsv_id" {
-  description = "Recovery Services vault ID in the primary region"
-  value       = module.backup_primary.recovery_services_vault_id
-}
-
-#{{IF computed.hasDrRegion}}
-output "backup_dr_rsv_id" {
-  description = "Recovery Services vault ID in the DR region"
-  value       = module.backup_dr.recovery_services_vault_id
-}
-#{{ENDIF}}
-#{{ENDIF}}
-
-#{{IF defined azure.subscriptions.sandbox && azure.subscriptions.sandbox}}
 output "automation_account_id" {
-  description = "Platform automation account ID"
-  value       = azurerm_automation_account.main.id
+  description = "Resource ID of the management Automation Account."
+  value       = module.management.automation_account.id
 }
-
-output "automation_identity_principal_id" {
-  description = "System-assigned identity of the automation account. Grant this the rights the cleanup runbook needs in the sandbox subscription."
-  value       = azurerm_automation_account.main.identity[0].principal_id
-}
-#{{ENDIF}}

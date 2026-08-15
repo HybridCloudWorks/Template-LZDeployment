@@ -1,0 +1,244 @@
+{
+  "schemaVersion": "2.1.0",
+  "factoryVersion": "0.10.0",
+  "generatedAt": "2026-07-25T00:00:00.000Z",
+  "organization": {
+    "companyName": "Contoso Health Group vWAN",
+    "companyShortName": "chg",
+    "businessUnit": "Platform",
+    "outputDirectoryName": "contoso"
+  },
+  "azure": {
+    "tenantId": "11111111-2222-3333-4444-555555555555",
+    "primaryRegion": "southcentralus",
+    "primaryRegionCode": "scus",
+    "drRegion": "northcentralus",
+    "drRegionCode": "ncus",
+    "allowedLocations": [
+      "southcentralus",
+      "northcentralus"
+    ],
+    "subscriptions": {
+      "management": "aaaaaaaa-0000-0000-0000-000000000001",
+      "connectivity": "aaaaaaaa-0000-0000-0000-000000000002",
+      "workloadProd": "aaaaaaaa-0000-0000-0000-000000000003"
+    },
+    "managementGroups": {
+      "rootId": "mg-contoso",
+      "strategy": "caf-standard"
+    }
+  },
+  "github": {
+    "ownershipModel": "organization",
+    "ownerName": "contoso-platform",
+    "repositoryName": "contoso_LZ_Deployment",
+    "visibility": "private",
+    "defaultBranch": "main",
+    "branchProtection": {
+      "enabled": true,
+      "requiredApprovals": 1,
+      "requireCodeOwnerReview": true,
+      "dismissStaleReviews": true,
+      "requireLinearHistory": true,
+      "enforceAdmins": false
+    },
+    "useSelfHostedRunners": false
+  },
+  "backend": {
+    "type": "azurerm",
+    "azurerm": {
+      "resourceGroupName": "rg-tfstate-scus-prod-01",
+      "storageAccountName": "stchgtfstateabcd",
+      "containerName": "tfstate",
+      "subscriptionId": "aaaaaaaa-0000-0000-0000-000000000001"
+    }
+  },
+  "deploymentStrategy": {
+    "mode": "greenfield"
+  },
+  "environments": {
+    "platform": [
+      "bootstrap",
+      "connectivity",
+      "management"
+    ],
+    "application": [
+      "prod"
+    ],
+    "promotionPath": [
+      "prod"
+    ],
+    "approvals": {}
+  },
+  "connectivity": {
+    "model": "virtual-wan",
+    "hubSpoke": {
+      "primaryHubAddressSpace": "10.0.0.0/16",
+      "drHubAddressSpace": "10.10.0.0/16",
+      "primarySpokeAddressSpace": "10.2.0.0/16",
+      "drSpokeAddressSpace": "10.11.0.0/16",
+      "availabilityZones": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    "firewall": {
+      "type": "azfw",
+      "azfwTier": "Standard",
+      "threatIntelligenceMode": "Deny"
+    },
+    "expressRoute": {
+      "enabled": false
+    },
+    "vpn": {
+      "enabled": false
+    },
+    "bastion": {
+      "enabled": false,
+      "sku": "Standard"
+    },
+    "privateDns": {
+      "enabled": false,
+      "centralizedInHub": true,
+      "zones": []
+    },
+    "privateEndpoints": {
+      "enabled": true,
+      "denyPublicNetworkAccessPolicy": true
+    }
+  },
+  "identity": {
+    "strategy": "cloud-only",
+    "deployIdentitySubscription": false,
+    "privilegedAccessModel": "pim-eligible",
+    "breakGlassAccounts": [
+      {
+        "name": "bg-admin-1@contoso.onmicrosoft.com",
+        "email": "secops@contoso.com",
+        "role": "Global Administrator"
+      },
+      {
+        "name": "bg-admin-2@contoso.onmicrosoft.com",
+        "email": "secops@contoso.com",
+        "role": "Global Administrator"
+      }
+    ]
+  },
+  "security": {
+    "defender": {
+      "enabled": false,
+      "plans": []
+    },
+    "sentinel": {
+      "enabled": false,
+      "dataConnectors": [],
+      "retentionDays": 90
+    },
+    "keyVault": {
+      "strategy": "per-environment",
+      "enablePurgeProtection": true,
+      "softDeleteRetentionDays": 90,
+      "customerManagedKeys": false,
+      "enableRbacAuthorization": true
+    },
+    "nsgFlowLogs": {
+      "enabled": true,
+      "retentionDays": 90,
+      "trafficAnalytics": true
+    },
+    "backup": {
+      "enabled": true,
+      "immutableVault": true,
+      "geoRedundant": true
+    }
+  },
+  "governance": {
+    "policyBaseline": {
+      "enforcementMode": "audit",
+      "requiredTags": [
+        "owner",
+        "application",
+        "environment",
+        "cost_center"
+      ]
+    },
+    "policyAsCodeEngines": [
+      "azure-policy",
+      "conftest"
+    ],
+    "complianceFrameworks": [],
+    "regulatoryNotes": "",
+    "dataResidencyRegions": [],
+    "resourceLocks": {
+      "lockPlatformResourceGroups": true,
+      "lockLevel": "CanNotDelete"
+    }
+  },
+  "observability": {
+    "logAnalytics": {
+      "retentionDays": 90,
+      "dailyQuotaGb": -1,
+      "sku": "PerGB2018"
+    },
+    "diagnosticSettings": {
+      "enabled": true,
+      "sendActivityLog": true,
+      "sendToStorage": false,
+      "sendToEventHub": false
+    },
+    "alerting": {
+      "actionGroupEmails": [],
+      "enablePlatformHealthAlerts": true,
+      "enableDriftAlerts": true
+    },
+    "driftDetection": {
+      "enabled": true,
+      "schedule": "0 6 * * 1",
+      "failOnDrift": false,
+      "openIssueOnDrift": true
+    }
+  },
+  "operations": {
+    "operatingModel": "centralized",
+    "platformTeam": {
+      "name": "Cloud Platform",
+      "contacts": [
+        {
+          "name": "Alex Fictional",
+          "email": "alex@contoso.com",
+          "role": "Lead"
+        }
+      ]
+    },
+    "approvalChain": [],
+    "breakGlassContacts": [
+      {
+        "name": "Dana Fictional",
+        "email": "dana@contoso.com"
+      }
+    ]
+  },
+  "finops": {
+    "costCenter": "CC-1",
+    "businessOwner": {
+      "name": "Jordan",
+      "email": "jordan@contoso.com"
+    },
+    "budgets": [],
+    "chargebackModel": "showback",
+    "costExports": {
+      "enabled": false
+    }
+  },
+  "naming": {
+    "standard": "caf",
+    "environmentAbbreviations": {},
+    "defaultTags": {
+      "owner": "platform",
+      "application": "alz",
+      "environment": "prod",
+      "cost_center": "CC-1"
+    }
+  }
+}

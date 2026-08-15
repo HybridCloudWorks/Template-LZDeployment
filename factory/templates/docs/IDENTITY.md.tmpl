@@ -12,24 +12,12 @@ disagrees with the tenant, the tenant was changed outside the factory.
 | # | Source identity | Target | Method | Credential type | Rotation |
 |---|---|---|---|---|---|
 | 1 | GitHub Actions (per environment) | Azure | Workload identity federation | None — OIDC | N/A |
-#{{IF computed.backendIsHcp}}
-| 2 | GitHub Actions | HCP Terraform | API token | Static token | 90 days |
-| 3 | HCP Terraform | Azure | Dynamic provider credentials | None — OIDC | N/A |
-#{{ENDIF}}
-| 4 | Bootstrap operator | Azure | `az login`, interactive with MFA | User token | Per session |
-| 5 | Bootstrap operator | GitHub | `gh auth login`, device flow | User token | Per session |
-#{{IF computed.backendIsHcp}}
-| 6 | Bootstrap operator | HCP Terraform | User API token | Static token | 90 days |
-#{{ENDIF}}
+| 2 | GitHub Actions | Azure Storage state | OIDC + Azure AD (`use_oidc`, `use_azuread_auth`) | None — OIDC | N/A |
+| 3 | Bootstrap operator | Azure | `az login`, interactive with MFA | User token | Per session |
+| 4 | Bootstrap operator | GitHub | `gh auth login`, device flow, or App/PAT delivery token | User or installation token | Per session |
 
-#{{IF computed.backendIsHcp}}
-The HCP Terraform token is the only static credential in the system, and it
-exists only on the operator workstation and in the repository secret store —
-never in Terraform state and never in a rendered file.
-#{{ELSE}}
 There are no static credentials in this deployment. State authenticates to Azure
 Storage with Entra ID rather than a shared storage key.
-#{{ENDIF}}
 
 ## Federated credential subjects
 

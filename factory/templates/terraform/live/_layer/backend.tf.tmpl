@@ -3,29 +3,19 @@
 #
 # GENERATED FILE. Do not hand-edit.
 #
+# The block is deliberately empty: every backend value lives in this layer's
+# backend.hcl and is supplied at init time —
+#
+#     terraform init -backend-config=backend.hcl
+#
+# — so state location never hard-codes into committed Terraform, and the same
+# root module re-inits cleanly if state is ever migrated.
+#
 # Each layer keeps an isolated state file. Sharing state across layers is the
 # single most common way a landing zone becomes unrecoverable: a failure in one
 # layer then locks or corrupts every other layer's state.
 # ─────────────────────────────────────────────────────────────────────────────
 
 terraform {
-  required_version = ">= 1.9.0"
-
-#{{IF computed.backendIsHcp}}
-  cloud {
-    organization = {{FACTORY:backend.hcpTerraform.organization}}
-
-    workspaces {
-      name = "{{FACTORY-RAW:computed.workspacePrefix}}-{{FACTORY-RAW:layer}}"
-    }
-  }
-#{{ELSE}}
-  backend "azurerm" {
-    resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
-    storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
-    container_name       = {{FACTORY:backend.azurerm.containerName}}
-    key                  = "{{FACTORY-RAW:layer}}.tfstate"
-    use_azuread_auth     = {{FACTORY-BOOL:backend.azurerm.useAzureAdAuth}}
-  }
-#{{ENDIF}}
+  backend "azurerm" {}
 }

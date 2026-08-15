@@ -1,52 +1,30 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Global layer — management groups and policy baseline.
+# global (ALZ core) layer variables.
 #
-# GENERATED FILE. Do not hand-edit.
-#   Source of truth : lz-config.json
-#   Rendered by     : Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}
-#   Generated       : {{FACTORY-RAW:computed.generatedAt}}
-#
-# To change a value, re-run the wizard and re-render. Editing here creates
-# drift between the configuration and the deployment that nothing detects.
-#
-# Variables correspond to terraform/live/global/variables.tf.
+# GENERATED FILE. Do not hand-edit. Rendered by Landing Zone Factory
+# {{FACTORY-RAW:computed.factoryVersion}} on {{FACTORY-RAW:computed.generatedAt}}.
 # ─────────────────────────────────────────────────────────────────────────────
 
-org_prefix = {{FACTORY:organization.companyShortName}}
+root_parent_management_group_id = {{FACTORY:azure.managementGroups.rootId}}
+primary_region                  = {{FACTORY:azure.primaryRegion}}
 
-management_subscription_id       = {{FACTORY:azure.subscriptions.management}}
-connectivity_subscription_id     = {{FACTORY:azure.subscriptions.connectivity}}
-workload_prod_subscription_id    = {{FACTORY:azure.subscriptions.workloadProd}}
+management_subscription_id = {{FACTORY:azure.subscriptions.management}}
+#{{IF defined azure.subscriptions.connectivity && azure.subscriptions.connectivity}}
+connectivity_subscription_id = {{FACTORY:azure.subscriptions.connectivity}}
+#{{ENDIF}}
 #{{IF defined azure.subscriptions.identity && azure.subscriptions.identity}}
-identity_subscription_id         = {{FACTORY:azure.subscriptions.identity}}
-#{{ELSE}}
-identity_subscription_id         = ""
+identity_subscription_id = {{FACTORY:azure.subscriptions.identity}}
+#{{ENDIF}}
+#{{IF defined azure.subscriptions.workloadProd && azure.subscriptions.workloadProd}}
+workload_prod_subscription_id = {{FACTORY:azure.subscriptions.workloadProd}}
 #{{ENDIF}}
 #{{IF defined azure.subscriptions.workloadNonProd && azure.subscriptions.workloadNonProd}}
 workload_nonprod_subscription_id = {{FACTORY:azure.subscriptions.workloadNonProd}}
-#{{ELSE}}
-workload_nonprod_subscription_id = ""
 #{{ENDIF}}
 #{{IF defined azure.subscriptions.sandbox && azure.subscriptions.sandbox}}
-sandbox_subscription_id          = {{FACTORY:azure.subscriptions.sandbox}}
-#{{ELSE}}
-sandbox_subscription_id          = ""
+sandbox_subscription_id = {{FACTORY:azure.subscriptions.sandbox}}
 #{{ENDIF}}
 
-# Enforced by the allowed-locations policy. Every region deployed to must be
-# listed here, or the landing zone denies its own resources.
-allowed_locations = {{FACTORY-LIST:azure.allowedLocations}}
-
-# Your "Assign policy denying public network access on PaaS" answer. The
-# initiative is scoped to the Landing Zones management group — never to the
-# platform group, which holds the Terraform state account your own machine has
-# to reach to create this estate.
-#
-# The effect is Audit, NOT Deny, and that is deliberate: this estate creates
-# storage accounts that keep public network access enabled behind network
-# rules (the NSG flow-log accounts, and the state account during setup), so a
-# Deny would fail your first apply on the platform's own resources. Tighten
-# public_network_access_effect to "Deny" in a PR once those are behind private
-# endpoints.
-assign_public_network_access_policy = {{FACTORY-BOOL:connectivity.privateEndpoints.denyPublicNetworkAccessPolicy}}
-public_network_access_effect        = "Audit"
+state_resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
+state_storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
+state_container_name       = {{FACTORY:backend.azurerm.containerName}}

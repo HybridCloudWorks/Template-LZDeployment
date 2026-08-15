@@ -148,12 +148,17 @@ function Invoke-LzRender {
         $destination = Resolve-LzTemplate -Template $entry.destination -Context $context -SourceName "manifest:$($entry.source)"
         $destination = $destination -replace '^"|"$', ''   # destinations are unquoted
 
+        $mode = if ($entry.PSObject.Properties.Name -contains 'mode') { $entry.mode } else { 'render' }
+
+        # Two modes have no template file: config-snapshot writes the validated
+        # answer record itself, version-stamp writes the generator's version
+        # metadata. Both go through the manifest so the inventory-integrity
+        # gate (V01) accounts for them like any other emitted file.
         $sourcePath = Join-Path $TemplateRoot $entry.source
-        if (-not (Test-Path $sourcePath)) {
+        if ($mode -notin @('config-snapshot', 'version-stamp') -and -not (Test-Path $sourcePath)) {
             throw "Manifest references a template that does not exist: $($entry.source)"
         }
 
-        $mode = if ($entry.PSObject.Properties.Name -contains 'mode') { $entry.mode } else { 'render' }
         $outPath = Join-Path $OutputDirectory $destination
 
         # A write that ShouldProcess declines (-WhatIf) is recorded as skipped,
@@ -163,7 +168,24 @@ function Invoke-LzRender {
             $dir = Split-Path -Parent $outPath
             if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 
-            if ($mode -eq 'copy') {
+            if ($mode -eq 'config-snapshot') {
+                # The answer record, committed into the generated repository so
+                # the estate's provenance survives the factory copy's deletion.
+                # The wizard collects no secret fields (CI-enforced zero-network
+                # posture); the snapshot is the validated configuration as-is.
+                Set-Content -Path $outPath -Value $configRaw -Encoding utf8
+            }
+            elseif ($mode -eq 'version-stamp') {
+                $stamp = [ordered]@{
+                    '$comment'     = 'Generator version stamp. Records which factory release produced this repository.'
+                    factoryVersion = if ($factoryVersion) { $factoryVersion.factoryVersion } else { 'unknown' }
+                    schemaVersion  = $config.schemaVersion
+                    generatedAt    = $config.generatedAt
+                    renderer       = 'LZFactory.Renderer'
+                }
+                Set-Content -Path $outPath -Value ($stamp | ConvertTo-Json -Depth 5) -Encoding utf8
+            }
+            elseif ($mode -eq 'copy') {
                 Copy-Item -Path $sourcePath -Destination $outPath -Force
             }
             else {

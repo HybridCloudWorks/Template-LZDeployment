@@ -262,55 +262,21 @@
     <section class="step" data-step="backend" data-title="State backend">
       <header class="step-head">
         <h2>Terraform state backend</h2>
-        <p>Exactly one backend is selected here, and it drives both the rendered <code>backend.tf</code> and which bootstrap steps run. This is the decision point that resolves the current repository&rsquo;s split-brain between Terraform Cloud and <code>azurerm</code>.</p>
+        <p>State lives in Azure Storage (<code>azurerm</code> backend) with OIDC and Entra&nbsp;ID authentication &mdash; no storage keys, no third-party state service (ADR&nbsp;0015). The values below are emitted into a per-layer <code>backend.hcl</code>; the committed backend block stays empty.</p>
       </header>
 
       <div class="field">
-        <label for="be_type">Backend <span class="req">*</span></label>
+        <label for="be_type">Backend</label>
         <select id="be_type" data-path="backend.type">
-          <option value="hcp-terraform">HCP Terraform</option>
           <option value="azurerm">Azure Storage (azurerm)</option>
         </select>
-      </div>
-
-      <div data-visible-when="backend.type=hcp-terraform">
-        <div class="callout callout-warn" id="rumCallout">
-          <h4>Free tier is capped at 500 managed resources</h4>
-          <p>HCP Terraform&rsquo;s legacy free plan ended 31 March 2026. The current free tier allows <strong>500 managed resources</strong>, unlimited users, and one policy set of up to five policies. Paid tiers bill on the <em>peak hourly</em> count of resources in state, starting at $0.10 per resource per month.</p>
-          <p>A managed resource is any resource in state with <code>mode = "managed"</code>. <code>null_resource</code> and <code>terraform_data</code> are excluded. Data sources are not billed. Note that individually-declared items &mdash; each policy assignment, each role assignment, each subnet, each diagnostic setting &mdash; counts separately, which is what pushes landing zones over the cap.</p>
-          <p class="rum-estimate">Estimate for your current selections: <strong id="rumValue">—</strong> managed resources <span id="rumVerdict" class="pill"></span></p>
-          <p class="hint">This is a rough order-of-magnitude estimate from the modules your configuration enables, not a plan. Treat it as a signal to check, not a bill.</p>
-        </div>
-
-        <div class="field">
-          <label for="be_tfc_org">HCP Terraform organization <span class="req">*</span></label>
-          <input id="be_tfc_org" data-path="backend.hcpTerraform.organization" type="text" spellcheck="false" placeholder="contoso">
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="be_tfc_prefix">Workspace prefix</label>
-            <input id="be_tfc_prefix" data-path="backend.hcpTerraform.workspacePrefix" type="text" spellcheck="false" placeholder="(defaults to short name)">
-            <p class="hint">Workspaces are created as <code>{prefix}-{layer}</code>.</p>
-          </div>
-          <div class="field">
-            <label for="be_tfc_mode">Execution mode</label>
-            <select id="be_tfc_mode" data-path="backend.hcpTerraform.executionMode">
-              <option value="remote">Remote</option>
-              <option value="local">Local (state storage only)</option>
-            </select>
-          </div>
-        </div>
-        <div class="checks">
-          <label class="check"><input type="checkbox" data-path="backend.hcpTerraform.useDynamicProviderCredentials" checked> Use dynamic provider credentials (HCP Terraform &rarr; Azure OIDC)</label>
-          <label class="check"><input type="checkbox" data-path="backend.hcpTerraform.acknowledgedResourceLimit"> I understand the 500-resource free-tier cap and my billing exposure above it</label>
-        </div>
-        <p class="hint">Dynamic provider credentials remove the last static Azure credential from the workspace. Leaving it off means storing Azure credentials in HCP Terraform, which the generated threat model flags as a finding.</p>
+        <p class="hint">azurerm is the only backend the generator emits.</p>
       </div>
 
       <div data-visible-when="backend.type=azurerm">
         <div class="callout">
-          <h4>No per-resource cost, but you own the bootstrap</h4>
-          <p>Azure Storage state costs cents per month and has no resource cap. The tradeoff is a chicken-and-egg step: the storage account must exist before any layer can initialise, so the broker runs <code>terraform/backend-bootstrap/</code> with local state first, then migrates. Locking uses blob leases rather than a managed lock service.</p>
+          <h4>No per-resource cost, and the broker owns the bootstrap</h4>
+          <p>Azure Storage state costs cents per month and has no resource cap. The state resource group, storage account, and per-layer containers are created by the bootstrap broker with Entra-only authentication before the first layer initialises. Locking uses blob leases rather than a managed lock service.</p>
         </div>
         <div class="grid-2">
           <div class="field">
@@ -488,9 +454,8 @@
           <label for="cn_fwType">Type</label>
           <select id="cn_fwType" data-path="connectivity.firewall.type">
             <option value="azfw">Azure Firewall</option>
-            <option value="palo">Palo Alto NVA</option>
-            <option value="fortinet">Fortinet NVA</option>
           </select>
+          <p class="hint">The Azure Verified Modules connectivity patterns deploy Azure Firewall (ADR&nbsp;0017). A third-party NVA is per-estate work inside the generated repository.</p>
         </div>
         <div class="field" data-visible-when="connectivity.firewall.type=azfw">
           <label for="cn_fwTier">Azure Firewall tier</label>
@@ -498,7 +463,7 @@
             <option value="Standard">Standard</option>
             <option value="Premium">Premium &mdash; adds IDPS and TLS inspection</option>
           </select>
-          <p class="hint">Basic is not offered: the hub-network module does not provision the dedicated management subnet and management public IP the Basic tier requires, so a Basic selection could never apply.</p>
+          <p class="hint">Basic is not offered: it requires a dedicated management subnet and public IP the emitted composition does not carve.</p>
         </div>
         <div class="field" data-visible-when="connectivity.firewall.type=azfw">
           <label for="cn_fwTi">Threat intelligence mode</label>
@@ -507,16 +472,6 @@
             <option value="Alert">Alert only</option>
             <option value="Off">Off</option>
           </select>
-        </div>
-      </div>
-      <div class="grid-2" data-visible-when-any="connectivity.firewall.type=palo|connectivity.firewall.type=fortinet">
-        <div class="field">
-          <label for="cn_nvaPrimary">Primary NVA trust IP</label>
-          <input id="cn_nvaPrimary" data-path="connectivity.firewall.nvaTrustIpPrimary" type="text" spellcheck="false" placeholder="10.0.1.4">
-        </div>
-        <div class="field">
-          <label for="cn_nvaDr">DR NVA trust IP</label>
-          <input id="cn_nvaDr" data-path="connectivity.firewall.nvaTrustIpDr" type="text" spellcheck="false" placeholder="10.10.1.4">
         </div>
       </div>
 
@@ -658,9 +613,9 @@
         <label class="check"><input type="checkbox" data-path="security.sentinel.enabled"> Enable Sentinel</label>
       </div>
       <div data-visible-when="security.sentinel.enabled=true">
-        <div class="callout callout-block">
-          <h4>Blocked: the <code>sentinel-siem</code> module is scaffold-only</h4>
-          <p>That module currently declares zero resources. Rather than emit a configuration that silently does nothing, the renderer rejects this until the module is implemented. You can select it to record the intent; the readiness report will list it as an unmet dependency.</p>
+        <div class="callout callout-warn">
+          <h4>Recorded, not deployed by the generator</h4>
+          <p>The emitted architecture (ADR&nbsp;0017) does not onboard Sentinel; the answer is preserved in the committed <code>lz-config.json</code> and surfaced in the generated documentation. Onboard Sentinel inside the generated repository against the management layer&rsquo;s Log Analytics workspace.</p>
         </div>
         <div class="field">
           <label>Data connectors</label>

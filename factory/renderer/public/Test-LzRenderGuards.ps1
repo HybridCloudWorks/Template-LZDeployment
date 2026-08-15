@@ -90,35 +90,22 @@ function Test-LzRenderGuards {
         }
     }
 
-    # ── Scaffold modules ─────────────────────────────────────────────────────
-    # Read status from factory-version.json rather than hard-coding, so
-    # implementing a module automatically lifts its guard.
-    $moduleStatus = @{}
-    if ($FactoryVersion -and (Test-LzHasProperty $FactoryVersion 'modules')) {
-        foreach ($p in $FactoryVersion.modules.PSObject.Properties) {
-            if ($p.Value -is [psobject] -and (Test-LzHasProperty $p.Value 'status')) {
-                $moduleStatus[$p.Name] = $p.Value.status
-            }
-        }
+    # ── Answers recorded but not deployed by the emitted architecture ────────
+    # The generator emits the AVM three-layer architecture (ADR 0013/0017).
+    # Sentinel onboarding and customer-managed-key estates are per-estate work
+    # done inside the generated repository. The answers are preserved in the
+    # committed answer record (lz-config.json) and surfaced in the generated
+    # documentation — but silence here would read as "deployed", so warn.
+    if (Get-LzGuardConfigValue -Object $Config -Path 'security.sentinel.enabled' -Default $false) {
+        $v += New-LzGuardViolation -Id 'G02' -Severity 'Warn' `
+            -Message 'Sentinel is enabled in the configuration; the emitted architecture records the answer but does not deploy Sentinel.' `
+            -Remediation 'Onboard Sentinel inside the generated repository against the management layer''s workspace. The answer is preserved in lz-config.json.'
     }
 
-    $isScaffold = {
-        param([string]$name)
-        return ($moduleStatus.ContainsKey($name) -and $moduleStatus[$name] -eq 'scaffold')
-    }
-
-    # security is schema-required but its sub-blocks are not: an absent
-    # security.sentinel / security.keyVault means the feature is off.
-    if ((Get-LzGuardConfigValue -Object $Config -Path 'security.sentinel.enabled' -Default $false) -and (& $isScaffold 'sentinel-siem')) {
-        $v += New-LzGuardViolation -Id 'G02' `
-            -Message 'Sentinel is enabled, but the sentinel-siem module is scaffold-only and declares no resources.' `
-            -Remediation 'Implement terraform/modules/sentinel-siem and set its status to "implemented" in factory-version.json, or disable Sentinel. Emitting it now would produce a layer that applies successfully and deploys nothing.'
-    }
-
-    if ((Get-LzGuardConfigValue -Object $Config -Path 'security.keyVault.customerManagedKeys' -Default $false) -and (& $isScaffold 'keyvault-cmk')) {
-        $v += New-LzGuardViolation -Id 'G03' `
-            -Message 'Customer-managed keys are enabled, but the keyvault-cmk module is scaffold-only and declares no resources.' `
-            -Remediation 'Implement terraform/modules/keyvault-cmk and update its status in factory-version.json, or disable customer-managed keys. A no-op CMK module means data you believe is protected by your own keys is not.'
+    if (Get-LzGuardConfigValue -Object $Config -Path 'security.keyVault.customerManagedKeys' -Default $false) {
+        $v += New-LzGuardViolation -Id 'G03' -Severity 'Warn' `
+            -Message 'Customer-managed keys are enabled in the configuration; the emitted architecture records the answer but does not deploy a CMK estate.' `
+            -Remediation 'Implement the CMK estate inside the generated repository. The answer is preserved in lz-config.json.'
     }
 
     # ── Layers with no corpus ────────────────────────────────────────────────
@@ -145,11 +132,21 @@ function Test-LzRenderGuards {
         }
     }
 
-    # ── Unimplemented topologies ─────────────────────────────────────────────
+    # ── Topology feature coherence ───────────────────────────────────────────
+    # Both topologies are implemented (hub-and-spoke and Virtual WAN AVM
+    # pattern modules; exactly one is emitted). Bastion and centralized private
+    # DNS zones are composed for the hub-and-spoke topology only.
     if ($Config.connectivity.model -eq 'virtual-wan') {
-        $v += New-LzGuardViolation -Id 'G04' `
-            -Message 'Connectivity model is virtual-wan, but no virtual-wan module exists in the corpus.' `
-            -Remediation 'Use hub-spoke, or contribute a virtual-wan module and register it in factory-version.json.'
+        if (Get-LzGuardConfigValue -Object $Config -Path 'connectivity.bastion.enabled' -Default $false) {
+            $v += New-LzGuardViolation -Id 'G04' -Severity 'Warn' `
+                -Message 'Bastion is enabled with the virtual-wan topology; the emitted composition deploys Bastion only for hub-and-spoke.' `
+                -Remediation 'Deploy Bastion per-spoke inside the generated repository, or use the hub-spoke topology.'
+        }
+        if (Get-LzGuardConfigValue -Object $Config -Path 'connectivity.privateDns.enabled' -Default $false) {
+            $v += New-LzGuardViolation -Id 'G04' -Severity 'Warn' `
+                -Message 'Centralized private DNS zones are enabled with the virtual-wan topology; the emitted composition creates them only for hub-and-spoke.' `
+                -Remediation 'Create the zones inside the generated repository, or use the hub-spoke topology.'
+        }
     }
 
     # Optional key: the schema requires github.{ownershipModel,ownerName,
@@ -209,50 +206,20 @@ function Test-LzRenderGuards {
     $subs = $Config.azure.subscriptions
     $hasSub = { param([string]$n) return ((Test-LzHasProperty $subs $n) -and $subs.$n) }
 
-    foreach ($req in @('management', 'connectivity', 'workloadProd')) {
-        if (-not (& $hasSub $req)) {
-            $v += New-LzGuardViolation -Id 'G09' `
-                -Message "Required subscription '$req' is missing from the configuration." `
-                -Remediation "Supply the $req subscription ID. The layer consuming it cannot be rendered without one."
-        }
+    # The management subscription hosts the management layer and anchors the
+    # provider configuration of the global layer; it is always required.
+    # Connectivity is required only when platform networking is deployed.
+    # Workload and sandbox subscriptions are placement-only — an absent slot
+    # places nothing, which is a valid estate, not a failure.
+    if (-not (& $hasSub 'management')) {
+        $v += New-LzGuardViolation -Id 'G09' `
+            -Message "Required subscription 'management' is missing from the configuration." `
+            -Remediation 'Supply the management subscription ID. The platform-management and global layers cannot be rendered without one.'
     }
-
-    if ($Config.environments.application -contains 'sandbox' -and -not (& $hasSub 'sandbox')) {
-        $v += New-LzGuardViolation -Id 'G10' -Severity 'Warn' `
-            -Message 'A sandbox environment is selected but no sandbox subscription was supplied.' `
-            -Remediation 'The sandbox layer will be omitted from the output. Supply a sandbox subscription ID to emit it.'
-    }
-
-    $nonProdEnvironments = @($Config.environments.application | Where-Object { $_ -in @('dev', 'test', 'uat') })
-    if ($nonProdEnvironments.Count -gt 0 -and -not (& $hasSub 'workloadNonProd')) {
-        # G24, not G22: a missing subscription and a missing spoke CIDR are
-        # different failures with different remediations, and sharing one ID
-        # made the README's single G22 row describe only one of them
-        # (TODO item 2.13). G22 is still used twice below — deliberately, for
-        # the primary and DR variants of the SAME condition.
-        $v += New-LzGuardViolation -Id 'G24' `
-            -Message 'A non-production environment is selected but azure.subscriptions.workloadNonProd is missing.' `
-            -Remediation 'Supply the shared non-production workload subscription ID.'
-    }
-    if ($nonProdEnvironments.Count -gt 0) {
-        # connectivity.hubSpoke is itself optional (only .model is required),
-        # so the read must be safe from the hubSpoke segment down.
-        $pairs = Get-LzGuardConfigValue -Object $Config -Path 'connectivity.hubSpoke.nonProdSpokeAddressSpaces' -Default $null
-        foreach ($envName in $nonProdEnvironments) {
-            if ($null -eq $pairs -or -not (Test-LzHasProperty $pairs $envName) -or
-                -not (Test-LzHasProperty $pairs.$envName 'primary') -or -not $pairs.$envName.primary) {
-                $v += New-LzGuardViolation -Id 'G22' `
-                    -Message "Environment '$envName' is selected but has no primary non-production spoke CIDR." `
-                    -Remediation "Supply connectivity.hubSpoke.nonProdSpokeAddressSpaces.$envName.primary."
-                continue
-            }
-            if ((Test-LzHasProperty $Config.azure 'drRegion') -and $Config.azure.drRegion -and
-                (-not (Test-LzHasProperty $pairs.$envName 'dr') -or -not $pairs.$envName.dr)) {
-                $v += New-LzGuardViolation -Id 'G22' `
-                    -Message "Environment '$envName' is selected in a dual-region configuration but has no DR spoke CIDR." `
-                    -Remediation "Supply connectivity.hubSpoke.nonProdSpokeAddressSpaces.$envName.dr."
-            }
-        }
+    if ($Config.connectivity.model -ne 'none' -and -not (& $hasSub 'connectivity')) {
+        $v += New-LzGuardViolation -Id 'G09' `
+            -Message "Connectivity model '$($Config.connectivity.model)' is selected but the connectivity subscription is missing." `
+            -Remediation 'Supply the connectivity subscription ID, or set connectivity.model to none.'
     }
 
     # The identity block is not schema-required at all; absent means no
@@ -341,27 +308,17 @@ function Test-LzRenderGuards {
     }
 
     # ── Backend coherence ────────────────────────────────────────────────────
-    if ($Config.backend.type -eq 'hcp-terraform') {
-        # backend.hcpTerraform may exist without .organization; the nested
-        # read must not crash where G17 is supposed to report the gap.
-        if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.hcpTerraform.organization' -Default ''))) {
-            $v += New-LzGuardViolation -Id 'G17' `
-                -Message 'Backend is hcp-terraform but no organization is configured.' `
-                -Remediation 'Supply backend.hcpTerraform.organization.'
-        }
+    # The emitted backend is azurerm-only (ADR 0015). G17/G19 (HCP organization
+    # and Sentinel-requires-HCP) retired with the dual-backend feature.
+    if ($Config.backend.type -ne 'azurerm') {
+        $v += New-LzGuardViolation -Id 'G17' `
+            -Message "Backend type '$($Config.backend.type)' is not supported: the generator emits the azurerm backend only (ADR 0015)." `
+            -Remediation 'Set backend.type to azurerm and supply the state storage coordinates.'
     }
-    elseif ($Config.backend.type -eq 'azurerm') {
-        if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.azurerm.storageAccountName' -Default ''))) {
-            $v += New-LzGuardViolation -Id 'G18' `
-                -Message 'Backend is azurerm but no state storage account is configured.' `
-                -Remediation 'Supply backend.azurerm.storageAccountName and resourceGroupName.'
-        }
-    }
-
-    if (@(Get-LzGuardConfigValue -Object $Config -Path 'governance.policyAsCodeEngines' -Default @()) -contains 'sentinel' -and $Config.backend.type -ne 'hcp-terraform') {
-        $v += New-LzGuardViolation -Id 'G19' `
-            -Message 'Sentinel policy enforcement requires the HCP Terraform backend.' `
-            -Remediation 'Remove sentinel from governance.policyAsCodeEngines, or switch the backend to hcp-terraform.'
+    if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.azurerm.storageAccountName' -Default ''))) {
+        $v += New-LzGuardViolation -Id 'G18' `
+            -Message 'No state storage account is configured.' `
+            -Remediation 'Supply backend.azurerm.storageAccountName and resourceGroupName.'
     }
 
     # ── Repository visibility ────────────────────────────────────────────────

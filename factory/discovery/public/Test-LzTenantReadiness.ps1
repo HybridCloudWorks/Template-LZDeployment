@@ -400,27 +400,7 @@ function Test-LzTerraformBackendAccess {
 
     $cap = $Terraform.Capabilities
 
-    if ($Terraform.BackendType -eq 'hcp-terraform') {
-        $credProbe = $Terraform.Probes['HCP Terraform credentials']
-        if ($credProbe.Status -ne 'Ok') {
-            return New-LzReadinessCheck -Id 'R10' -Category 'Terraform' -Name 'Terraform backend access' -Status 'Fail' `
-                -Detail 'No HCP Terraform credentials found.' -Remediation 'Run: terraform login'
-        }
-        if (-not $cap.OrganizationReachable) {
-            return New-LzReadinessCheck -Id 'R10' -Category 'Terraform' -Name 'Terraform backend access' -Status 'Fail' `
-                -Detail "Organization '$($Config.backend.hcpTerraform.organization)' is not reachable with the current token." `
-                -Remediation 'Check the organization name in lz-config.json, and confirm the token belongs to an account that is a member of it.'
-        }
-        if ($cap.Findings.Count -gt 0) {
-            return New-LzReadinessCheck -Id 'R10' -Category 'Terraform' -Name 'Terraform backend access' -Status 'Warning' `
-                -Detail ($cap.Findings -join ' ') `
-                -Remediation 'Review the free-tier resource cap and any pre-existing workspaces before proceeding.'
-        }
-        return New-LzReadinessCheck -Id 'R10' -Category 'Terraform' -Name 'Terraform backend access' -Status 'Pass' `
-            -Detail "Organization reachable; $($cap.CurrentManagedResources) of $($cap.FreeTierCap) free-tier resources currently managed."
-    }
-
-    # azurerm
+    # azurerm is the only backend (ADR 0015).
     if ($cap.Findings.Count -gt 0) {
         $isSecurityFinding = @($cap.Findings | Where-Object { $_ -match 'public' }).Count -gt 0
         return New-LzReadinessCheck -Id 'R10' -Category 'Terraform' -Name 'Terraform backend access' `

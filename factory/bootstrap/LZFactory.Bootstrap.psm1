@@ -53,10 +53,12 @@ function Assert-LzBrokerPrerequisites {
     }
     & az account show --output none 2>$null
     if ($LASTEXITCODE -ne 0) { throw 'Azure CLI is not authenticated.' }
-    & gh auth status 2>$null
-    if ($LASTEXITCODE -ne 0) { throw 'GitHub CLI is not authenticated.' }
-    if ($Config.backend.type -eq 'hcp-terraform' -and -not $env:TFE_TOKEN) {
-        Write-LzBrokerEvent WARN 'TFE_TOKEN is absent; HCP workspace reconciliation will be recorded as pending.'
+    # GitHub auth: a token (GH_TOKEN/GITHUB_TOKEN — PAT or App installation
+    # token minted by Initialize-LzDeliveryAuth) satisfies gh non-interactively;
+    # otherwise an interactive gh session is required.
+    if (-not ($env:GH_TOKEN -or $env:GITHUB_TOKEN)) {
+        & gh auth status 2>$null
+        if ($LASTEXITCODE -ne 0) { throw 'GitHub CLI is not authenticated: authenticate gh, or set GH_TOKEN (PAT or App installation token).' }
     }
 }
 
@@ -351,13 +353,16 @@ function Get-LzCicdIdentityModel {
 }
 
 function Get-LzStateStorageScope {
-    # Deterministic resource ID of the azurerm state storage account, so the
+    # Deterministic resource ID of the azurerm state CONTAINER, so the
     # data-plane grants appear in the plan record before the account exists.
+    # Container scope, not account scope: each identity can touch exactly its
+    # own state container and nothing else in the account.
     param([object]$Config)
     if ($Config.backend.type -ne 'azurerm') { return $null }
     $backend = $Config.backend.azurerm
     $subscription = Get-LzConfigValue $backend 'subscriptionId' $Config.azure.subscriptions.management
-    return "/subscriptions/$subscription/resourceGroups/$($backend.resourceGroupName)/providers/Microsoft.Storage/storageAccounts/$($backend.storageAccountName)"
+    $container = Get-LzConfigValue $backend 'containerName' 'tfstate'
+    return "/subscriptions/$subscription/resourceGroups/$($backend.resourceGroupName)/providers/Microsoft.Storage/storageAccounts/$($backend.storageAccountName)/blobServices/default/containers/$container"
 }
 
 function Get-LzSandboxRbacAssignment {
@@ -413,10 +418,11 @@ function New-LzBootstrapPlan {
         Select-Object -Unique
     $identityModel = Get-LzCicdIdentityModel -Config $Config
 
-    # State data-plane roles. The generated backend.tf.tmpl sets
-    # use_azuread_auth and the state account disables shared keys (contract #3),
-    # so without these grants a generated repo cannot read its own state.
-    # hcp-terraform configs have no state storage account and get none.
+    # State data-plane roles. The generated backend.hcl sets use_oidc and
+    # use_azuread_auth and the state account disables shared keys (contract
+    # #3), so without these grants a generated repo cannot read its own state.
+    # Granted at CONTAINER scope, not account scope — each identity can touch
+    # exactly its own state container and nothing else.
     $stateScope = Get-LzStateStorageScope -Config $Config
     $planStateRoles = @([pscustomobject]@{ role = 'Storage Blob Data Reader'; scope = $stateScope })
     $applyStateRoles = @([pscustomobject]@{ role = 'Storage Blob Data Contributor'; scope = $stateScope })
@@ -438,11 +444,19 @@ function New-LzBootstrapPlan {
         foreach ($environment in $environments) {
             $scope = Get-LzEnvironmentScope -Config $Config -Environment $environment
             $prefix = $Config.organization.companyShortName
+            # Plan subjects are a LIST: pull_request for PR plans, plus the
+            # default branch so push-triggered and scheduled read-only runs
+            # (auth smoke test, drift detection) can federate. Exact-match
+            # subjects only — wildcards are unsupported in federated
+            # credentials and rejected here by policy.
             $planRecord = [pscustomobject]@{
                 environment = $environment
                 kind = 'plan'
                 displayName = "sp-$prefix-$environment-plan"
-                subject = "repo:$repo`:pull_request"
+                subject = @(
+                    "repo:$repo`:pull_request",
+                    "repo:$repo`:ref:refs/heads/$($Config.github.defaultBranch)"
+                )
                 roles = @('Reader')
                 scope = $scope
             }
@@ -514,7 +528,10 @@ function New-LzBootstrapPlan {
             environments = @($environments)
             kind = 'plan'
             displayName = "sp-$prefix-plan"
-            subject = "repo:$repo`:pull_request"
+            subject = @(
+                "repo:$repo`:pull_request",
+                "repo:$repo`:ref:refs/heads/$($Config.github.defaultBranch)"
+            )
             roleAssignments = @($planAssignments)
         }
         $identities += [pscustomobject]@{
@@ -661,15 +678,17 @@ function Set-LzIdentity {
     if (-not $sp) {
         $sp = Invoke-LzNativeJson az @('ad', 'sp', 'create', '--id', $app.appId, '--output', 'json')
     }
-    # One federated credential per subject. A minimal-model apply record has a
-    # subject LIST (one environment:<name> per environment); every other record
-    # has a single subject. The name stays github-<kind>-<environment> in both
-    # models, so a per-environment estate re-run reconciles the exact
-    # credentials it already has (zero drift).
+    # One federated credential per subject, with a name derived from the
+    # subject's form so multi-subject records (apply: one environment:<name>
+    # each; plan: pull_request plus the default branch) reconcile the exact
+    # credentials they already have on re-run (zero drift).
     $credentials = @()
     foreach ($subject in @($Identity.subject)) {
         $credentialName = if ($subject -match ':environment:(?<environmentName>[^:]+)$') {
             "github-$($Identity.kind)-$($Matches['environmentName'])"
+        }
+        elseif ($subject -match ':ref:refs/heads/(?<branchName>.+)$') {
+            "github-$($Identity.kind)-$($Identity.environment)-branch-$(($Matches['branchName']) -replace '[^A-Za-z0-9-]', '-')"
         }
         else {
             "github-$($Identity.kind)-$($Identity.environment)"
@@ -922,34 +941,6 @@ function Set-LzAzurermBackend {
         storageAccountId = $account.id
         container = $container.name
     }
-}
-
-function Set-LzHcpBackend {
-    param([object]$Config, [string[]]$Layers)
-    if (-not $env:TFE_TOKEN) { return @('Set TFE_TOKEN and re-run broker apply for HCP workspace reconciliation.') }
-    $headers = @{ Authorization = "Bearer $env:TFE_TOKEN"; 'Content-Type' = 'application/vnd.api+json' }
-    $org = $Config.backend.hcpTerraform.organization
-    $prefix = Get-LzConfigValue $Config.backend.hcpTerraform 'workspacePrefix' $Config.organization.companyShortName
-    $workspaces = @()
-    foreach ($layer in $Layers) {
-        $name = "$prefix-$layer"
-        $encoded = [uri]::EscapeDataString($name)
-        try {
-            $workspace = Invoke-RestMethod -Method Get -Uri "https://app.terraform.io/api/v2/organizations/$org/workspaces/$encoded" -Headers $headers
-        }
-        catch {
-            if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
-            $body = @{ data = @{ type = 'workspaces'; attributes = @{ name = $name; 'execution-mode' = (Get-LzConfigValue $Config.backend.hcpTerraform 'executionMode' 'remote') } } } | ConvertTo-Json -Depth 10
-            $workspace = Invoke-RestMethod -Method Post -Uri "https://app.terraform.io/api/v2/organizations/$org/workspaces" -Headers $headers -Body $body
-        }
-        $workspaces += [pscustomobject]@{ name = $workspace.data.attributes.name; id = $workspace.data.id }
-    }
-    $repo = "$($Config.github.ownerName)/$($Config.github.repositoryName)"
-    $env:TFE_TOKEN | & gh secret set TF_API_TOKEN --repo $repo
-    if ($LASTEXITCODE -ne 0) { throw 'Failed to set TF_API_TOKEN GitHub secret.' }
-    Set-LzGitHubVariable -Repository $repo -Name 'TF_CLOUD_ORGANIZATION' -Value $org
-    Set-LzGitHubVariable -Repository $repo -Name 'TF_CLOUD_WORKSPACE_PREFIX' -Value $prefix
-    return [pscustomobject]@{ pending = @(); workspaces = $workspaces }
 }
 
 function Get-LzLayerEnvironment {
@@ -1258,18 +1249,8 @@ function Invoke-LzBootstrap {
             Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_TENANT_ID' -Value $config.azure.tenantId
             Set-LzGitHubVariable -Repository $plan.repository -Name 'FACTORY_VERSION' -Value $config.factoryVersion
             $audit.branchProtection = Set-LzBranchProtection -Config $config
-            # azurerm state storage was already reconciled before the identities
-            # (see above); only the HCP backend remains to reconcile here.
-            if ($config.backend.type -ne 'azurerm') {
-                if ($env:TFE_TOKEN) {
-                    $hcp = Set-LzHcpBackend -Config $config -Layers $plan.layers
-                    $audit.backend.details = $hcp
-                    $audit.pendingUserActivities += @($hcp.pending)
-                }
-                else {
-                    $audit.pendingUserActivities += 'Set TFE_TOKEN and re-run broker apply for HCP workspace reconciliation.'
-                }
-            }
+            # azurerm state storage was already reconciled before the
+            # identities (see above); azurerm is the only backend (ADR 0015).
             $audit.backend.status = if ($audit.pendingUserActivities.Count) { 'pending-user-activity' } else { 'reconciled' }
             # Registration pendings are appended AFTER backend.status so a
             # reconciled backend is not mislabeled by a slow (server-side,
