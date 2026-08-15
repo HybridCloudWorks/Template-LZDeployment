@@ -216,8 +216,9 @@ variable "private_endpoint_allowed_source_prefixes" {
 
   validation {
     condition = alltrue([
-      for r in var.private_endpoint_allowed_source_prefixes : !contains(["*", "0.0.0.0/0"], r)
+      for r in var.private_endpoint_allowed_source_prefixes :
+      can(cidrhost(r, 0)) && !strcontains(r, ":") && !contains(["*", "0.0.0.0/0"], r)
     ])
-    error_message = "private_endpoint_allowed_source_prefixes must not include '*' or '0.0.0.0/0' - supply the explicit spoke CIDRs."
+    error_message = "Each entry in private_endpoint_allowed_source_prefixes must be a valid IPv4 CIDR (e.g. 10.1.0.0/16), and not '*' or '0.0.0.0/0' - supply the explicit spoke CIDRs."
   }
 }
