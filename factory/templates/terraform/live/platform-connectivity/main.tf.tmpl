@@ -9,14 +9,16 @@
 # The pattern module is referenced from the Terraform Registry by pinned
 # version; nothing is vendored. Renovate keeps the pin current.
 #
-# The module input structures are composed in locals from the scalar variables
-# this layer declares, so the wizard→variable drift check stays meaningful and
-# `terraform validate` re-verifies the composed shape against the module's
-# published schema at init time.
+# The module input structures below were composed against the modules' actual
+# variables.tf at the pinned tags (hub-and-spoke v0.17.3 / virtual-wan
+# v0.17.1). The modules do not create resource groups — this root module does,
+# and passes their IDs as the parent for every hub-scoped resource.
 # ─────────────────────────────────────────────────────────────────────────────
 
 terraform {
-  required_version = ">= 1.9.0"
+  # The hub-and-spoke pattern module requires Terraform ~> 1.12 (verified
+  # against the module's terraform.tf at tag v0.17.3).
+  required_version = ">= 1.12.0"
 
   required_providers {
     azurerm = {
@@ -35,143 +37,150 @@ provider "azurerm" {
 locals {
   # AzureFirewallSubnet and AzureBastionSubnet need a /26, GatewaySubnet a /27.
   # Carved deterministically from the front of each hub's address space.
-  primary_prefix_length = tonumber(split("/", var.primary_hub_address_space)[1])
+  primary_prefix_length   = tonumber(split("/", var.primary_hub_address_space)[1])
   primary_firewall_subnet = cidrsubnet(var.primary_hub_address_space, 26 - local.primary_prefix_length, 0)
   primary_bastion_subnet  = cidrsubnet(var.primary_hub_address_space, 26 - local.primary_prefix_length, 1)
   primary_gateway_subnet  = cidrsubnet(var.primary_hub_address_space, 27 - local.primary_prefix_length, 4)
 
   has_dr = var.dr_hub_address_space != ""
 
-  dr_prefix_length = local.has_dr ? tonumber(split("/", var.dr_hub_address_space)[1]) : 0
+  dr_prefix_length   = local.has_dr ? tonumber(split("/", var.dr_hub_address_space)[1]) : 0
   dr_firewall_subnet = local.has_dr ? cidrsubnet(var.dr_hub_address_space, 26 - local.dr_prefix_length, 0) : null
   dr_bastion_subnet  = local.has_dr ? cidrsubnet(var.dr_hub_address_space, 26 - local.dr_prefix_length, 1) : null
   dr_gateway_subnet  = local.has_dr ? cidrsubnet(var.dr_hub_address_space, 27 - local.dr_prefix_length, 4) : null
+
+  hub_definitions = merge(
+    {
+      primary = {
+        region        = var.primary_region
+        region_code   = var.primary_region_code
+        address_space = var.primary_hub_address_space
+        firewall_snet = local.primary_firewall_subnet
+        bastion_snet  = local.primary_bastion_subnet
+        gateway_snet  = local.primary_gateway_subnet
+      }
+    },
+    local.has_dr ? {
+      dr = {
+        region        = var.dr_region
+        region_code   = var.dr_region_code
+        address_space = var.dr_hub_address_space
+        firewall_snet = local.dr_firewall_subnet
+        bastion_snet  = local.dr_bastion_subnet
+        gateway_snet  = local.dr_gateway_subnet
+      }
+    } : {}
+  )
+}
+
+# The pattern modules require existing resource groups (parent IDs); one per
+# hub region, owned by this root module.
+resource "azurerm_resource_group" "connectivity" {
+  for_each = local.hub_definitions
+
+  name     = "rg-${var.org_prefix}-connectivity-${each.value.region_code}"
+  location = each.value.region
+  tags     = var.default_tags
 }
 
 #{{IF computed.topologyIsHubSpoke}}
 # ─── Hub-and-spoke ───────────────────────────────────────────────────────────
-
-locals {
-  hub_definitions = {
-    primary = {
-      region         = var.primary_region
-      region_code    = var.primary_region_code
-      address_space  = var.primary_hub_address_space
-      firewall_snet  = local.primary_firewall_subnet
-      bastion_snet   = local.primary_bastion_subnet
-      gateway_snet   = local.primary_gateway_subnet
-    }
-  }
-
-  dr_hub_definition = local.has_dr ? {
-    dr = {
-      region        = var.dr_region
-      region_code   = var.dr_region_code
-      address_space = var.dr_hub_address_space
-      firewall_snet = local.dr_firewall_subnet
-      bastion_snet  = local.dr_bastion_subnet
-      gateway_snet  = local.dr_gateway_subnet
-    }
-  } : {}
-
-  hub_virtual_networks = {
-    for key, hub in merge(local.hub_definitions, local.dr_hub_definition) :
-    key => {
-      name                = "vnet-hub-${hub.region_code}"
-      resource_group_name = "rg-${var.org_prefix}-connectivity-${hub.region_code}"
-      location            = hub.region
-      address_space       = [hub.address_space]
-
-      firewall = var.firewall_enabled ? {
-        name                  = "afw-hub-${hub.region_code}"
-        sku_name              = "AZFW_VNet"
-        sku_tier              = var.azfw_tier
-        subnet_address_prefix = hub.firewall_snet
-        zones                 = var.availability_zones
-      } : null
-
-      bastion = var.deploy_bastion ? {
-        name                  = "bas-hub-${hub.region_code}"
-        subnet_address_prefix = hub.bastion_snet
-      } : null
-
-      virtual_network_gateways = {
-        vpn = var.deploy_vpn_gateway ? {
-          name                  = "vgw-hub-${hub.region_code}"
-          subnet_address_prefix = hub.gateway_snet
-        } : null
-        express_route = var.deploy_expressroute_gateway ? {
-          name                  = "ergw-hub-${hub.region_code}"
-          subnet_address_prefix = hub.gateway_snet
-        } : null
-      }
-
-      private_dns_zones = var.deploy_private_dns ? {
-        resource_group_name = "rg-${var.org_prefix}-dns-${hub.region_code}"
-        zones               = var.private_dns_zones
-      } : null
-    }
-  }
-}
 
 module "hub_and_spoke_vnet" {
   source  = "Azure/avm-ptn-alz-connectivity-hub-and-spoke-vnet/azurerm"
   version = "0.17.3"
 
   hub_and_spoke_networks_settings = var.hub_and_spoke_networks_settings
-  hub_virtual_networks            = local.hub_virtual_networks
+
+  hub_virtual_networks = {
+    for key, hub in local.hub_definitions :
+    key => {
+      location          = hub.region
+      default_parent_id = azurerm_resource_group.connectivity[key].id
+
+      enabled_resources = {
+        firewall                              = var.firewall_enabled
+        firewall_policy                       = var.firewall_enabled
+        bastion                               = var.deploy_bastion
+        virtual_network_gateway_express_route = var.deploy_expressroute_gateway
+        virtual_network_gateway_vpn           = var.deploy_vpn_gateway
+        private_dns_zones                     = var.deploy_private_dns
+        private_dns_resolver                  = false
+        dns_resolver_policy                   = false
+      }
+
+      hub_virtual_network = {
+        name          = "vnet-hub-${hub.region_code}"
+        address_space = [hub.address_space]
+        tags          = var.default_tags
+      }
+
+      firewall = {
+        name                  = "afw-hub-${hub.region_code}"
+        sku_tier              = var.azfw_tier
+        subnet_address_prefix = hub.firewall_snet
+        zones                 = var.availability_zones
+        tags                  = var.default_tags
+      }
+
+      bastion = {
+        name                  = "bas-hub-${hub.region_code}"
+        subnet_address_prefix = hub.bastion_snet
+        tags                  = var.default_tags
+      }
+
+      virtual_network_gateways = {
+        subnet_address_prefix = hub.gateway_snet
+      }
+    }
+  }
 
   tags = var.default_tags
 }
 #{{ELSE}}
 # ─── Virtual WAN ─────────────────────────────────────────────────────────────
 
-locals {
-  virtual_wan_settings = {
-    name                = "vwan-${var.org_prefix}"
-    resource_group_name = "rg-${var.org_prefix}-connectivity-${var.primary_region_code}"
-    location            = var.primary_region
-  }
-
-  primary_virtual_hub = {
-    primary = {
-      name           = "vhub-${var.primary_region_code}"
-      location       = var.primary_region
-      address_prefix = var.primary_hub_address_space
-
-      firewall = var.firewall_enabled ? {
-        name     = "afw-vhub-${var.primary_region_code}"
-        sku_name = "AZFW_Hub"
-        sku_tier = var.azfw_tier
-        zones    = var.availability_zones
-      } : null
-    }
-  }
-
-  dr_virtual_hub = local.has_dr ? {
-    dr = {
-      name           = "vhub-${var.dr_region_code}"
-      location       = var.dr_region
-      address_prefix = var.dr_hub_address_space
-
-      firewall = var.firewall_enabled ? {
-        name     = "afw-vhub-${var.dr_region_code}"
-        sku_name = "AZFW_Hub"
-        sku_tier = var.azfw_tier
-        zones    = var.availability_zones
-      } : null
-    }
-  } : {}
-
-  virtual_hubs = merge(local.primary_virtual_hub, local.dr_virtual_hub)
-}
-
 module "virtual_wan" {
   source  = "Azure/avm-ptn-alz-connectivity-virtual-wan/azurerm"
   version = "0.17.1"
 
-  virtual_wan_settings = local.virtual_wan_settings
-  virtual_hubs         = local.virtual_hubs
+  virtual_wan_settings = {
+    virtual_wan = {
+      name                = "vwan-${var.org_prefix}"
+      location            = var.primary_region
+      resource_group_name = azurerm_resource_group.connectivity["primary"].name
+    }
+  }
+
+  virtual_hubs = {
+    for key, hub in local.hub_definitions :
+    key => {
+      location          = hub.region
+      default_parent_id = azurerm_resource_group.connectivity[key].id
+
+      enabled_resources = {
+        firewall                              = var.firewall_enabled
+        firewall_policy                       = var.firewall_enabled
+        bastion                               = false
+        virtual_network_gateway_express_route = var.deploy_expressroute_gateway
+        virtual_network_gateway_vpn           = var.deploy_vpn_gateway
+        private_dns_zones                     = false
+        private_dns_resolver                  = false
+      }
+
+      hub = {
+        name           = "vhub-${hub.region_code}"
+        address_prefix = hub.address_space
+      }
+
+      firewall = {
+        name     = "afw-vhub-${hub.region_code}"
+        sku_tier = var.azfw_tier
+        zones    = [for zone in var.availability_zones : tonumber(zone)]
+        tags     = var.default_tags
+      }
+    }
+  }
 
   tags = var.default_tags
 }
