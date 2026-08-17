@@ -140,7 +140,34 @@
       </div>
 
       <h3 class="sub">Subscriptions</h3>
-      <p class="note">These map 1:1 onto the <code>*_subscription_id</code> variables already present in <code>terraform/live/*/variables.tf</code>. An empty optional subscription means the layer that consumes it will not be deployed.</p>
+
+      <div class="field">
+        <label for="az_subMode">Subscription source <span class="req">*</span></label>
+        <select id="az_subMode" data-path="azure.subscriptions.mode">
+          <option value="create">Create new subscriptions for this landing zone (recommended)</option>
+          <option value="existing">Use pre-provisioned subscriptions (paste IDs)</option>
+        </select>
+        <p class="hint">All new deployments land in freshly created subscriptions; any pre-existing estate stays untouched (ADR&nbsp;0018).</p>
+      </div>
+
+      <div data-visible-when="azure.subscriptions.mode=create">
+        <div class="callout">
+          <h4>Names now, IDs after creation</h4>
+          <p>The wizard derives subscription names from your naming convention. After export, run <code>pwsh ./scripts/New-LzSubscriptions.ps1 -ConfigPath &lt;lz-config.json&gt;</code>: it creates the subscriptions through the billing alias API (EA and MCA billing accounts; auto-detected) and writes the new IDs back into <code>lz-config.json</code>. On billing accounts without programmatic creation (CSP, PAYG) it prints the planned names for portal creation and prompts for the IDs instead. Rendering refuses to run until every required ID is filled (guard&nbsp;G25).</p>
+        </div>
+        <div class="field">
+          <label>Planned subscriptions</label>
+          <ul class="note" id="az_plannedNames"></ul>
+        </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="az_planIdentity"> Also create an <strong>identity</strong> subscription</label>
+          <label class="check"><input type="checkbox" id="az_planNonProd"> Also create a <strong>non-production workload</strong> subscription</label>
+          <label class="check"><input type="checkbox" id="az_planSandbox"> Also create a <strong>sandbox</strong> subscription</label>
+        </div>
+      </div>
+
+      <div data-visible-when="azure.subscriptions.mode=existing">
+      <p class="note">These map 1:1 onto the <code>*_subscription_id</code> variables in the generated layers. An empty optional subscription means the layer that consumes it will not be deployed.</p>
 
       <div class="grid-2">
         <div class="field">
@@ -167,6 +194,7 @@
           <label for="az_sub_sandbox">Sandbox</label>
           <input id="az_sub_sandbox" data-path="azure.subscriptions.sandbox" type="text" spellcheck="false" placeholder="GUID (optional)">
         </div>
+      </div>
       </div>
 
       <h3 class="sub">Management group hierarchy</h3>
@@ -299,7 +327,9 @@
         </div>
         <div class="checks">
           <label class="check"><input type="checkbox" data-path="backend.azurerm.useAzureAdAuth" checked> Authenticate to state with Entra ID rather than storage keys</label>
+          <label class="check"><input type="checkbox" data-path="backend.azurerm.privateEndpoint.enabled" disabled> Emit the state private-endpoint hardening overlay (stage&nbsp;2)</label>
         </div>
+        <p class="hint">Day-0 state posture is a public endpoint with Entra-only auth, versioning, soft delete, and a delete lock (ADR&nbsp;0019) &mdash; an IP allowlist cannot admit same-region GitHub-hosted runners, so it would be theatre. The private-endpoint overlay requires hub-and-spoke, centralized private DNS, and self-hosted runners inside the VNet; self-hosted runners are not supported in v1, so this stays unavailable until they are.</p>
       </div>
     </section>
 
@@ -307,36 +337,29 @@
     <section class="step" data-step="deploymentStrategy" data-title="Greenfield / brownfield">
       <header class="step-head">
         <h2>Deployment strategy</h2>
-        <p>Whether this tenant is empty or already has resources that must be adopted.</p>
+        <p>Whether this tenant is empty, or carries an existing estate that must be recognized and kept out of the new landing zone.</p>
       </header>
 
       <div class="field">
         <label for="ds_mode">Mode <span class="req">*</span></label>
         <select id="ds_mode" data-path="deploymentStrategy.mode">
-          <option value="greenfield">Greenfield &mdash; build the hierarchy from scratch</option>
-          <option value="brownfield">Brownfield &mdash; discover and adopt existing resources</option>
+          <option value="greenfield">Greenfield &mdash; empty tenant, build from scratch</option>
+          <option value="brownfield">Brownfield &mdash; existing estate: exclude it, deploy new alongside</option>
         </select>
       </div>
 
       <div data-visible-when="deploymentStrategy.mode=brownfield">
         <div class="callout">
-          <h4>Brownfield is read-only until you say otherwise</h4>
-          <p>Discovery never writes. Import blocks and commands are generated for review, and the destroy-protection workflow fails any plan containing a destroy or replace action unless it carries the <code>approved-destroy</code> label. A discovery run that lacks read permission reports <em>forbidden</em>, never an empty inventory &mdash; an empty result and a blocked result must never look alike.</p>
+          <h4>Exclude and create &mdash; never adopt (ADR&nbsp;0018)</h4>
+          <p>New deployments land in <strong>new subscriptions</strong>; the existing estate is recognized, recorded, and structurally excluded &mdash; excluded subscriptions are never placed in the management-group hierarchy, never receive RBAC, and never see policy from this landing zone. Discovery stays read-only and inventories existing policy assignments so overlap is visible before first apply. Integrating existing deployments into the landing zone is a separate engagement, out of this tool&rsquo;s scope.</p>
         </div>
         <div class="field">
-          <label for="ds_defaultClass">Default classification for discovered resources</label>
-          <select id="ds_defaultClass" data-path="deploymentStrategy.brownfield.defaultClassification">
-            <option value="ignore">Ignore &mdash; leave unmanaged (recommended)</option>
-            <option value="require-approval">Require approval</option>
-            <option value="adopt">Adopt into Terraform state</option>
-            <option value="replace">Replace</option>
-          </select>
-          <p class="hint">Defaults to Ignore so adoption is always a deliberate act.</p>
+          <label for="ds_excluded">Excluded subscription IDs</label>
+          <input id="ds_excluded" data-path="deploymentStrategy.brownfield.excludedSubscriptionIds" data-type="csv" type="text" spellcheck="false" placeholder="GUID, GUID, ...">
+          <p class="hint">Existing subscriptions this landing zone must never touch. Guard&nbsp;G26 refuses a configuration that lists one of these in any subscription slot.</p>
         </div>
         <div class="checks">
-          <label class="check"><input type="checkbox" data-path="deploymentStrategy.brownfield.generateImportBlocks" checked> Generate Terraform <code>import</code> blocks</label>
-          <label class="check"><input type="checkbox" data-path="deploymentStrategy.brownfield.generateImportCommands" checked> Generate <code>terraform import</code> commands</label>
-          <label class="check"><input type="checkbox" data-path="deploymentStrategy.brownfield.allowDestructivePlans"> Allow destructive plans</label>
+          <label class="check"><input type="checkbox" data-path="deploymentStrategy.brownfield.inventoryExistingPolicies" checked> Inventory existing tenant-scope policy assignments during discovery (read-only)</label>
         </div>
       </div>
     </section>

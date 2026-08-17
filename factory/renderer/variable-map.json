@@ -1,15 +1,12 @@
 {
   "$comment": "Declares the correspondence between configuration keys and the Terraform variables each layer consumes. Test-LzSchemaDrift validates this in both directions: a mapped config key with no matching Terraform variable would silently do nothing, and a required Terraform variable that nothing feeds would stall apply waiting for input. Together with docs/refactor/COVERAGE.md this is the placeholder/question coverage gate.",
-
-  "mapVersion": "2.0.0",
-  "targetSchemaVersion": "2.1.0",
-
+  "mapVersion": "2.1.0",
+  "targetSchemaVersion": "2.2.0",
   "$pathConventions": {
     "plain": "A dotted path into lz-config.json, e.g. azure.primaryRegion.",
     "computed.*": "A value derived by the renderer rather than stored in the config. Exempt from the schema-existence check.",
     "literal:*": "A constant, or a string the template composes from several config values, supplied by the manifest rather than read from one key. Exempt from the schema-existence check."
   },
-
   "layers": {
     "platform-management": {
       "variablesFile": "terraform/live/platform-management/variables.tf",
@@ -23,7 +20,6 @@
         "default_tags": "naming.defaultTags"
       }
     },
-
     "global": {
       "variablesFile": "terraform/live/global/variables.tf",
       "$comment": "architecture_name and the five *_management_group_id placement targets default in variables.tf to the id set the pinned ALZ library architecture defines; they are operator-overridable alongside a custom architecture, so no wizard question feeds them (ADR 0017). The state_* trio feeds the remote-state read of platform-management.",
@@ -47,10 +43,9 @@
         "state_container_name": "backend.azurerm.containerName"
       }
     },
-
     "platform-connectivity": {
       "variablesFile": "terraform/live/platform-connectivity/variables.tf",
-      "$comment": "The rendered main.tf contains exactly one topology (connectivity.model). Firewall type narrowed to Azure Firewall by ADR 0017 — the AVM connectivity patterns deploy Azure Firewall, so firewall_enabled maps to literal:true and the wizard's tier answer flows through. deploy_vpn_gateway and deploy_expressroute_gateway newly consume answers that were previously recorded but unwired. hub_and_spoke_networks_settings is a pass-through escape hatch that defaults empty, fed by no question by design.",
+      "$comment": "The rendered main.tf contains exactly one topology (connectivity.model). Firewall type narrowed to Azure Firewall by ADR 0017 \u2014 the AVM connectivity patterns deploy Azure Firewall, so firewall_enabled maps to literal:true and the wizard's tier answer flows through. deploy_vpn_gateway and deploy_expressroute_gateway newly consume answers that were previously recorded but unwired. hub_and_spoke_networks_settings is a pass-through escape hatch that defaults empty, fed by no question by design.",
       "variables": {
         "connectivity_subscription_id": "azure.subscriptions.connectivity",
         "org_prefix": "organization.companyShortName",
@@ -71,11 +66,25 @@
         "hub_and_spoke_networks_settings": "literal:defaulted-empty",
         "default_tags": "naming.defaultTags"
       }
+    },
+    "state-hardening": {
+      "variablesFile": "terraform/live/state-hardening/variables.tf",
+      "$comment": "Stage-2 state hardening (ADR 0019). hub_pe_subnet_id and blob_private_dns_zone_id are deliberate operator placeholders owned by the platform-connectivity layer's outputs \u2014 same loop-back pattern as the connectivity workspace ID.",
+      "variables": {
+        "state_subscription_id": "computed.stateSubscriptionId",
+        "state_resource_group_name": "backend.azurerm.resourceGroupName",
+        "state_storage_account_name": "backend.azurerm.storageAccountName",
+        "org_prefix": "organization.companyShortName",
+        "primary_region": "azure.primaryRegion",
+        "primary_region_code": "azure.primaryRegionCode",
+        "hub_pe_subnet_id": "literal:operator placeholder \u2014 platform-connectivity hub PE subnet output",
+        "blob_private_dns_zone_id": "literal:operator placeholder \u2014 platform-connectivity privatelink.blob zone output",
+        "default_tags": "naming.defaultTags"
+      }
     }
   },
-
   "$pendingLayers": {
-    "$comment": "No pending layers. Workload spokes and sandbox estates are built inside the generated repository against the connectivity layer's outputs — per-estate work, not generator architecture (ADR 0017).",
+    "$comment": "No pending layers. Workload spokes and sandbox estates are built inside the generated repository against the connectivity layer's outputs \u2014 per-estate work, not generator architecture (ADR 0017).",
     "pending": []
   }
 }

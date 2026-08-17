@@ -86,6 +86,7 @@ async function main() {
     'azure.drRegion': 'northcentralus',
     'azure.drRegionCode': 'ncus',
     'azure.allowedLocations': 'southcentralus, northcentralus',
+    'azure.subscriptions.mode': 'existing',
     'azure.subscriptions.management': SYNTHETIC.management,
     'azure.subscriptions.connectivity': SYNTHETIC.connectivity,
     'azure.subscriptions.workloadProd': SYNTHETIC.workloadProd,

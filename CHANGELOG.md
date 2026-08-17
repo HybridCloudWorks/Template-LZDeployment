@@ -3,9 +3,53 @@
 **Purpose**: Historical record of completed work. **Going forward (operator
 contract, 2026-08-07): new entries record shipped features only.** Existing
 entries below are history and are not rewritten.
-**Last Updated**: August 15, 2026
+**Last Updated**: August 17, 2026
 
 ---
+
+## Factory 0.11.0 — subscription vending, exclude-and-create brownfield, state hardening (2026-08-17)
+
+Operator-directed (2026-08-17, "mixed billing, go ahead and build it").
+Schema 2.2.0. Recorded as
+[ADR 0018](docs/decisions/0018-brownfield-exclude-and-create.md),
+[ADR 0019](docs/decisions/0019-state-storage-hardening.md), and
+[ADR 0020](docs/decisions/0020-subscription-vending.md). What shipped:
+
+- **Subscription vending** ([ADR 0020](docs/decisions/0020-subscription-vending.md)):
+  `azure.subscriptions.mode` (`create` default | `existing`); in create mode
+  the wizard derives subscription names from the naming convention into
+  `plannedNames` and exports with empty ID slots, and the new
+  `scripts/New-LzSubscriptions.ps1` (plan-first, idempotent, mixed-billing:
+  EA enrollment accounts + MCA invoice sections, `-Manual` fallback for
+  CSP/PAYG) creates them via `az account alias create` and writes the IDs
+  back into `lz-config.json` with schema re-validation. Guard **G25** blocks
+  rendering an unfilled create-mode config. Minimum estate is three
+  subscriptions; identity/non-prod/sandbox are opt-in.
+- **Brownfield redefined as exclude-and-create**
+  ([ADR 0018](docs/decisions/0018-brownfield-exclude-and-create.md)):
+  `deploymentStrategy.brownfield` is now
+  `{excludedSubscriptionIds, inventoryExistingPolicies}`; excluded
+  subscriptions stay outside the new management-group hierarchy and are
+  never planned, imported, or modified; integration of existing deployments
+  is out of scope. Guard **G26** blocks an excluded ID appearing in any
+  subscription slot. The quarantined import machinery
+  (`brownfield-import.ps1`/`.sh`, `factory/import/`, `Test-Import.ps1`) is
+  removed — CLASSIFICATION.md UNRESOLVED-2 closed.
+- **State-storage hardening** ([ADR 0019](docs/decisions/0019-state-storage-hardening.md),
+  WAF-validated; CLASSIFICATION.md UNRESOLVED-1 closed): the broker's day-0
+  state account gains GZRS (GRS fallback), HTTPS-only, cross-tenant
+  replication off, create-time infrastructure encryption, blob versioning +
+  30-day blob/container soft delete, and a CanNotDelete lock — public
+  endpoint + Entra-only auth stays (same-region IP allowlists cannot admit
+  GitHub-hosted runners; WORM would break state leases). Stage 2:
+  `backend.azurerm.privateEndpoint.enabled` emits a `state-hardening` layer
+  (private endpoint + privatelink.blob zone group; the account itself is
+  data-source-only) and a human-gated `state-access-flip` workflow; guard
+  **G27** requires hub-spoke + centralized private DNS + self-hosted
+  runners, so the option is declared but unreachable until G05 lifts.
+- Versions: factory 0.11.0, schema 2.2.0, manifest 2.1.0, variable-map
+  2.1.0; fixtures re-exported; wizard `NEXT-STEPS.md` gains the vending
+  step and the exclude-and-create brownfield note.
 
 ## Factory 0.10.0 — the generator-only refactor (2026-08-15)
 

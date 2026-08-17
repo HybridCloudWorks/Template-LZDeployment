@@ -1,0 +1,96 @@
+# GENERATED FILE — Landing Zone Factory v{{FACTORY-RAW:computed.factoryVersion}}
+#
+# Stage-2 state hardening, final step (ADR 0019): flip the state storage
+# account's public network access AFTER the state-hardening layer has applied
+# and the private endpoint is Approved. Kept OUT of Terraform deliberately —
+# managing the state account from the pipeline that depends on it is a
+# self-lockout risk — and OUT of the apply workflow: this is a one-time,
+# human-gated posture change, not part of any plan/apply loop.
+#
+# disable-public is one-way by intent; enable-public exists as the reviewed
+# break-glass reversal (for example, before deliberately decommissioning the
+# self-hosted runners). Both directions pass the same protected-environment
+# reviewer gate.
+name: State Access Flip
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Direction of the flip
+        required: true
+        type: choice
+        options:
+          - disable-public
+          - enable-public
+      confirm:
+        description: Type the state storage account name to confirm
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: state-access-flip
+  cancel-in-progress: false
+
+jobs:
+  flip:
+    name: ${{ inputs.action }} on the state storage account
+    # Self-hosted by prerequisite (guard G27): after disable-public, only
+    # runners inside the network can reach state — including this workflow's
+    # own verification step.
+    runs-on: self-hosted
+    environment: management
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Verify confirmation input
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          EXPECTED: {{FACTORY:backend.azurerm.storageAccountName}}
+        run: |
+          if [ "$CONFIRM" != "$EXPECTED" ]; then
+            echo "::error::Confirmation does not match the state storage account name."
+            exit 1
+          fi
+      - name: Azure login (environment apply identity)
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
+        with:
+          client-id: ${{ vars.AZURE_APPLY_CLIENT_ID }}
+          tenant-id: {{FACTORY-RAW:azure.tenantId}}
+          subscription-id: {{FACTORY-RAW:computed.stateSubscriptionId}}
+      - name: Require an Approved private endpoint before disabling public access
+        if: ${{ inputs.action == 'disable-public' }}
+        env:
+          ACCOUNT: {{FACTORY:backend.azurerm.storageAccountName}}
+          RESOURCE_GROUP: {{FACTORY:backend.azurerm.resourceGroupName}}
+        run: |
+          status=$(az storage account show --name "$ACCOUNT" --resource-group "$RESOURCE_GROUP" \
+            --query "privateEndpointConnections[0].privateLinkServiceConnectionState.status" -o tsv)
+          if [ "$status" != "Approved" ]; then
+            echo "::error::No Approved private endpoint on $ACCOUNT (found: '${status:-none}'). Apply the state-hardening layer first."
+            exit 1
+          fi
+      - name: Flip public network access
+        env:
+          ACCOUNT: {{FACTORY:backend.azurerm.storageAccountName}}
+          RESOURCE_GROUP: {{FACTORY:backend.azurerm.resourceGroupName}}
+          ACTION: ${{ inputs.action }}
+        run: |
+          if [ "$ACTION" = "disable-public" ]; then value="Disabled"; else value="Enabled"; fi
+          az storage account update --name "$ACCOUNT" --resource-group "$RESOURCE_GROUP" \
+            --public-network-access "$value" --output none
+          echo "Public network access on $ACCOUNT is now $value."
+      - name: Verify state is still reachable from this runner
+        env:
+          ACCOUNT: {{FACTORY:backend.azurerm.storageAccountName}}
+          CONTAINER: {{FACTORY:backend.azurerm.containerName}}
+        run: |
+          # Data-plane read over the runner's own network path. If this fails
+          # after disable-public, the flip has locked the pipeline out —
+          # re-run this workflow with enable-public and fix the network path.
+          az storage blob list --account-name "$ACCOUNT" --container-name "$CONTAINER" \
+            --auth-mode login --num-results 1 --output none
+          echo "State container is reachable."

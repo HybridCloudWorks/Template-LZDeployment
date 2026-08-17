@@ -131,7 +131,6 @@ try {
         'Test-Bootstrap.ps1',
         'Test-Scaffold.ps1',
         'Test-Validate.ps1',
-        'Test-Import.ps1',
         'Test-CI.ps1',
         'Test-Release.ps1'
     )) {

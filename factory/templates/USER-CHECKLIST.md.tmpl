@@ -149,28 +149,16 @@ without editing broker or scaffold source; provide values through
   checks before any Terraform apply.
 
 #{{IF deploymentStrategy.mode == 'brownfield'}}
-## Brownfield classification and import generation
+## Brownfield — exclude and create (ADR 0018)
 
-- [ ] Export `LZ_DISCOVERY_PATH` with a fresh, conclusive, read-only inventory.
-- [ ] Export `LZ_BROWNFIELD_CLASSIFICATIONS` with the reviewed classification
-  file and `LZ_IMPORT_EVIDENCE` with a protected evidence directory.
-- [ ] Run `pwsh ./brownfield-import.ps1` without `-Apply` and review the
-  generated classification template, plan, and audit.
-- [ ] Review the configured default classification; it is Ignore when omitted.
-  Adopt still requires an explicit exact Terraform address and active layer.
-- [ ] Classify each candidate as Adopt, Ignore, Replace, or Require-Approval.
-- [ ] Provide `approvalReference` for every Replace or Require-Approval entry;
-  neither generates mutation.
-- [ ] Use `LZ_IMPORT_ALLOW_STALE=true` only under a documented owner exception
-  because classifications are pinned to the discovery SHA-256.
-- [ ] Set `LZ_IMPORT_APPLY=true` only after approval. Stage 11 writes import
-  review artifacts and updates `render-manifest.json`; it never executes
-  Terraform import.
-- [ ] Review every generated address/ID/layer pair and preserve the discovery,
-  classification, plan, audit, and renderer manifest as evidence.
-- [ ] Back up state, run a speculative plan, and prove zero unintended destroy
-  or replace actions before executing any generated command.
-- [ ] Execute generated commands only in an authenticated change-controlled
-  operator session. Destructive exceptions require `approved-destroy` plus the
-  recorded approval.
+- [ ] Confirm every excluded subscription ID in
+  `deploymentStrategy.brownfield.excludedSubscriptionIds` is correct: those
+  subscriptions are never placed in the new management-group hierarchy, never
+  receive RBAC, and never see policy from this landing zone.
+- [ ] Confirm no excluded subscription appears in any `azure.subscriptions`
+  slot (render guard G26 blocks this, but verify the intent too).
+- [ ] Review the discovery policy inventory for tenant-scope assignments that
+  would collide with the new policy baseline before the first policy apply.
+- [ ] Treat any integration of existing deployments into this landing zone as
+  a separate engagement — it is out of scope for the generated pipeline.
 #{{ENDIF}}

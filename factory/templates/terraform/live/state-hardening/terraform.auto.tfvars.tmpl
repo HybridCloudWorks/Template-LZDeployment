@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# state-hardening layer variables (ADR 0019, stage 2).
+#
+# GENERATED FILE. Do not hand-edit — except the two deliberate placeholders
+# below, which are owned by the operator and can only be filled in AFTER the
+# platform-connectivity layer has applied.
+#
+# Rendered by Landing Zone Factory
+# {{FACTORY-RAW:computed.factoryVersion}} on {{FACTORY-RAW:computed.generatedAt}}.
+# ─────────────────────────────────────────────────────────────────────────────
+
+state_subscription_id      = {{FACTORY:computed.stateSubscriptionId}}
+state_resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
+state_storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
+org_prefix                 = {{FACTORY:organization.companyShortName}}
+primary_region             = {{FACTORY:azure.primaryRegion}}
+primary_region_code        = {{FACTORY:azure.primaryRegionCode}}
+
+# DELIBERATE PLACEHOLDERS — cross-layer values owned by platform-connectivity.
+# After that layer applies, uncomment both and paste the values from its
+# outputs. The plan FAILS (variable validation) until they are set; that is
+# the designed behaviour, not a bug (same loop-back pattern as
+# log_analytics_workspace_id in the connectivity layer).
+#
+# hub_pe_subnet_id         = "<platform-connectivity output: hub PE subnet resource ID>"
+# blob_private_dns_zone_id = "<platform-connectivity output: privatelink.blob.core.windows.net zone resource ID>"
+
+default_tags = {{FACTORY-MAP:naming.defaultTags}}
