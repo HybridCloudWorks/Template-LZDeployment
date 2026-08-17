@@ -908,6 +908,18 @@ function Set-LzBranchProtection {
 }
 
 function Set-LzAzurermBackend {
+    # Day-0 state posture (ADR 0019, WAF-validated): public endpoint with
+    # Entra-only auth. Deliberately NOT an IP allowlist — storage network
+    # rules cannot admit same-region GitHub-hosted runners (the service
+    # ignores same-region public IP rules) and the rule cap is 400, so an
+    # allowlist would be either a null-op or theatre. What day 0 DOES get:
+    # zone-redundant geo storage, TLS 1.2 floor, HTTPS-only, shared keys off,
+    # cross-tenant replication off, infrastructure encryption (create-time
+    # only), blob versioning, 30-day blob and container soft delete, and a
+    # CanNotDelete lock on the state resource group. WORM/immutability is
+    # deliberately absent: Terraform's blob-lease locking needs to write the
+    # state blob in place. The stage-2 private-endpoint overlay is estate-side
+    # (backend.azurerm.privateEndpoint.enabled, guard G27).
     param([object]$Config)
     $backend = $Config.backend.azurerm
     $subscription = Get-LzConfigValue $backend 'subscriptionId' $Config.azure.subscriptions.management
@@ -915,16 +927,67 @@ function Set-LzAzurermBackend {
     if ($LASTEXITCODE -ne 0) { throw "Cannot select backend subscription $subscription." }
     & az group create --name $backend.resourceGroupName --location $Config.azure.primaryRegion --output none
     if ($LASTEXITCODE -ne 0) { throw 'Failed to reconcile backend resource group.' }
+
+    # Infrastructure encryption can only be set at creation; passing it on an
+    # update is rejected, so probe for the account first.
+    $existing = $null
+    $existingRaw = & az storage account show --name $backend.storageAccountName `
+        --resource-group $backend.resourceGroupName --output json 2>$null
+    if ($LASTEXITCODE -eq 0 -and $existingRaw) { $existing = $existingRaw | ConvertFrom-Json }
+
     # --allow-shared-key-access false: contract #3 (AAD-only state access). The
     # generated backend.hcl sets use_azuread_auth = true and the identities get
     # Storage Blob Data Reader/Contributor data-plane grants; shared keys stay off.
-    & az storage account create --name $backend.storageAccountName --resource-group $backend.resourceGroupName `
-        --location $Config.azure.primaryRegion --sku Standard_GRS --kind StorageV2 `
-        --min-tls-version TLS1_2 --allow-blob-public-access false --allow-shared-key-access false --output none
-    if ($LASTEXITCODE -ne 0) { throw 'Failed to reconcile backend storage account.' }
+    $baseArgs = @(
+        '--name', $backend.storageAccountName, '--resource-group', $backend.resourceGroupName,
+        '--location', $Config.azure.primaryRegion, '--kind', 'StorageV2',
+        '--min-tls-version', 'TLS1_2', '--https-only', 'true',
+        '--allow-blob-public-access', 'false', '--allow-shared-key-access', 'false',
+        '--allow-cross-tenant-replication', 'false', '--output', 'none'
+    )
+    $sku = 'Standard_GZRS'
+    if ($existing) {
+        # Reconcile settings on the existing account; keep its SKU family if a
+        # previous run already fell back to GRS, and never send the
+        # create-only infrastructure-encryption flag again.
+        $sku = if ($existing.sku.name -in @('Standard_GZRS', 'Standard_GRS')) { $existing.sku.name } else { $sku }
+        & az storage account create @baseArgs --sku $sku
+        if ($LASTEXITCODE -ne 0) { throw 'Failed to reconcile backend storage account.' }
+    }
+    else {
+        # Zone-redundant geo storage where the region supports it; GRS fallback
+        # keeps regions without availability zones working.
+        & az storage account create @baseArgs --sku $sku --require-infrastructure-encryption true 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Standard_GZRS is not available in $($Config.azure.primaryRegion); state storage falls back to Standard_GRS (geo-redundant, not zone-redundant)."
+            $sku = 'Standard_GRS'
+            & az storage account create @baseArgs --sku $sku --require-infrastructure-encryption true
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to create backend storage account.' }
+        }
+    }
+
+    # Versioning + soft delete: every state write keeps its predecessors for
+    # 30 days, and a deleted container is recoverable — corrupted or deleted
+    # state stops being an unrecoverable event.
+    & az storage account blob-service-properties update `
+        --account-name $backend.storageAccountName --resource-group $backend.resourceGroupName `
+        --enable-versioning true `
+        --enable-delete-retention true --delete-retention-days 30 `
+        --enable-container-delete-retention true --container-delete-retention-days 30 --output none
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to configure state blob versioning and soft delete.' }
+
     & az storage container create --name (Get-LzConfigValue $backend 'containerName' 'tfstate') `
         --account-name $backend.storageAccountName --auth-mode login --output none
     if ($LASTEXITCODE -ne 0) { throw 'Failed to reconcile backend container.' }
+
+    # CanNotDelete on the resource group: blocks deletion of the group, the
+    # account, and the container through ARM; blob writes (state pushes and
+    # lease locks) are data-plane and unaffected. Re-running is idempotent.
+    & az lock create --name 'lz-tfstate-cannotdelete' --lock-type CanNotDelete `
+        --resource-group $backend.resourceGroupName `
+        --notes 'Terraform state for the landing zone. Remove this lock deliberately before any teardown (ADR 0019).' --output none
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to place the CanNotDelete lock on the state resource group.' }
+
     $account = Invoke-LzNativeJson az @(
         'storage', 'account', 'show', '--name', $backend.storageAccountName,
         '--resource-group', $backend.resourceGroupName, '--output', 'json'
@@ -940,6 +1003,11 @@ function Set-LzAzurermBackend {
         resourceGroup = $backend.resourceGroupName
         storageAccountId = $account.id
         container = $container.name
+        sku = $account.sku.name
+        httpsOnly = (Get-LzConfigValue $account 'enableHttpsTrafficOnly' $true)
+        infrastructureEncryption = (Get-LzConfigValue $account.encryption 'requireInfrastructureEncryption' $null)
+        crossTenantReplication = (Get-LzConfigValue $account 'allowCrossTenantReplication' $false)
+        deleteLock = 'lz-tfstate-cannotdelete'
     }
 }
 
@@ -949,6 +1017,9 @@ function Get-LzLayerEnvironment {
         'global' { return 'bootstrap' }
         'platform-connectivity' { return 'connectivity' }
         'platform-management' { return 'management' }
+        # State hardening runs in the state subscription, which defaults to the
+        # management subscription — same protected environment (ADR 0019).
+        'state-hardening' { return 'management' }
         'platform-identity' { return 'identity' }
         'workloads-prod' { return 'prod' }
         'sandbox' { return 'sandbox' }

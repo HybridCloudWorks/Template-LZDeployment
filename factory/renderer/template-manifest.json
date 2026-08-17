@@ -1,11 +1,8 @@
 {
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||. This manifest is the OUTPUT CONTRACT (docs/refactor/OUTPUT-CONTRACT.md): generation fails if a produced file is not listed here or a listed file is missing (validation gate V01). No generator machinery is ever listed.",
-
-  "manifestVersion": "2.0.0",
-  "targetSchemaVersion": "2.1.0",
-
-  "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored — the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
-
+  "manifestVersion": "2.1.0",
+  "targetSchemaVersion": "2.2.0",
+  "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored \u2014 the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
   "files": [
     {
       "source": "README.md.tmpl",
@@ -40,7 +37,7 @@
       "destination": "lz-config.json",
       "mode": "config-snapshot",
       "when": "always",
-      "description": "The answer record — the validated configuration that produced this repository, secrets excluded by construction. Committed so provenance survives the factory copy's deletion."
+      "description": "The answer record \u2014 the validated configuration that produced this repository, secrets excluded by construction. Committed so provenance survives the factory copy's deletion."
     },
     {
       "source": "$factory-version",
@@ -49,27 +46,26 @@
       "when": "always",
       "description": "Generator version stamp: factory release, schema version, and generation timestamp."
     },
-
     {
       "source": "terraform/live/platform-management/variables.tf",
       "destination": "terraform/live/platform-management/variables.tf",
       "mode": "copy",
       "when": "always",
-      "description": "Management variable declarations. Copied verbatim — this file is the contract the schema-drift check validates against, so it must never be templated."
+      "description": "Management variable declarations. Copied verbatim \u2014 this file is the contract the schema-drift check validates against, so it must never be templated."
     },
     {
       "source": "terraform/live/platform-management/main.tf.tmpl",
       "destination": "terraform/live/platform-management/main.tf",
       "mode": "render",
       "when": "always",
-      "description": "Root module referencing Azure/avm-ptn-alz-management by pinned registry version. Deployed first — the global layer reads its state."
+      "description": "Root module referencing Azure/avm-ptn-alz-management by pinned registry version. Deployed first \u2014 the global layer reads its state."
     },
     {
       "source": "terraform/live/platform-management/outputs.tf.tmpl",
       "destination": "terraform/live/platform-management/outputs.tf",
       "mode": "render",
       "when": "always",
-      "description": "Workspace and automation identifiers — the remote-state contract the global layer reads."
+      "description": "Workspace and automation identifiers \u2014 the remote-state contract the global layer reads."
     },
     {
       "source": "terraform/live/platform-management/terraform.auto.tfvars.tmpl",
@@ -78,7 +74,6 @@
       "when": "always",
       "description": "Management layer variables."
     },
-
     {
       "source": "terraform/live/global/variables.tf",
       "destination": "terraform/live/global/variables.tf",
@@ -107,7 +102,6 @@
       "when": "always",
       "description": "Global layer variables: parent MG, subscriptions, state-read coordinates."
     },
-
     {
       "source": "terraform/live/platform-connectivity/variables.tf",
       "destination": "terraform/live/platform-connectivity/variables.tf",
@@ -120,7 +114,7 @@
       "destination": "terraform/live/platform-connectivity/main.tf",
       "mode": "render",
       "when": "connectivity.model != 'none'",
-      "description": "Root module referencing the hub-and-spoke OR Virtual WAN AVM pattern module by pinned registry version — one topology per estate, never both."
+      "description": "Root module referencing the hub-and-spoke OR Virtual WAN AVM pattern module by pinned registry version \u2014 one topology per estate, never both."
     },
     {
       "source": "terraform/live/platform-connectivity/outputs.tf.tmpl",
@@ -136,7 +130,41 @@
       "when": "connectivity.model != 'none'",
       "description": "Connectivity layer variables. Omitted entirely when no platform networking is deployed."
     },
-
+    {
+      "source": "terraform/live/state-hardening/variables.tf",
+      "destination": "terraform/live/state-hardening/variables.tf",
+      "mode": "copy",
+      "when": "defined backend.azurerm.privateEndpoint.enabled && backend.azurerm.privateEndpoint.enabled",
+      "description": "State-hardening variable declarations. Copied verbatim \u2014 this file is the contract the schema-drift check validates against, so it must never be templated."
+    },
+    {
+      "source": "terraform/live/state-hardening/main.tf.tmpl",
+      "destination": "terraform/live/state-hardening/main.tf",
+      "mode": "render",
+      "when": "defined backend.azurerm.privateEndpoint.enabled && backend.azurerm.privateEndpoint.enabled",
+      "description": "Stage-2 state hardening (ADR 0019): private endpoint + privatelink.blob zone group for the state account. Never manages the storage account itself. Deployed LAST \u2014 needs the hub applied first."
+    },
+    {
+      "source": "terraform/live/state-hardening/outputs.tf.tmpl",
+      "destination": "terraform/live/state-hardening/outputs.tf",
+      "mode": "render",
+      "when": "defined backend.azurerm.privateEndpoint.enabled && backend.azurerm.privateEndpoint.enabled",
+      "description": "State-hardening outputs: private endpoint ID and private IP."
+    },
+    {
+      "source": "terraform/live/state-hardening/terraform.auto.tfvars.tmpl",
+      "destination": "terraform/live/state-hardening/terraform.auto.tfvars",
+      "mode": "render",
+      "when": "defined backend.azurerm.privateEndpoint.enabled && backend.azurerm.privateEndpoint.enabled",
+      "description": "State-hardening variables: state coordinates from the configuration plus two deliberate operator placeholders (hub PE subnet, privatelink.blob zone) owned by platform-connectivity."
+    },
+    {
+      "source": ".github/workflows/state-access-flip.yml.tmpl",
+      "destination": ".github/workflows/state-access-flip.yml",
+      "mode": "render",
+      "when": "defined backend.azurerm.privateEndpoint.enabled && backend.azurerm.privateEndpoint.enabled",
+      "description": "Human-gated public-access flip for the state account (ADR 0019): runs on self-hosted runners through the management environment, requires an Approved private endpoint before disable-public, verifies reachability after."
+    },
     {
       "source": ".github/workflows/terraform-plan.yml.tmpl",
       "destination": ".github/workflows/terraform-plan.yml",
@@ -186,7 +214,6 @@
       "when": "always",
       "description": "Verifies the live plan identity federates and remains read-only."
     },
-
     {
       "source": "docs/IDENTITY.md.tmpl",
       "destination": "docs/identity-trust-matrix.md",
@@ -248,7 +275,7 @@
       "destination": "docs/upgrade-guide.md",
       "mode": "render",
       "when": "always",
-      "description": "Module-pin and library-reference upgrade procedure — Renovate-driven, with no dependency on the factory."
+      "description": "Module-pin and library-reference upgrade procedure \u2014 Renovate-driven, with no dependency on the factory."
     },
     {
       "source": "docs/PHASE-MODEL.md.tmpl",
@@ -258,7 +285,6 @@
       "description": "End-to-end phase inputs, outputs, gates, failure behavior, and handoff requirements."
     }
   ],
-
   "perLayerFiles": [
     {
       "source": "terraform/live/_layer/backend.tf.tmpl",

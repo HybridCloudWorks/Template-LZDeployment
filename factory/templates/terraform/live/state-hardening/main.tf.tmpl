@@ -1,0 +1,66 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# state-hardening — stage-2 private endpoint for the Terraform state account.
+#
+# GENERATED FILE. Do not hand-edit. Rendered by Landing Zone Factory
+# {{FACTORY-RAW:computed.factoryVersion}} on {{FACTORY-RAW:computed.generatedAt}}.
+#
+# ADR 0019. This layer adds a private endpoint (plus its privatelink.blob DNS
+# zone group) for the state storage account the bootstrap broker created. It
+# deliberately NEVER manages the storage account itself — a Terraform-managed
+# state account is one bad plan away from the pipeline deleting or locking the
+# very state it is reading. The account is a data source here, read-only.
+#
+# The public-access flip is NOT part of this layer either, for the same
+# self-lockout reason: it is the separately gated state-access-flip workflow,
+# run manually AFTER this layer has applied and the endpoint is Approved, and
+# only from self-hosted runners that reach the hub (guard G27 enforced the
+# prerequisites before this layer could be rendered at all).
+#
+# Deploy order: LAST — this layer needs the platform-connectivity hub applied
+# first (its subnet and privatelink.blob zone are inputs).
+# ─────────────────────────────────────────────────────────────────────────────
+
+terraform {
+  required_version = ">= 1.12.0"
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+  subscription_id                 = var.state_subscription_id
+  resource_provider_registrations = "none"
+}
+
+# Read-only: the broker owns the account (creation, SKU, encryption,
+# versioning, soft delete, delete lock). Never import or manage it here.
+data "azurerm_storage_account" "state" {
+  name                = var.state_storage_account_name
+  resource_group_name = var.state_resource_group_name
+}
+
+resource "azurerm_private_endpoint" "state_blob" {
+  name                = "pep-${var.org_prefix}-tfstate-${var.primary_region_code}"
+  location            = var.primary_region
+  resource_group_name = var.state_resource_group_name
+  subnet_id           = var.hub_pe_subnet_id
+
+  private_service_connection {
+    name                           = "psc-${var.org_prefix}-tfstate-blob"
+    private_connection_resource_id = data.azurerm_storage_account.state.id
+    subresource_names              = ["blob"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "privatelink-blob"
+    private_dns_zone_ids = [var.blob_private_dns_zone_id]
+  }
+
+  tags = var.default_tags
+}

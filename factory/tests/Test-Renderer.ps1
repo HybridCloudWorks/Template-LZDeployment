@@ -193,7 +193,7 @@ ok '.gitignore covers .alzlib/'     ($gitignore -match '\.alzlib/')
 $stamp = Get-Content (Join-Path $out 'factory-version.json') -Raw | ConvertFrom-Json
 ok 'version stamp carries factory version' ("$($stamp.factoryVersion)" -eq "$($fv.factoryVersion)")
 $answerRecord = Get-Content (Join-Path $out 'lz-config.json') -Raw | ConvertFrom-Json -Depth 30
-ok 'answer record round-trips'      ("$($answerRecord.schemaVersion)" -eq '2.1.0')
+ok 'answer record round-trips'      ("$($answerRecord.schemaVersion)" -eq '2.2.0')
 $renovate = Get-Content (Join-Path $out 'renovate.json') -Raw | ConvertFrom-Json -Depth 10
 ok 'renovate targets terraform manager' (@($renovate.packageRules[0].matchManagers) -contains 'terraform')
 

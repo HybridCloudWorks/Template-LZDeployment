@@ -39,7 +39,7 @@ Classification base: branch `claude/repo-alignment-review-5ita4y`, 1,355 tracked
 | `bootstrap-broker` | **KEEP** | Repo B hardening entry point; gains App/PAT path. |
 | `release-readiness` | **KEEP (reworked)** | Evidence binding retargets from the dogfood live estate to the end-to-end generation proof (Phase 3/9). |
 | `dogfood-instance` | **DELETE** | Drives render→plan→apply of the in-repo live estate, which no longer exists. Replaced by the Phase 9 end-to-end generation proof (wizard-driven, headless). |
-| `brownfield-import` | **UNRESOLVED** (retained, quarantined) | See UNRESOLVED-2. |
+| `brownfield-import` | **RESOLVED — removed** (ADR 0018, 2026-08-17) | Brownfield is exclude-and-create; import generation is out of scope. See UNRESOLVED-2. |
 
 ## Workflows (`.github/workflows/`)
 
@@ -99,11 +99,19 @@ answers that fed them remain in the answer record and generated documentation on
    RG/storage-account/containers. Whether the private-endpoint/private-DNS option of
    the old bootstrap must be preserved in the broker is an operator call — not
    implemented in this pass, recorded here rather than guessed.
+   **RESOLVED 2026-08-17:** [ADR 0019](../decisions/0019-state-storage-hardening.md)
+   — day-0 posture is public endpoint + Entra-only auth with GZRS, versioning,
+   soft delete, infrastructure encryption, and a CanNotDelete lock (broker-owned);
+   the private endpoint is a stage-2 estate-side overlay gated by guard G27.
 2. **`brownfield-import`.** Its import-block generation targets the deleted bespoke
    modules' resource addresses. Rewriting it against AVM pattern-module internal
    addresses cannot be verified without registry access (blocked in this environment,
    HTTP 403). The scripts are retained but their entry points now refuse with a
    pointer to this record until re-targeted.
+   **RESOLVED 2026-08-17:** brownfield was redefined as exclude-and-create
+   ([ADR 0018](../decisions/0018-brownfield-exclude-and-create.md)) — new
+   subscriptions only, existing estate structurally excluded, integration out of
+   scope — so the quarantined generator was removed rather than re-targeted.
 3. **`avm-ptn-alz-management` exact input surface at 0.9.0** and **connectivity module
    input surfaces at 0.17.x** could not be re-verified against the Terraform Registry
    from this environment (proxy 403). Emitted root modules follow the modules'

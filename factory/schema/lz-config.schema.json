@@ -94,8 +94,8 @@
   },
   "properties": {
     "schemaVersion": {
-      "const": "2.1.0",
-      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement. 2.1.0: azurerm-only backend (ADR 0015), Virtual WAN topology supported, AVM three-layer architecture (ADR 0013)."
+      "const": "2.2.0",
+      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement. 2.2.0: subscription vending (azure.subscriptions.mode=create with plannedNames, ADR 0020), brownfield redefined as exclude-and-create (ADR 0018), state-storage private-endpoint flag (ADR 0019)."
     },
     "factoryVersion": {
       "type": "string",
@@ -184,19 +184,58 @@
             "connectivity",
             "workloadProd"
           ],
-          "description": "Maps 1:1 onto the *_subscription_id variables in terraform/live/*/variables.tf. Empty string means the layer consuming it will not be deployed.",
+          "description": "Maps 1:1 onto the *_subscription_id variables in terraform/live/*/variables.tf. Empty string means not-yet-provisioned (mode=create, before New-LzSubscriptions.ps1 runs) or slot-not-used. Render guard G25 refuses to render while a required slot is empty, so an unfilled create-mode config can never produce a repository.",
           "properties": {
+            "mode": {
+              "enum": [
+                "create",
+                "existing"
+              ],
+              "default": "create",
+              "description": "create: the wizard plans subscription NAMES from the naming convention and scripts/New-LzSubscriptions.ps1 creates them (EA/MCA alias API, manual fallback) and patches the IDs back into this file. existing: IDs are pasted directly (pre-provisioned subscriptions)."
+            },
+            "plannedNames": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Convention-derived display names for subscriptions to be created (mode=create). Written by the wizard; consumed by New-LzSubscriptions.ps1. Keys mirror the ID slots.",
+              "properties": {
+                "management": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "identity": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "connectivity": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "workloadProd": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "workloadNonProd": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sandbox": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
             "management": {
-              "$ref": "#/$defs/guid"
+              "$ref": "#/$defs/guidOrEmpty"
             },
             "identity": {
               "$ref": "#/$defs/guidOrEmpty"
             },
             "connectivity": {
-              "$ref": "#/$defs/guid"
+              "$ref": "#/$defs/guidOrEmpty"
             },
             "workloadProd": {
-              "$ref": "#/$defs/guid"
+              "$ref": "#/$defs/guidOrEmpty"
             },
             "workloadNonProd": {
               "$ref": "#/$defs/guidOrEmpty"
@@ -204,7 +243,34 @@
             "sandbox": {
               "$ref": "#/$defs/guidOrEmpty"
             }
-          }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "existing"
+                  }
+                },
+                "required": [
+                  "mode"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "management": {
+                    "$ref": "#/$defs/guid"
+                  },
+                  "connectivity": {
+                    "$ref": "#/$defs/guid"
+                  },
+                  "workloadProd": {
+                    "$ref": "#/$defs/guid"
+                  }
+                }
+              }
+            }
+          ]
         },
         "managementGroups": {
           "type": "object",
@@ -413,6 +479,17 @@
             "useAzureAdAuth": {
               "type": "boolean",
               "default": true
+            },
+            "privateEndpoint": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Emit the state-hardening overlay (private endpoint into the hub + privatelink.blob zone group + gated public-access flip workflow). Requires hub-spoke topology, centralized private DNS, and self-hosted runners in the VNet (ADR 0019); guard G27 refuses otherwise. Day-0 state posture is public endpoint + AAD-only regardless (WAF-validated: IP allowlists cannot admit same-region GitHub-hosted runners)."
+                }
+              }
             }
           }
         }
@@ -434,34 +511,25 @@
             "greenfield",
             "brownfield"
           ],
-          "description": "brownfield triggers read-only discovery, import generation, and the destructive-plan gate (risk BR1). No destructive operation is ever emitted by default (assumption A5)."
+          "description": "greenfield: an empty-tenant assumption \u2014 new subscriptions, nothing pre-existing to consider. brownfield: pre-existing estate is RECOGNIZED and EXCLUDED, never touched (ADR 0018): new subscriptions are still created for all new deployments, excluded subscription IDs are structurally kept out of the hierarchy, and discovery inventories existing policy assignments for awareness. Integration of existing deployments is out of scope."
         },
         "brownfield": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "defaultClassification": {
-              "enum": [
-                "adopt",
-                "ignore",
-                "replace",
-                "require-approval"
-              ],
-              "default": "ignore",
-              "description": "Applied to every discovered resource with no explicit classification. Defaults to ignore so adoption is always an opt-in act (risk BR3)."
+            "excludedSubscriptionIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/guid"
+              },
+              "uniqueItems": true,
+              "default": [],
+              "description": "Existing subscription IDs the estate must never touch. Enforced structurally: never placed in the management-group hierarchy, never granted RBAC, and render guard G26 refuses a config that lists one of these IDs in any subscription slot."
             },
-            "generateImportBlocks": {
+            "inventoryExistingPolicies": {
               "type": "boolean",
-              "default": true
-            },
-            "generateImportCommands": {
-              "type": "boolean",
-              "default": true
-            },
-            "allowDestructivePlans": {
-              "type": "boolean",
-              "default": false,
-              "description": "When false, the destroy-protection workflow fails any plan containing destroy or replace actions."
+              "default": true,
+              "description": "Discovery records existing tenant-scope policy assignments into discovery-inventory.json and the generated governance doc, so overlap with the ALZ library is visible before first apply. Read-only."
             }
           }
         }

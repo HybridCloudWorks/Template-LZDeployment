@@ -35,11 +35,9 @@ promotion proposal.
    workflows, documentation, and `USER-CHECKLIST.md`.
 4. `bootstrap-broker.ps1` / `.sh` plans by default and idempotently reconciles
    Entra, RBAC, GitHub, and backend prerequisites only in apply mode.
-5. `brownfield-import.ps1` / `.sh` is **quarantined**: its import-block
-   generation targets the retired bespoke modules and refuses to run until
-   re-targeted against the AVM pattern modules
-   ([docs/refactor/CLASSIFICATION.md](docs/refactor/CLASSIFICATION.md)
-   UNRESOLVED-2).
+5. `scripts/New-LzSubscriptions.ps1` creates the subscriptions the wizard
+   planned by name (create mode) and writes the IDs back into
+   `lz-config.json` ([ADR 0020](docs/decisions/0020-subscription-vending.md)).
 6. `scaffold-copy.ps1` / `.sh` verifies the exact augmented renderer inventory,
    plans by default, and creates/commits/pushes the generated repository only in
    apply mode (App/PAT/interactive delivery auth —
@@ -53,11 +51,12 @@ promotion proposal.
    end-to-end generation evidence, and independent read-back evidence to a
    promotion proposal without changing the release contract.
 
-> **Status**: the generator-only model (factory 0.10.0, ADRs 0013–0017) is
-> implemented. Live Factory CI, the end-to-end generation proof, evidence
-> attestation, and any release-gate PR remain operator activities. All gates
-> remain evidence-driven. See [TODO.md](TODO.md) and
-> [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md).
+> **Status**: the generator-only model (factory 0.11.0, ADRs 0013–0020) is
+> implemented, including subscription vending, exclude-and-create
+> brownfield, and the hardened state posture. Live Factory CI, the
+> end-to-end generation proof, evidence attestation, and any release-gate PR
+> remain operator activities. All gates remain evidence-driven. See
+> [TODO.md](TODO.md) and [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md).
 
 ---
 
@@ -102,8 +101,7 @@ HCW-Demo-LZDeployment/
 ├── validate-render.sh            # Cross-platform launcher
 ├── scaffold-copy.ps1             # Stage 10 plan-first scaffold builder
 ├── scaffold-copy.sh              # Cross-platform launcher
-├── brownfield-import.ps1         # QUARANTINED — refuses until re-targeted to AVM addresses (CLASSIFICATION UNRESOLVED-2)
-├── brownfield-import.sh          # Cross-platform launcher (same quarantine)
+├── scripts/New-LzSubscriptions.ps1  # Subscription vending: creates planned subscriptions, patches IDs back (ADR 0020)
 ├── factory/validate/             # Post-render validation gate module
 ├── factory/ci/                   # Stage 12 CI runner and source policies
 ├── factory/release/              # Stage 14 attestation and promotion planning
@@ -165,17 +163,18 @@ The builder fails closed on missing, extra, duplicate, absolute, or traversal
 manifest paths. A non-empty target requires explicit force and is retained as a
 timestamped sibling backup.
 
-### Brownfield adoption — quarantined
+### Brownfield — exclude and create
 
-`brownfield-import.ps1` / `.sh` currently **refuse to run**: their
-import-block generation targets the retired bespoke modules' resource
-addresses, and re-targeting against the AVM pattern modules' internal
-addresses is pending
-([docs/refactor/CLASSIFICATION.md](docs/refactor/CLASSIFICATION.md)
-UNRESOLVED-2, [ADR 0013](docs/decisions/0013-generator-only-avm-architecture.md)).
-The classification/evidence design (plan-first, Adopt-only artifacts, never
-executing `terraform import`) is unchanged and resumes when re-targeting
-lands.
+Brownfield means **new subscriptions alongside the existing estate**, never
+adoption ([ADR 0018](docs/decisions/0018-brownfield-exclude-and-create.md)):
+excluded subscriptions
+(`deploymentStrategy.brownfield.excludedSubscriptionIds`) stay outside the
+new management-group hierarchy and are never planned, imported, or modified.
+Discovery inventories existing tenant-scope policy assignments read-only so
+baseline collisions are visible before the first apply. The former
+`brownfield-import` import-block generator (quarantined since the bespoke
+corpus was retired, CLASSIFICATION UNRESOLVED-2) was removed with ADR 0018 —
+integration of existing deployments is out of scope for the factory.
 
 ### Factory CI
 
@@ -262,7 +261,7 @@ See [TODO.md](TODO.md) (all action items, phased) and [REVIEW.md](REVIEW.md) (hu
 - CI/CD pipeline has no recorded successful run yet — read-only live discovery (2026-08-01) found that no landing-zone identity estate exists: no app registrations, no `AZURE_PLAN_CLIENT_ID` or `TF_API_TOKEN` secret, and no dev/prod/hub environments. The remediation is running the Phase-2 bootstrap end-to-end in the confirmed engagement tenant, not credential patching; see [REVIEW.md](REVIEW.md) §1 / [TODO.md](TODO.md) item 4.1
 - Backend is `azurerm` native storage **everywhere** — the only backend in the schema, wizard, and templates, OIDC + Azure AD auth only ([ADR 0015](docs/decisions/0015-azurerm-only-emitted-backend.md); Issue #11 closed "standardize, don't migrate" by decision 0011, and the dual-backend render feature was retired by ADR 0015)
 - Key Vault CMK and Sentinel answers are **recorded-not-deployed** ([ADR 0017](docs/decisions/0017-wizard-scope-vs-emitted-architecture.md)) — the former `keyvault-cmk`/`sentinel-siem` scaffold modules were deleted with the bespoke corpus; the wizard warns and the answers survive in the committed answer record
-- `brownfield-import` is quarantined pending AVM re-targeting ([docs/refactor/CLASSIFICATION.md](docs/refactor/CLASSIFICATION.md) UNRESOLVED-2)
+- Brownfield is **exclude-and-create** ([ADR 0018](docs/decisions/0018-brownfield-exclude-and-create.md)) — the quarantined `brownfield-import` generator was removed; integrating existing deployments is out of scope
 - 4 utility scripts (`Configure-DeploymentOptions.ps1`, `Invoke-BulkOperations.ps1`, `Validate-ALZDeployment.ps1`, `Verify-CostAccuracy.ps1`) aren't called from anywhere in the pipeline — they now live in [`scripts/utilities/`](scripts/utilities/README.md), clearly separated from the core flow; wiring `Configure-DeploymentOptions.ps1` in is tracked in [REVIEW.md](REVIEW.md) §16 / [TODO.md](TODO.md) item 2.5
 
 ---

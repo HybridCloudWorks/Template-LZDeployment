@@ -34,7 +34,9 @@ $CANONICAL_PINS = [ordered]@{
     'gitleaks/gitleaks-action'          = @{ sha = 'e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e'; version = 'v3.0.0' }
     'hashicorp/setup-terraform'         = @{ sha = 'dfe3c3f87815947d99a8997f908cb6525fc44e9e'; version = 'v4.0.1' }
     'terraform-linters/setup-tflint'    = @{ sha = '6e1e0642c0289bd619021bf6b34e3c08ed1e005a'; version = 'v6.3.0' }
-    'trufflesecurity/trufflehog'        = @{ sha = '6f3c981e7b77f235fd2702dd74af25fc4b72bf11'; version = 'v3.96.0' }
+    # v3.97.0 tag SHA verified against the upstream repo (git ls-remote) after
+    # the Dependabot bump in #100.
+    'trufflesecurity/trufflehog'        = @{ sha = 'bcfcf73aaf4759d4dadc2783177c245a02792318'; version = 'v3.97.0' }
 }
 # ─────────────────────────────────────────────────────────────────────────────
 

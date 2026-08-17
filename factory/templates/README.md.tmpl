@@ -56,19 +56,18 @@ Required tags: {{FACTORY-LIST:governance.policyBaseline.requiredTags}}
 #{{ENDIF}}
 
 #{{IF deploymentStrategy.mode == 'brownfield'}}
-## Brownfield
+## Brownfield — exclude and create (ADR 0018)
 
-This tenant already contains resources. Run factory discovery and the Stage 11
-`brownfield-import.ps1` / `.sh` generator before scaffolding and before the
-first plan. Discovery is read-only; Stage 11 writes review artifacts only. The
-destroy-protection gate fails any plan containing a destroy or replace action
-unless the pull request carries the `approved-destroy` label.
-
-The Stage 11 generator plans by default and consumes an inventory-hash-pinned
-classification file. Only explicit Adopt decisions with exact Terraform
-addresses produce `imports.generated.tf` or review-only command scripts.
-Ignore produces nothing; Replace and Require-Approval remain operator gates.
-The generator never executes Terraform import.
+This tenant already contains resources. The landing zone is built on **new**
+subscriptions only: the pre-existing subscriptions listed in
+`deploymentStrategy.brownfield.excludedSubscriptionIds` stay outside the new
+management-group hierarchy and are never planned, imported, or modified by
+this repository. Discovery is read-only and inventories existing tenant-scope
+policy assignments so collisions with the new baseline are visible before the
+first policy apply. Integrating existing deployments into the landing zone is
+a separate engagement, out of scope here. The destroy-protection gate fails
+any plan containing a destroy or replace action unless the pull request
+carries the `approved-destroy` label.
 #{{ENDIF}}
 
 ## Working in this repository

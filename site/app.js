@@ -19,12 +19,12 @@
  * Constants
  * ------------------------------------------------------------------- */
 
-const SCHEMA_VERSION = '2.1.0';
+const SCHEMA_VERSION = '2.2.0';
 
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
  * so the value is mirrored here and a factory CI check asserts the two match. */
-const FACTORY_VERSION = '0.10.0';
+const FACTORY_VERSION = '0.11.0';
 
 const DRAFT_KEY = 'alz-factory-draft-v1';
 
@@ -151,7 +151,7 @@ function defaultConfig() {
     azure: {
       tenantId: '', primaryRegion: '', primaryRegionCode: '', drRegion: '', drRegionCode: '',
       allowedLocations: [],
-      subscriptions: { management: '', identity: '', connectivity: '', workloadProd: '', workloadNonProd: '', sandbox: '' },
+      subscriptions: { mode: 'create', management: '', identity: '', connectivity: '', workloadProd: '', workloadNonProd: '', sandbox: '' },
       managementGroups: { rootId: '', strategy: 'caf-standard', customHierarchy: [] }
     },
     github: {
@@ -167,14 +167,14 @@ function defaultConfig() {
       type: 'azurerm',
       azurerm: {
         resourceGroupName: '', storageAccountName: '', containerName: 'tfstate',
-        subscriptionId: '', useAzureAdAuth: true
+        subscriptionId: '', useAzureAdAuth: true,
+        privateEndpoint: { enabled: false }
       }
     },
     deploymentStrategy: {
       mode: 'greenfield',
       brownfield: {
-        defaultClassification: 'ignore', generateImportBlocks: true,
-        generateImportCommands: true, allowDestructivePlans: false
+        excludedSubscriptionIds: [], inventoryExistingPolicies: true
       }
     },
     environments: {
@@ -392,14 +392,20 @@ function validate() {
   if (!a.drRegion) warn('azure', 'No DR region set. The landing zone will be single-region, and the DR hub/spoke layers will not be emitted.');
   if (a.drRegion && a.drRegion === a.primaryRegion) err('azure', 'DR region must differ from the primary region.');
   if (!a.allowedLocations.length) err('azure', 'At least one allowed location is required.');
-  for (const [key, required] of [['management', true], ['connectivity', true], ['workloadProd', true]]) {
-    if (required && !RE.guid.test(a.subscriptions[key] || '')) {
-      err('azure', `The ${key} subscription ID must be a GUID.`);
+  const subMode = a.subscriptions.mode || 'create';
+  if (subMode === 'existing') {
+    for (const key of ['management', 'connectivity', 'workloadProd']) {
+      if (!RE.guid.test(a.subscriptions[key] || '')) {
+        err('azure', `The ${key} subscription ID must be a GUID.`);
+      }
     }
   }
-  for (const key of ['identity', 'workloadNonProd', 'sandbox']) {
+  for (const key of ['management', 'connectivity', 'workloadProd', 'identity', 'workloadNonProd', 'sandbox']) {
     const v = a.subscriptions[key];
     if (v && !RE.guid.test(v)) err('azure', `The ${key} subscription ID is not a valid GUID.`);
+  }
+  if (subMode === 'create') {
+    warn('azure', 'Subscriptions will be created by scripts/New-LzSubscriptions.ps1 after export. The render guard blocks generation until the script has written the new subscription IDs back into this config.');
   }
   const subVals = Object.values(a.subscriptions).filter(Boolean);
   const dupes = subVals.filter((v, i) => subVals.indexOf(v) !== i);
@@ -455,6 +461,35 @@ function validate() {
     if (!b.azurerm.useAzureAdAuth) {
       warn('backend', 'Storage-key authentication to state means a long-lived shared secret. Entra ID auth is strongly preferred.');
     }
+    if (b.azurerm.privateEndpoint && b.azurerm.privateEndpoint.enabled) {
+      if (config.connectivity.model !== 'hub-spoke') {
+        err('backend', 'State private endpoint requires the hub-and-spoke topology — the private DNS zone for blob storage is centralized in the hub (ADR 0019).');
+      } else if (!config.connectivity.privateDns.enabled || !config.connectivity.privateDns.centralizedInHub) {
+        err('backend', 'State private endpoint requires centralized private DNS in the hub (ADR 0019).');
+      }
+      if (!config.github.useSelfHostedRunners) {
+        err('backend', 'State private endpoint requires self-hosted runners with a network path to the hub — GitHub-hosted runners cannot reach a private-only state account (ADR 0019).');
+      }
+    }
+  }
+
+  // --- Deployment strategy
+  const ds = config.deploymentStrategy;
+  if (ds.mode === 'brownfield') {
+    const excluded = ds.brownfield.excludedSubscriptionIds || [];
+    for (const id of excluded) {
+      if (!RE.guid.test(id)) err('deploymentStrategy', `Excluded subscription ID "${id}" is not a valid GUID.`);
+    }
+    const exDupes = excluded.filter((v, i) => excluded.indexOf(v) !== i);
+    if (exDupes.length) err('deploymentStrategy', 'The excluded-subscription list contains duplicates.');
+    const slotOverlap = Object.entries(config.azure.subscriptions)
+      .filter(([k, v]) => k !== 'mode' && v && excluded.includes(v));
+    for (const [slot, id] of slotOverlap) {
+      err('deploymentStrategy', `Subscription ${id} is excluded from the landing zone but is also assigned to the ${slot} slot. A subscription cannot be both excluded and part of the new estate.`);
+    }
+    if (config.azure.subscriptions.mode === 'existing' && !excluded.length) {
+      warn('deploymentStrategy', 'Brownfield with existing subscription IDs and no exclusions: confirm the supplied subscriptions are new, empty subscriptions — integrating existing deployments is out of scope (ADR 0018).');
+    }
   }
 
   // --- Environments
@@ -465,8 +500,9 @@ function validate() {
     const rev = (e.approvals.prod && e.approvals.prod.requiredReviewers) || [];
     if (!rev.length) warn('environments', 'The prod environment has no required reviewers, so production applies run without human approval.');
   }
-  if (config.azure.subscriptions.sandbox === '' && e.application.includes('sandbox')) {
-    warn('environments', 'A sandbox environment is selected but no sandbox subscription was supplied. The sandbox layer will not be emitted.');
+  if (e.application.includes('sandbox') && !config.azure.subscriptions.sandbox
+      && !(subMode === 'create' && $('#az_planSandbox')?.checked)) {
+    warn('environments', 'A sandbox environment is selected but no sandbox subscription was supplied or planned. The sandbox layer will not be emitted.');
   }
 
   // --- Connectivity
@@ -584,7 +620,7 @@ function validate() {
     if (!RE.tagKey.test(t)) err('governance', `"${t}" is not a valid tag key.`);
   }
   if (gv.policyBaseline.enforcementMode === 'deny' && config.deploymentStrategy.mode === 'brownfield') {
-    warn('governance', 'Deny enforcement on a brownfield tenant will block deployments against existing non-compliant resources. Start at Audit, clear the compliance report, then promote to Deny.');
+    warn('governance', 'Deny enforcement in a brownfield tenant: the new management-group hierarchy only governs the new subscriptions, but tenant-root inheritance and legacy assignments can still collide. Start at Audit, review the policy inventory, then promote to Deny.');
   }
   if (gv.policyAsCodeEngines.includes('sentinel')) {
     err('governance', 'Sentinel policy enforcement was a Terraform Cloud feature; the azurerm-only pipeline (ADR 0015) does not support it. Use Azure Policy or OPA.');
@@ -1279,9 +1315,46 @@ function onChange(changedEl) {
     renderScheduled = false;
     renderApprovals();
     renderEnvAbbreviations();
+    renderPlannedNames();
     updateStepStatus();
     if (steps[currentStep] && steps[currentStep].key === 'review') renderReview();
   });
+}
+
+/* ---------------------------------------------------------------------
+ * Planned subscription names (mode=create)
+ * ------------------------------------------------------------------- */
+
+const SUB_SLOT_SUFFIX = {
+  management: 'management', connectivity: 'connectivity', workloadProd: 'workload-prod',
+  identity: 'identity', workloadNonProd: 'workload-nonprod', sandbox: 'sandbox'
+};
+
+/** Convention-derived display names for the subscriptions New-LzSubscriptions.ps1
+ *  will create. The three required platform slots are always planned; the
+ *  optional slots follow their opt-in checkboxes. */
+function plannedSubscriptionNames() {
+  const short = (config.organization.companyShortName || '').trim() || 'org';
+  const slots = ['management', 'connectivity', 'workloadProd'];
+  if ($('#az_planIdentity')?.checked) slots.push('identity');
+  if ($('#az_planNonProd')?.checked) slots.push('workloadNonProd');
+  if ($('#az_planSandbox')?.checked) slots.push('sandbox');
+  const names = {};
+  for (const slot of slots) names[slot] = `sub-${short}-${SUB_SLOT_SUFFIX[slot]}`;
+  return names;
+}
+
+function renderPlannedNames() {
+  const host = $('#az_plannedNames');
+  if (!host) return;
+  host.innerHTML = '';
+  for (const name of Object.values(plannedSubscriptionNames())) {
+    const li = document.createElement('li');
+    const code = document.createElement('code');
+    code.textContent = name;
+    li.appendChild(code);
+    host.appendChild(li);
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -1304,6 +1377,11 @@ function buildConfig() {
     out.backend.azurerm.subscriptionId = out.azure.subscriptions.management;
   }
   if (out.azure.managementGroups.strategy !== 'custom') delete out.azure.managementGroups.customHierarchy;
+  if ((out.azure.subscriptions.mode || 'create') === 'create') {
+    out.azure.subscriptions.plannedNames = plannedSubscriptionNames();
+  } else {
+    delete out.azure.subscriptions.plannedNames;
+  }
   if (out.deploymentStrategy.mode !== 'brownfield') delete out.deploymentStrategy.brownfield;
   if (out.naming.standard !== 'custom') {
     delete out.naming.resourceGroupPattern;
@@ -1808,9 +1886,16 @@ function configurationMarkdown(cfg) {
     '',
     '### Subscriptions',
     '',
+    `Source: **${cfg.azure.subscriptions.mode || 'create'}**${(cfg.azure.subscriptions.mode || 'create') === 'create' ? ' — IDs are filled in by `scripts/New-LzSubscriptions.ps1` after export.' : ''}`,
+    '',
     '| Role | Subscription ID |',
     '|---|---|',
-    ...Object.entries(cfg.azure.subscriptions).map(([k, v]) => `| ${k} | \`${v}\` |`),
+    ...Object.entries(cfg.azure.subscriptions)
+      .filter(([k]) => k !== 'mode' && k !== 'plannedNames')
+      .map(([k, v]) => {
+        const planned = (cfg.azure.subscriptions.plannedNames || {})[k];
+        return `| ${k} | ${v ? `\`${v}\`` : planned ? `_(to be created as \`${planned}\`)_` : '_(not used)_'} |`;
+      }),
     '',
     '## GitHub',
     '',
@@ -1938,17 +2023,23 @@ function configurationMarkdown(cfg) {
 function nextStepsMarkdown(cfg) {
   const dir = `generated-output/${cfg.organization.outputDirectoryName}`;
   const cfgPath = `./${dir}/lz-config.json`;
+  const subCreate = (cfg.azure.subscriptions.mode || 'create') === 'create';
+  let stepNo = 0;
+  const step = (title) => `## ${++stepNo}. ${title}`;
+  const orderLine = subCreate
+    ? 'subscription vending (plan, then apply) → discovery → bootstrap (plan, then apply) → render → scaffold (plan, then apply).'
+    : 'discovery → bootstrap (plan, then apply) → render → scaffold (plan, then apply).';
   return md(
     `# Next steps — ${cfg.organization.companyName}`,
     '',
     `Generated ${cfg.generatedAt} by factory v${cfg.factoryVersion}.`,
     '',
     'Every command below is run from the **root of the factory clone**, in order:',
-    'discovery → bootstrap (plan, then apply) → render → scaffold (plan, then apply).',
-    'The broker and the scaffold builder are plan-by-default — nothing mutates Azure or',
+    orderLine,
+    'Every mutating script is plan-by-default — nothing touches Azure or',
     'GitHub until you pass `-Apply`.',
     '',
-    '## 1. Place the exported files',
+    step('Place the exported files'),
     '',
     'Move every file you downloaded into the factory clone at:',
     '',
@@ -1965,7 +2056,7 @@ function nextStepsMarkdown(cfg) {
     '',
     '`lz-config.json` must be there; everything else is derived from it and can be regenerated.',
     '',
-    '## 2. Authenticate',
+    step('Authenticate'),
     '',
     'These three sessions are the only manual step in the whole flow. Everything after this is scripted.',
     '',
@@ -1977,7 +2068,28 @@ function nextStepsMarkdown(cfg) {
     '',
     `The account you sign in with needs, at minimum: Application Administrator in Entra (to create app registrations and federated credentials), and Owner or User Access Administrator at \`${cfg.azure.managementGroups.rootId}\` (to create management groups and assign roles).`,
     '',
-    '## 3. Run discovery and the readiness check (read-only)',
+    subCreate
+      ? md(step('Create the subscriptions — plan first, then apply'), '',
+          'The configuration plans new subscriptions by name (`azure.subscriptions.plannedNames`) but',
+          'carries no subscription IDs yet — rendering is blocked (guard G25) until this step fills them in.',
+          '',
+          '```powershell',
+          `pwsh ./scripts/New-LzSubscriptions.ps1 -ConfigPath ${cfgPath}`,
+          '```',
+          '',
+          'Without `-Apply` it only resolves your billing scope (EA enrollment account or MCA invoice',
+          'section) and prints the subscriptions it would create. Then:',
+          '',
+          '```powershell',
+          `pwsh ./scripts/New-LzSubscriptions.ps1 -ConfigPath ${cfgPath} -Apply`,
+          '```',
+          '',
+          'It creates each subscription via `az account alias create`, waits for the IDs, writes them back',
+          'into `lz-config.json`, and re-validates the file. If your agreement type cannot create',
+          'subscriptions programmatically (CSP, pay-as-you-go), create them in the portal / partner center',
+          'and run the script with `-Manual` to paste the IDs — it does the same patch-back and validation.', '')
+      : '',
+    step('Run discovery and the readiness check (read-only)'),
     '',
     '```powershell',
     `pwsh ./factory/discovery/Invoke-Discovery.ps1 -ConfigPath ${cfgPath}`,
@@ -1989,7 +2101,7 @@ function nextStepsMarkdown(cfg) {
     'guidance attached. (Optional: `-SkipDomain GitHub,Entra,Azure,Terraform` to narrow the sweep,',
     '`-FailOnNotReady` for CI.)',
     '',
-    '## 4. Bootstrap — plan first, then apply',
+    step('Bootstrap — plan first, then apply'),
     '',
     'Without `-Apply`, the broker only writes a deterministic plan/audit record under',
     '`./bootstrap-output/` and touches nothing:',
@@ -2012,7 +2124,7 @@ function nextStepsMarkdown(cfg) {
     '`LZ_BOOTSTRAP_OUTPUT`, and `LZ_BOOTSTRAP_APPLY=true`. `-AllowNotReady` overrides a failed',
     'readiness gate — use it knowingly.',
     '',
-    '## 5. Render the repository contents',
+    step('Render the repository contents'),
     '',
     '```powershell',
     `pwsh -Command "Import-Module ./factory/renderer/LZFactory.Renderer.psd1; Invoke-LzRender -ConfigPath ${cfgPath} -OutputDirectory ./${dir}/rendered"`,
@@ -2022,7 +2134,7 @@ function nextStepsMarkdown(cfg) {
     'a staging directory — never into a git working tree. A failed render leaves nothing half-written',
     'where a push could pick it up.',
     '',
-    '## 6. Scaffold — plan first, then apply',
+    step('Scaffold — plan first, then apply'),
     '',
     'Like the broker, the scaffold builder is plan-by-default: it verifies the rendered tree and emits',
     'plan/audit evidence under `./scaffold-evidence/` without creating or pushing anything:',
@@ -2042,7 +2154,7 @@ function nextStepsMarkdown(cfg) {
     '`LZ_SCAFFOLD_CREATE_REPOSITORY=false`, `LZ_SCAFFOLD_PUSH=false`, `LZ_RENDERED_PATH`,',
     '`LZ_SCAFFOLD_TARGET`, `LZ_SCAFFOLD_EVIDENCE`.',
     '',
-    '## 7. Deploy',
+    step('Deploy'),
     '',
     'Open a pull request in the generated repository. `terraform-plan` runs against it with the read-only',
     'plan identity. Merging triggers `terraform-apply`, which runs per layer in dependency order:',
@@ -2060,17 +2172,22 @@ function nextStepsMarkdown(cfg) {
     '   and threat-intel alerts. `CONFIGURATION.md` walks this loop-back step by step.',
     '',
     cfg.deploymentStrategy.mode === 'brownfield'
-      ? md('## Brownfield note', '',
-          'Run the `brownfield-discovery` workflow before the first plan. It is read-only and produces',
-          '`brownfield-assessment.md` plus import blocks for review. The destroy-protection gate fails any',
-          'plan containing a destroy or replace action unless the pull request carries the `approved-destroy` label.')
+      ? md('## Brownfield note (exclude-and-create, ADR 0018)', '',
+          'This landing zone is built on **new** subscriptions only. The excluded subscriptions',
+          (cfg.deploymentStrategy.brownfield && cfg.deploymentStrategy.brownfield.excludedSubscriptionIds || []).length
+            ? `(${cfg.deploymentStrategy.brownfield.excludedSubscriptionIds.join(', ')}) stay outside the new management-group hierarchy`
+            : 'you listed stay outside the new management-group hierarchy',
+          'and are never planned, imported, or modified. Integrating existing deployments into the estate',
+          'is a separate engagement, out of scope for the factory. Discovery inventories the assignments',
+          'of existing tenant-level Azure Policy so you can spot collisions with the new baseline before',
+          'the first policy apply.')
       : '',
     '',
     '## Before you trust this in production',
     '',
-    'As of factory v0.9.0 the release gates in `factory-version.json` are not all met — in particular the',
-    'pipeline has no recorded successful end-to-end run. Treat the first deployment as a verification',
-    'exercise, not a production cutover.',
+    `Check the release gates in \`factory-version.json\` for factory v${cfg.factoryVersion} before a`,
+    'production cutover, and treat the first deployment as a verification exercise: review every plan',
+    'in full before approving its apply.',
     ''
   );
 }
@@ -2246,6 +2363,13 @@ function init() {
   // Track whether the user has hand-edited the repo name, so the derived
   // default stops overwriting it.
   $('#gh_repositoryName').addEventListener('input', function () { this.dataset.touched = '1'; });
+
+  // Optional-slot opt-ins for subscription vending (mode=create). Not
+  // data-path bound: they only shape azure.subscriptions.plannedNames.
+  for (const id of ['az_planIdentity', 'az_planNonProd', 'az_planSandbox']) {
+    const cb = $('#' + id);
+    if (cb) cb.addEventListener('change', () => onChange(cb));
+  }
 
   $('#btnPrev').addEventListener('click', () => goto(currentStep - 1));
   $('#btnNext').addEventListener('click', () => goto(currentStep + 1));

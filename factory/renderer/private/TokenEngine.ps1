@@ -140,6 +140,19 @@ function New-LzRenderContext {
     # templates that want to state it explicitly.
     $map['computed.backendIsAzurerm'] = $true
 
+    # The subscription hosting the state storage account: the explicit
+    # backend.azurerm.subscriptionId when supplied, else the management
+    # subscription — the same fallback the broker and backend.hcl use.
+    # Computed once so the state-hardening layer and the flip workflow can
+    # never disagree about where state lives.
+    $stateSub = ''
+    if ((Test-LzHasProperty $Config.backend 'azurerm') -and
+        (Test-LzHasProperty $Config.backend.azurerm 'subscriptionId')) {
+        $stateSub = [string]$Config.backend.azurerm.subscriptionId
+    }
+    if (-not $stateSub) { $stateSub = [string]$Config.azure.subscriptions.management }
+    $map['computed.stateSubscriptionId'] = $stateSub
+
     # Network topology drives which connectivity pattern module is emitted —
     # hub-and-spoke or Virtual WAN, never both. Computed once so no template
     # can disagree about the topology.
@@ -213,6 +226,18 @@ function Get-LzActiveLayers {
     $layers = @('platform-management', 'global')
 
     if ($Config.connectivity.model -ne 'none') { $layers += 'platform-connectivity' }
+
+    # Stage-2 state hardening (ADR 0019): a private endpoint for the state
+    # storage account, emitted only when explicitly requested. Deliberately
+    # LAST: it needs the hub (platform-connectivity) applied first, and guard
+    # G27 refuses the flag without hub-spoke + centralized private DNS +
+    # self-hosted runners.
+    $pe = $null
+    if ((Test-LzHasProperty $Config.backend 'azurerm') -and
+        (Test-LzHasProperty $Config.backend.azurerm 'privateEndpoint')) {
+        $pe = $Config.backend.azurerm.privateEndpoint
+    }
+    if ($pe -and (Test-LzHasProperty $pe 'enabled') -and $pe.enabled) { $layers += 'state-hardening' }
 
     return $layers
 }

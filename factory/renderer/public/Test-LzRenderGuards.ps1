@@ -347,6 +347,70 @@ function Test-LzRenderGuards {
             -Remediation 'Set connectivity.privateDns.centralizedInHub to true, or disable connectivity.privateDns.enabled.'
     }
 
+    # ── Subscription vending completeness ────────────────────────────────────
+    # A create-mode configuration (azure.subscriptions.mode = create, ADR 0020)
+    # is exported BEFORE the subscriptions exist: the wizard plans names, and
+    # scripts/New-LzSubscriptions.ps1 creates them and patches the IDs back.
+    # Rendering in between would emit placements and provider blocks pointing
+    # at empty subscription IDs. G09 already blocks the required slots with a
+    # generic message; G25 exists to say WHICH step was skipped.
+    if ((Get-LzGuardConfigValue -Object $Config -Path 'azure.subscriptions.mode' -Default 'create') -eq 'create') {
+        $plannedNames = Get-LzGuardConfigValue -Object $Config -Path 'azure.subscriptions.plannedNames' -Default $null
+        if ($plannedNames) {
+            $unfilled = @()
+            foreach ($slot in @('management', 'connectivity', 'workloadProd', 'identity', 'workloadNonProd', 'sandbox')) {
+                if (-not (Test-LzHasProperty $plannedNames $slot)) { continue }
+                $id = [string](Get-LzGuardConfigValue -Object $Config -Path "azure.subscriptions.$slot" -Default '')
+                if ([string]::IsNullOrWhiteSpace($id)) { $unfilled += $slot }
+            }
+            if ($unfilled.Count -gt 0) {
+                $v += New-LzGuardViolation -Id 'G25' `
+                    -Message "Subscription slot(s) [$($unfilled -join ', ')] are planned by name but carry no subscription ID yet (azure.subscriptions.mode = create)." `
+                    -Remediation 'Run scripts/New-LzSubscriptions.ps1 -ConfigPath <lz-config.json> -Apply to create the planned subscriptions and write the IDs back, then render again. Rendering now would emit layers bound to empty subscription IDs.'
+            }
+        }
+    }
+
+    # ── Brownfield exclusion integrity ───────────────────────────────────────
+    # Exclude-and-create (ADR 0018): an excluded subscription is one this
+    # landing zone must never place, permission, or policy. The same ID
+    # appearing in a subscription slot would do all three.
+    $excludedIds = @(Get-LzGuardConfigValue -Object $Config -Path 'deploymentStrategy.brownfield.excludedSubscriptionIds' -Default @())
+    if ($excludedIds.Count -gt 0) {
+        foreach ($slot in @('management', 'connectivity', 'workloadProd', 'identity', 'workloadNonProd', 'sandbox')) {
+            $id = [string](Get-LzGuardConfigValue -Object $Config -Path "azure.subscriptions.$slot" -Default '')
+            if ($id -and $excludedIds -contains $id) {
+                $v += New-LzGuardViolation -Id 'G26' `
+                    -Message "Subscription $id is on the brownfield exclusion list but is assigned to the '$slot' slot." `
+                    -Remediation 'A subscription cannot be both excluded from the landing zone and part of its new estate (ADR 0018). Remove it from deploymentStrategy.brownfield.excludedSubscriptionIds or assign a different subscription to the slot.'
+            }
+        }
+    }
+
+    # ── State private-endpoint prerequisites ─────────────────────────────────
+    # Day-0 state posture is public endpoint + Entra-only auth (ADR 0019); the
+    # hardening overlay moves state behind a private endpoint and is only
+    # coherent when the hub, centralized private DNS, and runners that live
+    # inside the network all exist. Emitting it without them produces a state
+    # account the pipeline itself cannot reach — self-lockout as a rendered
+    # artifact.
+    if (Get-LzGuardConfigValue -Object $Config -Path 'backend.azurerm.privateEndpoint.enabled' -Default $false) {
+        $peMissing = @()
+        if ($Config.connectivity.model -ne 'hub-spoke') { $peMissing += 'the hub-and-spoke topology' }
+        if (-not ((Get-LzGuardConfigValue -Object $Config -Path 'connectivity.privateDns.enabled' -Default $false) -and
+                (Get-LzGuardConfigValue -Object $Config -Path 'connectivity.privateDns.centralizedInHub' -Default $true))) {
+            $peMissing += 'centralized private DNS in the hub'
+        }
+        if (-not (Get-LzGuardConfigValue -Object $Config -Path 'github.useSelfHostedRunners' -Default $false)) {
+            $peMissing += 'self-hosted runners with a network path to the hub'
+        }
+        if ($peMissing.Count -gt 0) {
+            $v += New-LzGuardViolation -Id 'G27' `
+                -Message "backend.azurerm.privateEndpoint.enabled requires $($peMissing -join ', ')." `
+                -Remediation 'Set backend.azurerm.privateEndpoint.enabled to false (the day-0 posture: public endpoint, Entra-only auth, versioning, soft delete, delete lock — ADR 0019), or satisfy every prerequisite. A private-only state account that the deployment runners cannot reach locks the pipeline out of its own state.'
+        }
+    }
+
     $blocks = @($v | Where-Object { $_.Severity -eq 'Block' })
     $warns = @($v | Where-Object { $_.Severity -eq 'Warn' })
 

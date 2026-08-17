@@ -170,8 +170,12 @@ refactor. "Was" is the audited state; "Now" is this branch.
    authoritative execution-time check. If it reports an input mismatch, the
    fix is confined to the affected `main.tf.tmpl` locals block.
 2. **`brownfield-import`** remains quarantined pending AVM re-targeting
-   (CLASSIFICATION.md UNRESOLVED-2).
+   (CLASSIFICATION.md UNRESOLVED-2). **RESOLVED 2026-08-17:** removed under
+   the exclude-and-create redefinition
+   ([ADR 0018](../decisions/0018-brownfield-exclude-and-create.md)).
 3. **State-bootstrap private-endpoint option**: the deleted
    `terraform/backend-bootstrap` supported an optional private endpoint for
    the state account; the broker's state reconciliation does not yet. Operator
    call whether to add it (CLASSIFICATION.md UNRESOLVED-1).
+   **RESOLVED 2026-08-17:** WAF-validated day-0 posture + gated stage-2
+   overlay ([ADR 0019](../decisions/0019-state-storage-hardening.md)).

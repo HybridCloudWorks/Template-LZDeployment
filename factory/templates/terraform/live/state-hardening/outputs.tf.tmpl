@@ -1,0 +1,16 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# state-hardening outputs.
+#
+# GENERATED FILE. Do not hand-edit. Rendered by Landing Zone Factory
+# {{FACTORY-RAW:computed.factoryVersion}}.
+# ─────────────────────────────────────────────────────────────────────────────
+
+output "private_endpoint_id" {
+  description = "Resource ID of the state storage private endpoint."
+  value       = azurerm_private_endpoint.state_blob.id
+}
+
+output "private_endpoint_ip" {
+  description = "Private IP address the state blob endpoint resolves to inside the hub."
+  value       = azurerm_private_endpoint.state_blob.private_service_connection[0].private_ip_address
+}
