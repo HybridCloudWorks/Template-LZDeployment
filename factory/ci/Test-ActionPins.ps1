@@ -29,9 +29,7 @@ $CANONICAL_PINS = [ordered]@{
     'actions/github-script'             = @{ sha = '3a2844b7e9c422d3c10d287c895573f7108da1b3'; version = 'v9.0.0' }
     'actions/upload-artifact'           = @{ sha = '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'; version = 'v7.0.1' }
     'actions/upload-pages-artifact'     = @{ sha = 'fc324d3547104276b827a68afc52ff2a11cc49c9'; version = 'v5.0.0' }
-    'aquasecurity/tfsec-action'         = @{ sha = 'b466648d6e39e7c75324f25d83891162a721f2d6'; version = 'v1.0.3' }
     'azure/login'                       = @{ sha = 'f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca'; version = 'v3.0.1' }
-    'gitleaks/gitleaks-action'          = @{ sha = 'e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e'; version = 'v3.0.0' }
     'hashicorp/setup-terraform'         = @{ sha = 'dfe3c3f87815947d99a8997f908cb6525fc44e9e'; version = 'v4.0.1' }
     'terraform-linters/setup-tflint'    = @{ sha = '6e1e0642c0289bd619021bf6b34e3c08ed1e005a'; version = 'v6.3.0' }
     # v3.97.0 tag SHA verified against the upstream repo (git ls-remote) after
