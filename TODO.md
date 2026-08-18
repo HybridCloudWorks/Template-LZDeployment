@@ -10,17 +10,20 @@
 > (new-features changelog). Root markdown is limited to four files: README.md,
 > CHANGELOG.md, REVIEW.md, TODO.md.
 
-**Last Updated**: August 15, 2026
-**Status**: 🟢 Phases 1–2 closed except 2.16 (`fw_trust`/`fw_untrust` only —
-vendor-conditional palo/fortinet work, nil estate-need on the operator's azfw
-estate; decision 0012) and 2.4/2.5
-(operator-gated — REVIEW.md §14/§16); Phase 3: 3.1 re-scoped 2026-08-15 —
-toolchain provisioning proven, tenant-bound residuals are per-estate work by
-operator directive (§7) — and 3.2 blocked on wiki write access, architectural
-to the remote sandbox (§15); Phase 4 **opened 2026-08-15** (go-live;
-operator-local execution kit:
-[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md));
-Phase 5 release-time
+**Last Updated**: August 18, 2026
+**Status**: 🟢 Phases 1–3 carry **no startable engineering work**: Phases 1–2
+are closed (2.16's residual **voided** by the generator-only refactor — the
+`hub-network` module no longer exists; 2.4/2.5 are decided deferrals under
+ADR 0017, open only if the operator reopens them — REVIEW.md §14/§16);
+Phase 3: 3.1 re-scoped 2026-08-15 — toolchain provisioning proven,
+tenant-bound residuals are per-estate work by operator directive (§7) — and
+3.2 blocked on wiki write access, architectural to the remote sandbox (§15);
+Phase 4 **opened 2026-08-15** (go-live; operator-local execution kit:
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md)), with
+4.5/4.7 rewritten 2026-08-18 to the post-refactor gate (the e2e generation
+proof **has now passed on GitHub-hosted runners**, both topologies — PRs
+#99/#101); Phase 5 release-time. Everything open is an operator action or
+per-estate work, not template-repo debt.
 **Operator activities & stage checklists**: [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md)
 **External tracking**: [GitHub Issues](https://github.com/HybridCloudWorks/Template-LZDeployment/issues)
 
@@ -55,12 +58,47 @@ marked here rather than rewritten:
 
 ---
 
+## 2026-08-17 — factory 0.11.0 closures (ADR 0018–0020, PR #101)
+
+The operator-directed 0.11.0 change set
+([ADR 0018](docs/decisions/0018-brownfield-exclude-and-create.md) –
+[ADR 0020](docs/decisions/0020-subscription-vending.md), schema 2.2.0)
+closed the two audit-record residuals the refactor had left open and
+produced the first green end-to-end generation proof:
+
+- **CLASSIFICATION.md UNRESOLVED-2 closed** — brownfield is redefined as
+  **exclude-and-create** (ADR 0018): new subscriptions only, existing
+  subscriptions structurally excluded, integration out of scope. The
+  quarantined `brownfield-import` machinery (scripts, `factory/import/`,
+  `Test-Import.ps1`) is **removed**, not re-targeted. Any suite-count line
+  below that names `Import 10/0` is history of a suite that no longer
+  exists.
+- **CLASSIFICATION.md UNRESOLVED-1 closed** — state-storage posture is
+  decided (ADR 0019, WAF-validated): hardened public day-0 posture in the
+  broker (GZRS, versioning, soft delete, infrastructure encryption,
+  CanNotDelete lock); private endpoint as a gated stage-2 estate-side
+  overlay (guard G27), unreachable until self-hosted runners are supported.
+- **Subscription vending shipped** (ADR 0020):
+  `azure.subscriptions.mode = create` + `scripts/New-LzSubscriptions.ps1`
+  (mixed billing, plan-first, config patch-back); guard G25 blocks an
+  unfilled create-mode render.
+- **The end-to-end generation proof passed on GitHub-hosted runners**, both
+  topologies, with real registry access (PR #99 and PR #101 check runs) —
+  the evidence items 4.7/5.1 gate on now exists. The
+  `factory-version.json` `releaseGates` booleans stay `false` until item
+  5.1's separately reviewed release-gate PR flips them against that
+  evidence.
+
+---
+
 ## What this repo is
 
 The **Landing Zone Factory** (see [README.md](README.md)): a disposable
 installer that renders a self-contained, per-customer landing-zone repository
-from `lz-config.json` (`site/` wizard → discovery → broker → render →
-validate → scaffold). The client runs it once, on their own machine, and the
+from `lz-config.json` (`site/` wizard → subscription vending
+([ADR 0020](docs/decisions/0020-subscription-vending.md), create mode) →
+discovery → broker → render → validate → scaffold). The client runs it once,
+on their own machine, and the
 copy is deleted; the **generated** repository is the deliverable
 ([decision 0004](docs/decisions/0004-factory-copy-is-a-disposable-installer.md)).
 The legacy self-deploying path (`terraform/live/` + numbered workflows) was
@@ -550,7 +588,15 @@ finds them at the resource rather than in a changelog.
 skipped`, checkov exiting clean. Full `Invoke-FactoryCI.ps1` green except
 PSScriptAnalyzer (PS Gallery blocked here).
 
-### 2.16 Six hub subnets carry no NSG — FOUR DONE, `fw_trust`/`fw_untrust` REMAIN (VENDOR-CONDITIONAL)
+### 2.16 Six hub subnets carry no NSG — CLOSED (residual VOIDED 2026-08-15 by ADR 0013/0017)
+
+> **Closure note (2026-08-18).** The four completed subnets are history below;
+> the `fw_trust`/`fw_untrust` residual is **void**, not merely
+> vendor-conditional: the generator-only refactor deleted the `hub-network`
+> module and narrowed the firewall to Azure Firewall (see the 2026-08-15
+> supersession section), so the subnets those rules would attach to no longer
+> exist anywhere in the corpus. Re-opening this means an NVA feature decision
+> first, not an NSG task. The text below is retained as history.
 
 `CKV2_AZURE_31` fires on **six subnets per hub**, both regions — twelve
 findings — and every one of them can take a network security group. They are
@@ -656,24 +702,33 @@ The `CKV2_AZURE_40` suppression stays and now carries the citation instead of
 an admission of ignorance. **No code changed** — the conservative call made
 under uncertainty turned out to be the correct one.
 
-### 2.4 Implement `keyvault-cmk` and `sentinel-siem`
+### 2.4 Implement `keyvault-cmk` and `sentinel-siem` — DORMANT (superseded in place, ADR 0017)
 
-Both are `check "module_not_implemented"` scaffolds, render-blocked (guards
-G02/G03) — a **decided deferral**, not drift.
+Originally: both were `check "module_not_implemented"` scaffolds,
+render-blocked — a **decided deferral**, not drift. The scaffolds were
+deleted with the bespoke corpus (2026-08-15 supersession section above);
+the answers are now **recorded-not-deployed** (ADR 0017): guards G02/G03
+warn rather than block, the wizard warns, and the answers survive in the
+committed `lz-config.json` answer record.
 **Owner**: `azure-platform-architect` (design) → `terraform-module-engineer`.
 **Gate**: operator re-opens the deferral — [REVIEW.md](REVIEW.md) §14 lists
 the design inputs required (key hierarchy, vault scope, connectors,
-retention split).
-**Validation**: modules render, `terraform validate` passes, wizard labels
-updated from scaffold-only.
+retention split). Re-opening now means AVM resource modules or per-estate
+work inside the generated repository, not finishing a stub.
+**Validation** (if reopened): the chosen implementation renders,
+`terraform validate` passes, and guards G02/G03 stop warning for a config
+that gets the real deployment.
 
-### 2.5 Wire `Configure-DeploymentOptions.ps1` output into Terraform
+### 2.5 Wire `Configure-DeploymentOptions.ps1` output into Terraform — DORMANT (inherits 2.4's supersession)
 
 `.azure/deployment-options.yaml` is a planning-only artifact; no layer reads
-it. Two of the three modules it would gate are the item-2.4 scaffolds.
+it. Two of the three modules it would have gated were the item-2.4 scaffolds,
+which no longer exist (ADR 0017) — so the wiring target dissolved with them.
+The script survives in [`scripts/utilities/`](scripts/utilities/README.md).
 **Owner**: `alz-orchestrator` (cross-domain: script, renderer, layers).
-**Gate**: item 2.4 ships first — [REVIEW.md](REVIEW.md) §16.
-**Validation**: enabling an option in the YAML changes the corresponding plan.
+**Gate**: item 2.4 is reopened and ships first — [REVIEW.md](REVIEW.md) §16.
+**Validation** (if reopened): enabling an option in the YAML changes the
+corresponding plan.
 
 ### 2.6 Record the generated-repo ownership policy — CLOSED
 
@@ -792,8 +847,10 @@ labels corrected.
 ## Phase 4 — Go-live chain
 
 **Opened 2026-08-15** (operator, in-session) — the 2026-08-06 deferral is
-lifted ([REVIEW.md](REVIEW.md) §§1–9 banner); the chronological chain below
-is unchanged. Execution is operator-local, sequenced by
+lifted ([REVIEW.md](REVIEW.md) §§1–9 banner). Items 4.5 and 4.7 were
+rewritten 2026-08-18 to the post-refactor gate definitions (the workflows
+and dogfood they originally named were deleted by ADR 0013); the chain's
+order is unchanged. Execution is operator-local, sequenced by
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md): the
 sandbox probes of 2026-08-15 confirmed the 4.2/4.3 admin endpoints are
 App/proxy-blocked even with the operator's token (REVIEW.md §2/§8). The
@@ -841,13 +898,26 @@ Without it, platform-management's sandbox-cleanup Contributor assignment fails
 **Validation**: broker plan shows the sandbox RBAC assignment scoped to the
 real subscription.
 
-### 4.5 Verify the pipeline runs green end to end
+### 4.5 Verify the pipeline runs green end to end — REWRITTEN 2026-08-18 (post-refactor scope)
 
-No recorded successful run of `010-terraform-init.yml`,
-`020-rbac-validation.yml`, `terraform-plan.yml`, `terraform-apply.yml`.
+The four workflows this item originally named
+(`010-terraform-init.yml`, `020-rbac-validation.yml`, `terraform-plan.yml`,
+`terraform-apply.yml`) were deleted with the self-deploying pipeline
+(ADR 0013). What "pipeline green" means now splits in two:
+
+- **Factory-side — DONE.** `factory-ci.yml` and `e2e-generation-proof.yml`
+  both run green on PRs and on `main` (PR #99/#101 check runs, both e2e
+  topology jobs, real registry access).
+- **Estate-side — the open half.** The *generated repository's* workflows
+  (`terraform-plan`/`terraform-apply`/`azure-auth-test`, emitted per client)
+  have never run against a real tenant. That is the first-instantiation
+  verification items 3.1 and 4.7 carry.
+
 **Owner**: `deployment-troubleshooter` if anything stays red after 4.1.
 **Gate**: item 4.1 — [REVIEW.md](REVIEW.md) §3.
-**Validation**: successful runs of all four workflows on a real PR/push.
+**Validation**: in a generated repository against a real tenant, a PR plan
+runs green with the read-only identity and a merge apply runs green per
+layer in dependency order.
 
 ### 4.6 Resolve the backend duality / TFC migration (Issue #11) — CLOSED
 
@@ -874,16 +944,24 @@ green against it" is carried by items 4.1/4.5, which own the identity
 estate and secrets the init needs. Item number retained so
 cross-references stay stable; record in [CHANGELOG.md](CHANGELOG.md).
 
-### 4.7 Execute and accept the Stage 13 dogfood instance
+### 4.7 First real instantiation (formerly the Stage 13 dogfood) — REWRITTEN 2026-08-18
 
-`factory-version.json` carries `dogfoodInstanceAppliesGreen = false`.
-Gate-by-gate runbook:
-[docs/runbooks/stage13-dogfood-execution.md](docs/runbooks/stage13-dogfood-execution.md);
-acceptance criteria: [docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md) Stage 13.
-**Owner**: operator executes; `alz-orchestrator` sequences support.
+The self-deploying dogfood instance was deleted (ADR 0013; 2026-08-15
+supersession section). Its **generation half** is discharged: the
+end-to-end generation proof — the gate that replaced
+`dogfoodInstanceAppliesGreen` — **passed on GitHub-hosted runners on both
+topologies with real registry access** (2026-08-17, PR #99/#101 check
+runs). What remains is the **apply half**: the first real instantiation
+against a confirmed tenant — vending → discovery → broker apply → render →
+scaffold → the generated repository's own plan/apply — which also executes
+the per-estate verifications item 3.1 parked (provider registration,
+flow-log flag flips, authenticated suite runs).
+**Owner**: operator executes on their own machine (decision 0004);
+`alz-orchestrator` sequences support.
 **Gate**: items 4.1–4.5 — [REVIEW.md](REVIEW.md) §4.
-**Validation**: every rendered layer applies green; read-back evidence
-accepted; `dogfoodInstanceAppliesGreen=true` set in a separately reviewed PR.
+**Validation**: every rendered layer applies green in the generated
+repository; read-back evidence accepted; the release-gate booleans flip in
+item 5.1's separately reviewed PR.
 
 ---
 
@@ -891,12 +969,19 @@ accepted; `dogfoodInstanceAppliesGreen=true` set in a separately reviewed PR.
 
 ### 5.1 Run Stage 14 release attestation and the release-gate PR
 
-Until v1.0.0 gates pass, every customer deployment is formally a verification
-exercise (factory v0.9.0, `oidcTokenExchangeVerifiedLive = false`).
+Until v1.0.0 gates pass, every customer deployment is formally a
+verification exercise. As of factory 0.11.0 all five `releaseGates`
+booleans in `factory-version.json` are still `false`, but the evidence for
+several now exists and awaits the reviewed flip: the end-to-end generation
+proof and AVM-pins-verified-by-init passed on GitHub-hosted runners
+(2026-08-17), and the schema-drift and site-zero-network checks are green
+in Factory CI. `oidcTokenExchangeVerifiedLive` genuinely lacks evidence
+until item 4.7's apply half runs.
 **Owner**: operator; `github-actions-engineer` supports.
 **Gate**: item 4.7 — [REVIEW.md](REVIEW.md) §5.
 **Validation**: `release-readiness-report.json` with `readyForPromotion=true`;
-separate reviewed release-gate PR.
+separate reviewed release-gate PR that flips the booleans against named
+evidence (run URLs / artifacts), never bare assertion.
 
 ### 5.2 Review module-README cost estimates against current Azure pricing
 
@@ -923,12 +1008,17 @@ accepted verified figures.
 
 ### 5.3 Bump `factory-version.json` in lock-step
 
-Bumping the version forces the wizard `FACTORY_VERSION` constant, four test
-fixtures, and the Stage 14 v0.9.0 evidence-selection instructions
+Bumping the version forces the wizard `FACTORY_VERSION` constant, the test
+fixtures, and the Stage 14 evidence-selection instructions
 ([docs/USER-CHECKLIST.md](docs/USER-CHECKLIST.md)) to move together — an
-operator-record change (CHANGELOG, 2026-08-06).
+operator-record change (CHANGELOG, 2026-08-06). This is a recurring
+release-time practice, not a one-shot: the 0.10.0 → 0.11.0 bump
+(2026-08-17, PR #101) executed it in full — factory version, schema 2.2.0
+contract, manifest, variable-map, fixtures, and the wizard constants moved
+in one change with all suites green — and the same discipline applies to
+every future bump, including the v1.0.0 promotion.
 **Owner**: `github-actions-engineer`.
-**Gate**: item 5.1 promotion decision.
+**Gate**: item 5.1 promotion decision (for the v1.0.0 instance).
 **Validation**: `node factory/tests/test.js` and
 `pwsh -File factory/tests/Test-Renderer.ps1` green after the bump.
 
