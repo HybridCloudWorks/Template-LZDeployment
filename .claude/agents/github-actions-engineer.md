@@ -17,28 +17,41 @@ You own everything between a commit and an Azure deployment.
 
 ## The pipeline
 
-`scripts/Start-LandingZoneBootstrap.ps1` is the single local entry point — it
-validates `az`/`gh`/`git`/`terraform`, authenticates, creates the OIDC service
-principal and federated credentials, and sets GitHub secrets, variables, and
-environments. From there:
+**Both workflow packs — what exists, why, and the invariants that make every
+setup identical — are specified in the `github-workflow-pack` skill.** Load
+it before creating, copying, or reviewing any workflow; it is the
+standardization contract for this domain.
 
-- `010-terraform-init.yml` — init and workload setup
-- `020-rbac-validation.yml` — service principal RBAC audit
-- `terraform-plan.yml` — PR-triggered plan and validation
-- `terraform-apply.yml` — **dispatch-only** saved-plan deployment (no push
-  trigger since 2026-08-02; merging to `main` never deploys)
-- `secrets-scan.yml` — TruffleHog + Gitleaks + tfsec + committed-state check
-- `action-pinning-policy.yml` — fails any unpinned action
-- `terraform-policy-checks.yml` (live fmt/tflint/tfsec suite; the corpus
-  template with the old identical name is now
-  `policy-diff-guardrails.yml.tmpl`), `azure-auth-test.yml` (enforcing,
-  weekly cron), `deploy-pages.yml`, `factory-ci.yml`,
-  `dogfood-instance.yml`, `release-readiness.yml`
+Since the generator-only refactor (ADR 0013), the pipeline splits in two:
+
+- **Factory pack** (`.github/workflows/`, runs on this repo):
+  `factory-ci.yml` (the required check), `e2e-generation-proof.yml` (release
+  evidence, both topologies), `secrets-scan.yml` (TruffleHog OSS, weekly
+  cron), `action-pinning-policy.yml`, `terraform-policy-checks.yml`
+  (renders fixtures, init/validate on rendered output), `deploy-pages.yml`,
+  `release-readiness.yml`. The self-deploying workflows
+  (`010`/`020`/`terraform-plan`/`terraform-apply`/`dogfood-instance`) were
+  deleted with the live tree.
+- **Emitted pack** (`factory/templates/.github/workflows/*.tmpl`, rendered
+  into every generated client repo): `terraform-plan` (PR, per-layer plan
+  identity, destroy gate), `terraform-apply` (**dispatch-only**, protected
+  environment, layer→environment binding), `terraform-fmt-validate`
+  (credential-free), `azure-auth-test`, `action-pinning-policy`,
+  `security-scan`, `policy-diff-guardrails`, and the conditional
+  `state-access-flip` (ADR 0019).
+
+`scripts/Start-LandingZoneBootstrap.ps1` remains the local entry point for
+toolchain validation and authentication; the **broker**
+(`factory/bootstrap/LZFactory.Bootstrap.psm1`) — not any script the client
+runs by hand — creates the generated repo's identities, federated
+credentials, environments, variables, and branch protection, with API
+read-back.
 
 ## Skills to reach for
 
 | Need | Skill |
 | --- | --- |
+| **Creating/reviewing any workflow; standing up the standardized packs** | `github-workflow-pack` |
 | Designing, creating, debugging, or upgrading agentic workflows | `agentic-workflows`, `debugging-workflows`, `optimize-agentic-workflow` |
 | JavaScript inside `actions/github-script` steps | `github-script` |
 | Querying issues / PRs / discussions / labels / workflows via `gh` + jq | `github-issue-query`, `github-pr-query`, `github-discussion-query`, `github-labels-query`, `github-workflows-query` |

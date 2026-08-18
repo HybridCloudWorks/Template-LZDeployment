@@ -11,7 +11,7 @@ reporting §§2–4, guardrails §5) and are not duplicated here.
 .claude/
 ├── agents/      10 orchestration agents (routing + domain specialists)
 ├── commands/    3 slash commands
-├── skills/      94 skills, flat namespace
+├── skills/      95 skills, flat namespace
 ├── hooks/       agent-report.ps1 (Stop hook)
 └── settings.json
 .mcp.json        Azure + Microsoft Learn MCP servers (repo root)
@@ -51,11 +51,12 @@ It reads `TODO.md` and `docs/` first, decomposes the request, and delegates.
 
 ## Skills
 
-94 skills in a flat namespace under `.claude/skills/`. Cross-references between
+95 skills in a flat namespace under `.claude/skills/`. Cross-references between
 skills in the same pack are preserved.
 
 | Pack | Count | Skills |
 | --- | --- | --- |
+| **Repo-local** (authored in this repository) | 1 | `github-workflow-pack` — the standardized factory + emitted workflow packs and the invariants that make every setup identical (SHA-pin registry, least-privilege permissions, OIDC-only, dispatch-only mutations); primary skill for `github-actions-engineer` |
 | **Azure** (`microsoft/azure-skills`) | 26 | `airunway-aks-setup`, `appinsights-instrumentation`, `azure-ai`, `azure-aigateway`, `azure-cloud-migrate`, `azure-compliance`, `azure-compute`, `azure-cost`, `azure-deploy`, `azure-diagnostics`, `azure-enterprise-infra-planner`, `azure-kubernetes`, `azure-kusto`, `azure-messaging`, `azure-prepare`, `azure-quotas`, `azure-reliability`, `azure-resource-lookup`, `azure-resource-visualizer`, `azure-storage`, `azure-upgrade`, `azure-validate`, `entra-agent-id`, `entra-app-registration`, `microsoft-foundry`, `python-appservice-deploy` |
 | **Terraform / Packer** (`hashicorp/agent-skills`) | 17 | `aws-ami-builder`, `azure-image-builder`, `azure-verified-modules`, `new-terraform-provider`, `provider-actions`, `provider-docs`, `provider-resources`, `provider-test-patterns`, `push-to-registry`, `refactor-module`, `run-acceptance-tests`, `terraform-policy`, `terraform-search-import`, `terraform-stacks`, `terraform-style-guide`, `terraform-test`, `windows-builder` |
 | **GitHub Agentic Workflows** (`github/gh-aw`) | 40 | `agentic-workflows`, `awf-release-integrator`, `checkout-credential-review`, `console-rendering`, `copilot-review`, `create-canvas`, `custom-agents`, `debugging-workflows`, `developer`, `documentation`, `error-messages`, `error-pattern-safety`, `gh-agent-session`, `gh-agent-task`, `github-copilot-agent-tips-and-tricks`, `github-discussion-query`, `github-issue-query`, `github-labels-query`, `github-mcp-server`, `github-pr-query`, `github-script`, `github-workflows-query`, `go-codemod`, `go-linters`, `http-mcp-headers`, `javascript-refactoring`, `jqschema`, `messages`, `optimize-agentic-workflow`, `otel-queries`, `playwright-cli`, `pr-finisher`, `pr-to-go-linter`, `prompt-token-efficiency`, `reporting`, `sergo-examples`, `ssl-skill-normalizer`, `temporary-id-safe-output`, `workflow-step-summaries` |
