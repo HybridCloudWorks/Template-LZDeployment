@@ -38,6 +38,7 @@ jobs:
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
         with:
           terraform_version: 1.15.8
+          terraform_wrapper: false
 
       - name: Render fixture
         shell: pwsh
@@ -64,11 +65,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -rn '__[A-Z0-9_]\+__' rendered-fixture; then
+          # This step runs AFTER terraform init, so the rendered tree now
+          # contains .terraform/ — third-party module sources downloaded from
+          # the registry, which legitimately carry their own template tokens
+          # (the AVM repos ship gh-aw workflows full of __UPPER_SNAKE__
+          # markers). The gate's contract is OUR rendered output only.
+          if grep -rn --exclude-dir=.terraform '__[A-Z0-9_]\+__' rendered-fixture; then
             echo "::error::Unfilled placeholder tokens survived rendering."
             exit 1
           fi
-          if grep -rnP '(?<!\$)\{\{[^}]*\}\}' rendered-fixture; then
+          if grep -rnP --exclude-dir=.terraform '(?<!\$)\{\{[^}]*\}\}' rendered-fixture; then
             echo "::error::Unresolved factory tokens survived rendering."
             exit 1
           fi

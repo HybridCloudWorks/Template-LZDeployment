@@ -10,10 +10,20 @@
 useDefault = true
 
 [allowlist]
-description = "Deliberate public test vectors (not credentials)"
+description = "Deliberate public test vectors and documentation placeholders (not credentials)"
 regexes = [
     # The canonical jwt.io sample token (header {"alg":"HS256"}, payload
     # {"sub":"1234567890"}). Present in factory/tests/Test-Discovery.ps1
     # solely to prove Protect-LzSecretText redacts JWT-shaped strings.
     '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U''',
+    # Historical documentation examples in commits reachable from main's
+    # FULL history (the files themselves were deleted with the bespoke
+    # corpus, but full-history scans still walk those commits — verified
+    # 2026-08-18, values inspected and confirmed non-credentials):
+    #   docs/bootstrap/OIDC-BEST-PRACTICES.md — a truncated illustrative
+    #   JWT prefix inside a "BAD example" code block.
+    '''eyJ0eXAiOiJKV1QiL\.\.\.''',
+    #   docs/PHASE-1F-TESTING.md — literal YOUR_TOKEN / YOUR_TFC_TOKEN
+    #   placeholders in curl Authorization-header examples.
+    '''^YOUR_[A-Z_]*TOKEN$''',
 ]
