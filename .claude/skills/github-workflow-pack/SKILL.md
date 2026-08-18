@@ -109,12 +109,20 @@ that is a bug to fix in the broker, not a procedure to document.
    `Factory CI`; add `azure/login`-dependent contexts only once the
    identity estate exists — TODO item 4.2).
 4. Pages source = "GitHub Actions" (for `deploy-pages.yml`).
-5. Costs: this repo is public, so Actions minutes are free; the secret-scan
-   workflow is TruffleHog OSS in a normal job, **not** the paid GitHub
-   Secret Protection product. If the repo ever goes private, both statements
-   change — re-check before enabling schedules.
+5. Costs: this repo is public, so Actions minutes are free, and every
+   scanner in the pack is open-source running in a normal job — **not** the
+   paid GitHub Secret Protection product. If the repo ever goes private,
+   both statements change — re-check before enabling schedules.
 
 **Traps that recur:**
+- A marketplace *action* can carry a license its underlying CLI does not:
+  `gitleaks/gitleaks-action` v3 demands a paid key for organization repos
+  while the gitleaks CLI is MIT and free. When an action wraps a CLI,
+  prefer the pinned, checksum-verified CLI release.
+- A re-enabled workflow runs its **current** definition against the
+  **current** tree — a long-disabled workflow accumulates stale paths and
+  broken assumptions silently (the tfsec job scanned a directory deleted
+  months earlier). Treat re-enabling as a review, not a click.
 - Scheduled workflows auto-disable after 60 days without repo activity.
 - Draft→ready conversion drops auto-merge/queue membership.
 - A workflow renamed or moved keeps its numeric ID but breaks
