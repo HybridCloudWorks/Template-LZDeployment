@@ -1,11 +1,32 @@
-# frontend/ — Legacy .tfvars generator
+# frontend/ — Legacy .tfvars generator (DEPRECATED)
 
-A single static page (`index.html` + `app.js` + `styles.css`) that turns a form
-into Terraform variable files for this repository's **legacy in-repo pipeline**
-(`terraform/live/*` deployed by the numbered GitHub Actions workflows). No
-backend, no build step, no framework, and **zero network requests** — the CSP
-in `index.html` (`default-src 'none'`) enforces that; everything runs in the
-browser and downloads are in-memory `data:` URIs.
+> ## ⛔ DEPRECATED — historical/documentation-only, 2026-08-15
+>
+> **The pipeline this page generates files for no longer exists.** The
+> generator-only refactor
+> ([ADR 0013](../docs/decisions/0013-generator-only-avm-architecture.md))
+> deleted the bespoke `terraform/live/*` tree, the `terraform/modules/`
+> tree, and the numbered workflows that deployed them. Every path, module,
+> and stack named below — `terraform/live/global`,
+> `terraform/live/platform-connectivity`, `terraform/live/workloads-prod`,
+> `terraform/modules/policy-baseline`, `defender-baseline` — is **gone**.
+> The `.tfvars` files this page emits have nothing to consume them.
+>
+> **Use [`site/`](../site/index.html) instead** — the Landing Zone Factory
+> wizard, the only supported path. It collects the full configuration,
+> validates it against `factory/schema/lz-config.schema.json`, and exports
+> `lz-config.json`, the contract the whole factory pipeline runs on.
+>
+> The page and this README are retained as a record of the retired
+> approach. The "Usage" section below is **not a current instruction**.
+
+A single static page (`index.html` + `app.js` + `styles.css`) that turned a
+form into Terraform variable files for this repository's **retired legacy
+in-repo pipeline** (`terraform/live/*`, deployed by the numbered GitHub
+Actions workflows). No backend, no build step, no framework, and **zero
+network requests** — the CSP in `index.html` (`default-src 'none'`) enforces
+that; everything ran in the browser and downloads were in-memory `data:`
+URIs.
 
 ## Relationship to `site/` (read this first)
 
@@ -16,12 +37,13 @@ identity, environments, backend, budgets), validates it against
 `lz-config.json` — the contract the whole factory pipeline (discovery →
 bootstrap → render → scaffold) is driven by.
 
-This page predates the factory and feeds **only** the legacy self-deploy
-pipeline: the `terraform/live/*` stacks committed in this repository. It emits
-two `.tfvars` files and nothing else. If you are onboarding a customer, use the
-wizard; use this page only when working the legacy stacks directly.
+This page predates the factory and fed **only** the legacy self-deploy
+pipeline: the `terraform/live/*` stacks formerly committed in this
+repository. It emits two `.tfvars` files and nothing else. Those stacks were
+deleted by ADR 0013, so there is no remaining case for using this page — if
+you are onboarding a customer, use the wizard.
 
-## Usage: fill form → download → place files
+## Usage (historical — the target stacks no longer exist)
 
 1. Open the page: either `frontend/index.html` directly from disk in any
    modern browser (local checkout), or `/frontend/` on the published GitHub

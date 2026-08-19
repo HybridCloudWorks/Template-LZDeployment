@@ -3,9 +3,20 @@
 **Scope**: the ordered, operator-local checklist that opens the go-live
 chain — [TODO.md](../../TODO.md) items 4.2 → 4.3 → 4.1 (+4.4) → 4.5 → 4.7.
 Opened by the operator in-session 2026-08-15, lifting the 2026-08-06
-deferral ([REVIEW.md](../../REVIEW.md) §§1–9). Ends where the Stage 13
-runbook ([stage13-dogfood-execution.md](stage13-dogfood-execution.md))
-begins.
+deferral ([REVIEW.md](../../REVIEW.md) §§1–9). Ends at the first real
+instantiation (step 5), which is where the *generated* repository takes
+over as the deliverable.
+
+**Reconciled 2026-08-19 to the post-refactor architecture.** Steps 4 and 5
+previously named the four numbered workflows
+(`010-terraform-init.yml`, `020-rbac-validation.yml`, `terraform-plan.yml`,
+`terraform-apply.yml`) and the Stage 13 dogfood. All of those were deleted
+by the generator-only refactor
+([ADR 0013](../decisions/0013-generator-only-avm-architecture.md)): this
+repository no longer deploys anything itself. "Pipeline green" now means
+the **generated** repository's own emitted workflows running against a real
+tenant, and the dogfood gate was replaced by the end-to-end generation
+proof. The steps below are the current ones.
 
 **Why operator-local.** Probed from the remote sandbox 2026-08-15, with a
 working operator token: `gh api repos/…/branches/main/protection` → HTTP 403
@@ -95,28 +106,73 @@ Rights needed on the confirmed tenant: **Entra application administrator**
 access (RBAC assignments at the MG root). Pre-flight checklist:
 [docs/USER-CHECKLIST.md](../USER-CHECKLIST.md).
 
+The identity estate is created by the **broker**, which the engagement
+wrapper sequences plan-first. Run the wrapper — it gates discovery →
+broker → render → validate → scaffold in order and stops on the first
+failure:
+
 ```powershell
-pwsh -File scripts/Start-LandingZoneBootstrap.ps1
+# Plan-first: no Entra, RBAC, GitHub, or backend mutation.
+pwsh -File scripts/Invoke-CustomerEngagement.ps1 -ConfigPath <lz-config.json>
+
+# Review the emitted plan/audit evidence, then execute:
+pwsh -File scripts/Invoke-CustomerEngagement.ps1 -ConfigPath <lz-config.json> -Apply
 ```
 
-If the engagement enables the sandbox subscription, pass
-`-SandboxSubscriptionId <guid>` — that is item 4.4; omitting it on a
-sandbox-enabled config is a terminating error by design.
+`-Apply` propagates to the broker and the scaffold **only** — discovery,
+render, and validate never mutate external systems. To reconcile just the
+identity estate, add `-Phase broker`.
 
-Verify: `azure-auth-test.yml` OIDC token exchange green from a real PR
-(item 4.1's criterion).
+`scripts/Start-LandingZoneBootstrap.ps1` is the legacy single-repo
+bootloader, retained for compatibility; it is not the engagement path, and
+its help text still describes the deleted numbered workflows.
+
+If the engagement enables the sandbox subscription, pass
+`-SandboxSubscriptionId <guid>` to the broker — that is item 4.4; omitting
+it on a sandbox-enabled config is a terminating error by design.
+
+Verify: the generated repository's `azure-auth-test.yml` OIDC token
+exchange green from a real PR (item 4.1's criterion).
 
 ## 4. Item 4.5 — Pipeline green end to end
 
-Open a real PR touching a live layer and confirm successful runs of all
-four: `010-terraform-init.yml`, `020-rbac-validation.yml`,
-`terraform-plan.yml`, and (dispatch-only, saved plan) `terraform-apply.yml`.
+Two halves, only one of which is still open.
+
+- **Factory-side — already done.** `factory-ci.yml` and
+  `e2e-generation-proof.yml` both run green on PRs and on `main` (PR
+  #99/#101 check runs, both topology jobs, real registry access). Nothing
+  to do here.
+- **Estate-side — the open half.** In the **generated** repository
+  produced by step 3, open a real PR touching a layer and confirm its
+  emitted workflows run green against the confirmed tenant:
+  `azure-auth-test.yml`, `terraform-fmt-validate.yml`, `terraform-plan.yml`
+  on the PR, then `terraform-apply.yml` per layer in dependency order
+  (`platform-management` → `global` → `platform-connectivity` →
+  `state-hardening`).
+
 Anything still red after 4.1 routes to `deployment-troubleshooter`
-(REVIEW.md §3). Then widen the protection payload's required contexts
-(step 1, last paragraph).
+(REVIEW.md §3). Then widen the factory's protection payload required
+contexts (step 1, last paragraph) — those are the factory's own checks,
+not the generated repo's.
 
-## 5. Item 4.7 — Stage 13 dogfood
+## 5. Item 4.7 — First real instantiation
 
-Gate-by-gate: [stage13-dogfood-execution.md](stage13-dogfood-execution.md);
-acceptance criteria: [docs/USER-CHECKLIST.md](../USER-CHECKLIST.md)
-Stage 13. Stage 14 (item 5.1) follows from its hand-off.
+The self-deploying Stage 13 dogfood was deleted with the live tree
+(ADR 0013), and its **generation half** is already discharged: the
+end-to-end generation proof passed on GitHub-hosted runners for both
+topologies (2026-08-17). What remains is the **apply half** — the first
+real instantiation against the confirmed tenant, which is steps 3 and 4
+carried through to a green apply in the generated repository.
+
+This is also where the per-estate verifications parked by TODO item 3.1
+execute: resource-provider registration audit entries land
+`registered`/`already-registered` with none `pending`, the authenticated
+broker/scaffold suite runs record evidence, and any `enable_nsg_flow_logs`
+flag flip is a separate PR whose plan shows the flow-log resources against
+the chosen NSGs only.
+
+Acceptance criteria: [docs/USER-CHECKLIST.md](../USER-CHECKLIST.md).
+Item 5.1 (release attestation, and the reviewed PR that flips the
+`releaseGates` booleans against named evidence) follows from its hand-off.
+[stage13-dogfood-execution.md](stage13-dogfood-execution.md) is retained
+as superseded history only — do not execute it.

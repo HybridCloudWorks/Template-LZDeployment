@@ -25,6 +25,38 @@ kinds:
 
 ---
 
+## Status index (reconciled 2026-08-19)
+
+Section numbers never change — TODO.md cross-references them — so resolved
+and superseded entries stay in place with a status banner rather than being
+renumbered or deleted. **Only the six entries marked OPEN need anyone.**
+
+| § | Entry | Status |
+| --- | --- | --- |
+| 1 | Create the live identity estate | 🔐 **OPEN** — operator, tenant confirmation |
+| 2 | Required status checks on `main` | 🔐 **OPEN** — operator, repo admin |
+| 3 | Pipeline green end to end | 🔐 **OPEN (estate half only)** — factory half done |
+| 4 | First real instantiation | 🔐 **OPEN (apply half only)** — generation half discharged |
+| 5 | Stage 14 release attestation | 🔐 **OPEN** — follows §4 |
+| 6 | `-SandboxSubscriptionId` at bootstrap | 🔐 **OPEN** — per engagement, only if sandbox enabled |
+| 7 | Suites in a provisioned toolchain | ↪ **RE-SCOPED** — provisioning proven; remainder per-estate |
+| 8 | GitHub Pages source | 🔐 **OPEN** — operator, one setting |
+| 9 | Backend duality / TFC | ✅ **RESOLVED** 2026-08-15 (decision 0011) |
+| 10 | Resource-provider registration | ✅ **DECIDED + implemented** (decision 0006) |
+| 11 | Wire `nsg-flow-logs` | ⊘ **SUPERSEDED** (ADR 0013 — module deleted) |
+| 12 | `Initialize-ClientFork.ps1` disposition | ✅ **RESOLVED** (decision 0007) |
+| 13 | Generated-repo ownership policy | ✅ **RATIFIED** (decision 0010); GH1 residual |
+| 14 | `keyvault-cmk` / `sentinel-siem` | ⊘ **SUPERSEDED** (ADR 0017 — recorded-not-deployed) |
+| 15 | Publish wiki review edits | 🚧 **OPEN** — needs a machine with wiki write access |
+| 16 | Wire `Configure-DeploymentOptions.ps1` | ⊘ **SUPERSEDED** (inherits §14) |
+| 17 | Cost estimates in module READMEs | ⊘ **LARGELY VOIDED**; narrowed residual |
+
+**The critical path to a first deployment is §§2, 8 → 1 (+6) → 3 → 4 → 5**,
+sequenced command-by-command in
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md).
+
+---
+
 ## 🔐 Requires Azure or GitHub access — **GO-LIVE OPENED 2026-08-15**
 
 > **Phase opened (operator, 2026-08-15, in-session).** The 2026-08-06
@@ -83,19 +115,41 @@ operator-local action — commands and read-back in
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 1.
 
 ### 3. Verify the pipeline runs green end to end (TODO.md item 4.5, `[BLOCKER]`)
-No recorded successful run of `010-terraform-init.yml`,
-`020-rbac-validation.yml`, `terraform-plan.yml` or `terraform-apply.yml`.
-**Unblocked by**: item 1. The PR leg stays red until the identity estate exists.
+**Rewritten 2026-08-19 to post-refactor scope.** This entry used to track four
+workflows (`010-terraform-init.yml`, `020-rbac-validation.yml`,
+`terraform-plan.yml`, `terraform-apply.yml`) that
+[ADR 0013](docs/decisions/0013-generator-only-avm-architecture.md) deleted
+along with the self-deploying tree. "Pipeline green" now splits:
 
-### 4. Execute and accept the Stage 13 dogfood instance (TODO.md item 4.7, `[BLOCKER]`)
-`factory-version.json` still carries `dogfoodInstanceAppliesGreen = false`.
-**Unblocked by**: items 1–3, then the gate-by-gate runbook at
-[docs/runbooks/stage13-dogfood-execution.md](docs/runbooks/stage13-dogfood-execution.md).
+- **Factory-side — DONE, not a blocker.** `factory-ci.yml` and
+  `e2e-generation-proof.yml` run green on PRs and on `main` (PR #99/#101
+  check runs, both topology jobs, real registry access).
+- **Estate-side — the blocked half.** The *generated* repository's emitted
+  workflows (`azure-auth-test.yml`, `terraform-fmt-validate.yml`,
+  `terraform-plan.yml`, `terraform-apply.yml`) have never run against a real
+  tenant.
+
+**Unblocked by**: item 1. The estate leg cannot run until the identity estate
+exists.
+
+### 4. First real instantiation — formerly the Stage 13 dogfood (TODO.md item 4.7, `[BLOCKER]`)
+**Rewritten 2026-08-19.** The self-deploying dogfood instance was deleted
+(ADR 0013) and its gate `dogfoodInstanceAppliesGreen` no longer exists in
+`factory-version.json` — it was replaced by `endToEndGenerationProofPasses`.
+The **generation half is discharged**: that proof passed on GitHub-hosted
+runners for both topologies on 2026-08-17. What is blocked is the **apply
+half** — vending → discovery → broker apply → render → scaffold → the
+generated repository's own plan/apply against a confirmed tenant.
+**Unblocked by**: items 1–3, then
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 5.
+The Stage 13 runbook is superseded history and must not be executed.
 
 ### 5. Run Stage 14 release attestation (TODO.md item 5.1, `[BLOCKER]`)
 **Unblocked by**: item 4. Until this passes, every customer deployment is
-formally a verification exercise (factory v0.9.0,
-`oidcTokenExchangeVerifiedLive = false`).
+formally a verification exercise (factory v0.11.0; all five `releaseGates`
+booleans still `false`, though evidence for four of them now exists and
+awaits the reviewed flip — only `oidcTokenExchangeVerifiedLive` genuinely
+lacks evidence until item 4's apply half runs).
 
 ### 6. Supply `-SandboxSubscriptionId` at bootstrap (TODO.md item 4.4, `[BLOCKER]`)
 Without it, platform-management's sandbox-cleanup Contributor assignment fails
@@ -210,6 +264,10 @@ POST/PUT `build_type: workflow` routes in
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 2.
 
 ### 9. Resolve the backend duality / TFC migration
+> **✅ RESOLVED 2026-08-15 — no operator action. Retained for
+> cross-reference only** (TODO.md item 4.6 closed). Text below is the
+> original entry plus its resolution.
+
 Tracked as GitHub Issue #11; blocked on interactive Terraform Cloud
 org/workspace/token setup.
 **Unblocked by**: an operator with TFC access.
@@ -241,6 +299,11 @@ Implementation is straightforward once the choice is made. Each entry states
 exactly what has to be decided.
 
 ### 10. Resource-provider registration strategy under azurerm 5.0
+> **✅ DECIDED 2026-08-07 (decision 0006) and implemented — no decision
+> pending.** One residual, the end-to-end proof against a real estate, is
+> carried by TODO.md item 3.1 and executes at item 4's first
+> instantiation.
+
 **New, introduced by this work — and now load-bearing: staying on 5.0 is
 operator-ratified (2026-08-06), so this cannot be sidestepped by a rollback.** azurerm 5.0 changes
 `resource_provider_registrations` from `legacy` to `none`, so the provider no
@@ -278,6 +341,15 @@ against a real estate and a first apply into a fresh subscription with no
 [TODO.md](TODO.md) item 3.1; the operator holds that gate (§7 toolchain).
 
 ### 11. Wire `nsg-flow-logs` into a live stack
+> **⊘ SUPERSEDED 2026-08-15 by [ADR 0013](docs/decisions/0013-generator-only-avm-architecture.md).**
+> The `nsg-flow-logs` module and the entire `terraform/live/*` tree this
+> entry discusses were deleted; only
+> [decision 0009](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md)
+> survives as the recorded posture. Flow-log enablement is now per-estate
+> work in the generated repository, carried by TODO.md item 3.1. No
+> decision is pending here. Text below is history — every path it names is
+> gone.
+
 The module exists with secure defaults (90-day retention) but **zero
 `terraform/live/*` callers**, so no NSG flow logs are collected anywhere.
 **Decide**: which NSGs populate `var.nsg_ids` — the module does not
@@ -386,6 +458,10 @@ The rate refresh against `prices.azure.com` folds into item 5.2 / §17 below
 and needs an environment with egress.
 
 ### 12. Disposition of `scripts/Initialize-ClientFork.ps1`
+> **✅ RESOLVED 2026-08-07 (decision 0007) and implemented — nothing
+> remains open.** Retained for cross-reference only (TODO.md item 2.2
+> closed).
+
 Under decision 0004 its hardening stages (Actions enablement, branch
 protection, required checks, required approvals, secret-scanning read-back)
 target the **disposable** copy and are not part of a client run; the broker
@@ -411,6 +487,12 @@ payload route. Nothing remains open; the script file itself survives by
 design (decision 0001's rationale is unchanged).
 
 ### 13. Ownership policy for the generated repository
+> **✅ RATIFIED 2026-08-15 (decision 0010) — no decision pending.** One
+> named residual survives: the GH1 org-plan-tier boundary (whether an
+> *organization* on the Free plan degrades protected environments on
+> private repos), carried inside TODO.md item 2.6's closure note and
+> answerable from GitHub docs.
+
 The *mechanism* is settled and needs no change — `github.ownershipModel` and
 `github.ownerName` are required schema fields, and
 `LZFactory.Scaffold.psm1` targets `ownerName/repositoryName`, so ownership is
@@ -453,6 +535,15 @@ residual inside TODO item 2.6's closure note. Until it is answered, the
 policy is an ownership-model statement, not a minimum-plan statement.
 
 ### 14. Implement `keyvault-cmk` and `sentinel-siem`
+> **⊘ SUPERSEDED IN PLACE 2026-08-15 by
+> [ADR 0017](docs/decisions/0017-wizard-scope-vs-emitted-architecture.md).**
+> The scaffold modules no longer exist — the deferral below described
+> `check "module_not_implemented"` stubs that ADR 0013 deleted. The
+> answers are now **recorded-not-deployed**: the wizard warns at the
+> question, render guards G02/G03 warn at render, and every answer is
+> preserved in the committed `lz-config.json`. Re-opening this now means
+> authoring AVM resource modules or per-estate work, not finishing a stub.
+
 **Operator-accepted deferral as of 2026-08-06** ("leave those key vault and
 sentinel options"). Both remain `check "module_not_implemented"` with zero
 resources. This is a decided state, not drift: the renderer blocks
@@ -509,6 +600,13 @@ completes on the next push to `main`.*
 ## 🔗 Blocked on another item
 
 ### 16. Wire `Configure-DeploymentOptions.ps1` output into Terraform
+> **⊘ SUPERSEDED 2026-08-15 (inherits §14's supersession, ADR 0017).**
+> Both the `terraform/live/*` tree that would read the YAML and the three
+> modules it would gate are deleted. `Configure-DeploymentOptions.ps1`
+> survives only as an unwired operator utility writing a planning-only
+> artifact; the wizard's `lz-config.json` is the real answer record.
+> Nothing is sequenced behind this. Text below is history.
+
 The script generates `.azure/deployment-options.yaml`, but no `terraform/live/*`
 layer reads it to decide whether to call `defender-baseline`, `keyvault-cmk`
 or `sentinel-siem`.
@@ -524,6 +622,19 @@ cost, so the current state is documented rather than misleading.
 ## ✋ Cannot be automated
 
 ### 17. Cost estimates in module READMEs
+> **⊘ LARGELY VOIDED 2026-08-15 by ADR 0013 — re-scoped 2026-08-19.** The
+> bespoke module READMEs carrying the cost figures, and
+> `factory/ci/Test-ModuleDocs.ps1` which enforced their variable tables,
+> were all deleted with the `terraform/modules/` tree; the AVM pattern
+> modules the generator now references are documented upstream by
+> Microsoft. What survives is narrower: the **cost narrative in the
+> emitted docs** (`factory/templates/docs/FINOPS.md.tmpl` and siblings)
+> still needs periodic human review against current Azure list prices, and
+> [decision 0009](docs/decisions/0009-nsg-flow-log-scope-and-workspace-target.md)
+> still carries per-GB rates labelled **UNVERIFIED**. The egress gate
+> below is unchanged, and 0009's standing prohibition holds: **no figure
+> in that record may be quoted to a client as a price.**
+
 `factory/ci/Test-ModuleDocs.ps1` now enforces that every module README's
 **variable table** matches `variables.tf`, in both directions. The **cost
 estimates** in those same READMEs cannot be checked the same way: they are not

@@ -47,19 +47,21 @@ without editing broker or scaffold source; provide values through
   every layer log, and destructive-change result.
 - [ ] Approve apply only through the exact protected environment and preserve
   independent Azure/state/OIDC/GitHub read-back evidence.
-- [ ] Do not mark `dogfoodInstanceAppliesGreen` from code completion, skipped
+- [ ] Do not mark `endToEndGenerationProofPasses` from code completion, skipped
   execution, render-only output, or plan success.
 
 ## Release evidence provenance
 
-- [ ] Preserve the successful, unskipped Factory CI report and successful full
-  dogfood apply report for the exact factory version stamped here.
+- [ ] Preserve the successful, unskipped Factory CI report and the successful
+  end-to-end generation proof report for the exact factory version stamped
+  here.
 - [ ] Independently review Azure, state, OIDC, active modules, and branch
   protection; bind the approval to both report SHA-256 values using
   `release-attestation.schema.json`.
 - [ ] Set `LZ_RELEASE_MAX_EVIDENCE_AGE_HOURS` and
   `LZ_RELEASE_ATTESTATION_JSON`, then run the source factory's manual Release
-  Readiness workflow with the exact Factory CI and dogfood run IDs.
+  Readiness workflow with the exact Factory CI and end-to-end generation
+  proof run IDs.
 - [ ] Treat `LZ_RELEASE_ALLOW_INCOMPLETE=true` as diagnostic only.
 - [ ] Change release gates only through a separate reviewed PR after
   `readyForPromotion=true`; the evaluator never promotes automatically.

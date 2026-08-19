@@ -985,25 +985,33 @@ evidence (run URLs / artifacts), never bare assertion.
 
 ### 5.2 Review module-README cost estimates against current Azure pricing
 
-The variable tables are machine-enforced (`factory/ci/Test-ModuleDocs.ps1`);
-the cost figures are not derivable from HCL and go stale against Azure list
-prices.
-Carried forward from item 2.3 (closed 2026-08-09) — decision 0009 follow-up
-(d): `terraform/modules/nsg-flow-logs/README.md`'s Cost section now states a
-per-GB formula whose rates (`C` ≈ $0.50/GB collection, `P` ≈ $2.00/GB Traffic
-Analytics at 60 min, `I` ≈ $2.76/GB Log Analytics ingestion, `S` ≈
-$0.05/GB-month RA-GZRS) are **labelled unverified in the file**: the authoring
-environment had no egress to `prices.azure.com` (403 at the proxy) and the
-Azure MCP `pricing` tool was refused. Refresh them from an environment with
-egress and re-date the section. Decision 0009's Q2 resolution stands until
-then — **no figure in that README or in the decision record may be quoted to a
-client as a price**.
+**Re-scoped 2026-08-19 — most of this item was voided by ADR 0013.** The
+bespoke module READMEs that carried the cost estimates, and
+`factory/ci/Test-ModuleDocs.ps1` which machine-enforced their variable
+tables, were deleted with the `terraform/modules/` tree; the AVM pattern
+modules the generator now references are documented upstream by Microsoft.
+Two things survive and still need a human:
+
+- **The emitted cost narrative** — `factory/templates/docs/FINOPS.md.tmpl`
+  and its siblings ship cost guidance into every generated repository. It
+  is not derivable from HCL and goes stale against Azure list prices.
+- **Decision 0009's per-GB rates** — carried forward from item 2.3 (closed
+  2026-08-09), follow-up (d). The rates (`C` ≈ $0.50/GB collection, `P` ≈
+  $2.00/GB Traffic Analytics at 60 min, `I` ≈ $2.76/GB Log Analytics
+  ingestion, `S` ≈ $0.05/GB-month RA-GZRS) are **labelled UNVERIFIED in the
+  record**: the authoring environment had no egress to `prices.azure.com`
+  (403 at the proxy) and the Azure MCP `pricing` tool routed through the
+  same proxy and failed identically. The module README that also held them
+  is gone, so the decision record is now their only home. Refresh from an
+  environment with egress and re-date the section. Decision 0009's Q2
+  resolution stands until then — **no figure in that record may be quoted
+  to a client as a price**.
 **Owner**: `azure-cost-governance` prepares; a human accepts the figures.
 **Gate**: release cadence — [REVIEW.md](REVIEW.md) §17 (cannot be automated);
 for the 0009 rates specifically, an environment with egress to
 `prices.azure.com`.
-**Validation**: reviewed figures dated in each module README; the
-`nsg-flow-logs` rate block loses its "UNVERIFIED" label only when a human has
+**Validation**: reviewed figures dated in the emitted FinOps docs; decision
+0009's rate block loses its "UNVERIFIED" label only when a human has
 accepted verified figures.
 
 ### 5.3 Bump `factory-version.json` in lock-step
