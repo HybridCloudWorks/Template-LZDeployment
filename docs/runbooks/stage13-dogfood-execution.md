@@ -1,6 +1,26 @@
 # Runbook — Stage 13 Dogfood Execution
 
-**Scope**: the operator's command-exact path from the repository's current
+> ## ⛔ SUPERSEDED 2026-08-15 — historical record, do not execute
+>
+> The self-deploying dogfood instance this runbook drives **no longer
+> exists**. The generator-only refactor
+> ([ADR 0013](../decisions/0013-generator-only-avm-architecture.md))
+> deleted the bespoke `terraform/live/` tree and the numbered workflows
+> (`010-terraform-init.yml`, `020-rbac-validation.yml`) that every gate
+> below depends on, and the `dogfoodInstanceAppliesGreen` release gate was
+> replaced by `endToEndGenerationProofPasses` — which **passed** on
+> GitHub-hosted runners for both topologies on 2026-08-17.
+>
+> **Where the work went instead**: the dogfood's generation half is
+> discharged by the end-to-end generation proof; its apply half is now
+> TODO item 4.7, "first real instantiation", sequenced by
+> [go-live-opening.md](go-live-opening.md) step 5.
+>
+> Retained because its gate-by-gate structure and the 2026-08-01/02
+> discovery findings are cited elsewhere. Nothing below is a current
+> instruction.
+
+**Scope** (as written 2026-08-02): the operator's command-exact path from the repository's current
 state to a completed Stage 13 dogfood, ending at the Stage 14 hand-off.
 Written 2026-08-02; every command below was verified against the current
 script parameter blocks and workflow YAML on this branch

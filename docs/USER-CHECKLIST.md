@@ -247,7 +247,26 @@ code; no customer render was validated or published while building it.
 - [ ] Read back branch protection/rulesets through the GitHub API and prove a
   pull request cannot merge when `Factory CI` fails.
 
-## Stage 13 dogfood variables
+## Stage 13 dogfood — ⛔ SUPERSEDED 2026-08-15, do not execute
+
+> The `Dogfood Instance` workflow and the self-deploying instance these two
+> sections drive were deleted by
+> [ADR 0013](decisions/0013-generator-only-avm-architecture.md), and the
+> `dogfoodInstanceAppliesGreen` release gate they set no longer exists in
+> `factory-version.json` — it was replaced by
+> `endToEndGenerationProofPasses`, which **passed** on GitHub-hosted runners
+> for both topologies on 2026-08-17.
+>
+> **What replaces them**: the generation half is discharged by that proof;
+> the apply half is TODO item 4.7, "first real instantiation", sequenced by
+> [runbooks/go-live-opening.md](runbooks/go-live-opening.md) step 5. Its
+> acceptance criteria are the Stage 14 sections below, read against the
+> generated repository rather than a dogfood instance.
+>
+> Both sections are retained as a record of the retired gate. Every variable
+> and workflow they name is gone.
+
+### Stage 13 dogfood variables (historical)
 
 - [ ] Store the complete approved HCW `lz-config.json` as repository variable
   `LZ_DOGFOOD_CONFIG_JSON`; confirm it targets
@@ -265,7 +284,7 @@ code; no customer render was validated or published while building it.
   `LZ_DOGFOOD_OUTPUT`, `LZ_DOGFOOD_EVIDENCE`, `LZ_DOGFOOD_MODE`,
   `LZ_DOGFOOD_LAYER`, and `LZ_DOGFOOD_REPOSITORY`.
 
-## Stage 13 execute and verify
+### Stage 13 execute and verify (historical)
 
 - [ ] Run `Dogfood Instance` in `Render` mode and review the generated manifest.
 - [ ] Run every rendered layer in `Plan` mode with the read-only identity.
@@ -287,28 +306,42 @@ code; no customer render was validated or published while building it.
 
 ## Stage 14 release evidence variables
 
+> **Reconciled 2026-08-19 to the evidence the evaluator actually reads.**
+> `factory/release/Invoke-ReleaseReadiness.ps1` takes the **end-to-end
+> generation report**, not a dogfood report: `LZ_RELEASE_E2E_REPORT` and
+> attestation field `e2eReportSha256`/`e2eEvidenceVerified`. The former
+> `LZ_RELEASE_DOGFOOD_REPORT` / `dogfood-report.json` names are gone with
+> ADR 0013 — supplying them fails the run.
+
 - [ ] Set repository variable `LZ_RELEASE_MAX_EVIDENCE_AGE_HOURS`; default 168
-  requires Factory CI, dogfood, and attestation evidence from the last seven
-  days.
+  requires Factory CI, end-to-end generation, and attestation evidence from
+  the last seven days.
 - [ ] Build `LZ_RELEASE_ATTESTATION_JSON` against
   `factory/release/release-attestation.schema.json`.
 - [ ] Include the exact lowercase SHA-256 values of `factory-ci-report.json`
-  and `dogfood-report.json`, the reviewer, approval reference, repository,
-  factory version, issuance time, and every required read-back boolean.
+  and the **e2e generation report**, the reviewer, approval reference,
+  repository, factory version, issuance time, and every required read-back
+  boolean.
 - [ ] For local execution, set `LZ_RELEASE_FACTORY_CI_REPORT`,
-  `LZ_RELEASE_DOGFOOD_REPORT`, `LZ_RELEASE_ATTESTATION_PATH`,
+  `LZ_RELEASE_E2E_REPORT`, `LZ_RELEASE_ATTESTATION_PATH`,
   `LZ_RELEASE_EVIDENCE`, and `LZ_RELEASE_EXPECTED_REPOSITORY`.
 - [ ] Use `LZ_RELEASE_ALLOW_INCOMPLETE=true` only to generate diagnostic
   evidence. An incomplete report is never promotion approval.
 
 ## Stage 14 attest and promote
 
-- [ ] Select a successful, unskipped Factory CI run for factory v0.9.0 and
-  record its workflow run ID.
-- [ ] Select a successful Stage 13 `Apply` run with layer `all`,
-  `externalMutation=true`, and `releaseGateEligible=true`; record its run ID.
-- [ ] Independently verify the complete dogfood deployment, live OIDC token
-  exchange, active emitted modules, branch protection, and evidence ownership.
+- [ ] Select a successful, unskipped Factory CI run for the factory version
+  stamped in `factory-version.json` (0.11.0 as of 2026-08-17) and record its
+  workflow run ID.
+- [ ] Select a successful `e2e-generation-proof.yml` run covering **both**
+  topologies with real registry access; record its run ID. Findings R04/R05
+  check that its report targets this repository and the current factory
+  version, and that it passed every gate — UI-driven config, zero residual
+  placeholders, manifest match, `terraform init`+`validate`, zero GUIDs.
+- [ ] Independently verify the first real instantiation (TODO item 4.7), live
+  OIDC token exchange, active emitted modules, branch protection, and
+  evidence ownership. `oidcTokenExchangeVerifiedLive` is the one gate with no
+  evidence until that apply runs.
 - [ ] Compute both report SHA-256 values before approving the attestation.
 - [ ] Run `Release Readiness` with the two exact run IDs and review the retained
   `release-readiness-report.json` and `release-gates.proposed.json`.

@@ -1533,8 +1533,10 @@ shellcheck runs on the CI runner only):
 **Docs**: new [docs/runbooks/engagement-lifecycle.md](docs/runbooks/engagement-lifecycle.md)
 (upgrade channels, engagement provenance, workstation isolation) and the
 Phase 1 decision record above; PROD-TODO.md reconciled item by item;
-contracts #3 and #5 updated in
-[.claude/CROSS-DOMAIN-CONTRACTS.md](.claude/CROSS-DOMAIN-CONTRACTS.md).
+contracts #3 and #5 updated in the cross-domain contracts file (then at
+`.claude/CROSS-DOMAIN-CONTRACTS.md`; moved to
+[docs/CROSS-DOMAIN-CONTRACTS.md](docs/CROSS-DOMAIN-CONTRACTS.md) by
+[decision 0008](docs/decisions/0008-dot-prefixed-folders-are-configuration-only.md)).
 
 ## Documentation restructure — wiki migration, HANDOFF.md retired (2026-08-01)
 
