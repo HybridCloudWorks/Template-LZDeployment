@@ -12,11 +12,24 @@ name: Deploy Wizard to GitHub Pages
 # layout; when serving the raw repo root over localhost, "../index.html" is the
 # repo root (not site/) — use the published layout or serve a staged _pages/.
 #
-# NOTE: the repository must have Pages enabled with build type
-# "GitHub Actions" (Settings > Pages > Source: GitHub Actions) before the
-# first run; actions/configure-pages fails otherwise. Enablement is a
-# repo-admin setting and is deliberately NOT automated here to keep this
-# workflow's token permissions minimal.
+# Pages enablement is SELF-SERVICE as of 2026-08-19 (operator-directed):
+# actions/configure-pages runs with `enablement: true`, so the first run
+# creates the Pages site and sets build type "GitHub Actions" itself. The
+# repo-admin setting is no longer a precondition.
+#
+# Tradeoff, recorded deliberately: this reverses the earlier posture ("
+# enablement is a repo-admin setting and is deliberately NOT automated here
+# to keep this workflow's token permissions minimal"). Creating the Pages
+# site is a write, so the BUILD job now needs `pages: write` in addition to
+# `contents: read` — a wider token than the read-only build it used to be.
+# Accepted because the manual setting did not take effect: every run from
+# 2026-08-01 through run #12 (2026-08-19) failed with "Get Pages site
+# failed ... Not Found", so the site was never created and the wizard was
+# never published. See TODO.md item 4.3 / REVIEW.md §8.
+#
+# `pages: write` on build lets this workflow create and configure the Pages
+# site; it does not grant deployment, which still requires the `id-token:
+# write` OIDC exchange scoped to the deploy job below.
 
 on:
   push:
@@ -41,6 +54,13 @@ jobs:
     name: Build Pages Artifact
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # `pages: write` is required by configure-pages' `enablement: true` (it
+    # creates the Pages site via the Pages API). `contents: read` must be
+    # restated: a job-level permissions block replaces the workflow-level
+    # one rather than extending it, and the checkout below needs it.
+    permissions:
+      contents: read
+      pages: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -55,6 +75,10 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
+        with:
+          # Create the Pages site and set build type "GitHub Actions" if it
+          # does not already exist. Idempotent: a no-op once the site exists.
+          enablement: true
 
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
