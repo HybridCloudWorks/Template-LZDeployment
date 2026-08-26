@@ -256,12 +256,53 @@ This entry survives only as that per-estate pointer; [TODO.md](TODO.md) item
 `deploy-pages.yml` exists and is SHA-pinned; the repository setting is a
 one-time manual prerequisite.
 **Unblocked by**: repository administration (Settings → Pages).
+**Tracked as** [issue #107](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/107).
+
 **Probe evidence, 2026-08-15.** The remote sandbox cannot flip the setting,
 even holding the operator's token: `gh api repos/…/pages` → HTTP 403
 "Access to this GitHub API path is not permitted through this proxy". This
 is an operator-local action — Settings → Pages, or the `gh api`
-POST/PUT `build_type: workflow` routes in
+POST `build_type: workflow` route in
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 2.
+(POST, not PUT: the workflow log proves no site exists to update.)
+
+**Diagnosis completed 2026-08-19 — two distinct failures, do not conflate:**
+
+`deploy-pages.yml` has now failed **16 of 16 runs since 2026-08-01**. Every
+run ends with the same pair:
+
+```
+warning: Get Pages site failed.    Not Found
+error:   Create Pages site failed. Resource not accessible by integration
+```
+
+1. **`Get → Not Found`** is a *read*, and reads are not permission-limited
+   for the workflow token. GitHub is reporting that **no Pages site exists**,
+   whatever Settings displays. Manual enablement was attempted 2026-08-19 and
+   this line did not change across runs #15 and #16 — so the setting is not
+   persisting, and *that* is the open question.
+2. **`Create → Resource not accessible by integration`** is the workflow's
+   own fallback and **can never succeed**. Site creation needs
+   `administration:write`, which the Actions `GITHUB_TOKEN` is structurally
+   incapable of holding — a deliberate GitHub security restriction
+   ([actions/configure-pages#40](https://github.com/actions/configure-pages/issues/40)),
+   not a misconfiguration here. No `permissions:` block can grant it.
+
+An earlier hypothesis that an **organization-level Pages restriction** was
+the cause was **withdrawn** when (2) was found — but (2) explains only why
+the *workflow* cannot create the site, never why *manual* enablement fails to
+register. The org-policy question is therefore still open for (1), and
+`gh api -X POST repos/…/pages -f build_type=workflow` run locally by an org
+owner returns the real error that would name it.
+
+Shipped against this: PR #105 (`enablement: true`, `pages: write` on build —
+diagnostic value only) and PR #106 (`token: secrets.PAGES_PAT || github.token`
+plus a failure-guidance step that writes both fix routes to the job summary).
+Neither turns the run green; nothing in a workflow can, without either a
+`PAGES_PAT` secret or a one-time manual enablement.
+
+**Scope**: this publishes the wizard. It does **not** gate deploying a
+landing zone — that path is §2 → §1 (+§6) → §3 → §4.
 
 ### 9. Resolve the backend duality / TFC migration
 > **✅ RESOLVED 2026-08-15 — no operator action. Retained for

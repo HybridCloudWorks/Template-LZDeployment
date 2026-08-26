@@ -882,13 +882,43 @@ scanning, required approvals).
 read-back commands in
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 1.
 **Validation**: GitHub API read-back shows the required contexts enforced.
+**Pre-flight verified 2026-08-19**: the payload's required context string
+(`Factory CI`) was checked against the live check-run name and **matches** —
+a mismatch here silently deadlocks every merge, since nothing would ever
+satisfy the required check. The payload is ready to apply as-is. Also
+re-confirmed that this is operator-local: the sandbox token returns
+`admin: false` on the repository and HTTP 403
+"Resource not accessible by integration" on the protection endpoint, so the
+apply must run under the operator's own `gh` session.
+**Live consequence, observed 2026-08-19**: PR #104 merged while its own
+`Factory CI` run was still queued (it later passed). With this payload
+applied that merge would have been blocked — which is the failure mode the
+item exists to close.
 
 ### 4.3 Set GitHub Pages source to "GitHub Actions"
 
 One-time repo setting; `deploy-pages.yml` is ready.
 **Owner**: operator (Settings → Pages). **Gate**: [REVIEW.md](REVIEW.md) §8.
+**Tracked as** [issue #107](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/107)
+(full diagnosis, both fix routes, acceptance criteria).
 **Validation**: published site serves `site/` at root, `frontend/` under
 `/frontend/`.
+
+**Status 2026-08-19 — still open, diagnosed.** `deploy-pages.yml` has failed
+**16 of 16 runs since 2026-08-01**; the wizard has never been published and
+`main` carries a permanently red workflow. The blocker is that no Pages site
+exists (`Get Pages site → Not Found`, a read, so not permission-limited).
+Manual enablement was attempted and the read did not change, so the setting
+is not persisting — see REVIEW.md §8 for the two-failure breakdown and why
+the Actions `GITHUB_TOKEN` can never create the site itself.
+
+Two one-time routes, either sufficient: enable it by hand so it sticks, or
+add a `PAGES_PAT` repository secret (fine-grained, **Pages: Read and write**)
+— PR #106 already wires `configure-pages` to prefer it. The manual route is
+preferred: a PAT is a long-lived credential this repository otherwise avoids.
+
+**This item does not gate a landing-zone deployment.** It publishes the
+factory wizard. The deploy path is 4.2 → 4.1 (+4.4) → 4.5 → 4.7 → 5.1.
 
 ### 4.4 Supply `-SandboxSubscriptionId` at bootstrap (per engagement)
 
