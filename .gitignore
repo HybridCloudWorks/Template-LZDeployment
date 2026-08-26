@@ -60,6 +60,12 @@ generated-output/
 # repository, and backend identifiers and are operator-local artifacts.
 /lz-config.json
 /discovery-inventory.json
+# The human-readable sibling of discovery-inventory.json. Rendered by
+# New-LzReadinessReport.ps1 from a full tenant inventory, so it carries the
+# same tenant/subscription detail. Added 2026-08-19: it was NOT ignored, so a
+# discovery run at the repo root could have committed tenant data to a public
+# template repository.
+/tenant-readiness-report.md
 /bootstrap-output/
 /rendered-output/
 /validate-evidence/
