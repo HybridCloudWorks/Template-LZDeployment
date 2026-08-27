@@ -106,10 +106,46 @@ Rights needed on the confirmed tenant: **Entra application administrator**
 access (RBAC assignments at the MG root). Pre-flight checklist:
 [docs/USER-CHECKLIST.md](../USER-CHECKLIST.md).
 
+### 3a. Produce the config, then run discovery on its own first
+
+`lz-config.json` comes from the `site/` wizard (open `site/index.html`
+locally). `azure.tenantId` is a **required** schema field — the wizard
+cannot emit a valid config without it, which is the tenant confirmation
+enforced structurally rather than by convention.
+
+Then run **discovery alone** before the wrapper. It is read-only, mutates
+nothing, and produces the human gate:
+
+```powershell
+pwsh -File factory/discovery/Invoke-Discovery.ps1 -ConfigPath <lz-config.json>
+```
+
+It writes `discovery-inventory.json` and **`tenant-readiness-report.md`**
+beside the config. Both are gitignored — a discovery run at the repo root
+cannot commit tenant data.
+
+**Read the readiness report and resolve every `Fail` before going on.** Ten
+checks, each carrying its own remediation text:
+
+| | | | | |
+| --- | --- | --- | --- | --- |
+| `R01` app registrations | `R02` federated credentials | `R03` management groups | `R04` subscription availability | `R05` policy assignment |
+| `R06` RBAC roles | `R07` diagnostic settings | `R08` networking | `R09` GitHub access | `R10` Terraform backend |
+
+`R09` fails on an ownership-model/account-type mismatch — see
+[decision 0010](../decisions/0010-generated-repo-ownership-policy.md).
+`R03` fails without write access at the management-group root; its
+remediation names the intermediate-root alternative.
+
+Running discovery first is not required — the wrapper runs it as phase 1
+anyway — but it turns 4.1 from one large step into a specific punch list,
+at zero risk.
+
+### 3b. Run the engagement wrapper
+
 The identity estate is created by the **broker**, which the engagement
-wrapper sequences plan-first. Run the wrapper — it gates discovery →
-broker → render → validate → scaffold in order and stops on the first
-failure:
+wrapper sequences plan-first. The wrapper gates discovery → broker →
+render → validate → scaffold in order and stops on the first failure:
 
 ```powershell
 # Plan-first: no Entra, RBAC, GitHub, or backend mutation.
@@ -118,6 +154,10 @@ pwsh -File scripts/Invoke-CustomerEngagement.ps1 -ConfigPath <lz-config.json>
 # Review the emitted plan/audit evidence, then execute:
 pwsh -File scripts/Invoke-CustomerEngagement.ps1 -ConfigPath <lz-config.json> -Apply
 ```
+
+With `-Apply`, discovery runs with `-FailOnNotReady` (unless
+`-AllowNotReady` is given), so a tenant with blocking findings stops the
+engagement before the broker touches anything.
 
 `-Apply` propagates to the broker and the scaffold **only** — discovery,
 render, and validate never mutate external systems. To reconcile just the

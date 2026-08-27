@@ -1,9 +1,26 @@
 ﻿#Requires -Version 7.0
 <#
 .SYNOPSIS
-    Landing Zone Phase 0 Bootloader — Complete OIDC + GitHub + Azure orchestration
+    Landing Zone Phase 0 Bootloader — LEGACY, retained for compatibility.
 
 .DESCRIPTION
+    DEPRECATED — NOT the engagement path. Use
+    scripts/Invoke-CustomerEngagement.ps1, which sequences
+    discovery -> broker -> render -> validate -> scaffold plan-first
+    (docs/runbooks/go-live-opening.md step 3).
+
+    This script predates the generator-only refactor (ADR 0013). Its
+    "PHASE 0.1" hand-off below delegates to workflow-010
+    (010-terraform-init.yml), which that refactor DELETED along with the
+    self-deploying terraform/live tree. Nothing runs after this script's
+    phase 0 any more, so the workflow-010 references in the description and
+    in its closing messages describe a pipeline that no longer exists.
+
+    Retained because decision 0001's private-copy rationale is unchanged and
+    the identity-creation logic is still a working reference. Its plan
+    builder is the same one the broker uses
+    (factory/bootstrap/LZFactory.Bootstrap.psm1).
+
     Single entry point for bootstrapping a landing zone deployment. This script:
 
     PHASE 0 (LOCAL, THIS SCRIPT):

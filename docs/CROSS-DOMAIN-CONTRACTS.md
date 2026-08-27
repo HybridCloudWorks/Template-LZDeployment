@@ -65,11 +65,19 @@ Spans: `scripts/Start-LandingZoneBootstrap.ps1` and
 federated credentials; `identity.cicdIdentityModel` selects minimal vs
 per-environment — see
 [docs/decisions/0002-minimal-identity-estate.md](decisions/0002-minimal-identity-estate.md)),
-`.github/workflows/terraform-plan.yml`,
-`.github/workflows/010-terraform-init.yml`,
-`.github/workflows/020-rbac-validation.yml`,
-`.github/workflows/terraform-apply.yml` (read-only gate job),
-`.github/workflows/azure-auth-test.yml`.
+and the **emitted** workflows in the generated repository —
+`factory/templates/.github/workflows/terraform-plan.yml.tmpl`,
+`terraform-apply.yml.tmpl` (read-only gate job),
+`terraform-fmt-validate.yml.tmpl`, and `azure-auth-test.yml.tmpl`.
+
+> **Reconciled 2026-08-26.** This span list previously named
+> `.github/workflows/010-terraform-init.yml` and `020-rbac-validation.yml`
+> in *this* repository. Both were deleted with the self-deploying tree by
+> [ADR 0013](decisions/0013-generator-only-avm-architecture.md): the factory
+> no longer deploys anything itself, so the contract is now honoured by the
+> workflows it **emits** into each generated repository, not by workflows
+> here. The rule below is unchanged — it is the privilege split that
+> matters, wherever the jobs run.
 
 **Rule**: any job that is read-only — every `pull_request` trigger, and any
 push/schedule/dispatch job without an `environment:` — must authenticate as

@@ -8,7 +8,7 @@
     uses ${...} for its own interpolation, so a factory token sharing that
     syntax would be ambiguous inside every .tf file in the corpus and would
     break `terraform fmt` on the raw template. This is control AR4 in
-    the Factory-Design wiki page (https://github.com/saulpatinojr/HCW-Plan_LZDeployment/wiki/Factory-Design).
+    the Factory-Design wiki page (https://github.com/HybridCloudWorks/Template-LZDeployment/wiki/Factory-Design).
 
     Conditional directives are comment-prefixed (#{{IF ...}}) so that an
     unrendered template is still syntactically valid HCL, YAML, or Markdown.

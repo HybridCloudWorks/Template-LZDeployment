@@ -75,7 +75,10 @@ $AttestationPath = Get-LzReleaseValue $AttestationPath 'LZ_RELEASE_ATTESTATION_P
 $OutputDirectory = Get-LzReleaseValue $OutputDirectory 'LZ_RELEASE_EVIDENCE' (Join-Path $repo 'release-evidence')
 $allowIncompleteRequested = $AllowIncomplete -or
     (ConvertTo-LzReleaseBoolean $env:LZ_RELEASE_ALLOW_INCOMPLETE)
-$expectedRepository = Get-LzReleaseValue '' 'LZ_RELEASE_EXPECTED_REPOSITORY' 'saulpatinojr/HCW-Plan_LZDeployment'
+# NOTE: this default must stay in lock-step with the `repository` const in
+# release-attestation.schema.json — the schema hard-fails an attestation whose
+# repository does not match, and no environment variable can override a const.
+$expectedRepository = Get-LzReleaseValue '' 'LZ_RELEASE_EXPECTED_REPOSITORY' 'HybridCloudWorks/Template-LZDeployment'
 $maximumAgeHours = [int](Get-LzReleaseValue '' 'LZ_RELEASE_MAX_EVIDENCE_AGE_HOURS' '168')
 if ($maximumAgeHours -lt 1) {
     throw 'LZ_RELEASE_MAX_EVIDENCE_AGE_HOURS must be a positive integer.'

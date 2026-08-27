@@ -68,7 +68,7 @@
 
 .EXAMPLE
     ./scripts/Add-PlanFederatedCredential.ps1 -AppId 00000000-0000-0000-0000-000000000000 `
-        -Repository saulpatinojr/HCW-Plan_LZDeployment
+        -Repository HybridCloudWorks/Template-LZDeployment
 
     Plan only: prints the exact `az ad app federated-credential create`
     command and reports whether the subject already exists.
