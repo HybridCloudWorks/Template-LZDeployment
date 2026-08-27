@@ -47,7 +47,8 @@ renumbered or deleted. **Only the six entries marked OPEN need anyone.**
 | 12 | `Initialize-ClientFork.ps1` disposition | ✅ **RESOLVED** (decision 0007) |
 | 13 | Generated-repo ownership policy | ✅ **RATIFIED** (decision 0010); GH1 residual |
 | 14 | `keyvault-cmk` / `sentinel-siem` | ⊘ **SUPERSEDED** (ADR 0017 — recorded-not-deployed) |
-| 15 | Publish wiki review edits | 🚧 **OPEN** — needs a machine with wiki write access |
+| 15 | Publish wiki review edits | 🚧 **OPEN** — needs a machine with wiki write access; **two** patches now queued (2026-08-06, 2026-08-27) |
+| 15a | Stale branches on `origin` | 🔐 **OPEN** — branch deletion is 403 for this token; 1 safe, 2 need inspection |
 | 16 | Wire `Configure-DeploymentOptions.ps1` | ⊘ **SUPERSEDED** (inherits §14) |
 | 17 | Cost estimates in module READMEs | ⊘ **LARGELY VOIDED**; narrowed residual |
 
@@ -635,6 +636,24 @@ with wiki write access.
 *Noted 2026-08-06, no action needed: the two cancelled CodeQL default-setup
 runs with no logs were GitHub-side runner churn, not repo debt — default setup
 completes on the next push to `main`.*
+
+### 15a. Stale branches on `origin` (added 2026-08-27)
+Branch deletion needs `contents: write`, which this session's token does not
+hold — `DELETE /git/refs/heads/…` returns **HTTP 403**, the same class of
+block as §2 and §8. Operator-local, from a machine with repository write:
+
+| Branch | State | Recommendation |
+| --- | --- | --- |
+| `claude/track-todos-pending-work-ovz6r5` | **Fully merged** into `main` (it is PR #97's branch, commit `57bb22c`) | Safe to delete — no unmerged work |
+| `claude/lz-bootstrap-artifact-generation-s182ti` | **Not merged**; 2 commits, last 2026-08-13 | **Predates the 2026-08-15 refactor** — its 322-file diff is largely the bespoke tree ADR 0013 deleted. Almost certainly superseded, but confirm before deleting |
+| `phase-3-manual-updates` | **Not merged**; 1 commit, last 2026-08-24 | Its diff against `main` is +18/−118,495 across 1,012 files — it is missing most of `main`. Inspect before deleting; do not assume it is junk |
+
+```bash
+git push origin --delete claude/track-todos-pending-work-ovz6r5
+```
+
+**Validation**: `git ls-remote --heads origin` lists only `main` plus branches
+with live work.
 
 ---
 
