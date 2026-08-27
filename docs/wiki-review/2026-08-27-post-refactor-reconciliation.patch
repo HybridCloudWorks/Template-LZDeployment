@@ -1,0 +1,308 @@
+From 885187791efc93593410c77556253d86cb059b43 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 27 Aug 2026 23:17:08 +0000
+Subject: [PATCH] Reconcile the wiki with the generator-only refactor and the
+ correct repo
+
+The wiki was last restructured 2026-08-01 and predates the 2026-08-15
+generator-only refactor (ADR 0013), which deleted the bespoke terraform
+trees, the numbered workflows, and the Stage 13 dogfood. 30 of 61 pages
+describe structures that no longer exist.
+
+Repository identity and moved files (10 pages, 14 links):
+- saulpatinojr/HCW-Plan_LZDeployment -> HybridCloudWorks/Template-LZDeployment
+- USER-CHECKLIST.md -> docs/USER-CHECKLIST.md (moved 2026-08-07)
+- PROD-TODO.md -> TODO.md (PROD-TODO was retired)
+
+Home.md:
+- Status block refreshed: v0.9.0 -> v0.11.0, and the blocker list now points
+  at REVIEW.md/TODO.md rather than the retired PROD-TODO.md.
+- A banner over the whole Source Material section stating that the wiki
+  predates ADR 0013, naming what was deleted, and pointing at the
+  authoritative in-repo sources. One banner on the index governs every page
+  below it, rather than 30 duplicated per-page banners.
+- Motion summary no longer says "fork".
+
+Getting-Started.md (the live operator guidebook, most load-bearing page):
+- The seven-move motion said "FORK: CBTS forks (or copies) this repo to the
+  client". Two things were wrong. It is not necessarily a fork - a plain
+  clone or a downloaded archive with no GitHub-side representation must work
+  (decision 0004). And there is no third-party consultancy in the motion;
+  that premise was corrected at decision 0010. The operator runs it on their
+  own machine under their own gh/az sessions, which is exactly what makes
+  tenant confirmation load-bearing.
+- Both corrections are called out inline rather than silently rewritten, so
+  a reader who remembers the old wording knows it changed and why.
+- The accounts list no longer says "administer the client's fork".
+
+Not done here: per-page banners on the remaining source-material pages. The
+Home.md section banner covers them, and the separate 2026-08-06 patch adds
+per-page HISTORICAL banners to 11 of them.
+---
+ Bootstrap-Walkthrough.md  |  2 +-
+ Build-README.md           |  2 +-
+ Cross-Domain-Contracts.md |  2 +-
+ Generate-and-Deploy.md    |  2 +-
+ Getting-Started.md        | 41 +++++++++++++++++++++++++++---------
+ Home.md                   | 44 ++++++++++++++++++++++++++++++---------
+ Quick-Reference.md        |  2 +-
+ User-Checklist.md         |  2 +-
+ Webapp-Plan.md            |  4 ++--
+ _Sidebar.md               |  2 +-
+ 10 files changed, 74 insertions(+), 29 deletions(-)
+
+diff --git a/Bootstrap-Walkthrough.md b/Bootstrap-Walkthrough.md
+index 23930e1..1fed11d 100644
+--- a/Bootstrap-Walkthrough.md
++++ b/Bootstrap-Walkthrough.md
+@@ -12,7 +12,7 @@ and the customer's configuration exported from the wizard.
+ The client must **own** their copy of this repository.
+ 
+ 1. Signed in as the client's GitHub account, open
+-   `https://github.com/saulpatinojr/HCW-Plan_LZDeployment` and use **Fork**
++   `https://github.com/HybridCloudWorks/Template-LZDeployment` and use **Fork**
+    (or, preferably for confidentiality, create a **private** copy:
+    `gh repo create <client-org>/<repo-name> --private` and push this
+    repository's contents to it — a fork of a public repository is always
+diff --git a/Build-README.md b/Build-README.md
+index 0476754..b7d4f6e 100644
+--- a/Build-README.md
++++ b/Build-README.md
+@@ -39,7 +39,7 @@ This directory contains comprehensive build documentation for the HCW Landing Zo
+    - **Reading time**: 30-45 min (skim sections as needed)
+    - **For**: Developers, infrastructure engineers
+ 
+-4. **[TODO.md](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/blob/main/TODO.md)**
++4. **[TODO.md](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/TODO.md)**
+    - Master TODO list with all tasks
+    - Phase 0-5 detailed subtasks
+    - Progress tracking table
+diff --git a/Cross-Domain-Contracts.md b/Cross-Domain-Contracts.md
+index 6ab2d4e..45923d7 100644
+--- a/Cross-Domain-Contracts.md
++++ b/Cross-Domain-Contracts.md
+@@ -1,4 +1,4 @@
+-> **Mirror only — the canonical copy lives in the repository at [`.claude/CROSS-DOMAIN-CONTRACTS.md`](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/blob/main/.claude/CROSS-DOMAIN-CONTRACTS.md).** Agents and CLAUDE.md read it from disk at runtime; edit it there, not here.
++> **Mirror only — the canonical copy lives in the repository at [`.claude/CROSS-DOMAIN-CONTRACTS.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/.claude/CROSS-DOMAIN-CONTRACTS.md).** Agents and CLAUDE.md read it from disk at runtime; edit it there, not here.
+ 
+ # Cross-Domain Contracts
+ 
+diff --git a/Generate-and-Deploy.md b/Generate-and-Deploy.md
+index c4e7a17..eff9b8b 100644
+--- a/Generate-and-Deploy.md
++++ b/Generate-and-Deploy.md
+@@ -12,7 +12,7 @@ what it would do, review the plan file it writes, then run it again with
+ `-Apply`.
+ 
+ Throughout, the per-stage authoritative checklist is the repository's
+-[`USER-CHECKLIST.md`](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/blob/main/USER-CHECKLIST.md)
++[`USER-CHECKLIST.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/docs/USER-CHECKLIST.md)
+ — this page is the narrative version of it.
+ 
+ ## 1. Discovery (read-only readiness check)
+diff --git a/Getting-Started.md b/Getting-Started.md
+index 21c5fd2..9626db9 100644
+--- a/Getting-Started.md
++++ b/Getting-Started.md
+@@ -33,17 +33,36 @@ Terraform or read PowerShell.
+ ## The motion — one engagement, seven moves
+ 
+ ```
+-1. FORK      CBTS forks (or copies) this repo to the client. The client owns that fork.
+-2. CLONE +   The client clones the fork locally and runs the initiation:
+-   INITIATE  tools, sign-ins, and the bootstrap that creates identities and OIDC.
+-3. WIZARD    The operator runs the configuration wizard (site/), which creates the
+-             customer's unique variables and saves them where the tooling reads them.
+-4. GENERATE  The factory renders and scaffolds a NEW repository for the customer.
++1. COPY      Take a copy of this repo — a clone, a fork, or a downloaded
++             archive. The motion works from any of them; nothing requires a
++             GitHub-side fork.
++2. INITIATE  Run the initiation on your own machine: tools, sign-ins, and the
++             broker that creates identities and OIDC federation.
++3. WIZARD    Run the configuration wizard (site/), which produces
++             lz-config.json — the contract the whole pipeline runs on.
++4. GENERATE  The factory renders and scaffolds a NEW repository for the
++             customer. That repository is the deliverable.
+ 5. DEPLOY    The landing zone deploys from that new repository, layer by layer.
+-6. DISPOSE   Evidence is archived and the clone is deleted.
+-7. REPEAT    Next customer, fresh clone.
++6. DISPOSE   Evidence is archived and this copy is deleted.
++7. REPEAT    Next customer, fresh copy.
+ ```
+ 
++> **Two corrections to the older wording above (2026-08-27).**
++> **(a) It is not a fork.** The copy may be a plain clone or a downloaded
++> archive with no GitHub-side representation at all
++> ([decision 0004](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/docs/decisions/0004-factory-copy-is-a-disposable-installer.md)) —
++> never write a step that assumes a fork exists.
++> **(b) There is no third-party consultancy in the motion.** The earlier text
++> named an intermediary performing the copy on a client's behalf; that premise
++> was corrected at
++> [decision 0010](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/docs/decisions/0010-generated-repo-ownership-policy.md).
++> **The operator runs it on their own machine, under their own `gh` and `az`
++> sessions** — which is what makes the tenant-confirmation step load-bearing.
++>
++> This copy is a **disposable installer**, not an asset anyone governs: it is
++> used once and deleted. The *generated* repository is what gets hardened, and
++> the broker already does that.
++
+ Everything the factory creates is per-customer: identities, secrets,
+ environments, configuration, the generated repository, and the Azure resources
+ themselves. The disposal step ([Generate-and-Deploy](Generate-and-Deploy),
+@@ -57,7 +76,9 @@ Full details, with placeholders and where to get each item, are on the
+ 
+ **Accounts**
+ - A GitHub account that can create private repositories and administer the
+-  client's fork.
++  **generated** repository (the deliverable). Ownership follows
++  [decision 0010](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/docs/decisions/0010-generated-repo-ownership-policy.md):
++  an organization you control, with `ownershipModel: organization`.
+ - Access to the client's Azure tenant with rights to create app registrations
+   (Entra) and to assign roles at the management-group root.
+ - Optional: an HCP Terraform (Terraform Cloud) account, if the engagement uses
+@@ -99,7 +120,7 @@ met: there is no recorded successful end-to-end pipeline run yet, and the live
+ open blocker (login failure `AADSTS700213` on every pull request). The
+ walkthrough tells you where you will hit these and how to resolve them for
+ your engagement. The authoritative, phase-by-phase blocker list is
+-[`PROD-TODO.md`](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/blob/main/PROD-TODO.md)
++[`TODO.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/TODO.md)
+ in the repository.
+ 
+ Also honest, so you can set expectations with the customer: the
+diff --git a/Home.md b/Home.md
+index dd29ae8..0f28992 100644
+--- a/Home.md
++++ b/Home.md
+@@ -19,7 +19,7 @@ people are required. Read the four pages in order:
+ 
+ | Order | Page | What it covers |
+ | --- | --- | --- |
+-| 1 | **[Getting-Started](Getting-Started)** | What the factory is, the per-customer motion (fork → clone → initiate → wizard → generate → deploy → dispose), and the accounts and tools you need before you begin. |
++| 1 | **[Getting-Started](Getting-Started)** | What the factory is, the per-customer motion (copy → initiate → wizard → generate → deploy → dispose), and the accounts and tools you need before you begin. |
+ | 2 | **[Credentials-Checklist](Credentials-Checklist)** | Every account, credential, API, secret, and permission — each with a placeholder value, where to get it, and what it is for. |
+ | 3 | **[Bootstrap-Walkthrough](Bootstrap-Walkthrough)** | Fork and clone, install and authenticate the CLIs, run the bootstrap (what it prompts for and what it creates: service principals, OIDC federated credentials, GitHub secrets and environments), verify OIDC, then run the configuration wizard and place its outputs. |
+ | 4 | **[Generate-and-Deploy](Generate-and-Deploy)** | Discovery, the bootstrap broker, rendering the customer repository, scaffolding it to GitHub, the first deployment (plan → merge → apply per layer), and disposing of the clone afterwards. |
+@@ -27,24 +27,48 @@ people are required. Read the four pages in order:
+ Two companion documents live in the repository because tests and tools read
+ them from disk (the wiki carries mirrors):
+ 
+-- [`USER-CHECKLIST.md`](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/blob/main/USER-CHECKLIST.md)
++- [`USER-CHECKLIST.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/docs/USER-CHECKLIST.md)
+   — the authoritative Stage 9–14 operator checklist (mirror:
+   [User-Checklist](User-Checklist)).
+-- [`PROD-TODO.md`](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/blob/main/PROD-TODO.md)
++- [`TODO.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/TODO.md)
+   — the production-readiness backlog: known blockers and hardening items,
+   phase by phase.
+ 
+-> **Status honesty (2026-08-01)**: the factory is at v0.9.0. The release gates
+-> in `factory-version.json` are **not** all met — there is no recorded
+-> successful end-to-end deployment yet, and the live `pull_request` OIDC
+-> credential is a known open blocker. Treat a first deployment as a
+-> verification exercise, not a production cutover. The current blocker list is
+-> in `PROD-TODO.md`.
++> **Status honesty (updated 2026-08-27)**: the factory is at **v0.11.0**. The
++> five release gates in `factory-version.json` are **not** all met, so treat a
++> first deployment as a verification exercise, not a production cutover. The
++> end-to-end generation proof has passed on GitHub-hosted runners for both
++> topologies; `oidcTokenExchangeVerifiedLive` still lacks evidence until a
++> first real instantiation runs. The current blocker list is in
++> [`REVIEW.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/REVIEW.md)
++> (six open entries) and [`TODO.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/TODO.md).
+ 
+ ---
+ 
+ ## Source Material
+ 
++> ## ⚠ This wiki predates the generator-only refactor
++>
++> The wiki was last restructured **2026-08-01**. On **2026-08-15** the
++> repository was refactored to be a **generator only**
++> ([ADR 0013](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/docs/decisions/0013-generator-only-avm-architecture.md)):
++> the bespoke `terraform/live/` and `terraform/modules/` trees, the numbered
++> workflows (`010-terraform-init.yml`, `020-rbac-validation.yml`), and the
++> self-deploying Stage 13 dogfood were **all deleted**. The factory now emits
++> three AVM-referencing layers into a generated repository and deploys nothing
++> itself.
++>
++> **Consequence for every page below**: any page naming `terraform/live/*`,
++> `terraform/modules/*`, the numbered workflows, or the dogfood is describing
++> a structure that no longer exists. Read it as history, not instruction.
++>
++> The authoritative current sources live in the repository, not here:
++> [`README.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/README.md),
++> [`TODO.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/TODO.md),
++> [`REVIEW.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/REVIEW.md),
++> [`docs/decisions/`](https://github.com/HybridCloudWorks/Template-LZDeployment/tree/main/docs/decisions),
++> and [`docs/runbooks/go-live-opening.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/docs/runbooks/go-live-opening.md).
++
+ Everything below predates or supports the guidebook. Pages marked
+ **historical** describe the repository's earlier life as a self-deploying
+ landing zone (before the factory conversion) and are kept for reference — do
+@@ -138,7 +162,7 @@ not follow them as instructions.
+ 
+ ## Key resources
+ 
+-- **Repository:** [HCW-Plan_LZDeployment](https://github.com/saulpatinojr/HCW-Plan_LZDeployment)
++- **Repository:** [HCW-Plan_LZDeployment](https://github.com/HybridCloudWorks/Template-LZDeployment)
+ - **Microsoft CAF:** [Cloud Adoption Framework — Landing Zones](https://learn.microsoft.com/azure/cloud-adoption-framework/ready/landing-zone/)
+ - **Azure Verified Modules:** [AVM Terraform requirements](https://azure.github.io/Azure-Verified-Modules/indexes/terraform/)
+ 
+diff --git a/Quick-Reference.md b/Quick-Reference.md
+index 280c97d..109bed0 100644
+--- a/Quick-Reference.md
++++ b/Quick-Reference.md
+@@ -201,7 +201,7 @@ terraform destroy -auto-approve
+ 
+ ## 🔗 Key Links
+ 
+-- **Repo:** [HCW-Plan_LZDeployment](https://github.com/saulpatinojr/HCW-Plan_LZDeployment)
++- **Repo:** [HCW-Plan_LZDeployment](https://github.com/HybridCloudWorks/Template-LZDeployment)
+ - **Microsoft CAF:** [Cloud Adoption Framework](https://learn.microsoft.com/azure/cloud-adoption-framework/)
+ - **Azure Verified Modules:** [AVM Terraform](https://azure.github.io/Azure-Verified-Modules/)
+ 
+diff --git a/User-Checklist.md b/User-Checklist.md
+index 0c46c36..bbf8987 100644
+--- a/User-Checklist.md
++++ b/User-Checklist.md
+@@ -1,4 +1,4 @@
+-> **Mirror only — the canonical copy lives in the repository root at [`USER-CHECKLIST.md`](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/blob/main/USER-CHECKLIST.md).** The factory test suites (Test-Scaffold/CI/Import/Dogfood/Release) read and assert against the repo copy; edit it there, not here.
++> **Mirror only — the canonical copy lives in the repository root at [`USER-CHECKLIST.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/docs/USER-CHECKLIST.md).** The factory test suites (Test-Scaffold/CI/Import/Dogfood/Release) read and assert against the repo copy; edit it there, not here.
+ 
+ # Stage 9–14 User Checklist
+ 
+diff --git a/Webapp-Plan.md b/Webapp-Plan.md
+index 362015c..652d995 100644
+--- a/Webapp-Plan.md
++++ b/Webapp-Plan.md
+@@ -40,7 +40,7 @@ This intentionally replaced an earlier, unfinished direction that assumed a Node
+ | Landing Zones/Corp | 5 |
+ | Specialized | 2 |
+ 
+-**Open item**: this list has not yet been cross-checked against the actual policy definitions implemented in `terraform/modules/policy-baseline/` — some generator toggles may not correspond to a real Terraform policy, and some real policies may not be exposed as a toggle. See [TODO.md](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/blob/main/TODO.md) Phase 3.
++**Open item**: this list has not yet been cross-checked against the actual policy definitions implemented in `terraform/modules/policy-baseline/` — some generator toggles may not correspond to a real Terraform policy, and some real policies may not be exposed as a toggle. See [TODO.md](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/TODO.md) Phase 3.
+ 
+ ## Known Gaps / Next Steps
+ 
+@@ -49,4 +49,4 @@ This intentionally replaced an earlier, unfinished direction that assumed a Node
+ - [ ] Host the page somewhere reachable (GitHub Pages) instead of requiring a local file open
+ - [ ] Write a short end-user guide (fill form → download → where the file goes)
+ 
+-Full task list tracked in [TODO.md](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/blob/main/TODO.md) Phase 3.
++Full task list tracked in [TODO.md](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/TODO.md) Phase 3.
+diff --git a/_Sidebar.md b/_Sidebar.md
+index ae74424..ac219ca 100644
+--- a/_Sidebar.md
++++ b/_Sidebar.md
+@@ -8,7 +8,7 @@
+ 
+ Companions (repo canonical):
+ - [User Checklist (mirror)](User-Checklist)
+-- [PROD-TODO backlog](https://github.com/saulpatinojr/HCW-Plan_LZDeployment/blob/main/PROD-TODO.md)
++- [PROD-TODO backlog](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/TODO.md)
+ 
+ ### Source Material
+ 
+-- 
+2.43.0
+
