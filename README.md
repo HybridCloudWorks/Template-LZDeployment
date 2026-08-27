@@ -63,7 +63,7 @@ promotion proposal.
 ## Repository Structure
 
 ```
-HCW-Demo-LZDeployment/
+Template-LZDeployment/
 ├── scripts/
 │   ├── Initialize-ClientFork.ps1          # Plan-first private-copy creation (mirror push + visibility read-back; hardening retired, decision 0007)
 │   ├── Invoke-CustomerEngagement.ps1      # Plan-first wrapper: discovery → broker → render → validate → scaffold
