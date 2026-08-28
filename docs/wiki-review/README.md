@@ -81,16 +81,23 @@ Preserved as
 
 ## Publishing — apply in this order
 
-Both patches are built against wiki HEAD `7286806`. Apply the 2026-08-06
-patch first — it adds per-page `HISTORICAL` banners to 11 source-material
-pages, which the 2026-08-27 `Home.md` section banner then complements.
+**All three** patches are built against wiki HEAD `7286806`, and all three
+must be applied, in the order below. Apply the 2026-08-06 patch first — it
+adds per-page `HISTORICAL` banners to 11 source-material pages, which the
+2026-08-27 `Home.md` section banner then complements; the 2026-08-28 patch
+re-syncs the two repository mirrors last, over the reconciled pages.
 
-```bash
+These are plain `git` commands with no line continuations, so they run
+unchanged in PowerShell, bash, or zsh. Run them from the directory that
+*contains* your `Template-LZDeployment` checkout — the clone lands beside it,
+which is what the `../` in each patch path assumes.
+
+```shell
 git clone https://github.com/HybridCloudWorks/Template-LZDeployment.wiki.git
 cd Template-LZDeployment.wiki
-git am ../path/to/2026-08-06-historical-banners.patch
-git am ../path/to/2026-08-27-post-refactor-reconciliation.patch
-git am ../path/to/2026-08-28-mirror-resync.patch
+git am ../Template-LZDeployment/docs/wiki-review/2026-08-06-historical-banners.patch
+git am ../Template-LZDeployment/docs/wiki-review/2026-08-27-post-refactor-reconciliation.patch
+git am ../Template-LZDeployment/docs/wiki-review/2026-08-28-mirror-resync.patch
 git push
 ```
 
