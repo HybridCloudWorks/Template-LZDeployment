@@ -1,4 +1,20 @@
-# Claude Code orchestration for HCW-Plan_LZDeployment
+# Claude Code orchestration — HISTORICAL
+
+> ## ⛔ SUPERSEDED 2026-08-27 — this inventory no longer exists in the repo
+>
+> The agents, skills, slash commands, and the `agent-report.ps1` `Stop` hook
+> catalogued below were **removed from the repository** on 2026-08-27 and now
+> live at the operator's **workspace level**, shared across all repositories
+> ([decision 0021](decisions/0021-orchestration-config-moves-to-workspace.md)).
+>
+> **What survives in `.claude/`**: `settings.json` only — kept because its
+> deny list is a repository safety control rather than agent-interaction
+> config, so it still ships to every clone. See CLAUDE.md §5.
+>
+> This page is retained as the provenance record of what the repo carried and
+> why. **Nothing below is a live inventory**; the counts and paths describe the
+> pre-removal state.
+
 
 Source-controlled agents, skills, slash commands, and tool configuration for this
 repository. Everything under `.claude/` loads automatically when Claude Code opens

@@ -5,6 +5,15 @@
 - **Deciders**: operator (directed 2026-08-07); `docs-knowledge-curator`
   (implemented)
 - **Technical depth**: L200 (design)
+- **Partially superseded 2026-08-27** by
+  [decision 0021](0021-orchestration-config-moves-to-workspace.md): the
+  `.claude/` inventory in the classification ruling below (agents, commands,
+  skills, the agent-report hook and its toggle) was **removed from the
+  repository** when orchestration config moved to the operator's workspace.
+  Only `.claude/settings.json` remains. **The policy itself is unchanged** —
+  dot-folders still hold configuration only, and documentation found there is
+  still a finding to migrate. Only the inventory it was applied to shrank; the
+  ruling below is left as written, since it records the 2026-08-07 audit.
 
 ## Context and Problem Statement
 
