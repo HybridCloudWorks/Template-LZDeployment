@@ -90,18 +90,67 @@ git clone https://github.com/HybridCloudWorks/Template-LZDeployment.wiki.git
 cd Template-LZDeployment.wiki
 git am ../path/to/2026-08-06-historical-banners.patch
 git am ../path/to/2026-08-27-post-refactor-reconciliation.patch
+git am ../path/to/2026-08-28-mirror-resync.patch
 git push
 ```
 
-**Verified 2026-08-27**: both patches were applied in this order against a
-fresh clone of wiki HEAD and **both applied cleanly, no conflicts** — the
-resulting `Home.md` carries the section banner. The sequence above is tested,
-not assumed.
+**Verified 2026-08-28**: all three patches were applied in this order against a
+fresh clone of wiki HEAD and **all applied cleanly, no conflicts**. The
+sequence above is tested, not assumed.
 
 Alternatively, approve `add_repo` for the wiki in an interactive Claude
 session and ask it to push. Tracked as REVIEW.md §15 until published.
 
-## Known remaining wiki debt (not in either patch)
+---
+
+# Third review — 2026-08-28, mirror re-sync
+
+`Home.md` states that two documents "live in the repository because tests and
+tools read them from disk (the wiki carries mirrors)". Those mirrors had
+drifted badly:
+
+| Page | Repository | Wiki (2026-08-01) |
+| --- | --- | --- |
+| Cross-Domain-Contracts | **371 lines** | 123 |
+| User-Checklist | **355 lines** | 268 |
+
+The contracts page was a third the size of the real one, missing the entire
+post-refactor reconciliation.
+
+**The sources were validated before syncing, not just copied.** That mattered:
+`docs/CROSS-DOMAIN-CONTRACTS.md` was itself carrying a `STALE — pending
+post-refactor reconciliation` banner and was **not fit to mirror**. It has been
+reconciled in the repository first — every contract re-verified file by file:
+
+- **#5, #8, #9 → VOID** — they coordinated `spoke-network`, `nsg-flow-logs`,
+  `hub-network` and the `workloads-*` layers, all deleted by ADR 0013 and all
+  confirmed absent.
+- **#6 → SUPERSEDED** — its lock-file rule named paths that no longer exist;
+  the corpus now commits no lock files at all (gitignored, verified zero).
+- **#1, #3, #4 → corrected** — their file inventories named deleted paths
+  (`scripts/New-BackendConfig.ps1`, `terraform/live/*`) and, in #1's case, a
+  layer that never declared `org_prefix` while omitting one that does.
+- **#2, #7 → verified unchanged.**
+
+**Contracts were deliberately not renumbered.** They are cited *by number* in
+`factory/bootstrap/LZFactory.Bootstrap.psm1`,
+`scripts/Start-LandingZoneBootstrap.ps1`, and asserted in
+`factory/tests/Test-Bootstrap.ps1`. Renumbering would silently break those
+citations, so void entries keep their headings and are marked in place.
+
+`docs/USER-CHECKLIST.md` validated clean: every `LZ_*` variable it instructs
+the operator to set is read by real code, and the 12 `LZ_DOGFOOD_*` names that
+match nothing are correctly fenced behind its ⛔ SUPERSEDED Stage 13 banner.
+
+Each synced page carries a provenance header naming its source path, the
+commit it was synced from, and the rule that **the repository wins** on any
+disagreement.
+
+Preserved as
+[`2026-08-28-mirror-resync.patch`](2026-08-28-mirror-resync.patch)
+(2 files).
+
+## Known remaining wiki debt (not in any patch)
 
 - **Per-page banners on the ~19 source-material pages** the 2026-08-06 patch
   does not cover. The 2026-08-27 `Home.md` section banner governs them from
