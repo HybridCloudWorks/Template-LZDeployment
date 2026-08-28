@@ -52,8 +52,8 @@ renumbered or deleted. **Only the six entries marked OPEN need anyone.**
 | 16 | Wire `Configure-DeploymentOptions.ps1` | ⊘ **SUPERSEDED** (inherits §14) |
 | 17 | Cost estimates in module READMEs | ⊘ **LARGELY VOIDED**; narrowed residual |
 
-**The critical path to a first deployment is §§~~2~~, 8 → 1 (+6) → 3 → 4 → 5**
-(§2 closed 2026-08-28),
+**The critical path to a first deployment is §§~~2, 8~~ → 1 (+6) → 3 → 4 → 5**
+(§2 and §8 both closed 2026-08-28),
 sequenced command-by-command in
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md).
 
@@ -320,6 +320,34 @@ This entry survives only as that per-estate pointer; [TODO.md](TODO.md) item
 3.1 records the narrowed scope.
 
 ### 8. Set GitHub Pages source to "GitHub Actions"
+> **✅ RESOLVED 2026-08-28** (TODO.md item 4.3 and
+> [issue #107](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/107)
+> closed). Text below is the original entry plus its resolution; the diagnosis
+> history is retained because two of its three hypotheses were wrong and the
+> record of *why* is the useful part.
+>
+> The operator created the site with
+> `gh api -X POST repos/…/pages -f build_type=workflow`; `has_pages` flipped
+> `false → true`, and `deploy-pages.yml` run **#17 succeeded** — the first green
+> run after **16 consecutive failures**. Step-level confirmation:
+> `Configure Pages` **ok** (the step that failed on every prior run),
+> `Explain Pages enablement failure` **skipped** (nothing to explain),
+> `Upload pages artifact` **ok**, `Deploy to GitHub Pages` **ok**.
+> Published at `https://hybridcloudworks.github.io/Template-LZDeployment/`,
+> `https_enforced: true`, `build_type: workflow`, source `main` `/`.
+>
+> **The live URL was not fetched from a session** — `*.github.io` is not
+> reachable through the agent proxy (`CONNECT tunnel failed, 403`), and
+> `/pages/builds/latest` is proxy-blocked. The evidence above is GitHub's own
+> deployment result, not a page fetch. Anyone wanting a rendered-page check
+> must do it from a browser.
+>
+> **What the root cause was not**: neither of the two standing hypotheses. Not
+> org policy — all three `members_can_create_*_pages` are `true` (#119). Not
+> anything fixable in the workflow — `GITHUB_TOKEN` structurally cannot create
+> a site. The site simply had to be created once, by an account with
+> `administration:write`, through the API rather than the UI toggle that had
+> appeared to work on 2026-08-19 and had not.
 `deploy-pages.yml` exists and is SHA-pinned; the repository setting is a
 one-time manual prerequisite.
 **Unblocked by**: repository administration (Settings → Pages).
@@ -704,6 +732,27 @@ tiers, and which workspace.
 ## 🚧 Outside this repository
 
 ### 15. Publish the prepared wiki review edits
+> **✅ RESOLVED 2026-08-28 — published** (TODO.md item 3.2 closed). Text below
+> is the original entry plus its resolution; the five probe records are
+> retained because they establish that the block was architectural, which is
+> why publication had to be operator-local.
+>
+> The operator ran the `git am` sequence and pushed. Wiki `master` moved
+> `7286806 → 42c7c5a`, carrying all three commits, verified from a session by
+> fresh clone: **11/11** source-material pages carry the `HISTORICAL` banner,
+> and both mirror banners cite the corrected commits (`f1d37c0`, `1d96750`)
+> that #120 fixed. No private email reached the new commits — all three
+> committer lines are the operator's `…@users.noreply.github.com` address.
+>
+> **Two operator-side snags worth recording**, since both cost a round and
+> neither is obvious from the README: the first attempt failed because the
+> local checkout predated #110/#113 and simply did not contain two of the three
+> patch files (`git am` reported *"No such file or directory"* — a stale
+> checkout, not a bad path), and the push was then rejected by **GH007**
+> because `git am` takes the *committer* from local config while preserving the
+> patch author. `git config user.email <id>+<login>@users.noreply.github.com`
+> followed by `git rebase <base> --exec "git commit --amend --no-edit"` fixes
+> the second without weakening the account's email-privacy setting.
 The content review this entry used to track is **complete** (2026-08-06):
 all 11 migrated docs were verified against the repository, verdicts are
 recorded in [docs/wiki-review/README.md](docs/wiki-review/README.md), and the

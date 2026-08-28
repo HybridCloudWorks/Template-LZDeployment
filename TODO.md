@@ -17,7 +17,7 @@ are closed (2.16's residual **voided** by the generator-only refactor — the
 ADR 0017, open only if the operator reopens them — REVIEW.md §14/§16);
 Phase 3: 3.1 re-scoped 2026-08-15 — toolchain provisioning proven,
 tenant-bound residuals are per-estate work by operator directive (§7) — and
-3.2 blocked on wiki write access, architectural to the remote sandbox (§15);
+3.2 **closed 2026-08-28** — the wiki review edits are published (§15);
 Phase 4 **opened 2026-08-15** (go-live; operator-local execution kit:
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md)) — **4.2
 closed 2026-08-28**, `main` now enforces the `Factory CI` required check —
@@ -775,7 +775,10 @@ the named external access); no Azure estate mutation implied. The
 provisioning half of that gate was proven 2026-08-15 (item 3.1), and the
 operator's directive the same day — *"Do not tie yourself to a specific azure
 tenant/sub ID, this is meant to be a template"* — re-scopes the tenant-bound
-remainder to per-estate verification at instantiation. Item 3.2 stays blocked
+remainder to per-estate verification at instantiation. Item 3.2 is **closed**
+2026-08-28 — the operator ran the `git am` sequence and pushed; wiki `master`
+moved `7286806 → 42c7c5a` and the result was verified from a session
+([REVIEW.md](REVIEW.md) §15). Superseded text follows: it was blocked
 on wiki write access, now known to be architectural to the remote sandbox
 ([REVIEW.md](REVIEW.md) §15).
 
@@ -830,7 +833,15 @@ files; wrapper completes plan-first end to end; the flag-flip PR's plan shows
 the flow-log resources against the chosen NSGs only (item 2.3's carried
 criterion).
 
-### 3.2 Publish the prepared wiki review edits
+### 3.2 Publish the prepared wiki review edits — ✅ COMPLETE (2026-08-28)
+
+> **Published.** The operator applied all three patches and pushed; wiki
+> `master` moved `7286806 → 42c7c5a`. Verified from a session by fresh clone:
+> 11/11 source-material pages carry the `HISTORICAL` banner, both mirror
+> banners cite the corrected commits, and no private email reached the new
+> commits. Two operator-side snags are recorded in [REVIEW.md](REVIEW.md) §15
+> (stale local checkout missing two patch files; GH007 on the committer
+> address) — worth reading before any future wiki publication.
 
 The 2026-08-06 content review of the 11 migrated wiki docs is complete;
 verdicts and the ready-to-apply patch live in
@@ -945,7 +956,17 @@ context *name* matched but not that the check always *runs* — see
 [REVIEW.md](REVIEW.md) §2 and the prerequisite box in
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 1.
 
-### 4.3 Set GitHub Pages source to "GitHub Actions"
+### 4.3 Set GitHub Pages source to "GitHub Actions" — ✅ COMPLETE (2026-08-28)
+
+> **Enabled and published.** The operator created the site via
+> `gh api -X POST repos/…/pages -f build_type=workflow`; `has_pages` flipped to
+> `true` and `deploy-pages.yml` run **#17 succeeded** — first green after 16
+> consecutive failures, with `Configure Pages` passing and the failure-guidance
+> step skipped. Live at
+> `https://hybridcloudworks.github.io/Template-LZDeployment/`.
+> [Issue #107](https://github.com/HybridCloudWorks/Template-LZDeployment/issues/107)
+> closed. Neither standing hypothesis was the cause — see
+> [REVIEW.md](REVIEW.md) §8.
 
 One-time repo setting; `deploy-pages.yml` is ready.
 **Owner**: operator (Settings → Pages). **Gate**: [REVIEW.md](REVIEW.md) §8.
