@@ -35,6 +35,13 @@ Removed (997 files):
 | `.claude/commands/` | `lz-diagnose`, `lz-plan`, `lz-review` |
 | `.claude/hooks/agent-report.ps1` | `Stop` hook that counted capability usage |
 | `.claude/agent-report.json` | on/off toggle for that report |
+| `.mcp.json` | MCP server declarations (Azure, Microsoft Learn) — repo root |
+
+`.mcp.json` was removed on the same principle rather than as part of the
+original sweep: it declares MCP servers for the assistant and affects nothing
+about the repository itself, so it belongs with the workspace configuration.
+Anyone who wants those servers declares them at workspace level alongside the
+agents and skills.
 
 Kept:
 

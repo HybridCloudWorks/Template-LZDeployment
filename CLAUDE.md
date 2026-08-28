@@ -1,10 +1,11 @@
-# Assistant operating instructions — HCW-Plan_LZDeployment
+# Assistant operating instructions — Template-LZDeployment
 
-This repository ships its own agents, skills, slash commands, and MCP servers under
-`.claude/` and `.mcp.json`. See
-[docs/claude-orchestration.md](docs/claude-orchestration.md) for the full
-inventory. This file governs **when** those capabilities get used and **how** usage
-is reported.
+This repository ships **no** agents, skills, slash commands, or MCP servers.
+That configuration is workspace-level
+([decision 0021](docs/decisions/0021-orchestration-config-moves-to-workspace.md));
+the only thing left under `.claude/` is `settings.json`, whose deny list is a
+repository safety control (§5). This file is repository knowledge: **what this
+repo is** (§0) and **what is guarded** (§5).
 
 ## 0. What this repo IS — read before answering any "how do I run this" question
 

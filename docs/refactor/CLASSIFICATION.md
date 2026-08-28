@@ -28,7 +28,7 @@ Classification base: branch `claude/repo-alignment-review-5ita4y`, 1,355 tracked
 | `docs/` | **KEEP** | Decision records, contracts, runbooks. ADRs updated per new requirements (Phase 8); `docs/refactor/` gate documents added. |
 | `scripts/` | **KEEP** | Generator/broker entry points. `Start-LandingZoneBootstrap.ps1` loses its Terraform Cloud phase (Phase 4); `Initialize-ClientFork.ps1` remains the private-copy mechanic per decision 0007. |
 | `.github/` | **KEEP (pruned)** | Factory CI stays. Landing-zone deploy workflows that operate on the deleted live tree are removed — see workflow table. |
-| `.azure/`, `.claude/`, `.mcp.json` | **KEEP** | Tooling configuration only (decision 0008). |
+| `.azure/`, `.claude/`, `.mcp.json` | **KEEP** (superseded 2026-08-27) | Tooling configuration only (decision 0008). Since narrowed by [ADR 0021](../decisions/0021-orchestration-config-moves-to-workspace.md): `.mcp.json` and all of `.claude/` except `settings.json` moved to workspace level. `.azure/` and `.claude/settings.json` still KEEP. |
 
 ## Root scripts
 
