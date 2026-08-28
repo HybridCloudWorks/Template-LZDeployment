@@ -36,7 +36,7 @@ index 45923d7..5693f93 100644
  
 +> **Mirror of [`docs/CROSS-DOMAIN-CONTRACTS.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/docs/CROSS-DOMAIN-CONTRACTS.md) — the repository is the source of truth.**
 +>
-+> Synced 2026-08-28 from `9c820b5`. Tests and tooling read the repository copy from
++> Synced 2026-08-28 from `f1d37c0`, the commit that last changed the source. Tests and tooling read the repository copy from
 +> disk, so if the two ever disagree, **the repository wins** — treat any difference
 +> here as drift and re-sync rather than editing this page.
 +>
@@ -340,7 +340,7 @@ index bbf8987..83a99ca 100644
 +
 +> **Mirror of [`docs/USER-CHECKLIST.md`](https://github.com/HybridCloudWorks/Template-LZDeployment/blob/main/docs/USER-CHECKLIST.md) — the repository is the source of truth.**
 +>
-+> Synced 2026-08-28 from `9c820b5`. Tests and tooling read the repository copy from
++> Synced 2026-08-28 from `1d96750`, the commit that last changed the source. Tests and tooling read the repository copy from
 +> disk, so if the two ever disagree, **the repository wins** — treat any difference
 +> here as drift and re-sync rather than editing this page.
 +>

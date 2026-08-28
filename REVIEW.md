@@ -757,6 +757,25 @@ producing **20 files changed, +450/−169** and preserving each patch's
 authorship and message. The local run is a straight replay of the review
 README's commands, unmodified.
 
+**Fifth probe, 2026-08-28 — block unchanged, and it is not credential-shaped.**
+Re-tested after the operator's permissions were refreshed: clone succeeds,
+`git push --dry-run` refused. Also tested supplying a credential explicitly in
+the remote URL rather than relying on proxy injection — **identical refusal**.
+The proxy denies on the repository path *before* any credential is considered,
+so this is not a token problem and cannot be worked around from a session.
+
+**Content re-validated the same day, and one defect found.** The two mirrors
+the 2026-08-28 patch installs were compared line-by-line against their
+repository sources: **both bodies are byte-identical** (226 and 353 lines), so
+five merged PRs since the patch was authored introduced no drift. But the
+provenance banners both cited `9c820b5`, and for `Cross-Domain-Contracts` that
+was wrong — the file was 371 lines at `9c820b5`, while the mirrored content is
+the 228-line post-reconciliation version from `f1d37c0` (#113). A reader using
+the banner to check for drift would have diffed against the pre-reconciliation
+version and seen 143 lines of phantom drift. Each banner now names the commit
+that last changed its own source. The `git am` sequence was re-run after the
+edit and still applies clean: 20 files, +450/−169.
+
 *Noted 2026-08-06, no action needed: the two cancelled CodeQL default-setup
 runs with no logs were GitHub-side runner churn, not repo debt — default setup
 completes on the next push to `main`.*

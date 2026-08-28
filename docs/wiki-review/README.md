@@ -175,6 +175,18 @@ open; write is not.**
   be added to a session's sources at all — the route the error message
   suggests does not exist for wikis.
 
+**Provenance defect found and fixed 2026-08-28.** Both mirror banners cited
+`9c820b5` as the commit they were synced from. For `User-Checklist` that was
+harmless — the file is byte-identical at that commit — but for
+`Cross-Domain-Contracts` it was **wrong**: the file was 371 lines at `9c820b5`
+and the mirrored content is the 228-line post-reconciliation version from
+`f1d37c0` (#113). Since the banner's whole purpose is to let a reader check for
+drift, citing the pre-reconciliation commit would have shown 143 lines of
+phantom drift to anyone who followed it. Each banner now names the commit that
+last changed *that* source: `f1d37c0` for the contracts doc, `1d96750` (#104)
+for the checklist. Bodies are unchanged and verified byte-identical to the
+repository sources.
+
 **The patches were re-verified rather than assumed — using the command this
 README actually documents.** All three were `git am`-ed in sequence onto a
 fresh clone at the wiki's current `master` (`7286806`, 2026-08-01). All three
