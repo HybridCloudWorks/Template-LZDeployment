@@ -137,6 +137,28 @@ by another mechanism. Their **write** is refused identically:
 endpoint. Both the old and the new route are closed to the sandbox for writes;
 this does not need re-testing in a future session.
 
+**Defect found and fixed in the payload's prerequisite, 2026-08-28 — this
+would have bricked merges on the first docs-only PR after applying it.** The
+2026-08-19 pre-flight above verified that the payload's required context
+string (`Factory CI`) *matches the live check-run name*, and it does. What it
+did not check is whether that check **always runs**. It did not:
+`factory-ci.yml` carried a `paths:` filter on its `pull_request` trigger, so
+`Factory CI` never reported on a PR touching only `docs/**` or root markdown.
+Verified against three merged PRs — #111, #113 and #114 all lack a `Factory
+CI` check run entirely.
+
+A required status check that never reports does not fail open. GitHub holds
+the PR at *"Expected — waiting for status to be reported"* and blocks merge
+permanently, with nothing to re-run. Applying the payload as it stood would
+have made the next documentation PR unmergeable, by the sole admin, on a repo
+whose own guardrails forbid force-pushing past it.
+
+Fixed by removing the `paths:` filter from the `pull_request` trigger only —
+the job takes ~50 seconds, so unconditional PR runs cost less than one
+deadlocked merge. The `push:` filter is deliberately left in place: required
+checks gate pull requests, not pushes. **The payload itself is unchanged and
+still correct**; what changed is the workflow it depends on.
+
 ### 3. Verify the pipeline runs green end to end (TODO.md item 4.5, `[BLOCKER]`)
 **Rewritten 2026-08-19 to post-refactor scope.** This entry used to track four
 workflows (`010-terraform-init.yml`, `020-rbac-validation.yml`,

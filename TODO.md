@@ -914,6 +914,15 @@ alternative and is closed the same way (read 200, write 403) — it also
 confirmed the repo has no ruleset enforcing checks by another mechanism. This
 stays operator-local; nothing further to attempt from a session
 ([REVIEW.md](REVIEW.md) §2).
+**Blocking defect found and fixed 2026-08-28 — do not apply the payload
+against a `main` that predates it.** `Factory CI` was path-filtered on
+`pull_request`, so it never ran on docs-only PRs (#111, #113, #114 all lack
+the check run). Requiring a check that never reports is a permanent merge
+deadlock, not a soft failure. The filter is removed from the `pull_request`
+trigger; the payload is unchanged. The 2026-08-19 pre-flight checked the
+context *name* matched but not that the check always *runs* — see
+[REVIEW.md](REVIEW.md) §2 and the prerequisite box in
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 1.
 
 ### 4.3 Set GitHub Pages source to "GitHub Actions"
 

@@ -47,6 +47,26 @@ exempting admins would re-open it. `strict: false` — single-owner serial
 PRs don't race each other, and requiring branch-up-to-date would force a
 full CI re-run per trailing PR for no second contributor.
 
+> **Prerequisite, added 2026-08-28 — already shipped, do not skip the check.**
+> `Factory CI` used to carry a `paths:` filter on its `pull_request` trigger
+> (`factory/**`, `site/**`, `terraform/**`, `*.ps1`, `*.sh`,
+> `factory-version.json`). **A path-filtered required check is a merge
+> deadlock**: on a PR that misses the filter the check never reports, and
+> GitHub holds the PR at *"Expected — waiting for status to be reported"*
+> indefinitely. Every docs-only PR would have become unmergeable the moment
+> this payload was applied — verified against PRs #111, #113 and #114, none of
+> which ran `Factory CI`. The filter was removed from the `pull_request`
+> trigger (the job runs in ~50s, so it costs nothing); the `push:` filter is
+> untouched because required checks gate PRs, not pushes. **Before applying
+> the payload, confirm the fix is on `main`:**
+>
+> ```bash
+> gh api repos/HybridCloudWorks/Template-LZDeployment/contents/.github/workflows/factory-ci.yml \
+>   --jq '.content' | base64 -d | sed -n '1,20p'
+> ```
+>
+> The `pull_request:` block must show `branches: [main]` and **no** `paths:`.
+
 ```bash
 gh api -X PUT \
   repos/HybridCloudWorks/Template-LZDeployment/branches/main/protection \

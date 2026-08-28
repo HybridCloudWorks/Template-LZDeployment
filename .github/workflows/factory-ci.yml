@@ -1,16 +1,16 @@
 name: Factory CI
 
 on:
+  # No `paths:` filter on pull_request, deliberately. This job's check-run name
+  # ("Factory CI") is the required status check on `main`
+  # (docs/runbooks/branch-protection-payload.json). A path-filtered required
+  # check never reports on a PR that misses the filter, and GitHub holds such a
+  # PR at "Expected - waiting for status to be reported" forever: every
+  # docs-only PR would be permanently unmergeable. The job takes ~50s, so
+  # running it on every PR costs far less than that failure mode.
+  # The `push:` filter below is safe to keep - required checks gate PRs.
   pull_request:
     branches: [main]
-    paths:
-      - '.github/workflows/factory-ci.yml'
-      - 'factory/**'
-      - 'site/**'
-      - 'terraform/**'
-      - '*.ps1'
-      - '*.sh'
-      - 'factory-version.json'
   push:
     branches: [main]
     paths:
