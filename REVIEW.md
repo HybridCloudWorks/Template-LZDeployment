@@ -734,16 +734,30 @@ README's commands, unmodified.
 runs with no logs were GitHub-side runner churn, not repo debt — default setup
 completes on the next push to `main`.*
 
-### 15a. Stale branches on `origin` (added 2026-08-27, two of three cleared 2026-08-28)
-Branch deletion needs `contents: write`, which this session's token does not
-hold — `DELETE /git/refs/heads/…` returns **HTTP 403**, the same class of
-block as §2 and §8. Operator-local, from a machine with repository write:
+### 15a. Stale branches on `origin` (added 2026-08-27; two cleared and the third approved for deletion 2026-08-28)
+Branch deletion is **operator-local**, from a machine with repository write.
+
+**Corrected 2026-08-28** — this entry previously attributed the block to the
+session token lacking `contents: write`. That diagnosis was wrong in the same
+way §2's was: the refusal comes from the **sandbox proxy**, not from GitHub
+and not from the token. Both deletion routes were re-probed after the
+operator's permissions were refreshed, and both are closed:
+
+| Route | Result |
+| --- | --- |
+| `git push origin --delete <branch>` | **HTTP 403** from the git proxy (`send-pack: unexpected disconnect`) |
+| `DELETE /git/refs/heads/<branch>` | **HTTP 403** — *"Write access to this GitHub API path is not permitted through this proxy"* |
+
+No credential grant changes this; deleting refs is simply not in the sandbox's
+allowed write set. Worth noting for anyone reading the history: the two
+branches cleared below went away because the operator merged their PRs with
+`--delete-branch`, not because a session deleted them.
 
 | Branch | State | Disposition |
 | --- | --- | --- |
 | `claude/track-todos-pending-work-ovz6r5` | **Gone from `origin`** — confirmed by `git fetch --prune`, 2026-08-28 | Done. It was PR #97's fully merged branch |
 | `phase-3-manual-updates` | **Gone from `origin`** — same fetch | Done |
-| `claude/lz-bootstrap-artifact-generation-s182ti` | **Still on `origin`**; 2 commits, last 2026-08-13, not merged | **Operator's call — diagnosed below.** Not lost product work, but not junk either |
+| `claude/lz-bootstrap-artifact-generation-s182ti` | **Still on `origin`**; 2 commits, last 2026-08-13, not merged | ⏳ **Deletion approved by the operator 2026-08-28** — pending an operator-local run, see below. Diagnosis retained |
 
 **Diagnosis of the surviving branch, 2026-08-28 — the earlier "almost certainly
 superseded" reached the right answer by the wrong route.** Its diff against
@@ -768,10 +782,33 @@ files, so the live layers would pass an input to modules that no longer exist.
 
 **Recommendation**: delete it — *unless* the TechCon workshop is still upcoming
 and this wiring is meant to be used again, in which case it has to be
-re-authored against the post-refactor template set rather than merged. Either
-way that is the operator's decision, not a cleanup default.
+re-authored against the post-refactor template set rather than merged.
 
-```bash
+**Operator decision, 2026-08-28: delete.** Attempted from a session and refused
+by the proxy on both routes (table above), so this is a **pending operator
+action**, not a closed one.
+
+Deleting drops two commits that exist on no other ref. GitHub keeps unreachable
+commits fetchable by SHA for a while but not indefinitely, so they are recorded
+here:
+
+```
+d251aab901a4d57985aa5b3049ced6e097e65bff  2026-08-13  feat(demo): route deployments into a pre-existing resource group
+bf32c3c5f8b9d1e8ccedbcf78e0dfbd5050fe418  2026-08-13  chore: gitignore operator scratch notes
+```
+
+Plain deletion (PowerShell or bash — no line continuations, so either):
+
+```shell
+git push origin --delete claude/lz-bootstrap-artifact-generation-s182ti
+```
+
+If TechCon may still happen and the wiring is worth keeping as a reference, tag
+it first — a tag is durable, costs nothing, and keeps the commits reachable:
+
+```shell
+git tag archive/techcon-demo-wiring d251aab901a4d57985aa5b3049ced6e097e65bff
+git push origin archive/techcon-demo-wiring
 git push origin --delete claude/lz-bootstrap-artifact-generation-s182ti
 ```
 
