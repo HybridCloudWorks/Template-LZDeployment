@@ -52,7 +52,8 @@ renumbered or deleted. **Only the six entries marked OPEN need anyone.**
 | 16 | Wire `Configure-DeploymentOptions.ps1` | ⊘ **SUPERSEDED** (inherits §14) |
 | 17 | Cost estimates in module READMEs | ⊘ **LARGELY VOIDED**; narrowed residual |
 
-**The critical path to a first deployment is §§2, 8 → 1 (+6) → 3 → 4 → 5**,
+**The critical path to a first deployment is §§~~2~~, 8 → 1 (+6) → 3 → 4 → 5**
+(§2 closed 2026-08-28),
 sequenced command-by-command in
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md).
 
@@ -90,6 +91,27 @@ pull request.
 application-administrator and management-group-root rights.
 
 ### 2. Enable required status checks on `main` (TODO.md item 4.2, `[BLOCKER]`)
+> **✅ RESOLVED 2026-08-28 — applied by the operator, read-back verified**
+> (TODO.md item 4.2 closed). Text below is the original entry plus its
+> resolution; the probe history is retained because it explains why this had
+> to be operator-local.
+>
+> `main` is now protected with `contexts: ["Factory CI"]` bound to the GitHub
+> Actions app (`app_id: 15368`), `enforce_admins: true`, `strict: false`,
+> `required_approving_review_count: 0`. The contexts, the app binding and the
+> admin enforcement were confirmed independently from this session via
+> `GET /repos/…/branches/main` (readable without admin, unlike the protection
+> endpoint); `strict` and the approval count are as reported by the operator's
+> read-back, since that endpoint stays 403 here.
+>
+> **One sub-item is NOT closed by this**: the entry also covered "settings not
+> checkable from a clone (secret scanning, required approvals)". Approvals are
+> confirmed at 0. **Secret scanning is unverified** — `security_and_analysis`
+> is not exposed to a non-admin token. Note the repository does already run
+> Gitleaks and TruffleHog as PR checks, so the intent is covered by CI even if
+> the native feature is off. To confirm the native setting:
+> `gh api repos/HybridCloudWorks/Template-LZDeployment --jq '.security_and_analysis'`.
+
 `main` has **no** `required_status_checks`. This is not theoretical: it is
 precisely why dependabot PRs #63–#68 merged while red and left `main` unable
 to `terraform init` on four of five live stacks.
@@ -357,7 +379,7 @@ that fires **before** the path check, and the correctly-encoded JSON retry
 returned the ordinary path denial. Nothing about the Pages block has changed.
 
 **Scope**: this publishes the wizard. It does **not** gate deploying a
-landing zone — that path is §2 → §1 (+§6) → §3 → §4.
+landing zone — that path is ~~§2~~ (closed) → §1 (+§6) → §3 → §4.
 
 ### 9. Resolve the backend duality / TFC migration
 > **✅ RESOLVED 2026-08-15 — no operator action. Retained for

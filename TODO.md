@@ -19,7 +19,9 @@ Phase 3: 3.1 re-scoped 2026-08-15 — toolchain provisioning proven,
 tenant-bound residuals are per-estate work by operator directive (§7) — and
 3.2 blocked on wiki write access, architectural to the remote sandbox (§15);
 Phase 4 **opened 2026-08-15** (go-live; operator-local execution kit:
-[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md)), with
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md)) — **4.2
+closed 2026-08-28**, `main` now enforces the `Factory CI` required check —
+with
 4.5/4.7 rewritten 2026-08-18 to the post-refactor gate (the e2e generation
 proof **has now passed on GitHub-hosted runners**, both topologies — PRs
 #99/#101); Phase 5 release-time. Everything open is an operator action or
@@ -879,7 +881,26 @@ without engagement-owner confirmation is prohibited.
 bootstrap run. **Gate**: [REVIEW.md](REVIEW.md) §1.
 **Validation**: `azure-auth-test.yml` token exchange green from a real PR.
 
-### 4.2 Enable required status checks on upstream `main` (+ settings read-back)
+### 4.2 Enable required status checks on upstream `main` (+ settings read-back) — ✅ COMPLETE (2026-08-28)
+
+> **Applied by the operator 2026-08-28; read-back verified.** `main` is
+> protected with `contexts: ["Factory CI"]` bound to the GitHub Actions app
+> (`app_id: 15368`), `enforce_admins: true`, `strict: false`, approvals `0`.
+> Contexts, app binding and admin enforcement were confirmed independently
+> from a session via `GET /repos/…/branches/main`; `strict` and the approval
+> count come from the operator's read-back, since the protection endpoint is
+> not readable without admin.
+>
+> **Residual, not closed by this**: the "secret scanning" half of this item's
+> settings read-back is unverified — `security_and_analysis` is not exposed to
+> a non-admin token. Gitleaks and TruffleHog already run as PR checks, so the
+> intent is covered by CI regardless. Confirm the native setting with
+> `gh api repos/HybridCloudWorks/Template-LZDeployment --jq '.security_and_analysis'`
+> and enable it in Settings → Code security if it reads disabled.
+>
+> Prerequisite shipped the same day: `Factory CI` was path-filtered and would
+> have deadlocked every docs-only PR as a required check — see REVIEW.md §2
+> and PR #115.
 
 `main` has no `required_status_checks` (six dependabot PRs merged red
 2026-08-02). Upstream factory repo only — client copies are never hardened
@@ -954,7 +975,8 @@ denied normally ([REVIEW.md](REVIEW.md) §8). Both fix routes remain
 operator-local and unchanged.
 
 **This item does not gate a landing-zone deployment.** It publishes the
-factory wizard. The deploy path is 4.2 → 4.1 (+4.4) → 4.5 → 4.7 → 5.1.
+factory wizard. The deploy path is ~~4.2~~ (complete) → 4.1 (+4.4) → 4.5 →
+4.7 → 5.1.
 
 ### 4.4 Supply `-SandboxSubscriptionId` at bootstrap (per engagement)
 
