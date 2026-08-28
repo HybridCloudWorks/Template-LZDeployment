@@ -37,6 +37,15 @@ execution time on the operator's machine and never land in template files.
 
 ## 1. Item 4.2 — Required status checks on upstream `main`
 
+> **Shell**: every command block in this runbook is **PowerShell**, because
+> that is what the operator runs (`pwsh` is already a prerequisite — the
+> factory's own tooling is PowerShell). Do not paste bash line continuations
+> (`\`) into PowerShell: it parses the backslash as a unary operator and
+> splits the command, which is exactly the failure this note exists to
+> prevent. PowerShell's continuation character is a backtick (`` ` ``); the
+> blocks below are written as one-liners instead, so there is nothing to
+> continue.
+
 Payload: [branch-protection-payload.json](branch-protection-payload.json).
 Requires only the `Factory CI` context (the one check that is reliable
 today); the `azure/login`-dependent contexts stay non-required until item
@@ -47,7 +56,7 @@ exempting admins would re-open it. `strict: false` — single-owner serial
 PRs don't race each other, and requiring branch-up-to-date would force a
 full CI re-run per trailing PR for no second contributor.
 
-> **Prerequisite, added 2026-08-28 — already shipped, do not skip the check.**
+> **Prerequisite, added 2026-08-28 — shipped in #115 (`d2878fb`), on `main`.**
 > `Factory CI` used to carry a `paths:` filter on its `pull_request` trigger
 > (`factory/**`, `site/**`, `terraform/**`, `*.ps1`, `*.sh`,
 > `factory-version.json`). **A path-filtered required check is a merge
@@ -60,27 +69,22 @@ full CI re-run per trailing PR for no second contributor.
 > untouched because required checks gate PRs, not pushes. **Before applying
 > the payload, confirm the fix is on `main`:**
 >
-> ```bash
-> gh api repos/HybridCloudWorks/Template-LZDeployment/contents/.github/workflows/factory-ci.yml \
->   --jq '.content' | base64 -d | sed -n '1,20p'
+> ```powershell
+> gh api "repos/HybridCloudWorks/Template-LZDeployment/contents/.github/workflows/factory-ci.yml?ref=main" -H "Accept: application/vnd.github.raw" | Select-Object -First 20
 > ```
 >
 > The `pull_request:` block must show `branches: [main]` and **no** `paths:`.
+> (The raw media type returns the file directly — the default JSON response
+> is base64-wrapped, and neither `base64 -d` nor `sed` exists in PowerShell.)
 
-```bash
-gh api -X PUT \
-  repos/HybridCloudWorks/Template-LZDeployment/branches/main/protection \
-  --input docs/runbooks/branch-protection-payload.json
+```powershell
+gh api -X PUT repos/HybridCloudWorks/Template-LZDeployment/branches/main/protection --input docs/runbooks/branch-protection-payload.json
 ```
 
 Read-back (item 4.2's validation criterion):
 
-```bash
-gh api repos/HybridCloudWorks/Template-LZDeployment/branches/main/protection \
-  --jq '{contexts: .required_status_checks.contexts,
-         strict: .required_status_checks.strict,
-         enforce_admins: .enforce_admins.enabled,
-         approvals: .required_pull_request_reviews.required_approving_review_count}'
+```powershell
+gh api repos/HybridCloudWorks/Template-LZDeployment/branches/main/protection --jq '{contexts: .required_status_checks.contexts, strict: .required_status_checks.strict, enforce_admins: .enforce_admins.enabled, approvals: .required_pull_request_reviews.required_approving_review_count}'
 ```
 
 Expect `contexts: ["Factory CI"]`, `strict: false`, `enforce_admins: true`,
@@ -98,16 +102,14 @@ Either route; `deploy-pages.yml` is ready and SHA-pinned.
 - **API** — first-time enablement (Pages was not enabled at the 2026-08-02
   read-back):
 
-  ```bash
-  gh api -X POST repos/HybridCloudWorks/Template-LZDeployment/pages \
-    -f build_type=workflow
+  ```powershell
+  gh api -X POST repos/HybridCloudWorks/Template-LZDeployment/pages -f build_type=workflow
   ```
 
   If Pages is already enabled from a branch, switch it instead:
 
-  ```bash
-  gh api -X PUT repos/HybridCloudWorks/Template-LZDeployment/pages \
-    -f build_type=workflow
+  ```powershell
+  gh api -X PUT repos/HybridCloudWorks/Template-LZDeployment/pages -f build_type=workflow
   ```
 
 Verify: the next `deploy-pages.yml` run publishes; the site serves `site/`
