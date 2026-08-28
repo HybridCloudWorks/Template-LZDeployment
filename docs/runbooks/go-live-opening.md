@@ -35,7 +35,14 @@ execution time on the operator's machine and never land in template files.
 
 ---
 
-## 1. Item 4.2 — Required status checks on upstream `main`
+## 1. Item 4.2 — Required status checks on upstream `main` — ✅ DONE 2026-08-28
+
+> **Applied and verified.** `main` enforces `contexts: ["Factory CI"]` bound to
+> the GitHub Actions app, `enforce_admins: true`, `strict: false`, approvals
+> `0`. Nothing to run here for this repository. The steps below are retained
+> because they are the procedure, and because item 4.2 re-opens whenever a
+> context is added — after item 4.1 lands, the `azure/login`-dependent contexts
+> join the payload and it is re-PUT (see the end of this section).
 
 > **Shell**: every command block in this runbook is **PowerShell**, because
 > that is what the operator runs (`pwsh` is already a prerequisite — the
