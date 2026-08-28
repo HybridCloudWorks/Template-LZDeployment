@@ -115,6 +115,28 @@ enabled for this session" (App-level block on admin endpoints). This is an
 operator-local action — commands and read-back in
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 1.
 
+**Re-probed 2026-08-28 against refreshed permissions — the block did not move,
+and it now resolves into two independent layers.** The repository read
+(`GET /repos/…`) returns `permissions.admin: false`, and
+`GET /branches/main/protection` returns HTTP 403 *"Resource not accessible by
+integration"* — that is **GitHub's** answer, and it is about the token. The
+**write** never reaches GitHub at all: `PUT /branches/main/protection` returns
+HTTP 403 *"Write access to this GitHub API path is not permitted through this
+proxy"* — that is the **sandbox's egress policy**, and it is about the path. A
+better token would fix the first and leave the second exactly where it is.
+(The 2026-08-15 entry above read the whole thing as one App-level block; the
+proxy layer is the part that makes it unfixable from here.)
+
+**Repository rulesets are not a workaround — probed the same day.** Rulesets
+are the modern replacement for branch protection, so they are the obvious
+thing to reach for next. Their **read** does pass the proxy:
+`GET /repos/…/rulesets` → HTTP 200 `[]`, which also establishes that the
+repository has **no ruleset today**, so nothing is silently enforcing checks
+by another mechanism. Their **write** is refused identically:
+`POST /repos/…/rulesets` → HTTP 403, the same proxy message as the legacy
+endpoint. Both the old and the new route are closed to the sandbox for writes;
+this does not need re-testing in a future session.
+
 ### 3. Verify the pipeline runs green end to end (TODO.md item 4.5, `[BLOCKER]`)
 **Rewritten 2026-08-19 to post-refactor scope.** This entry used to track four
 workflows (`010-terraform-init.yml`, `020-rbac-validation.yml`,
@@ -301,6 +323,16 @@ diagnostic value only) and PR #106 (`token: secrets.PAGES_PAT || github.token`
 plus a failure-guidance step that writes both fix routes to the job summary).
 Neither turns the run green; nothing in a workflow can, without either a
 `PAGES_PAT` secret or a one-time manual enablement.
+
+**Re-probed 2026-08-28 — unchanged, plus one false signal worth naming so it
+does not cost anyone an hour.** Both `GET` and `POST /repos/…/pages` return
+HTTP 403 *"Access to this GitHub API path is not permitted through this
+proxy"*. A first `POST` attempt sent a form-encoded body and drew a
+**different** proxy reply — *"Form-encoded request bodies are not accepted on
+this endpoint. Send the documented JSON body."* — which reads like the path is
+open and the request merely malformed. It is not: that is a body pre-check
+that fires **before** the path check, and the correctly-encoded JSON retry
+returned the ordinary path denial. Nothing about the Pages block has changed.
 
 **Scope**: this publishes the wizard. It does **not** gate deploying a
 landing zone — that path is §2 → §1 (+§6) → §3 → §4.
@@ -633,23 +665,70 @@ fixes. Publication remains a local run of the commands in
 [docs/wiki-review/README.md](docs/wiki-review/README.md) from any machine
 with wiki write access.
 
+**Fourth probe, 2026-08-28 — read is now fully open, write is not, and the
+`add_repo` route is closed by construction.** A full (non-shallow) clone of the
+wiki succeeds. `git push --dry-run` is still refused by the git proxy with the
+same message as before — and that message names its own fix, *"add the
+repository to the session's sources"*, so the fix was tried. `add_repo` for
+`HybridCloudWorks/Template-LZDeployment.wiki` returns *"not found on
+github.com, or this session's GitHub credential doesn't have access to it"*.
+The reason is structural: **a wiki is not a first-class repository on GitHub**,
+so it can never be added to a session's sources, and re-attaching the parent
+repository with `access: push` does not extend to it. That closes the second
+unblock route named above — a local push from a machine with wiki write access
+is now the only one.
+
+**The patches were verified to still apply, not assumed to — via `git am`, the
+command the review README actually documents.** All three were applied in
+sequence onto a fresh clone at the wiki's current `master` (`7286806`,
+2026-08-01): all three landed, in order, with no conflict and no rebase,
+producing **20 files changed, +450/−169** and preserving each patch's
+authorship and message. The local run is a straight replay of the review
+README's commands, unmodified.
+
 *Noted 2026-08-06, no action needed: the two cancelled CodeQL default-setup
 runs with no logs were GitHub-side runner churn, not repo debt — default setup
 completes on the next push to `main`.*
 
-### 15a. Stale branches on `origin` (added 2026-08-27)
+### 15a. Stale branches on `origin` (added 2026-08-27, two of three cleared 2026-08-28)
 Branch deletion needs `contents: write`, which this session's token does not
 hold — `DELETE /git/refs/heads/…` returns **HTTP 403**, the same class of
 block as §2 and §8. Operator-local, from a machine with repository write:
 
-| Branch | State | Recommendation |
+| Branch | State | Disposition |
 | --- | --- | --- |
-| `claude/track-todos-pending-work-ovz6r5` | **Fully merged** into `main` (it is PR #97's branch, commit `57bb22c`) | Safe to delete — no unmerged work |
-| `claude/lz-bootstrap-artifact-generation-s182ti` | **Not merged**; 2 commits, last 2026-08-13 | **Predates the 2026-08-15 refactor** — its 322-file diff is largely the bespoke tree ADR 0013 deleted. Almost certainly superseded, but confirm before deleting |
-| `phase-3-manual-updates` | **Not merged**; 1 commit, last 2026-08-24 | Its diff against `main` is +18/−118,495 across 1,012 files — it is missing most of `main`. Inspect before deleting; do not assume it is junk |
+| `claude/track-todos-pending-work-ovz6r5` | **Gone from `origin`** — confirmed by `git fetch --prune`, 2026-08-28 | Done. It was PR #97's fully merged branch |
+| `phase-3-manual-updates` | **Gone from `origin`** — same fetch | Done |
+| `claude/lz-bootstrap-artifact-generation-s182ti` | **Still on `origin`**; 2 commits, last 2026-08-13, not merged | **Operator's call — diagnosed below.** Not lost product work, but not junk either |
+
+**Diagnosis of the surviving branch, 2026-08-28 — the earlier "almost certainly
+superseded" reached the right answer by the wrong route.** Its diff against
+`main` is 54 files, and it is *not* wholly inside the tree ADR 0013 deleted:
+**46 of those files are gone from `main`, but 8 survive**, among them
+`factory/renderer/variable-map.json` and the `platform-management` and
+`platform-connectivity` live templates. That is exactly why the entry said
+"confirm before deleting" — and this is the confirmation. All 8 surviving hunks
+add one thing, a `student_resource_group_name` variable carrying its own
+expiry notice:
+
+> `# DEMO WIRING (TechCon workshop) — remove after the event; see the`
+> `# operator's gitignored revert dossier.`
+
+It is **deliberately temporary demo scaffolding**, self-labelled for removal,
+routing every layer into a single pre-created resource group named after the
+student's GitHub account (`github.ownerName`). It is also **unrenderable
+against `main` as it stands**: the module templates its `main.tf.tmpl` hunks
+wire the variable into — `factory/templates/terraform/modules/{hub-network,
+management-baseline,backup-baseline,spoke-network}` — are among the 46 deleted
+files, so the live layers would pass an input to modules that no longer exist.
+
+**Recommendation**: delete it — *unless* the TechCon workshop is still upcoming
+and this wiring is meant to be used again, in which case it has to be
+re-authored against the post-refactor template set rather than merged. Either
+way that is the operator's decision, not a cleanup default.
 
 ```bash
-git push origin --delete claude/track-todos-pending-work-ovz6r5
+git push origin --delete claude/lz-bootstrap-artifact-generation-s182ti
 ```
 
 **Validation**: `git ls-remote --heads origin` lists only `main` plus branches

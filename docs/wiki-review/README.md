@@ -150,6 +150,32 @@ Preserved as
 [`2026-08-28-mirror-resync.patch`](2026-08-28-mirror-resync.patch)
 (2 files).
 
+## Publication re-probe — 2026-08-28 (fourth confirmation)
+
+Re-run with the operator's refreshed session permissions. **Read is now fully
+open; write is not.**
+
+- A full (non-shallow) `git clone` of the wiki succeeds.
+- `git push --dry-run origin HEAD:master` is refused by the git proxy:
+  *"HybridCloudWorks/Template-LZDeployment.wiki is not in this session's
+  authorized repository set … To fix, add the repository to the session's
+  sources."*
+- That fix was attempted. `add_repo` for
+  `HybridCloudWorks/Template-LZDeployment.wiki` returns *"not found on
+  github.com, or this session's GitHub credential doesn't have access to it"*,
+  and re-attaching the parent repository with `access: push` does not extend
+  to the wiki. **A GitHub wiki is not a first-class repository**, so it cannot
+  be added to a session's sources at all — the route the error message
+  suggests does not exist for wikis.
+
+**The patches were re-verified rather than assumed — using the command this
+README actually documents.** All three were `git am`-ed in sequence onto a
+fresh clone at the wiki's current `master` (`7286806`, 2026-08-01). All three
+applied, in order, with no conflict and no rebase, producing **20 files
+changed, +450/−169** and preserving each patch's authorship and commit
+message. The "Publishing — apply in this order" block above is a straight
+replay; nothing in it needs adjusting.
+
 ## Known remaining wiki debt (not in any patch)
 
 - **Per-page banners on the ~19 source-material pages** the 2026-08-06 patch
