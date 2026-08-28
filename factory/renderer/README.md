@@ -246,13 +246,16 @@ here rather than inside templates so each template file stays valid on its own.
   "perLayerFiles": [
     { "source": "terraform/live/_layer/backend.tf.tmpl",
       "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.tf" }
-  ],
-  "directories": [
-    { "source": "terraform/modules", "destination": "terraform/modules",
-      "when": "always", "exclude": ["*/.terraform.lock.hcl"] }
   ]
 }
 ```
+
+> **Corrected 2026-08-27.** This example previously also showed a
+> `"directories"` key copying `terraform/modules` verbatim. The real manifest
+> has no such key — its top level is `files` and `perLayerFiles` only — and
+> `terraform/modules` no longer exists: the bespoke module tree was deleted by
+> [ADR 0013](../../docs/decisions/0013-generator-only-avm-architecture.md) in
+> favour of AVM pattern modules referenced by source and version.
 
 - `mode: "copy"` emits verbatim. `variables.tf` **must** be copied, never
   templated — it is the contract the drift check validates against.
@@ -285,10 +288,10 @@ PATH.
 ## Status
 
 Stage 5 delivered the **engine**; stage 6 promoted the real Terraform into
-`factory/templates/`. The corpus now emits six live layers — `global`,
-`platform-connectivity`, `platform-management`, `workloads-nonprod`,
-`workloads-prod`, `sandbox` — plus `terraform/modules/**` and
-`terraform/scripts/` verbatim. Both a
+`factory/templates/`. The corpus emits **four** live layers —
+`platform-management`, `global`, `platform-connectivity`, `state-hardening`
+(the authoritative list is `landingZone.layers` in `factory-version.json`,
+which render guard G21 reads). Both a
 dual-region HCP configuration and a single-region azurerm configuration render
 to trees that pass `terraform fmt -check -recursive` and `terraform validate`.
 
@@ -322,11 +325,13 @@ SHA-256 plan/audit evidence, and refuses filesystem or GitHub mutation unless
 apply is explicit. The generated checklist includes target approval, force,
 authentication, backup retention, and remote read-back activities.
 
-Stage 11 runs after rendering and before scaffolding for brownfield
-configurations. It generates only explicitly adopted import blocks/review
-commands, registers them in `render-manifest.json`, and removes obsolete
-Stage 11 artifacts on rerun. Stage 10 therefore continues to verify the exact
-managed inventory.
+**Stage 11 no longer exists.** It used to run between rendering and
+scaffolding for brownfield configurations, generating adopted import blocks.
+[ADR 0018](../../docs/decisions/0018-brownfield-exclude-and-create.md)
+redefined brownfield as **exclude-and-create** — new subscriptions only,
+existing ones structurally excluded — and the import machinery
+(`factory/import/`, `Test-Import.ps1`) was removed rather than re-targeted.
+Rendering now hands straight to scaffolding.
 
 Stage 12 adds the factory repository's credential-free `Factory CI / Factory
 CI` gate. It runs every suite plus schema drift, site no-network, action

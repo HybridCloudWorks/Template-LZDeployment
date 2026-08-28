@@ -15,8 +15,14 @@ Where the surviving substance lives:
   canonical-SHA registry in `factory/ci/Test-ActionPins.ps1`, which cites this
   plan.
 - **Regeneration risk** (hub-network destroy/recreate on older generated
-  repos): documented in the corpus `UPGRADE-GUIDE.md.tmpl`; route affected
-  repos through the Stage 11 brownfield path.
+  repos): documented in the corpus `UPGRADE-GUIDE.md.tmpl`. The Stage 11
+  brownfield path this originally routed to was **removed** by
+  [ADR 0018](../decisions/0018-brownfield-exclude-and-create.md)
+  (brownfield is exclude-and-create); and the `hub-network` module itself no
+  longer exists after [ADR 0013](../decisions/0013-generator-only-avm-architecture.md).
+  Regeneration of a pre-0.10.0 generated repo is a manual state migration —
+  see `compatibility.upgradesFrom` in `factory-version.json`, which is
+  deliberately empty.
 
 Deviations from the plan as written, resolved and final:
 

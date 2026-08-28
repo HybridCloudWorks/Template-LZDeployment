@@ -20,7 +20,7 @@ Two artifacts are written beside the configuration:
 | File | Audience |
 |---|---|
 | `tenant-readiness-report.md` | The human gate. Read this before bootstrapping. |
-| `discovery-inventory.json` | Machine-readable. Consumed by later factory stages (brownfield import generation, the broker). |
+| `discovery-inventory.json` | Machine-readable. Consumed by the Stage 9 bootstrap broker. (Brownfield import generation was also a consumer until [ADR 0018](../../docs/decisions/0018-brownfield-exclude-and-create.md) removed it.) |
 
 Exit code is `0` unless `-FailOnNotReady` is passed, in which case a failed
 readiness check exits `1` — intended for CI.
@@ -193,8 +193,14 @@ held in memory only. Graph tokens are acquired per-session and never persisted.
 
 ## Status
 
-Factory stage 4 of 13. The Stage 9 bootstrap broker and Stage 11 brownfield
-generator consume `discovery-inventory.json`; the latter requires every
-supported Azure probe to be conclusive and pins classifications to the
-inventory SHA-256. This engine is also useful standalone as a pre-flight
-assessment.
+The Stage 9 bootstrap broker consumes `discovery-inventory.json`. This engine
+is also useful standalone as a pre-flight assessment — in fact that is the
+recommended first move of item 4.1, because it is read-only and produces
+`tenant-readiness-report.md`, the human gate before anything mutates
+(`docs/runbooks/go-live-opening.md` step 3a).
+
+**Corrected 2026-08-27**: this section previously also named the *Stage 11
+brownfield generator* as a consumer, and described its conclusive-probe and
+inventory-SHA pinning requirements. That generator was **removed** by
+[ADR 0018](../../docs/decisions/0018-brownfield-exclude-and-create.md) —
+brownfield is now exclude-and-create, so there is no importer to feed.
