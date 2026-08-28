@@ -378,6 +378,33 @@ open and the request merely malformed. It is not: that is a body pre-check
 that fires **before** the path check, and the correctly-encoded JSON retry
 returned the ordinary path denial. Nothing about the Pages block has changed.
 
+**Org-policy hypothesis CLOSED 2026-08-28 — it is not the cause.** The
+operator read the org's own settings, which is the check nobody had actually
+run (the hypothesis had been raised, withdrawn, and the withdrawal then found
+over-broad — three readings, none of them evidence):
+
+```
+gh api orgs/HybridCloudWorks --jq '{pages: .members_can_create_pages, public: .members_can_create_public_pages, private: .members_can_create_private_pages}'
+→ { "pages": true, "private": true, "public": true }
+```
+
+All three permissive. `HybridCloudWorks` places **no restriction** on Pages
+creation, so the org is not why the 2026-08-19 manual enablement failed to
+register. Do not re-raise this; it is settled with the setting values, not
+inferred from a symptom. (Org endpoints are unreadable from a session —
+`GET /orgs/…` returns *"sessions are bound to their configured repositories"* —
+so this can only ever be checked operator-side.)
+
+**What that leaves.** `has_pages` is still `false` on the repository (a
+readable field, so this is certain, not inferred), and a 2026-08-28 operator
+run of `POST /repos/…/pages -f build_type=workflow` did not create the site.
+The **error text of that POST is now the only untested lead** and has never
+been captured in four sessions. The strongest remaining candidate is the
+operator's own `gh` token scopes: creating a Pages site needs
+`administration:write` on the repository, and a `gh auth login` performed
+without it fails the POST while the org and the repo are both willing.
+`gh auth status` names the scopes the token actually holds.
+
 **Scope**: this publishes the wizard. It does **not** gate deploying a
 landing zone — that path is ~~§2~~ (closed) → §1 (+§6) → §3 → §4.
 

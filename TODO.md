@@ -962,6 +962,15 @@ Manual enablement was attempted and the read did not change, so the setting
 is not persisting — see REVIEW.md §8 for the two-failure breakdown and why
 the Actions `GITHUB_TOKEN` can never create the site itself.
 
+**Org policy ruled out 2026-08-28.** `members_can_create_pages`,
+`…_public_pages` and `…_private_pages` are all `true` on `HybridCloudWorks`,
+read from the org object by the operator. That closes the hypothesis REVIEW.md
+§8 had carried open since 2026-08-19 — with the actual setting values, not a
+symptom reading. `has_pages` remains `false` and an operator-run
+`POST /repos/…/pages` did not create the site; the **error text of that POST**
+is the only lead left, with `gh` token scopes (`administration:write`) the
+strongest candidate — `gh auth status` names them.
+
 Two one-time routes, either sufficient: enable it by hand so it sticks, or
 add a `PAGES_PAT` repository secret (fine-grained, **Pages: Read and write**)
 — PR #106 already wires `configure-pages` to prefer it. The manual route is
