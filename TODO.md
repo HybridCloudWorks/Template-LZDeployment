@@ -841,6 +841,15 @@ review README's commands ([REVIEW.md](REVIEW.md) §15).
 review README).
 **Validation**: the 11 wiki pages carry the HISTORICAL banner; `Home.md`
 labels corrected.
+**Re-probed 2026-08-28 with refreshed permissions — still blocked, and the
+second unblock route is now known to be impossible.** The git proxy's refusal
+names its own fix ("add the repository to the session's sources"), so
+`add_repo` was tried on the wiki and denied: a GitHub wiki is not a
+first-class repository, so it can never join a session's sources. A local push
+is the only route left. The three patches were re-verified against the wiki's
+current `master` by `git am` — the documented command — and all three apply in
+sequence with no conflict: 20 files, +450/−169, no rebase needed
+([REVIEW.md](REVIEW.md) §15).
 
 ---
 
@@ -852,8 +861,10 @@ rewritten 2026-08-18 to the post-refactor gate definitions (the workflows
 and dogfood they originally named were deleted by ADR 0013); the chain's
 order is unchanged. Execution is operator-local, sequenced by
 [docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md): the
-sandbox probes of 2026-08-15 confirmed the 4.2/4.3 admin endpoints are
-App/proxy-blocked even with the operator's token (REVIEW.md §2/§8). The
+sandbox probes of 2026-08-15, re-run 2026-08-28 against refreshed
+permissions, confirmed the 4.2/4.3 admin endpoints are proxy-blocked for
+writes regardless of the token, and that repository rulesets are closed the
+same way (REVIEW.md §2/§8). The
 same-day tenant-agnostic directive stands alongside this: the estate
 tenant/subscription is chosen at execution time on the operator's machine
 and never lands in template files — opening go-live and staying
@@ -894,6 +905,24 @@ apply must run under the operator's own `gh` session.
 `Factory CI` run was still queued (it later passed). With this payload
 applied that merge would have been blocked — which is the failure mode the
 item exists to close.
+**Re-probed 2026-08-28 with refreshed permissions — no change, and now split
+into two layers that need different fixes.** The token side is
+`permissions.admin: false` plus HTTP 403 from GitHub on the protection read;
+the path side is HTTP 403 from the sandbox proxy on the protection *write*,
+which no token can satisfy. The repository-rulesets route was probed as an
+alternative and is closed the same way (read 200, write 403) — it also
+confirmed the repo has no ruleset enforcing checks by another mechanism. This
+stays operator-local; nothing further to attempt from a session
+([REVIEW.md](REVIEW.md) §2).
+**Blocking defect found and fixed 2026-08-28 — do not apply the payload
+against a `main` that predates it.** `Factory CI` was path-filtered on
+`pull_request`, so it never ran on docs-only PRs (#111, #113, #114 all lack
+the check run). Requiring a check that never reports is a permanent merge
+deadlock, not a soft failure. The filter is removed from the `pull_request`
+trigger; the payload is unchanged. The 2026-08-19 pre-flight checked the
+context *name* matched but not that the check always *runs* — see
+[REVIEW.md](REVIEW.md) §2 and the prerequisite box in
+[docs/runbooks/go-live-opening.md](docs/runbooks/go-live-opening.md) step 1.
 
 ### 4.3 Set GitHub Pages source to "GitHub Actions"
 
@@ -916,6 +945,13 @@ Two one-time routes, either sufficient: enable it by hand so it sticks, or
 add a `PAGES_PAT` repository secret (fine-grained, **Pages: Read and write**)
 — PR #106 already wires `configure-pages` to prefer it. The manual route is
 preferred: a PAT is a long-lived credential this repository otherwise avoids.
+
+**Re-probed 2026-08-28 — unchanged.** `GET` and `POST /repos/…/pages` both
+return HTTP 403 from the sandbox proxy. A form-encoded first attempt drew a
+different, encouraging-looking proxy message about the request body; that is a
+pre-check firing ahead of the path check, and the correct JSON retry was
+denied normally ([REVIEW.md](REVIEW.md) §8). Both fix routes remain
+operator-local and unchanged.
 
 **This item does not gate a landing-zone deployment.** It publishes the
 factory wizard. The deploy path is 4.2 → 4.1 (+4.4) → 4.5 → 4.7 → 5.1.
