@@ -1,0 +1,1 @@
+{ "name": "childarch", "policy_assignments": ["Enable-DDoS-VNET", "Some-Unmapped-Policy"] }

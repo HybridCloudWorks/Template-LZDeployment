@@ -153,6 +153,19 @@ if (-not $result.InSync) { exit 1 }
     Invoke-LzFactoryCheck 'Provider constraints' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-ProviderConstraints.ps1') -Category 'policy' | Out-Null
     # An orphaned template silently ships nothing (output-contract violation).
     Invoke-LzFactoryCheck 'Template coverage' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-TemplateCoverage.ps1') -Category 'contract' | Out-Null
+    # The wizard offers a policy set read out of the pinned ALZ library at build
+    # time (site/ makes zero network requests, so it cannot read it at runtime).
+    # A library bump that does not regenerate the catalog ships a wizard whose
+    # answers the deployment will not honour. -AllowOffline keeps this from
+    # turning an unreachable raw.githubusercontent.com into a red build; the
+    # skip is recorded as evidence rather than passing silently.
+    Invoke-LzFactoryCheck 'ALZ policy catalog' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/New-AlzPolicyCatalog.ps1', '-Verify', '-AllowOffline') -Category 'contract' | Out-Null
+    # The one class of defect no other gate here can see. The ALZ provider
+    # resolves policy default values at PLAN time; validation stops at
+    # `terraform validate` and the e2e proof stops there too, so an unsupplied
+    # value is invisible everywhere until a client's first plan. Needs no
+    # network and no credentials: it reads the committed catalog.
+    Invoke-LzFactoryCheck 'ALZ policy defaults' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-AlzPolicyDefaults.ps1') -Category 'contract' | Out-Null
     # Corpus-vs-broker resource-provider drift (decision 0006): a template
     # module adding an azurerm type whose namespace the broker does not
     # register must fail here, not at a client site mid-first-apply.

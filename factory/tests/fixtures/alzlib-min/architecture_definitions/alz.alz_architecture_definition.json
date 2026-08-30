@@ -1,0 +1,8 @@
+{
+  "name": "alz",
+  "management_groups": [
+    { "id": "root", "display_name": "Root", "parent_id": null, "archetypes": ["rootarch"] },
+    { "id": "child", "display_name": "Child", "parent_id": "root", "archetypes": ["childarch"] },
+    { "id": "leaf", "display_name": "Leaf", "parent_id": "child", "archetypes": ["emptyarch"] }
+  ]
+}
