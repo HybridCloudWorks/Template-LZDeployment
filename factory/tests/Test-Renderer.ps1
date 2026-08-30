@@ -172,6 +172,21 @@ ok 'global references avm-ptn-alz by registry pin' ($globalMain -match 'source\s
 ok 'alz provider pins the library'   ($globalMain -match 'library_references' -and $globalMain -match '2026\.04\.2')
 $mgmtMain = Get-Content (Join-Path $out 'terraform/live/platform-management/main.tf') -Raw
 ok 'management references avm-ptn-alz-management' ($mgmtMain -match 'source\s+=\s+"Azure/avm-ptn-alz-management/azurerm"')
+ok 'management wires the daily ingestion cap' ($mgmtMain -match 'log_analytics_workspace_daily_quota_gb\s+=\s+var\.log_daily_quota_gb')
+
+# The management-group IDs are defined by the pinned ALZ library architecture,
+# not by us. A default that names a group the library does not define places
+# subscriptions into a management group that will never exist. Verified against
+# platform/alz@2026.04.2: the sandbox group is `sandbox`, singular.
+$globalVars = Get-Content (Join-Path $out 'terraform/live/global/variables.tf') -Raw
+ok 'sandbox MG default matches the library' ($globalVars -match '(?s)variable "sandbox_management_group_id".*?default\s+=\s+"sandbox"')
+ok 'sandbox MG default is not the plural typo' ($globalVars -notmatch 'default\s+=\s+"sandboxes"')
+
+# The emitted apply workflow is workflow_dispatch-only. A README promising that
+# a merge deploys ships a false statement to every generated repository.
+$genReadme = Get-Content (Join-Path $out 'README.md') -Raw
+ok 'README does not claim merging applies' ($genReadme -notmatch 'Merging to\s+`?\w*`?\s*\r?\n?runs `terraform apply`')
+ok 'README names the dispatch-gated apply' ($genReadme -match 'merging does not deploy' -and $genReadme -match 'workflow_dispatch')
 $connMain = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/main.tf') -Raw
 ok 'hub-spoke fixture emits hub-and-spoke module' ($connMain -match 'avm-ptn-alz-connectivity-hub-and-spoke-vnet')
 ok 'hub-spoke fixture omits virtual-wan module'   ($connMain -notmatch 'avm-ptn-alz-connectivity-virtual-wan')
@@ -200,6 +215,27 @@ ok 'renovate targets terraform manager' (@($renovate.packageRules[0].matchManage
 $residual = Select-String -Path (Get-ChildItem $out -Recurse -File).FullName -Pattern '(?<!\$)\{\{[^}]*\}\}' -AllMatches -ErrorAction SilentlyContinue |
     Where-Object { $_.Line -notmatch '\$\{\{' }
 ok 'zero residual factory tokens'   (@($residual).Count -eq 0) (@($residual | Select-Object -First 3 | ForEach-Object { $_.Path + ':' + $_.LineNumber }) -join '; ')
+
+Write-Host "`n== 11b. Log Analytics daily ingestion cap ==" -ForegroundColor Cyan
+# -1 is the wizard's spelling of "uncapped". It must never reach tfvars: the
+# module's uncapped value is null, and -1 would fail the variable validation.
+$mgmtTfvars = Get-Content (Join-Path $out 'terraform/live/platform-management/terraform.auto.tfvars') -Raw
+ok 'uncapped config emits no quota line' ($mgmtTfvars -notmatch 'log_daily_quota_gb')
+
+$cfgQuota = Get-Content "$PSScriptRoot/fixtures/azurerm-config.json" -Raw | ConvertFrom-Json -Depth 30
+$cfgQuota.observability.logAnalytics.dailyQuotaGb = 25
+$quotaConfigPath = Join-Path ([IO.Path]::GetTempPath()) "lz-quota-$([guid]::NewGuid().ToString('n').Substring(0,8)).json"
+$cfgQuota | ConvertTo-Json -Depth 30 | Set-Content $quotaConfigPath -Encoding utf8
+$outQuota = Join-Path ([IO.Path]::GetTempPath()) "lz-render-test-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+try {
+    $null = Invoke-LzRender -ConfigPath $quotaConfigPath -OutputDirectory $outQuota -Force -Quiet
+    $quotaTfvars = Get-Content (Join-Path $outQuota 'terraform/live/platform-management/terraform.auto.tfvars') -Raw
+    ok 'a real cap reaches tfvars' ($quotaTfvars -match 'log_daily_quota_gb\s+=\s+25')
+}
+finally {
+    Remove-Item -Recurse -Force $outQuota -ErrorAction SilentlyContinue
+    Remove-Item -Force $quotaConfigPath -ErrorAction SilentlyContinue
+}
 
 Write-Host "`n== 12. Full render — Virtual WAN fixture ==" -ForegroundColor Cyan
 $outVwan = Join-Path ([IO.Path]::GetTempPath()) "lz-render-test-$([guid]::NewGuid().ToString('n').Substring(0,8))"

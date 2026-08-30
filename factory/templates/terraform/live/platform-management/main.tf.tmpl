@@ -44,6 +44,7 @@ module "management" {
   automation_account_name      = "aa-${var.org_prefix}-management-${var.primary_region_code}"
 
   log_analytics_workspace_retention_in_days = var.log_retention_days
+  log_analytics_workspace_daily_quota_gb    = var.log_daily_quota_gb
 
   tags = var.default_tags
 }

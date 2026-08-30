@@ -10,5 +10,8 @@ org_prefix                 = {{FACTORY:organization.companyShortName}}
 primary_region             = {{FACTORY:azure.primaryRegion}}
 primary_region_code        = {{FACTORY:azure.primaryRegionCode}}
 log_retention_days         = {{FACTORY-NUM:observability.logAnalytics.retentionDays}}
+#{{IF defined observability.logAnalytics.dailyQuotaGb && observability.logAnalytics.dailyQuotaGb != '-1'}}
+log_daily_quota_gb         = {{FACTORY-NUM:observability.logAnalytics.dailyQuotaGb}}
+#{{ENDIF}}
 
 default_tags = {{FACTORY-MAP:naming.defaultTags}}

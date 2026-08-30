@@ -90,7 +90,7 @@ variable "landing_zones_management_group_id" {
 variable "sandbox_management_group_id" {
   description = "Management-group ID that receives the sandbox subscription."
   type        = string
-  default     = "sandboxes"
+  default     = "sandbox"
 }
 
 # Remote-state read of the platform-management layer.

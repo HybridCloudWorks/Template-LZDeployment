@@ -17,6 +17,7 @@
         "primary_region": "azure.primaryRegion",
         "primary_region_code": "azure.primaryRegionCode",
         "log_retention_days": "observability.logAnalytics.retentionDays",
+        "log_daily_quota_gb": "observability.logAnalytics.dailyQuotaGb",
         "default_tags": "naming.defaultTags"
       }
     },
