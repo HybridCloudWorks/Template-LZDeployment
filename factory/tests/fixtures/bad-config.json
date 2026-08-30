@@ -91,6 +91,7 @@
       ]
     },
     "firewall": {
+      "enabled": true,
       "type": "azfw",
       "azfwTier": "Standard",
       "threatIntelligenceMode": "Deny"

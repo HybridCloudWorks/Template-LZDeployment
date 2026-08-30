@@ -196,11 +196,12 @@ function defaultConfig() {
         availabilityZones: ['1', '2', '3']
       },
       firewall: {
-        type: 'azfw', azfwTier: 'Standard', threatIntelligenceMode: 'Deny',
+        // enabled has no default on purpose — see validate() and ADR 0017.
+        type: 'azfw', enabled: null, azfwTier: 'Standard', threatIntelligenceMode: 'Deny',
       },
       expressRoute: { enabled: false, circuitName: '', peeringLocation: '', bandwidthMbps: null, serviceProvider: '' },
       vpn: { enabled: false, sku: 'VpnGw1AZ', activeActive: true },
-      bastion: { enabled: true, sku: 'Standard' },
+      bastion: { enabled: null, sku: 'Standard' },
       privateDns: { enabled: true, centralizedInHub: true, zones: [] },
       privateEndpoints: { enabled: true, denyPublicNetworkAccessPolicy: true }
     },
@@ -564,23 +565,36 @@ function validate() {
       err('connectivity', 'Centralizing Private DNS in the hub cannot be turned off: the generated Terraform creates the zones in the connectivity layer. Untick "Private DNS zones" instead if you do not want them.');
     }
   }
-  if (c.firewall.type === 'azfw' && !['Standard', 'Premium'].includes(c.firewall.azfwTier)) {
+  // Both of these are unanswered by default. Azure Firewall Standard is roughly
+  // USD 900-950/month per hub and Bastion Standard roughly USD 140 — spend of
+  // that size is a decision the client makes, not one a default makes for them.
+  if (c.firewall.enabled === null || c.firewall.enabled === undefined) {
+    err('connectivity', 'Choose whether the hub deploys an Azure Firewall. There is no default: it is roughly USD 900-950 per month per hub before data processing.');
+  }
+  if (c.bastion.enabled === null || c.bastion.enabled === undefined) {
+    err('connectivity', 'Choose whether the hub deploys Azure Bastion. There is no default: it is roughly USD 140 per month per hub, and there may be nothing to reach through it yet.');
+  }
+  if (c.firewall.enabled === true && !['Standard', 'Premium'].includes(c.firewall.azfwTier)) {
     // Guards imported/drafted configs from before Basic was removed: the
     // hub-network module does not provision the dedicated management subnet
     // and management public IP the Basic tier mandates, so the schema (and
     // both connectivity layers) accept Standard and Premium only.
     err('connectivity', `Azure Firewall tier "${c.firewall.azfwTier}" cannot be deployed — the hub-network module supports Standard and Premium only. Re-select the tier.`);
   }
-  if (c.firewall.type === 'azfw' && c.firewall.threatIntelligenceMode === 'Off') {
+  if (c.firewall.enabled === true && c.firewall.threatIntelligenceMode === 'Off') {
     warn('connectivity', 'Azure Firewall threat intelligence is Off. The secure default is Deny; this needs a recorded governance exception.');
   }
   if (!['azfw'].includes(c.firewall.type)) {
-    // A landing zone always deploys at least one firewall (operator decision
-    // 2026-08-06). This also guards configs drafted while "none" was briefly
-    // offered here: it exported firewall_type = "none", which the connectivity
-    // layer rejects. To run without platform networking at all, set Topology
-    // to None — that drops the layer rather than leaving egress unfiltered.
-    err('connectivity', `Firewall type "${c.firewall.type}" cannot be deployed — the AVM connectivity patterns require at least one Azure Firewall (ADR 0017). To deploy without platform networking entirely, set Topology to None.`);
+    // Azure Firewall is the only firewall this generator composes. Third-party
+    // NVAs are per-estate work inside the generated repository. This also guards
+    // configs drafted while "none" was briefly offered here: they exported
+    // firewall_type = "none", which the connectivity layer rejects. To deploy
+    // no firewall, set the firewall question to "no" — the AVM patterns accept
+    // it (ADR 0017, amended 2026-08-30).
+    err('connectivity', `Firewall type "${c.firewall.type}" cannot be deployed — Azure Firewall is the only type the generator composes (ADR 0017). A third-party NVA is per-estate work in the generated repository.`);
+  }
+  if (c.firewall.enabled === false) {
+    warn('connectivity', 'The hub deploys no firewall. Egress from the spokes is unfiltered by the platform; whatever inspects it has to come from somewhere else.');
   }
   if (c.expressRoute.enabled && !c.expressRoute.peeringLocation.trim()) {
     err('connectivity', 'ExpressRoute is enabled but no peering location was given.');
@@ -759,8 +773,7 @@ function estimateRum() {
   if (c.connectivity.model === 'hub-spoke') {
     n += w.hubPerRegion * regions;
     n += w.spokePerRegion * regions;
-    if (c.connectivity.firewall.type === 'azfw') n += w.firewallAzfw * regions;
-    else if (['palo', 'fortinet'].includes(c.connectivity.firewall.type)) n += w.firewallNva * regions;
+    if (c.connectivity.firewall.enabled) n += w.firewallAzfw * regions;
     if (c.connectivity.bastion.enabled) n += w.bastion * regions;
     if (c.connectivity.vpn.enabled) n += w.vpnGateway * regions;
     if (c.connectivity.expressRoute.enabled) n += w.expressRoute;
@@ -799,6 +812,9 @@ function estimateRum() {
 function readControl(el) {
   const type = el.dataset.type || (el.type === 'checkbox' ? 'bool' : 'string');
   if (type === 'bool') return el.checked;
+  // tribool backs a required yes/no that must not carry a silent default: the
+  // empty option means "not answered yet" and validate() refuses to export it.
+  if (type === 'tribool') return el.value === '' ? null : el.value === 'true';
   if (type === 'int') return el.value === '' ? null : parseInt(el.value, 10);
   if (type === 'float') return el.value === '' ? null : parseFloat(el.value);
   if (type === 'csv') return csv(el.value);
@@ -809,6 +825,7 @@ function readControl(el) {
 function writeControl(el, value) {
   const type = el.dataset.type || (el.type === 'checkbox' ? 'bool' : 'string');
   if (type === 'bool') { el.checked = !!value; return; }
+  if (type === 'tribool') { el.value = value === null || value === undefined ? '' : String(value); return; }
   if (type === 'csv') { el.value = Array.isArray(value) ? value.join(', ') : (value || ''); return; }
   if (type === 'lines') { el.value = Array.isArray(value) ? value.join('\n') : (value || ''); return; }
   el.value = value === null || value === undefined ? '' : value;
@@ -1719,6 +1736,7 @@ function tfvarsConnectivity(cfg) {
   }
   if (hs.primaryHubAddressSpace) out.push(`primary_hub_address_space = ${hclString(hs.primaryHubAddressSpace)}`);
   if (hs.drHubAddressSpace && cfg.azure.drRegion) out.push(`dr_hub_address_space      = ${hclString(hs.drHubAddressSpace)}`);
+  out.push(`firewall_enabled            = ${c.firewall.enabled === true}`);
   out.push(`azfw_tier                   = ${hclString(c.firewall.azfwTier)}`);
   out.push(`deploy_bastion              = ${c.bastion.enabled}`);
   out.push(`deploy_vpn_gateway          = ${(c.vpn || {}).enabled === true}`);
@@ -1934,7 +1952,7 @@ function configurationMarkdown(cfg) {
     '',
     '## Connectivity',
     '',
-    `Topology: **${cfg.connectivity.model}**. Firewall: **${cfg.connectivity.firewall.type}**${cfg.connectivity.firewall.type === 'azfw' ? ` (${cfg.connectivity.firewall.azfwTier}, threat intel ${cfg.connectivity.firewall.threatIntelligenceMode})` : ''}.`,
+    `Topology: **${cfg.connectivity.model}**. Firewall: **${cfg.connectivity.firewall.enabled ? cfg.connectivity.firewall.type : 'none'}**${cfg.connectivity.firewall.enabled ? ` (${cfg.connectivity.firewall.azfwTier}, threat intel ${cfg.connectivity.firewall.threatIntelligenceMode})` : ''}.`,
     '',
     cfg.connectivity.model === 'hub-spoke'
       ? md(

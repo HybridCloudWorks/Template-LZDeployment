@@ -189,6 +189,13 @@ ok 'README does not claim merging applies' ($genReadme -notmatch 'Merging to\s+`
 ok 'README names the dispatch-gated apply' ($genReadme -match 'merging does not deploy' -and $genReadme -match 'workflow_dispatch')
 $connMain = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/main.tf') -Raw
 ok 'hub-spoke fixture emits hub-and-spoke module' ($connMain -match 'avm-ptn-alz-connectivity-hub-and-spoke-vnet')
+
+# The firewall answer has to reach tfvars. It is the layer's largest recurring
+# cost, the module takes it as a plain boolean, and the variable now carries no
+# default — so an unemitted line is a hard render failure, not a silent "true".
+$connTfvars = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/terraform.auto.tfvars') -Raw
+ok 'connectivity tfvars carries the firewall answer' ($connTfvars -match 'firewall_enabled\s+=\s+true')
+ok 'connectivity tfvars carries the bastion answer'  ($connTfvars -match 'deploy_bastion\s+=\s+(true|false)')
 ok 'hub-spoke fixture omits virtual-wan module'   ($connMain -notmatch 'avm-ptn-alz-connectivity-virtual-wan')
 
 $vendored = @(Get-ChildItem -Path $out -Recurse -Directory | Where-Object { $_.Name -eq 'modules' })
@@ -235,6 +242,29 @@ try {
 finally {
     Remove-Item -Recurse -Force $outQuota -ErrorAction SilentlyContinue
     Remove-Item -Force $quotaConfigPath -ErrorAction SilentlyContinue
+}
+
+Write-Host "`n== 11c. Declining the firewall ==" -ForegroundColor Cyan
+# ADR 0017 amended: the AVM connectivity patterns accept firewall_enabled=false.
+# Before this, the wizard asked which tier and never whether, and the answer
+# could not be expressed at all.
+$cfgNoFw = Get-Content "$PSScriptRoot/fixtures/azurerm-config.json" -Raw | ConvertFrom-Json -Depth 30
+$cfgNoFw.connectivity.firewall.enabled = $false
+$cfgNoFw.connectivity.bastion.enabled = $false
+$noFwPath = Join-Path ([IO.Path]::GetTempPath()) "lz-nofw-$([guid]::NewGuid().ToString('n').Substring(0,8)).json"
+$cfgNoFw | ConvertTo-Json -Depth 30 | Set-Content $noFwPath -Encoding utf8
+$outNoFw = Join-Path ([IO.Path]::GetTempPath()) "lz-render-test-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+try {
+    $null = Invoke-LzRender -ConfigPath $noFwPath -OutputDirectory $outNoFw -Force -Quiet
+    $noFwTfvars = Get-Content (Join-Path $outNoFw 'terraform/live/platform-connectivity/terraform.auto.tfvars') -Raw
+    ok 'declined firewall renders as false' ($noFwTfvars -match 'firewall_enabled\s+=\s+false')
+    ok 'declined bastion renders as false'  ($noFwTfvars -match 'deploy_bastion\s+=\s+false')
+    $noFwMain = Get-Content (Join-Path $outNoFw 'terraform/live/platform-connectivity/main.tf') -Raw
+    ok 'module still gates on the variable' ($noFwMain -match 'firewall\s+=\s+var\.firewall_enabled')
+}
+finally {
+    Remove-Item -Recurse -Force $outNoFw -ErrorAction SilentlyContinue
+    Remove-Item -Force $noFwPath -ErrorAction SilentlyContinue
 }
 
 Write-Host "`n== 12. Full render — Virtual WAN fixture ==" -ForegroundColor Cyan

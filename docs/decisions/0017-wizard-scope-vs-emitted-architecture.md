@@ -3,6 +3,10 @@
 - **Status**: **Accepted** — operator-ratified 2026-08-15, during the
   generator-only refactor
   ([decision 0013](0013-generator-only-avm-architecture.md)).
+  **Amended 2026-08-30** (operator-directed): the firewall narrowing below
+  conflated *which* firewall with *whether* to deploy one. The type stays
+  bounded to Azure Firewall; deploying one became a required wizard answer
+  with no default. See [Amendment](#amendment-2026-08-30--firewall-is-a-question-not-a-constant).
 - **Date**: 2026-08-15
 - **Deciders**: operator (ratified the capability narrowings and the
   answer-preservation posture, 2026-08-15); recorded by
@@ -50,6 +54,9 @@ directions (token engine fails closed on unknown paths;
   wizard collects the tier (`connectivity.firewall.azfwTier`), and
   `firewall_enabled` maps `literal:true`. Third-party NVA insertion is
   per-estate work in the generated repository.
+  *(The `literal:true` half of this clause is superseded by the
+  [2026-08-30 amendment](#amendment-2026-08-30--firewall-is-a-question-not-a-constant);
+  the type narrowing stands.)*
 - **Workload spoke layers and the sandbox layer are per-estate work** in
   the generated repository, not generator layers — consistent with the
   pre-existing position that tenant-bound work executes per-estate at
@@ -91,3 +98,60 @@ directions (token engine fails closed on unknown paths;
   quarantined tooling ([CLASSIFICATION.md](../refactor/CLASSIFICATION.md)
   UNRESOLVED-2); naming answers validate and document but resource names
   inside AVM modules follow the modules' own conventions.
+
+---
+
+## Amendment 2026-08-30 — firewall is a question, not a constant
+
+**What was wrong.** The clause above reads as though "always deploy a
+firewall" were a property of the AVM connectivity patterns. It is not. Both
+emitted topologies thread the boolean straight into the module —
+`platform-connectivity/main.tf.tmpl`:
+
+```hcl
+firewall                              = var.firewall_enabled
+firewall_policy                       = var.firewall_enabled
+bastion                               = var.deploy_bastion
+```
+
+The module accepts `false` for `firewall` exactly as it does for `bastion`,
+which sits one line below and *was* a real wizard answer all along. What
+actually forced the firewall on was smaller and less deliberate: the
+renderer never emitted a `firewall_enabled` line into
+`terraform.auto.tfvars`, so `default = true` in the layer's `variables.tf`
+decided it. `variable-map.json`'s `literal:true` was documentation of that
+omission, not a constraint anyone had chosen.
+
+The consequence was a silent one. The wizard asked which **tier** and never
+**whether**, so a client answering every question truthfully still got an
+Azure Firewall — roughly USD 900–950 per month per hub for Standard, double
+that for Premium — with no question anywhere in the wizard that could have
+declined it, and no error to say so.
+
+**What changed.**
+
+- `connectivity.firewall.enabled` is a new schema key, `required`, with
+  **no default**. Same for `connectivity.bastion.enabled`, which previously
+  defaulted to `true` at roughly USD 140 per month per hub.
+- The wizard asks both as explicit yes/no questions whose initial state is
+  unanswered, and refuses to export until each is answered. A "no" on the
+  firewall exports cleanly and raises a warning that platform egress is
+  uninspected — a supported answer for an estate whose workloads do not
+  route through the hub, not a mistake.
+- `firewall_enabled` now maps to the answer rather than to `literal:true`,
+  and is emitted into the connectivity layer's tfvars.
+- `firewall_enabled` and `deploy_bastion` lose their `variables.tf`
+  defaults. The renderer always emits both, so an absent value means a
+  hand-edited tfvars, and that should fail loudly rather than quietly spend.
+
+**What did not change.** The type narrowing stands: Azure Firewall is the
+only firewall this generator composes, and a third-party NVA remains
+per-estate work in the generated repository. Setting the topology to `none`
+remains the separate, supported way to emit no platform networking at all.
+
+**The general lesson, which outlives this clause.** An answer the wizard
+collects but never emits does not fail — it silently takes the template
+default, and every gate stays green. That is the same shape as
+`azure.managementGroups.customHierarchy` and
+`governance.policyBaseline.enforcementMode`. The structural fix belongs with
+those, not here.

@@ -474,13 +474,22 @@
       <h3 class="sub">Firewall</h3>
       <div class="grid-2">
         <div class="field">
+          <label for="cn_fwEnabled">Deploy a firewall in the hub?</label>
+          <select id="cn_fwEnabled" data-path="connectivity.firewall.enabled" data-type="tribool">
+            <option value="">&mdash; choose &mdash;</option>
+            <option value="true">Yes &mdash; deploy Azure Firewall</option>
+            <option value="false">No &mdash; no firewall in the hub</option>
+          </select>
+          <p class="hint"><strong>No default, deliberately.</strong> Azure Firewall Standard is roughly USD&nbsp;900&ndash;950 per month per hub before data processing; Premium is roughly double. Answering &ldquo;no&rdquo; leaves platform egress uninspected &mdash; deliberate for an estate whose workloads do not route through the hub.</p>
+        </div>
+        <div class="field" data-visible-when="connectivity.firewall.enabled=true">
           <label for="cn_fwType">Type</label>
           <select id="cn_fwType" data-path="connectivity.firewall.type">
             <option value="azfw">Azure Firewall</option>
           </select>
-          <p class="hint">The Azure Verified Modules connectivity patterns deploy Azure Firewall (ADR&nbsp;0017). A third-party NVA is per-estate work inside the generated repository.</p>
+          <p class="hint">Azure Firewall is the only type this generator composes (ADR&nbsp;0017). A third-party NVA is per-estate work inside the generated repository.</p>
         </div>
-        <div class="field" data-visible-when="connectivity.firewall.type=azfw">
+        <div class="field" data-visible-when="connectivity.firewall.enabled=true">
           <label for="cn_fwTier">Azure Firewall tier</label>
           <select id="cn_fwTier" data-path="connectivity.firewall.azfwTier">
             <option value="Standard">Standard</option>
@@ -488,7 +497,7 @@
           </select>
           <p class="hint">Basic is not offered: it requires a dedicated management subnet and public IP the emitted composition does not carve.</p>
         </div>
-        <div class="field" data-visible-when="connectivity.firewall.type=azfw">
+        <div class="field" data-visible-when="connectivity.firewall.enabled=true">
           <label for="cn_fwTi">Threat intelligence mode</label>
           <select id="cn_fwTi" data-path="connectivity.firewall.threatIntelligenceMode">
             <option value="Deny">Deny &mdash; block known-bad (secure default)</option>
@@ -502,7 +511,18 @@
       <div class="checks">
         <label class="check"><input type="checkbox" data-path="connectivity.expressRoute.enabled"> ExpressRoute</label>
         <label class="check"><input type="checkbox" data-path="connectivity.vpn.enabled"> Site-to-site VPN</label>
-        <label class="check"><input type="checkbox" data-path="connectivity.bastion.enabled" checked> Azure Bastion</label>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="cn_bastion">Deploy Azure Bastion in the hub?</label>
+          <select id="cn_bastion" data-path="connectivity.bastion.enabled" data-type="tribool">
+            <option value="">&mdash; choose &mdash;</option>
+            <option value="true">Yes &mdash; deploy Bastion</option>
+            <option value="false">No &mdash; no Bastion</option>
+          </select>
+          <p class="hint"><strong>No default, deliberately.</strong> Bastion Standard is roughly USD&nbsp;140 per month per hub. It is only worth deploying once there are virtual machines to reach through it.</p>
+        </div>
       </div>
 
       <div class="grid-2" data-visible-when="connectivity.expressRoute.enabled=true">

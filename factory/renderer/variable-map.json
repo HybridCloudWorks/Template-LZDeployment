@@ -56,7 +56,7 @@
         "dr_region_code": "azure.drRegionCode",
         "primary_hub_address_space": "connectivity.hubSpoke.primaryHubAddressSpace",
         "dr_hub_address_space": "connectivity.hubSpoke.drHubAddressSpace",
-        "firewall_enabled": "literal:true",
+        "firewall_enabled": "connectivity.firewall.enabled",
         "azfw_tier": "connectivity.firewall.azfwTier",
         "deploy_bastion": "connectivity.bastion.enabled",
         "deploy_vpn_gateway": "connectivity.vpn.enabled",

@@ -42,6 +42,11 @@ c.operations.breakGlassContacts = [{ name: 'Dana', email: 'dana@contoso.com' }];
 c.finops.costCenter = 'CC-1';
 c.finops.businessOwner = { name: 'Jordan', email: 'jordan@contoso.com', role: 'Owner' };
 c.environments.approvals = { prod: { requiredReviewers: ['@platform'], waitTimerMinutes: 0, preventSelfReview: true } };
+// Neither of these has a default any more: they are the two largest recurring
+// line items the connectivity layer can create, so the wizard makes the client
+// say. A config that has not answered them is not a valid config.
+c.connectivity.firewall.enabled = true;
+c.connectivity.bastion.enabled = false;
 A.config = c;
 A.defaultTagRows = [
   { k: 'owner', v: 'platform' }, { k: 'application', v: 'alz' },
@@ -214,17 +219,22 @@ for (const varsPath of ['../templates/terraform/live/platform-connectivity/varia
     /contains\(\["Standard", "Premium"\], var\.azfw_tier\)/.test(tierBlock) && !/Basic/.test(tierBlock.match(/condition[^\n]*/)[0]),
     tierBlock.split('\n').find(l => /condition/.test(l)));
 }
-// Imported/drafted configs from before the narrowing must block export.
+// Imported/drafted configs from before the narrowing must block export. The
+// tier only matters when a firewall is actually deployed, so assert with the
+// firewall on.
+c.connectivity.firewall.enabled = true;
 c.connectivity.firewall.azfwTier = 'Basic';
 ok('imported Basic tier blocks export', A.validate().errors.some(e => /Standard and Premium only/.test(e.message)));
 c.connectivity.firewall.azfwTier = 'Standard';
 ok('Standard clears the tier block', !A.validate().errors.some(e => /Standard and Premium only/.test(e.message)));
 
-console.log('\n== 14. A landing zone requires a firewall ==');
-// Operator decision 2026-08-06: at least one firewall is mandatory. This is a
-// policy bound enforced in three places that must agree, and "none" was
-// briefly offered in the wizard while the connectivity layer rejected it — a
-// clean export that failed at plan. Assert all three together.
+console.log('\n== 14. Deploying a firewall is an answer, not a default ==');
+// ADR 0017 amended 2026-08-30. The AVM connectivity patterns take
+// firewall_enabled as a plain boolean (main.tf.tmpl threads it into the module
+// beside bastion), so "always on" was never a module constraint — it was an
+// unemitted tfvars line letting a variable default decide roughly USD 11k/year
+// on the client's behalf. The type stays bounded to azfw; whether to deploy one
+// is now a required question with no default.
 const fwDecl = schema.properties.connectivity.properties.firewall.properties.type;
 // ADR 0017: the AVM connectivity patterns deploy Azure Firewall; NVA options
 // retired with the bespoke hub-network module. "none" stays excluded — a
@@ -239,17 +249,41 @@ ok('wizard firewall options are exactly the schema enum',
 // different, supported choice from a hub with unfiltered egress.
 const modelSelect = (html.match(/<select id="cn_model"[\s\S]*?<\/select>/) || [''])[0];
 ok('topology None survives (it drops the layer entirely)', /option value="none"/.test(modelSelect));
-// The template corpus keeps firewall_enabled always-true composition; the
-// firewall the AVM patterns deploy is Azure Firewall, tier-bounded above.
+// Neither boolean may carry a default in the template layer: the renderer
+// always emits both, so a missing value means a hand-edited tfvars and should
+// fail loudly rather than quietly deploy a firewall nobody asked for.
 {
   const hcl = require('fs').readFileSync(require('path').resolve(__dirname, '../templates/terraform/live/platform-connectivity/variables.tf'), 'utf8');
-  ok('template layer defaults firewall_enabled = true', /variable "firewall_enabled" \{[\s\S]*?default\s*=\s*true/.test(hcl));
+  const fwBlock = (hcl.match(/variable "firewall_enabled" \{[\s\S]*?\n\}/) || [''])[0];
+  const baBlock = (hcl.match(/variable "deploy_bastion" \{[\s\S]*?\n\}/) || [''])[0];
+  ok('template layer gives firewall_enabled no default', /variable "firewall_enabled"/.test(fwBlock) && !/default/.test(fwBlock), fwBlock);
+  ok('template layer gives deploy_bastion no default', /variable "deploy_bastion"/.test(baBlock) && !/default/.test(baBlock), baBlock);
 }
-// Imported/drafted configs from while "none" was offered must block export.
+// The renderer must actually emit the answer, or the no-default variable above
+// turns every render into a prompt.
+{
+  const tfvars = require('fs').readFileSync(require('path').resolve(__dirname, '../templates/terraform/live/platform-connectivity/terraform.auto.tfvars.tmpl'), 'utf8');
+  ok('tfvars template emits firewall_enabled', /firewall_enabled\s+=\s+\{\{FACTORY-BOOL:connectivity\.firewall\.enabled\}\}/.test(tfvars));
+  ok('tfvars template emits deploy_bastion', /deploy_bastion\s+=\s+\{\{FACTORY-BOOL:connectivity\.bastion\.enabled\}\}/.test(tfvars));
+}
+// An unanswered cost question blocks export — this is the whole point.
+c.connectivity.firewall.enabled = null;
+ok('unanswered firewall blocks export', A.validate().errors.some(e => /whether the hub deploys an Azure Firewall/.test(e.message)));
+c.connectivity.bastion.enabled = null;
+ok('unanswered bastion blocks export', A.validate().errors.some(e => /whether the hub deploys Azure Bastion/.test(e.message)));
+c.connectivity.bastion.enabled = false;
+// Answering "no" is a supported answer, not an error — but it is worth saying
+// out loud that nothing is inspecting egress.
+c.connectivity.firewall.enabled = false;
+ok('declining a firewall is allowed', !A.validate().errors.some(e => /Azure Firewall/.test(e.message)));
+ok('declining a firewall warns about egress', A.validate().warnings.some(e => /no firewall/i.test(e.message)));
+c.connectivity.firewall.enabled = true;
+ok('deploying a firewall clears both', !A.validate().errors.some(e => /Azure Firewall|Azure Bastion/.test(e.message)));
+// Imported/drafted configs from while type "none" was offered must block export.
 c.connectivity.firewall.type = 'none';
-ok('imported firewall "none" blocks export', A.validate().errors.some(e => /at least one (Azure )?[Ff]irewall/.test(e.message)));
+ok('imported firewall type "none" blocks export', A.validate().errors.some(e => /only type the generator composes/.test(e.message)));
 c.connectivity.firewall.type = 'azfw';
-ok('azfw clears the firewall block', !A.validate().errors.some(e => /at least one (Azure )?[Ff]irewall/.test(e.message)));
+ok('azfw clears the firewall-type block', !A.validate().errors.some(e => /only type the generator composes/.test(e.message)));
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

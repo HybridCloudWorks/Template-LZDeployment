@@ -743,8 +743,15 @@
               ],
               "default": "Deny",
               "description": "Secure default is Deny. Off requires an explicit governance exception."
+            },
+            "enabled": {
+              "type": "boolean",
+              "description": "Whether the hub deploys an Azure Firewall. Deliberately has NO default: Azure Firewall Standard is roughly USD 900-950/month per hub before data processing, and a silent default is the wrong way to make an eleven-thousand-dollar-a-year decision. The AVM connectivity patterns accept false (ADR 0017, amended 2026-08-30)."
             }
-          }
+          },
+          "required": [
+            "enabled"
+          ]
         },
         "expressRoute": {
           "type": "object",
@@ -793,7 +800,7 @@
           "properties": {
             "enabled": {
               "type": "boolean",
-              "default": true
+              "description": "Whether the hub deploys Azure Bastion. No default, for the same reason as firewall.enabled: Bastion Standard is roughly USD 140/month per hub and there may be nothing to reach through it."
             },
             "sku": {
               "enum": [
@@ -802,7 +809,10 @@
               ],
               "default": "Standard"
             }
-          }
+          },
+          "required": [
+            "enabled"
+          ]
         },
         "privateDns": {
           "type": "object",
