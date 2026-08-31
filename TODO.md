@@ -1738,6 +1738,42 @@ answer is added, and none is planned. The assumption is now deliberate rather
 than accidental, which is the whole of what needed fixing — a client on a
 sovereign cloud is out of scope for this factory, not silently mis-served by it.
 
+### 6.12 `governance.complianceFrameworks` declares `[]` — DONE 2026-08-31
+
+**The schema declared `["none"]` where the whole rest of the system already
+assumed `[]`.** The wizard's `COMPLIANCE_FRAMEWORKS` has seven entries and
+`"none"` is not one of them, so the wizard could neither produce nor round-trip
+its own schema default; `estimateRum()` billed twelve phantom managed resources
+against the HCP 500-resource export gate for having declared *no* framework; and
+the generated `CONFIGURATION.md` would have printed the bare token `none` in the
+frameworks list instead of taking its `_none declared_` branch. Corrected in the
+unreleased 4.1.0 rather than as a bump of its own. Record:
+[decision 0027](docs/decisions/0027-empty-array-is-the-no-frameworks-encoding.md).
+
+**The wizard-defaults gate now has no exceptions.** Test section 22 was landed on
+#128 carrying exactly one allowlisted path, this one. The `Set` and its filtering
+are deleted rather than emptied — an allowlist left standing is a schema defect
+made permanent. 75 declared defaults compared, zero drift.
+
+**Nothing caught this, and the checker gap is still open.** The identical
+`connectivity.firewall.type = "none"` sentinel was found by `Test-LzSchemaDrift`
+set-diffing schema enums against Terraform variable validations; there is no
+Terraform variable behind `complianceFrameworks`, so that checker is blind to it,
+and `Test-SchemaCoverage.ps1` counts the path as consumed on one `site/app.js`
+mention. Section 22 gates declared *defaults*; enum membership is still ungated.
+
+### 6.12a Remove the `"none"` compliance-framework enum member — QUEUED for the next schema major
+
+`"none"` remains in `governance.complianceFrameworks.items.enum`, deprecated and
+accepted on input only. It and `[]` are two encodings of one state, and
+`["none", "soc2"]` is still expressible. Narrowing an enum is a schema major
+([decision 0022](docs/decisions/0022-management-group-names-not-shape.md),
+[decision 0025](docs/decisions/0025-schema-4-caf-minimal-real-and-policy-baseline-retired.md)),
+and 0025 landed two breaking changes together so a client migrates once — a
+5.0.0 issued directly behind an unreleased 4.1.0 to delete a sentinel no wizard
+can emit is exactly what that rules out. **Batch it into the next major.** Cost
+to a client is nil beyond the re-export guard G01 already forces on any bump.
+
 
 ## Phase 5 — Release-time items
 
