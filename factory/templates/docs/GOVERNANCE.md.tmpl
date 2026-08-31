@@ -47,7 +47,7 @@ Re-run the wizard and regenerate.
 
 ## Management groups
 
-#{{IF computed.hasCustomArchitecture}}
+#{{IF computed.hasRenamedGroups}}
 This estate uses its own names for the Azure Landing Zones management groups.
 They are declared in
 `terraform/live/global/lib/architecture_definitions/{{FACTORY-RAW:computed.architectureName}}.alz_architecture_definition.json`,
@@ -56,10 +56,29 @@ instead of it: every archetype, policy definition and policy assignment still
 comes from `{{FACTORY-RAW:computed.alzLibraryPath}}@{{FACTORY-RAW:computed.alzLibraryRef}}`,
 and the local file says only what the groups are called.
 
-Only the names are this estate's. The parent edges and the archetype each group
-carries are the library's, deliberately: an archetype is attached to a
-management group by the architecture definition, so moving a group under a
-different parent changes which policy set governs everything beneath it.
+Only the names are this estate's. Every group the library defines is still
+created, and the parent edges and the archetype each group carries are the
+library's, deliberately: an archetype is attached to a management group by the
+architecture definition, so moving a group under a different parent changes
+which policy set governs everything beneath it.
+#{{ELSEIF computed.hasTrimmedGroups}}
+This estate uses the library's own names for its management groups, but **not
+all of the library's groups**. The CAF-minimal hierarchy is Platform and
+Landing Zones only: the {{FACTORY-RAW:computed.droppedGroupNames}} groups are
+**not created**.
+
+The trimmed list is declared in
+`terraform/live/global/lib/architecture_definitions/{{FACTORY-RAW:computed.architectureName}}.alz_architecture_definition.json`,
+which the `alz` provider loads **alongside** the pinned library rather than
+instead of it: every archetype, policy definition and policy assignment still
+comes from `{{FACTORY-RAW:computed.alzLibraryPath}}@{{FACTORY-RAW:computed.alzLibraryRef}}`.
+
+Nothing is renamed, and nothing is re-parented. The two groups omitted are
+direct children of the root with no children of their own, so every remaining
+group keeps the parent and the archetype the library gives it. A subscription
+that would have been placed in one of the omitted groups has nowhere to go —
+which is why the render refuses a sandbox subscription under this strategy
+rather than placing it somewhere it was not meant to be.
 #{{ELSE}}
 This estate uses the management groups the pinned Azure Landing Zones library
 defines, with the library's own names. The hierarchy comes from
@@ -90,12 +109,18 @@ assignments that Online does not.
 #{{IF governance.policyBaseline.enforcementMode == 'audit'}}
 > Policy is configured in audit mode. The assignments that would block a
 > deployment — the Deny and DenyAction ones — are created with
-> `enforcement_mode = "DoNotEnforce"`, so non-compliance is reported and
-> nothing is refused. Everything else keeps the library's own enforcement,
-> deliberately: `DoNotEnforce` also stops DeployIfNotExists and Modify
-> remediation, and downgrading those would leave Defender configuration, the
-> Azure Monitor Agent, diagnostic settings and private-DNS registration
-> deployed but never converging.
+> `enforcement_mode = "DoNotEnforce"`, so non-compliance is still reported and
+> nothing is refused. This is what Azure Landing Zones recommends for softening
+> a deny: change the enforcement mode, not the policy's effect.
+>
+> Everything else keeps the library's own enforcement, deliberately.
+> `DoNotEnforce` suspends the effect **during resource creation and update**,
+> so a DeployIfNotExists or Modify assignment stops deploying as resources
+> appear or change. Remediation is not lost — remediation tasks can still be
+> run by hand against a DoNotEnforce assignment — but the estate no longer
+> converges on its own, so Defender configuration, the Azure Monitor Agent,
+> diagnostic settings and private-DNS registration would drift until someone
+> remediates them deliberately.
 >
 > Promotion to deny requires a clean compliance report, approved exemptions,
 > and a tested rollback path. It is a wizard answer, not a hand edit.

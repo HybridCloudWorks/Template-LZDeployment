@@ -1199,10 +1199,26 @@ and enforcement.
 `governance.policyBaseline.enforcementMode` is no longer inert, but it does
 **not** blanket-write every selected assignment, which is what this entry
 originally proposed. Audit emits `DoNotEnforce` for the fourteen assignments
-the catalog identifies as deny-class and nothing else. `DoNotEnforce` also
-stops DeployIfNotExists and Modify remediation, so blanket-downgrading would
-leave Defender configuration, the Azure Monitor Agent, diagnostic settings and
-private-DNS registration deployed but never converging. Operator-ratified
+the catalog identifies as deny-class and nothing else.
+
+**Corrected 2026-08-31**, against Microsoft's own assignment-structure
+reference: the reason recorded here originally said `DoNotEnforce` "stops
+DeployIfNotExists and Modify remediation". It does not. It suspends the effect
+during resource *creation and update*, and remediation tasks can still be
+started by hand — Azure's docs say so explicitly, and mark DoNotEnforce
+"Remediate manually: Yes". The conclusion is unchanged and the narrower scope
+still stands: under a blanket downgrade, Defender configuration, the Azure
+Monitor Agent, diagnostic settings and private-DNS registration would stop
+converging as resources appear, and would drift until someone ran remediation
+deliberately. That is a weaker claim than the one first written, and the
+original overstated it.
+
+The mechanism itself is what ALZ recommends: its policy FAQ "strongly suggests
+that the enforcement mode be utilized over the audit effect" for deny and DINE
+policies, and calls changing the enforcement mode to do-not-enforce "highly
+recommended" for deactivating them. Changing the effect to `audit` — which is
+what this factory does NOT do — is the thing it warns against as a perpetual
+solution. Operator-ratified
 2026-08-31, along with keeping `audit` as the default.
 
 Also closed here: `policy-diff-guardrails.yml`, the generated repository's

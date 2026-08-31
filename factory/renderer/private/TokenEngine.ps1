@@ -263,7 +263,24 @@ function New-LzRenderContext {
     # about what a group is called — and management-group IDs are immutable, so
     # a disagreement is not something a later apply corrects.
     $groups = Resolve-LzManagementGroups -Config $Config
+    # Deliberately three tokens, not one. hasCustomArchitecture answers "is a
+    # local architecture definition emitted", which is what main.tf's
+    # library_references and the template manifest need — and it is true for
+    # both strategies that depart from the library. But the two depart in
+    # OPPOSITE ways: `custom` renames the groups and keeps all twelve,
+    # `caf-minimal` keeps the library's names and drops two. A document that
+    # gates a "your groups are renamed" narrative on the emit flag tells a
+    # caf-minimal client something untrue about their own estate.
     $map['computed.hasCustomArchitecture'] = [bool]$groups.HasCustomArchitecture
+    $map['computed.hasRenamedGroups'] = [bool]$groups.IsCustom
+    $map['computed.hasTrimmedGroups'] = [bool]$groups.IsMinimal
+    $map['computed.droppedGroupIds'] = @($groups.DroppedGroupIds)
+    # Prose, not a JSON array: this lands mid-sentence in a document a client
+    # reads. FACTORY-LIST would render ["sandbox", "decommissioned"].
+    $droppedLabels = @($groups.DroppedGroupIds | ForEach-Object { $groups.Effective[$_].displayName })
+    $map['computed.droppedGroupNames'] = if ($droppedLabels.Count -eq 0) { '' }
+    elseif ($droppedLabels.Count -eq 1) { $droppedLabels[0] }
+    else { ($droppedLabels[0..($droppedLabels.Count - 2)] -join ', ') + ' and ' + $droppedLabels[-1] }
     # Whether the sandbox management group is one this estate creates. Under
     # caf-minimal it is not, so the global layer must not be handed a placement
     # target that will never exist. Guard G31 refuses the combination that would

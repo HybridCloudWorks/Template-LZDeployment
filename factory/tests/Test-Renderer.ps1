@@ -661,6 +661,37 @@ try {
     ok 'no sandbox placement target is emitted' ($minVars -notmatch 'sandbox_management_group_id')
     ok 'caf-standard still emits one' ((Get-Content (Join-Path $outStd 'terraform/live/global/terraform.auto.tfvars') -Raw) -match 'sandbox_management_group_id')
 
+    # The generated governance doc must describe the estate this client
+    # actually gets. hasCustomArchitecture answers "is a local architecture
+    # definition emitted", which is true for BOTH departures from the library —
+    # but they depart in opposite ways, and gating the "your groups are
+    # renamed" narrative on the emit flag told a caf-minimal client something
+    # untrue about their own estate. Copilot's review of #127 caught it.
+    $minGov = Get-Content (Join-Path $outMin 'docs/governance.md') -Raw
+    $stdGov = Get-Content (Join-Path $outStd 'docs/governance.md') -Raw
+    ok 'caf-minimal is not told its groups were renamed' ($minGov -notmatch 'uses its own names')
+    ok 'caf-minimal is told which groups are missing' (
+        $minGov -match 'Sandbox and Decommissioned' -and $minGov -match 'not\s+\*\*created\*\*|\*\*not\s+created\*\*')
+    ok 'and the dropped groups read as prose, not JSON' ($minGov -notmatch '\["sandbox"')
+    ok 'caf-standard says nothing about a local definition' (
+        $stdGov -match 'the library.s own names' -and $stdGov -notmatch 'uses its own names')
+
+    # The renamed case must keep its own narrative, and must NOT claim a trim:
+    # custom renames all twelve groups and drops none.
+    $custPath = Join-Path ([IO.Path]::GetTempPath()) "lz-cust-$([guid]::NewGuid().ToString('n').Substring(0,8)).json"
+    $outCust = Join-Path ([IO.Path]::GetTempPath()) "lz-render-cust-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+    try {
+        Copy-Item "$PSScriptRoot/fixtures/custom-hierarchy-config.json" $custPath
+        $null = Invoke-LzRender -ConfigPath $custPath -OutputDirectory $outCust -Quiet
+        $custGov = Get-Content (Join-Path $outCust 'docs/governance.md') -Raw
+        ok 'custom still gets the renamed narrative' ($custGov -match 'uses its own names')
+        ok 'and is not told any group was dropped' ($custGov -notmatch 'not \*\*created\*\*')
+    }
+    finally {
+        Remove-Item -Recurse -Force $outCust -ErrorAction SilentlyContinue
+        Remove-Item -Force $custPath -ErrorAction SilentlyContinue
+    }
+
     # G31: caf-minimal + a populated sandbox slot. active_placements filters
     # EMPTY subscription ids, not missing management groups, so without this the
     # failure lands mid-apply against immutable management-group ids.

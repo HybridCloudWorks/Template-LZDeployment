@@ -2,7 +2,7 @@
 
 - **Status**: **Accepted** — operator-directed 2026-08-31, in answer to the two
   questions TODO 6.4a and the coverage register were left open to ask.
-  **Amends [decision 0022](0022-management-groups-names-not-shape.md)**, which
+  **Amends [decision 0022](0022-management-group-names-not-shape.md)**, which
   established that the client owns the management groups' *names* and the
   pinned library owns their *shape*. This carves out one exception and says why
   it is not a general licence.
