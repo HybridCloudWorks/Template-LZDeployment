@@ -1383,6 +1383,33 @@ committable, carrying tenant, subscription and identity detail. That is the same
 gap recorded in `.gitignore` on 2026-08-19, one directory over. Now ignored,
 with `client/lz-config.json` verified still committable.
 
+### 6.6b The wrong-tenant signal nothing reads — `[OPEN]`
+
+Found while fixing Copilot's finding on #126, and **not fixed there**, because
+it is not specific to the CI path: it weakens the *local* motion too.
+
+`Get-LzEntraInventory.ps1:51` computes
+`TenantMatches = ($acct.tenantId -eq $TenantId)` — the signed-in tenant against
+`azure.tenantId` from the answer record — and writes it onto the inventory
+alongside `ExpectedTenant`. Its own parameter documentation says it exists "to
+catch the common error of running discovery against the wrong tenant."
+
+**Nothing reads it.** Grepping the tree, `TenantMatches` appears exactly once,
+at the line that assigns it. No readiness check R01–R11 gates on it, so a run
+authenticated to the wrong tenant records the mismatch in the inventory and
+proceeds to the broker — the step that creates Entra applications, federated
+credentials and RBAC. The signal is computed, serialized, and ignored.
+
+This is the same shape as the guardrail that enforced nothing and the
+storage-key auth that was warned-but-never-honoured: a check that exists,
+looks like a control, and gates nothing.
+
+The fix is a readiness check — R12, `Fail` on a mismatch — so the existing
+`-FailOnNotReady` path stops the engagement. That gate then covers both
+motions: the CI job's pre-`azure/login` check (#126) stops it earlier and
+without a credential, and R12 stops a laptop run signed in to the wrong
+tenant, which today nothing does.
+
 ### 6.7 Per-subscription brownfield disposition — `[CLOSED 2026-08-31]`
 
 Operator-directed 2026-08-30, shipped as **schema 3.2.0** and an amendment to
