@@ -48,9 +48,19 @@ provider "alz" {
   # library defines the policy surface of the whole estate.
   library_references = [
     {
-      path = "platform/alz"
-      ref  = "2026.04.2"
+      path = "{{FACTORY-RAW:computed.alzLibraryPath}}"
+      ref  = "{{FACTORY-RAW:computed.alzLibraryRef}}"
+    },
+#{{IF computed.hasCustomArchitecture}}
+    # A local library carrying this estate's own architecture definition. It
+    # composes with the pinned one rather than replacing it: every archetype,
+    # policy definition and assignment still comes from the ref above, and the
+    # local file only says what the management groups are called. custom_url
+    # conflicts with path/ref, so it has to be its own entry.
+    {
+      custom_url = "${path.root}/lib"
     }
+#{{ENDIF}}
   ]
 }
 
@@ -94,11 +104,11 @@ locals {
     }
     workload_prod = {
       subscription_id       = var.workload_prod_subscription_id
-      management_group_name = var.landing_zones_management_group_id
+      management_group_name = var.workload_management_group_id
     }
     workload_nonprod = {
       subscription_id       = var.workload_nonprod_subscription_id
-      management_group_name = var.landing_zones_management_group_id
+      management_group_name = var.workload_management_group_id
     }
     sandbox = {
       subscription_id       = var.sandbox_subscription_id

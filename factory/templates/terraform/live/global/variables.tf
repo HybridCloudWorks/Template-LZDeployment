@@ -97,10 +97,17 @@ variable "identity_management_group_id" {
   default     = "identity"
 }
 
-variable "landing_zones_management_group_id" {
-  description = "Management-group ID that receives workload subscriptions."
+variable "workload_management_group_id" {
+  description = <<-DESCRIPTION
+    Management-group ID that receives the workload subscriptions. Follows
+    azure.managementGroups.workloadPlacement: corp for workloads with corporate
+    connectivity, online for internet-facing ones, or the landing-zones group
+    itself to make no distinction. Renamed along with the rest of the hierarchy
+    under the custom strategy, so this is the id this estate actually creates
+    rather than the library's.
+  DESCRIPTION
   type        = string
-  default     = "landingzones"
+  default     = "corp"
 }
 
 variable "sandbox_management_group_id" {

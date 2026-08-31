@@ -400,5 +400,57 @@ console.log('\n== 16. Answers that reach nothing are declared, not discovered ==
   ok('the fixture is exportable throughout', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
 }
 
+console.log('\n== 17. Management-group names are the client’s; the shape is not ==');
+{
+  const mg = c.azure.managementGroups;
+  const libraryIds = A.POLICY_CATALOG.managementGroups.map((g) => g.id);
+  ok('the library groups reached the wizard', libraryIds.length > 0);
+
+  mg.strategy = 'custom';
+  mg.customHierarchy = {};
+  ok('custom with no rename blocks export',
+    A.validate().errors.some((e) => /still carries its library name/.test(e.message)));
+
+  mg.customHierarchy = { alz: { id: 'contoso-alz', displayName: 'Contoso Landing Zones' } };
+  ok('one rename is enough', !A.validate().errors.some((e) => /still carries its library name/.test(e.message)));
+
+  // A key outside the library would create a group no archetype governs, and
+  // management-group IDs are immutable once applied.
+  mg.customHierarchy['not-a-library-group'] = { id: 'x' };
+  ok('an unknown library id blocks export',
+    A.validate().errors.some((e) => /not a management group the pinned Azure Landing Zones library defines/.test(e.message)));
+  delete mg.customHierarchy['not-a-library-group'];
+
+  mg.customHierarchy.platform = { id: 'contoso-alz' };
+  ok('two groups claiming one id blocks export',
+    A.validate().errors.some((e) => /would both be created as/.test(e.message)));
+  mg.customHierarchy.platform = { id: 'contoso-platform' };
+
+  // Colliding with a group that kept its library name is the same collision.
+  mg.customHierarchy.platform = { id: 'corp' };
+  ok('colliding with an unrenamed group blocks export',
+    A.validate().errors.some((e) => /both the library name of one management group and the chosen ID of another/.test(e.message)));
+  mg.customHierarchy.platform = { id: 'contoso-platform' };
+
+  mg.customHierarchy.landingzones = { id: 'not a valid mg id!' };
+  ok('an invalid id blocks export',
+    A.validate().errors.some((e) => /is not a valid management group ID/.test(e.message)));
+  delete mg.customHierarchy.landingzones;
+
+  // A "rename" that restates the library's own name is not a decision, and
+  // must not travel into the answer record as though it were.
+  mg.customHierarchy.sandbox = { id: 'sandbox' };
+  const exported = A.buildConfig().azure.managementGroups.customHierarchy;
+  ok('a no-op rename is stripped from the export', !('sandbox' in exported), JSON.stringify(exported));
+  ok('a real rename survives', exported.alz && exported.alz.id === 'contoso-alz');
+  delete mg.customHierarchy.sandbox;
+
+  ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+
+  mg.strategy = 'caf-standard';
+  ok('a standard strategy drops the renames entirely',
+    !('customHierarchy' in A.buildConfig().azure.managementGroups));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

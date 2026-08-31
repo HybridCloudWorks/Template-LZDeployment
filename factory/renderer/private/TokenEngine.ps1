@@ -212,6 +212,22 @@ function New-LzRenderContext {
     $map['computed.policyValueDdosPlanId'] = $policy.Values['ddos_protection_plan_id']
     $map['computed.policyValueSecurityContact'] = $policy.Values['email_security_contact']
 
+    # Management-group names. The pinned library owns the shape; the client may
+    # own the names. Resolved once here so the emitted architecture definition,
+    # the subscription placement targets and the documentation cannot disagree
+    # about what a group is called — and management-group IDs are immutable, so
+    # a disagreement is not something a later apply corrects.
+    $groups = Resolve-LzManagementGroups -Config $Config
+    $map['computed.hasCustomArchitecture'] = [bool]$groups.IsCustom
+    $map['computed.architectureName'] = $groups.ArchitectureName
+    $map['computed.managementGroupId'] = $groups.Effective['management'].id
+    $map['computed.connectivityManagementGroupId'] = $groups.Effective['connectivity'].id
+    $map['computed.identityManagementGroupId'] = $groups.Effective['identity'].id
+    $map['computed.sandboxManagementGroupId'] = $groups.Effective['sandbox'].id
+    $map['computed.workloadManagementGroupId'] = $groups.WorkloadGroupId
+    $map['computed.alzLibraryPath'] = $groups.LibraryPath
+    $map['computed.alzLibraryRef'] = $groups.LibraryRef
+
     if ($Discovery) { $map['computed.discoveryAvailable'] = $true }
     else { $map['computed.discoveryAvailable'] = $false }
 
@@ -356,6 +372,105 @@ function Resolve-LzPolicySelection {
         CreatedCount       = $created
         CreatedAssignments = @($createdNames)
         TotalCount         = @(Get-LzPropertyNames $catalog.assignments).Count
+    }
+}
+
+function Resolve-LzManagementGroups {
+    <#
+    .SYNOPSIS
+        The management groups this estate will create, after the client's renames.
+    .DESCRIPTION
+        The `custom` hierarchy strategy renames the groups the pinned ALZ library
+        architecture defines. It does not re-shape them, and the distinction is
+        the whole design: an archetype is attached to a management group by the
+        architecture definition, so moving a group under a different parent
+        changes which policy set governs everything beneath it. Management-group
+        IDs are immutable in Azure, which makes that a one-way mistake per
+        client — the reason 6.4's scope is names first.
+
+        Returns the effective id and display name for every library group, the
+        architecture name to select, and the group the workload subscriptions
+        land in.
+    #>
+    param([Parameter(Mandatory)][object]$Config)
+
+    $catalog = Get-LzPolicyCatalog
+    $mg = $Config.azure.managementGroups
+    $isCustom = ($mg.strategy -eq 'custom')
+    $renames = if ($isCustom -and (Test-LzHasProperty $mg 'customHierarchy')) { $mg.customHierarchy } else { $null }
+
+    $effective = @{}
+    foreach ($group in @($catalog.managementGroups)) {
+        $id = [string]$group.id
+        $displayName = [string]$group.displayName
+        if ($renames -and (Test-LzHasProperty $renames $group.id)) {
+            $rename = $renames.($group.id)
+            if ((Test-LzHasProperty $rename 'id') -and ([string]$rename.id).Trim()) { $id = ([string]$rename.id).Trim() }
+            if ((Test-LzHasProperty $rename 'displayName') -and ([string]$rename.displayName).Trim()) {
+                $displayName = ([string]$rename.displayName).Trim()
+            }
+        }
+        $effective[$group.id] = @{ id = $id; displayName = $displayName; parent = [string]$group.parent; archetypes = @($group.archetypes) }
+    }
+
+    # Where workload subscriptions land. corp and online are the ALZ landing-zone
+    # children; landingzones places directly and forecloses telling them apart
+    # later without moving the subscription.
+    $placement = if (Test-LzHasProperty $mg 'workloadPlacement') { [string]$mg.workloadPlacement } else { 'corp' }
+    if (-not $effective.ContainsKey($placement)) { $placement = 'landingzones' }
+
+    $factoryVersionPath = Join-Path $PSScriptRoot '../../../factory-version.json'
+    $pinned = Get-Content $factoryVersionPath -Raw | ConvertFrom-Json -Depth 20
+
+    [pscustomobject]@{
+        IsCustom         = $isCustom
+        # The architecture name doubles as the emitted library file's basename,
+        # so it has to be a safe identifier rather than a display string.
+        ArchitectureName = if ($isCustom) { ([string]$Config.organization.companyShortName).ToLowerInvariant() } else { $catalog.library.architecture }
+        Effective        = $effective
+        WorkloadGroupId  = $effective[$placement].id
+        WorkloadLibraryId = $placement
+        LibraryPath      = [string]$pinned.avm.alzLibrary.path
+        LibraryRef       = [string]$pinned.avm.alzLibrary.ref
+    }
+}
+
+function New-LzAlzArchitectureDefinition {
+    <#
+    .SYNOPSIS
+        The client-named architecture definition, in the library's own format.
+    .DESCRIPTION
+        A flat management-group list carrying parent_id — not a nested tree.
+        Reading it as nested yields a plausible-looking hierarchy in which
+        everything is a child of the root, which is why this mirrors the pinned
+        library's shape edge for edge and only substitutes names.
+    #>
+    param([Parameter(Mandatory)][object]$Config)
+
+    $groups = Resolve-LzManagementGroups -Config $Config
+    $catalog = Get-LzPolicyCatalog
+
+    $managementGroups = foreach ($group in @($catalog.managementGroups)) {
+        $current = $groups.Effective[$group.id]
+        # The parent edge travels renamed too, or a renamed parent would leave
+        # its children pointing at a group that is never created.
+        $parent = if ($current.parent -and $groups.Effective.ContainsKey($current.parent)) {
+            $groups.Effective[$current.parent].id
+        }
+        else { $null }
+        [ordered]@{
+            archetypes   = @($current.archetypes)
+            display_name = $current.displayName
+            exists       = $false
+            id           = $current.id
+            parent_id    = $parent
+        }
+    }
+
+    [ordered]@{
+        '$schema'         = 'https://raw.githubusercontent.com/Azure/Azure-Landing-Zones-Library/main/schemas/architecture_definition.json'
+        name              = $groups.ArchitectureName
+        management_groups = @($managementGroups)
     }
 }
 

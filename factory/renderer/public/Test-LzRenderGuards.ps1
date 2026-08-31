@@ -440,6 +440,49 @@ function Test-LzRenderGuards {
             -Remediation "Supply the value, or turn the assignment off in the wizard's Policies step. Created without it, the assignment carries the library's own placeholder, which either fails ARM validation or is accepted and then remediates against something that does not exist."
     }
 
+    # ── G29: a management-group rename the pinned library cannot honour ───────
+    # Renames are keyed by the library's own management-group id. A key the
+    # library does not define emits a group into the architecture definition
+    # that no archetype claims: created, governed by nothing, and — because
+    # management-group IDs are immutable in Azure — not correctable by a later
+    # apply. Two groups resolving to the same id is the same failure with a
+    # collision on top. The wizard blocks both at export; this is what stops a
+    # hand-edited answer record.
+    if ($Config.azure.managementGroups.strategy -eq 'custom') {
+        $mgCatalog = Get-LzPolicyCatalog
+        $libraryIds = @($mgCatalog.managementGroups | ForEach-Object { $_.id })
+        $renames = if (Test-LzHasProperty $Config.azure.managementGroups 'customHierarchy') {
+            $Config.azure.managementGroups.customHierarchy
+        }
+        else { $null }
+
+        foreach ($name in @(Get-LzPropertyNames $renames)) {
+            if ($name -notin $libraryIds) {
+                $v += New-LzGuardViolation -Id 'G29' `
+                    -Message "azure.managementGroups.customHierarchy renames '$name', which the ALZ library at $($mgCatalog.library.ref) does not define." `
+                    -Remediation "Rename one of: $($libraryIds -join ', '). A key outside that set would create a management group no archetype governs, and management-group IDs are immutable once applied."
+            }
+        }
+
+        $resolved = Resolve-LzManagementGroups -Config $Config
+        $seen = @{}
+        foreach ($libraryId in $libraryIds) {
+            $id = $resolved.Effective[$libraryId].id
+            if ($seen.ContainsKey($id)) {
+                $v += New-LzGuardViolation -Id 'G29' `
+                    -Message "Management groups '$($seen[$id])' and '$libraryId' both resolve to the id '$id'." `
+                    -Remediation 'Give each management group a distinct id. Two groups cannot share one, and the apply would fail after creating the first.'
+            }
+            $seen[$id] = $libraryId
+        }
+
+        if (@(Get-LzPropertyNames $renames).Count -eq 0) {
+            $v += New-LzGuardViolation -Id 'G29' `
+                -Message 'The custom hierarchy strategy is selected but no management group is renamed.' `
+                -Remediation "Rename at least one group, or set azure.managementGroups.strategy to caf-standard. Emitting a custom architecture identical to the library's would pin this estate to a local copy that a library bump can no longer update."
+        }
+    }
+
     $blocks = @($v | Where-Object { $_.Severity -eq 'Block' })
     $warns = @($v | Where-Object { $_.Severity -eq 'Warn' })
 

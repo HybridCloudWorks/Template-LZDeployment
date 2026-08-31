@@ -150,12 +150,14 @@ function Invoke-LzRender {
 
         $mode = if ($entry.PSObject.Properties.Name -contains 'mode') { $entry.mode } else { 'render' }
 
-        # Two modes have no template file: config-snapshot writes the validated
+        # Three modes have no template file: config-snapshot writes the validated
         # answer record itself, version-stamp writes the generator's version
-        # metadata. Both go through the manifest so the inventory-integrity
-        # gate (V01) accounts for them like any other emitted file.
+        # metadata, and alz-architecture synthesizes the client-named ALZ
+        # architecture definition. All go through the manifest so the
+        # inventory-integrity gate (V01) accounts for them like any other
+        # emitted file.
         $sourcePath = Join-Path $TemplateRoot $entry.source
-        if ($mode -notin @('config-snapshot', 'version-stamp') -and -not (Test-Path $sourcePath)) {
+        if ($mode -notin @('config-snapshot', 'version-stamp', 'alz-architecture') -and -not (Test-Path $sourcePath)) {
             throw "Manifest references a template that does not exist: $($entry.source)"
         }
 
@@ -184,6 +186,14 @@ function Invoke-LzRender {
                     renderer       = 'LZFactory.Renderer'
                 }
                 Set-Content -Path $outPath -Value ($stamp | ConvertTo-Json -Depth 5) -Encoding utf8
+            }
+            elseif ($mode -eq 'alz-architecture') {
+                # A local ALZ library the alz provider composes with the pinned
+                # remote one. Only the names are the client's — the parent edges
+                # and archetypes mirror the pinned library, because moving a
+                # group changes which policy set governs everything under it.
+                $architecture = New-LzAlzArchitectureDefinition -Config $config
+                Set-Content -Path $outPath -Value ($architecture | ConvertTo-Json -Depth 10) -Encoding utf8
             }
             elseif ($mode -eq 'copy') {
                 Copy-Item -Path $sourcePath -Destination $outPath -Force

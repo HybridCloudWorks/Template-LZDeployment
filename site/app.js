@@ -19,7 +19,7 @@
  * Constants
  * ------------------------------------------------------------------- */
 
-const SCHEMA_VERSION = '2.2.0';
+const SCHEMA_VERSION = '3.0.0';
 
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
@@ -175,7 +175,7 @@ function defaultConfig() {
       tenantId: '', primaryRegion: '', primaryRegionCode: '', drRegion: '', drRegionCode: '',
       allowedLocations: [],
       subscriptions: { mode: 'create', management: '', identity: '', connectivity: '', workloadProd: '', workloadNonProd: '', sandbox: '' },
-      managementGroups: { rootId: '', strategy: 'caf-standard', customHierarchy: [] }
+      managementGroups: { rootId: '', strategy: 'caf-standard', workloadPlacement: 'corp', customHierarchy: {} }
     },
     github: {
       ownershipModel: 'organization', ownerName: '', enterpriseSlug: '', repositoryName: '',
@@ -362,6 +362,8 @@ const RE = {
   region: /^[a-z0-9]+$/,
   regionCode: /^[a-z]{2,5}$/,
   email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/,
+  // Azure's own management-group name rule, mirrored from the schema pattern.
+  mgId: /^[A-Za-z0-9._()-]{1,90}$/,
   ghLogin: /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/,
   repoName: /^[A-Za-z0-9._-]{1,100}$/,
   storageAccount: /^[a-z0-9]{3,24}$/,
@@ -444,15 +446,45 @@ function validate() {
   }
   if (!a.managementGroups.rootId.trim()) err('azure', 'Root management group ID is required.');
   if (a.managementGroups.strategy === 'custom') {
-    const h = a.managementGroups.customHierarchy || [];
-    if (!h.length) err('azure', 'Custom hierarchy selected but no management groups defined.');
-    const ids = new Set(h.map((x) => x.id));
-    for (const mg of h) {
-      if (!mg.id || !mg.displayName || !mg.parentId) { err('azure', 'Every custom management group needs an ID, display name and parent.'); break; }
-      if (mg.parentId !== a.managementGroups.rootId && !ids.has(mg.parentId)) {
-        err('azure', `Management group "${mg.id}" has parent "${mg.parentId}", which is neither the root nor another entry.`);
+    const renames = a.managementGroups.customHierarchy || {};
+    const known = new Set(POLICY_CATALOG.managementGroups.map((g) => g.id));
+    const claimed = new Map();
+    let changed = 0;
+    for (const [libraryId, rename] of Object.entries(renames)) {
+      // A key the pinned library does not define would emit a management group
+      // no archetype claims: created, governed by nothing, and immutable.
+      if (known.size && !known.has(libraryId)) {
+        err('azure', `"${libraryId}" is not a management group the pinned Azure Landing Zones library defines, so renaming it would create a group no archetype governs.`);
+        continue;
       }
-      if (mg.id === mg.parentId) err('azure', `Management group "${mg.id}" is its own parent.`);
+      const id = (rename.id || '').trim();
+      const displayName = (rename.displayName || '').trim();
+      if (id && !RE.mgId.test(id)) {
+        err('azure', `"${id}" is not a valid management group ID: 1-90 characters, letters, digits, and . _ ( ) - only.`);
+      }
+      if (id || displayName) changed++;
+      if (id) {
+        if (claimed.has(id)) {
+          err('azure', `Two management groups would both be created as "${id}". IDs must be unique across the hierarchy.`);
+        }
+        claimed.set(id, libraryId);
+      }
+    }
+    // A rename that collides with a group keeping its library name is the same
+    // collision, one step less obvious.
+    for (const group of POLICY_CATALOG.managementGroups) {
+      const own = renames[group.id];
+      if (own && (own.id || '').trim()) continue;
+      if (claimed.has(group.id)) {
+        err('azure', `"${group.id}" is both the library name of one management group and the chosen ID of another. Rename both, or neither.`);
+      }
+    }
+    if (!changed) {
+      err('azure', 'Custom hierarchy selected but every management group still carries its library name. Rename at least one, or choose a standard strategy.');
+    }
+    const root = a.managementGroups.rootId.trim();
+    if (root && claimed.has(root)) {
+      err('azure', 'A management group cannot take the ID of the root the hierarchy is parented under.');
     }
   }
   if (a.managementGroups.rootId === a.tenantId) {
@@ -826,11 +858,11 @@ function estimateRum() {
 
   const regions = 1 + (c.azure.drRegion ? 1 : 0);
 
+  // Custom is a rename of the standard shape, not a different one: the group
+  // count is the pinned library's either way.
   n += c.azure.managementGroups.strategy === 'caf-minimal'
     ? w.managementGroupsCafMinimal
-    : c.azure.managementGroups.strategy === 'custom'
-      ? (c.azure.managementGroups.customHierarchy || []).length
-      : w.managementGroupsCafStandard;
+    : w.managementGroupsCafStandard;
 
   // Scaled by what the client actually selected: a disabled group is an
   // assignment that is never created, not one created and ignored.
@@ -1285,6 +1317,125 @@ function renderPolicyAdvanced() {
   }
 }
 
+/* ---------------------------------------------------------------------
+ * Management-group names
+ *
+ * The library's shape, the client's names. Only ids and display names are
+ * editable: re-nesting a group changes which archetype it inherits, and so
+ * which policy set governs everything beneath it — a decision Azure will not
+ * let anyone take back, because management-group IDs are immutable.
+ * ------------------------------------------------------------------- */
+
+function managementGroupRenames() {
+  const mg = config.azure.managementGroups;
+  if (!mg.customHierarchy || Array.isArray(mg.customHierarchy)) mg.customHierarchy = {};
+  return mg.customHierarchy;
+}
+
+/** What this estate will actually create for a library group. */
+function effectiveManagementGroup(group) {
+  const rename = managementGroupRenames()[group.id] || {};
+  return {
+    id: (rename.id || '').trim() || group.id,
+    displayName: (rename.displayName || '').trim() || group.displayName
+  };
+}
+
+function setManagementGroupRename(libraryId, field, value) {
+  const renames = managementGroupRenames();
+  const entry = renames[libraryId] || (renames[libraryId] = {});
+  entry[field] = value;
+  // Keep the working config free of empty shells; buildConfig strips the
+  // no-op renames, but an empty object here would make the "did the client
+  // change anything" test lie.
+  if (!(entry.id || '').trim() && !(entry.displayName || '').trim()) delete renames[libraryId];
+}
+
+function renderManagementGroupNames() {
+  const host = $('#mgRenameHost');
+  if (!host) return;
+  host.innerHTML = '';
+
+  const groups = POLICY_CATALOG.managementGroups;
+  if (!groups.length) {
+    host.innerHTML = '<p class="hint">The generated policy catalog did not load, so the library’s management groups cannot be listed.</p>';
+    return;
+  }
+
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  for (const group of groups) {
+    const row = document.createElement('div');
+    row.className = 'mg-row';
+
+    const origin = document.createElement('div');
+    origin.className = 'mg-origin';
+    const code = document.createElement('code');
+    code.textContent = group.id;
+    origin.appendChild(code);
+    const parent = document.createElement('span');
+    parent.className = 'mg-parent';
+    // Show the parent as the client will see it, not as the library names it.
+    parent.textContent = group.parent
+      ? 'under ' + effectiveManagementGroup(byId.get(group.parent) || { id: group.parent, displayName: group.parent }).id
+      : 'top of the hierarchy';
+    origin.appendChild(parent);
+    row.appendChild(origin);
+
+    const rename = managementGroupRenames()[group.id] || {};
+
+    const idWrap = document.createElement('div');
+    idWrap.className = 'rep-field';
+    const idLabel = document.createElement('label');
+    idLabel.textContent = 'ID';
+    idLabel.htmlFor = 'mgid_' + group.id;
+    const idInput = document.createElement('input');
+    idInput.id = idLabel.htmlFor;
+    idInput.type = 'text';
+    idInput.spellcheck = false;
+    idInput.placeholder = group.id;
+    idInput.value = rename.id || '';
+    idInput.addEventListener('input', () => {
+      setManagementGroupRename(group.id, 'id', idInput.value);
+      onChange(idInput);
+    });
+    idWrap.appendChild(idLabel); idWrap.appendChild(idInput);
+    row.appendChild(idWrap);
+
+    const nameWrap = document.createElement('div');
+    nameWrap.className = 'rep-field';
+    const nameLabel = document.createElement('label');
+    nameLabel.textContent = 'Display name';
+    nameLabel.htmlFor = 'mgname_' + group.id;
+    const nameInput = document.createElement('input');
+    nameInput.id = nameLabel.htmlFor;
+    nameInput.type = 'text';
+    nameInput.placeholder = group.displayName;
+    nameInput.value = rename.displayName || '';
+    nameInput.addEventListener('input', () => {
+      setManagementGroupRename(group.id, 'displayName', nameInput.value);
+      onChange(nameInput);
+    });
+    nameWrap.appendChild(nameLabel); nameWrap.appendChild(nameInput);
+    row.appendChild(nameWrap);
+
+    host.appendChild(row);
+  }
+}
+
+function applyManagementGroupPrefix(prefix) {
+  const clean = (prefix || '').trim();
+  if (!clean) return;
+  for (const group of POLICY_CATALOG.managementGroups) {
+    setManagementGroupRename(group.id, 'id', clean + group.id);
+  }
+  renderManagementGroupNames();
+}
+
+function resetManagementGroupNames() {
+  config.azure.managementGroups.customHierarchy = {};
+  renderManagementGroupNames();
+}
+
 function renderPolicyStep() {
   renderPolicyGroups();
   renderPolicyAdvanced();
@@ -1713,7 +1864,25 @@ function buildConfig() {
   if (!out.backend.azurerm.subscriptionId) {
     out.backend.azurerm.subscriptionId = out.azure.subscriptions.management;
   }
-  if (out.azure.managementGroups.strategy !== 'custom') delete out.azure.managementGroups.customHierarchy;
+  if (out.azure.managementGroups.strategy !== 'custom') {
+    delete out.azure.managementGroups.customHierarchy;
+  } else {
+    // Only real renames travel. An entry that restates the library's own name
+    // would read as a decision nobody made, and would have to be re-verified
+    // against the library on every bump.
+    const renames = out.azure.managementGroups.customHierarchy || {};
+    const library = new Map(POLICY_CATALOG.managementGroups.map((g) => [g.id, g]));
+    for (const [libraryId, rename] of Object.entries(renames)) {
+      const group = library.get(libraryId);
+      const id = (rename.id || '').trim();
+      const displayName = (rename.displayName || '').trim();
+      const kept = {};
+      if (id && (!group || id !== group.id)) kept.id = id;
+      if (displayName && (!group || displayName !== group.displayName)) kept.displayName = displayName;
+      if (Object.keys(kept).length) renames[libraryId] = kept;
+      else delete renames[libraryId];
+    }
+  }
   if ((out.azure.subscriptions.mode || 'create') === 'create') {
     out.azure.subscriptions.plannedNames = plannedSubscriptionNames();
   } else {
@@ -2718,6 +2887,7 @@ function rebind() {
   buildCheckGroup('sentinelConnectors', SENTINEL_CONNECTORS, 'security.sentinel.dataConnectors');
   buildCheckGroup('complianceFrameworks', COMPLIANCE_FRAMEWORKS, 'governance.complianceFrameworks');
   renderPolicyStep();
+  renderManagementGroupNames();
   renderAllRepeaters();
   onChange(null);
 }
@@ -2767,7 +2937,19 @@ function init() {
   buildCheckGroup('sentinelConnectors', SENTINEL_CONNECTORS, 'security.sentinel.dataConnectors');
   buildCheckGroup('complianceFrameworks', COMPLIANCE_FRAMEWORKS, 'governance.complianceFrameworks');
   renderPolicyStep();
+  renderManagementGroupNames();
   renderAllRepeaters();
+
+  // The prefix control is a convenience over the rename table, not a stored
+  // answer: it writes ids and is then forgotten.
+  $('#az_mg_applyPrefix')?.addEventListener('click', () => {
+    applyManagementGroupPrefix($('#az_mg_prefix').value);
+    onChange($('#az_mg_applyPrefix'));
+  });
+  $('#az_mg_resetNames')?.addEventListener('click', () => {
+    resetManagementGroupNames();
+    onChange($('#az_mg_resetNames'));
+  });
 
   // Track whether the user has hand-edited the repo name, so the derived
   // default stops overwriting it.

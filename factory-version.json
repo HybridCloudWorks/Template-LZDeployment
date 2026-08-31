@@ -4,7 +4,7 @@
   "status": "pre-release",
   "releasedAt": "2026-08-17",
   "contracts": {
-    "configSchemaVersion": "2.2.0",
+    "configSchemaVersion": "3.0.0",
     "$comment": "Must match the const value of schemaVersion in factory/schema/lz-config.schema.json. The renderer refuses any config whose schemaVersion it does not implement."
   },
   "landingZone": {
@@ -37,7 +37,7 @@
     }
   },
   "avm": {
-    "$comment": "Azure Verified Modules pattern-module pins the emitted root modules reference, and the pinned ALZ library ref. These set the INITIAL pins only \u2014 Renovate owns them inside the generated repository from delivery onward. Verified snapshot of 2026-08; every pin is re-verified at execution time by terraform init on generated output.",
+    "$comment": "Azure Verified Modules pattern-module pins the emitted root modules reference, and the pinned ALZ library ref. These set the INITIAL pins only — Renovate owns them inside the generated repository from delivery onward. Verified snapshot of 2026-08; every pin is re-verified at execution time by terraform init on generated output.",
     "modules": {
       "Azure/avm-ptn-alz/azurerm": "0.21.0",
       "Azure/avm-ptn-alz-management/azurerm": "0.9.0",

@@ -1,6 +1,6 @@
 {
   "$comment": "Answer-coverage ledger for factory/ci/Test-SchemaCoverage.ps1. Two lists, and the difference between them matters. consumedIndirectly names answers that DO reach a delivered artifact through a consumer that reads them structurally rather than by dotted name — the coverage scan cannot see them, but the client gets what they answered. recordedNotDeployed names answers that reach nothing but lz-config.json: the client is asked, the answer is preserved, and no estate is built from it. That second list is debt, it carries a budget that only ratchets down, and every entry owes a reason and a way out.",
-  "budget": 44,
+  "budget": 41,
   "consumedIndirectly": [
     {
       "consumer": "scripts/New-LzSubscriptions.ps1",
@@ -35,20 +35,16 @@
       "paths": [
         "backend.azurerm.useAzureAdAuth"
       ]
+    },
+    {
+      "consumer": "factory/renderer/private/TokenEngine.ps1",
+      "note": "Resolve-LzManagementGroups reads it off the managementGroups object by key to choose which landing-zone group the workload subscriptions are placed under, so the dotted path appears nowhere. It selects corp, online, or landingzones directly; the chosen group is then renamed along with the rest of the hierarchy and emitted as workload_management_group_id.",
+      "paths": [
+        "azure.managementGroups.workloadPlacement"
+      ]
     }
   ],
   "recordedNotDeployed": [
-    {
-      "label": "Custom management-group hierarchy",
-      "module": "(pinned ALZ library)",
-      "reason": "A full repeater UI, a referential-integrity validator and a schema conditional-required, with zero readers. The management-group IDs actually created come from the pinned ALZ library architecture. Management-group IDs are immutable in Azure, so this is a one-shot mistake per client.",
-      "resolution": "TODO 6.4 — emit a client-specific architecture definition into a local ALZ library directory and append it to library_references.",
-      "paths": [
-        "azure.managementGroups.customHierarchy.id",
-        "azure.managementGroups.customHierarchy.displayName",
-        "azure.managementGroups.customHierarchy.parentId"
-      ]
-    },
     {
       "label": "Non-prod spoke address spaces",
       "module": "(per-estate)",

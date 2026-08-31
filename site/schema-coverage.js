@@ -7,16 +7,6 @@
 // time, rather than discovering it in the repository they are handed.
 globalThis.LZ_RECORDED_NOT_DEPLOYED = [
   {
-    "label": "Custom management-group hierarchy",
-    "module": "(pinned ALZ library)",
-    "impact": "A full repeater UI, a referential-integrity validator and a schema conditional-required, with zero readers. The management-group IDs actually created come from the pinned ALZ library architecture. Management-group IDs are immutable in Azure, so this is a one-shot mistake per client.",
-    "paths": [
-      "azure.managementGroups.customHierarchy.id",
-      "azure.managementGroups.customHierarchy.displayName",
-      "azure.managementGroups.customHierarchy.parentId"
-    ]
-  },
-  {
     "label": "Non-prod spoke address spaces",
     "module": "(per-estate)",
     "impact": "Workload spokes are per-estate work built inside the generated repository against the connectivity layer's outputs (ADR 0017), so no layer renders these. The wizard does validate them for overlap against the hub ranges, which is why they are collected at all.",

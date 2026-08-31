@@ -214,11 +214,28 @@
         </select>
       </div>
 
+      <div class="field">
+        <label for="az_mg_workloadPlacement">Workload subscription placement <span class="req">*</span></label>
+        <select id="az_mg_workloadPlacement" data-path="azure.managementGroups.workloadPlacement">
+          <option value="corp">Corp &mdash; workloads with corporate connectivity</option>
+          <option value="online">Online &mdash; internet-facing workloads, no corporate connectivity</option>
+          <option value="landingzones">Landing zones directly &mdash; no Corp/Online distinction</option>
+        </select>
+        <p class="hint">This does <strong>not</strong> change how many policies the subscriptions inherit &mdash; Online carries none of its own and inherits the same set either way. What it buys is the ability to tell Corp and Online apart <em>later</em> without moving the subscription, since Corp adds five deny-style assignments Online does not. Placing directly at Landing zones forecloses that.</p>
+      </div>
+
       <div class="field" data-visible-when="azure.managementGroups.strategy=custom">
-        <label>Custom hierarchy</label>
-        <p class="hint">Flat list. Each parent must reference another entry&rsquo;s ID or the root MG ID above.</p>
-        <div class="repeater" data-repeater="azure.managementGroups.customHierarchy"
-             data-fields='[{"key":"id","label":"MG ID","placeholder":"mg-contoso-platform"},{"key":"displayName","label":"Display name","placeholder":"Platform"},{"key":"parentId","label":"Parent ID","placeholder":"mg-contoso"}]'></div>
+        <label>Management group names</label>
+        <p class="hint">The groups the pinned Azure Landing Zones library defines, with the IDs and display names this estate will create. <strong>Only the names are yours</strong> &mdash; the shape is the library&rsquo;s, because re-nesting a group changes which archetype, and so which policy set, everything beneath it inherits. Leave a row alone to keep the library&rsquo;s name. <strong>Management group IDs are immutable in Azure</strong>: changing one after apply means creating a new group and moving everything into it.</p>
+        <div class="rep-row">
+          <div class="rep-field">
+            <label for="az_mg_prefix">Apply a prefix to every ID</label>
+            <input id="az_mg_prefix" type="text" spellcheck="false" placeholder="contoso-">
+          </div>
+          <button type="button" id="az_mg_applyPrefix" class="btn btn-ghost btn-sm">Apply</button>
+          <button type="button" id="az_mg_resetNames" class="btn btn-ghost btn-sm">Reset to library names</button>
+        </div>
+        <div id="mgRenameHost" class="mg-renames"></div>
       </div>
     </section>
 

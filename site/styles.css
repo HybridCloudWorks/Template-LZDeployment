@@ -494,6 +494,38 @@ select {
 .rep-del:hover:not(:disabled) { color: var(--bad); border-color: var(--bad); }
 .rep-del:disabled { opacity: 0.3; cursor: not-allowed; }
 
+/* ── Management-group names ───────────────────────────────────────── */
+
+.mg-renames {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+.mg-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-end;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.mg-row:last-child { border-bottom: none; }
+
+.mg-origin { flex: 0 0 12rem; min-width: 0; padding-bottom: 0.45rem; }
+.mg-origin code { font-size: 0.78rem; display: block; }
+
+.mg-parent {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Policy selection ─────────────────────────────────────────────── */
 
 .policy-groups {
@@ -750,7 +782,7 @@ select {
   .stepbtn { width: auto; }
   .panel { padding: 1.25rem 1rem 3rem; }
   .brand-sub { display: none; }
-  .rep-row, .approval-row, .policy-row { flex-wrap: wrap; }
+  .rep-row, .approval-row, .policy-row, .mg-row { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {

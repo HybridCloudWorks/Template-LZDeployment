@@ -27,6 +27,19 @@ workload_nonprod_subscription_id = {{FACTORY:azure.subscriptions.workloadNonProd
 sandbox_subscription_id = {{FACTORY:azure.subscriptions.sandbox}}
 #{{ENDIF}}
 
+# The architecture the alz provider selects, and the management-group ids this
+# estate actually creates. Under the custom strategy these carry the client's
+# names; otherwise they are the pinned library's own. Emitted always rather than
+# left to variables.tf defaults, because a renamed hierarchy whose placement
+# targets still said the library names would place every subscription into
+# groups that do not exist.
+architecture_name                = {{FACTORY:computed.architectureName}}
+management_management_group_id   = {{FACTORY:computed.managementGroupId}}
+connectivity_management_group_id = {{FACTORY:computed.connectivityManagementGroupId}}
+identity_management_group_id     = {{FACTORY:computed.identityManagementGroupId}}
+sandbox_management_group_id      = {{FACTORY:computed.sandboxManagementGroupId}}
+workload_management_group_id     = {{FACTORY:computed.workloadManagementGroupId}}
+
 state_resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
 state_storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
 state_container_name       = {{FACTORY:backend.azurerm.containerName}}
