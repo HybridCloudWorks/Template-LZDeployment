@@ -51,6 +51,9 @@ renumbered or deleted. **Only the six entries marked OPEN need anyone.**
 | 15a | Stale branches on `origin` | 🔐 **OPEN** — branch deletion is 403 for this token; 1 safe, 2 need inspection |
 | 16 | Wire `Configure-DeploymentOptions.ps1` | ⊘ **SUPERSEDED** (inherits §14) |
 | 17 | Cost estimates in module READMEs | ⊘ **LARGELY VOIDED**; narrowed residual |
+| 18 | ALZ policy default values unsupplied | 🔨 **OPEN — 12 of 14 supplied, 2 waived** (2026-08-30) |
+| 19 | Gates that verify less than their names suggest | 🔨 **OPEN** (2026-08-30) |
+| 20 | Wizard answers that reach no Terraform | 🔨 **OPEN — partially closed** (2026-08-30) |
 
 **The critical path to a first deployment is §§~~2, 8~~ → 1 (+6) → 3 → 4 → 5**
 (§2 and §8 both closed 2026-08-28),
@@ -465,6 +468,126 @@ remains with §1/§3 (TODO items 4.1/4.5), which own the identity estate
 and secrets. [TODO.md](TODO.md) item 4.6 closed.
 
 ---
+
+---
+
+## 🔨 Found by the first-customer pre-flight (2026-08-30)
+
+Three entries from a review of this factory against a candidate first
+engagement, read as **overall** defects rather than ones specific to that
+tenant. The triage question throughout: does this stop the client copy from
+producing what the generated repo needs, or does it make the generated repo
+itself fail?
+
+### 18. The ALZ policy default values are almost entirely unsupplied
+**Class: the generated repo fails at its first `terraform plan`. Universal.**
+
+The pinned library (`platform/alz@2026.04.2`) declares **14** policy default
+values. `factory/templates/terraform/live/global/main.tf.tmpl` supplies
+exactly one, `log_analytics_workspace_id`. A repo-wide grep finds one
+occurrence of `policy_default_values` in the entire corpus, and **zero**
+occurrences of `policy_assignments_to_modify` — so there is also no supported
+way to disable or soften any assignment.
+
+An assignment whose value is unsupplied is created from the placeholder in the
+library's own assignment file: `Deploy-MDFC-Config-H224` ships
+`emailSecurityContact = "security_contact@replace_me"`, and `Enable-DDoS-VNET`
+ships a `ddosPlan` in subscription `00000000-0000-0000-0000-000000000000` —
+enforced, with a `Modify` effect, so it attempts to write a non-existent plan
+onto every virtual network at create and update.
+
+**Gated, then largely closed (both 2026-08-30).**
+`factory/ci/Test-AlzPolicyDefaults.ps1` fails when a declared default is
+neither supplied nor waived, and `factory/ci/alz-policy-default-waivers.json`
+carries the remainder under a budget that only ratchets down.
+
+The layer now supplies **12 of 14**. The five Azure Monitor Agent values come
+through the management layer's `user_assigned_identity_ids` and
+`data_collection_rule_ids` outputs — `platform-management/outputs.tf.tmpl`
+finally being the thing its own header always claimed to be, "the contract the
+global layer reads through remote state to feed ALZ policy defaults", plural.
+Six more are composed from config rather than read back from
+platform-connectivity, which applies *after* the global layer; that is sound
+because the policies consume them as strings they write into resources they
+create, not as references to resources that must already exist.
+
+**Still open — 2 waived**, and both need a client answer rather than a
+derivation, so both belong to the policy-selection step:
+`email_security_contact` (an empty string in place of
+`security_contact@replace_me` is no better than the placeholder) and
+`ddos_protection_plan_id` (whose assignment should be disabled rather than
+pointed at an invented ID).
+
+### 19. Two gates verify less than their names suggest
+**Class: meta — this is why §18 survived to a first customer.**
+
+- **No `terraform plan` runs anywhere in this factory.** The validation gate
+  stops at V03 `terraform init -backend=false` and V04 `terraform validate`
+  (`factory/validate/LZFactory.Validate.psm1:400-473`), and
+  `factory/e2e/Invoke-E2EGenerationProof.ps1` stops there too. The ALZ
+  provider resolves library policy defaults at **plan** time. That entire
+  class of failure is invisible to every gate here until a client's first
+  plan.
+- **Factory CI's own `terraform init` / `validate` steps resolve nothing.**
+  They run against `factory/templates/terraform/live/<layer>/`, where the only
+  real `.tf` file is `variables.tf` — no `terraform` block, no
+  `required_providers`, no `module` block. Those particular steps cannot
+  fetch or verify a single AVM pin.
+
+  **This is a redundant step, not a coverage gap** — corrected here after
+  first being written up as one. `.github/workflows/terraform-policy-checks.yml`
+  renders both topology fixtures and runs `terraform init + validate` on the
+  **rendered** output, under a step named "verifies AVM pins against the
+  registry". The pins are genuinely verified in CI; it is Factory CI's own
+  template-directory steps that are decorative. Which in turn suggests
+  `factory-version.json`'s `avmPinsVerifiedByInit: false` is simply stale.
+
+So the real hole is the first bullet alone, and it is narrow and sharp:
+`init` and `validate` resolve modules and check syntax, but only `plan`
+resolves the ALZ provider's policy defaults.
+`factory/ci/Test-AlzPolicyDefaults.ps1` closes that statically and without
+credentials; a real plan gate would close it completely.
+
+**Environment limitation encountered**: `registry.terraform.io` is refused by
+the egress proxy in the sandbox this was investigated from, so
+`terraform init` on rendered output could not be executed here. The
+template-directory finding above was established by inspection, not inference.
+
+### 20. Wizard answers that reach no Terraform variable
+**Class: silent — nothing fails, and the client is delivered something other
+than what they answered. Universal.**
+
+`factory/renderer/variable-map.json` is the authoritative list of what each
+layer consumes. Across all four layers it carries no entry under `security.*`
+or `governance.*` at all. The sharpest cases:
+
+- **`azure.managementGroups.customHierarchy`** — a full repeater UI, a
+  referential-integrity validator and a schema conditional-`required`, with
+  **zero** downstream readers. The IDs actually created come from the pinned
+  library. Management-group IDs are immutable in Azure, so this is a one-shot
+  mistake per client.
+- **`governance.policyBaseline.enforcementMode`** — audit versus deny,
+  arguably the most consequential answer in the wizard, reaches only
+  `docs/GOVERNANCE.md.tmpl`. Guards G02 and G03 warn about Sentinel and CMK;
+  nothing warns about this one.
+- **`observability.logAnalytics.dailyQuotaGb`** — the only cost ceiling the
+  wizard offers. **Closed 2026-08-30**: now mapped to the module's
+  `log_analytics_workspace_daily_quota_gb`.
+- **`connectivity.firewall`** — the wizard asked which *tier* and never
+  *whether*, at roughly USD 900-950/month per hub. **Closed 2026-08-30**:
+  ADR 0017's premise was wrong, the AVM module takes the boolean, and both
+  firewall and Bastion are now required answers with no default.
+
+Note on workload placement, correcting a common reading: placing a workload
+subscription directly at `landingzones` rather than under `online` does **not**
+change the number of inherited assignments — `online` carries none of its own
+and inherits `landingzones`' 53 plus the root's 17 either way. What it costs is
+the ability to differentiate `corp` from `online` later without moving the
+subscription, since `corp` adds five deny-style assignments that `online` does
+not.
+
+**Unblocked by**: a structural check that no schema key can be collected
+without being mapped, documented, or explicitly marked recorded-not-deployed.
 
 ## 🎯 Needs a decision
 

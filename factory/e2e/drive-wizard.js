@@ -96,6 +96,12 @@ async function main() {
     'backend.azurerm.resourceGroupName': 'rg-exco-tfstate',
     'backend.azurerm.storageAccountName': 'excotfstate01',
     'connectivity.model': topology,
+    // Both of these are required with no default (ADR 0017 amendment): the
+    // wizard refuses to export until they are answered, so the driver has to
+    // answer them like any other client would. Firewall on keeps the module
+    // composition under test; Bastion off exercises the other branch.
+    'connectivity.firewall.enabled': 'true',
+    'connectivity.bastion.enabled': 'false',
     'connectivity.hubSpoke.primaryHubAddressSpace': '10.100.0.0/16',
     'connectivity.hubSpoke.drHubAddressSpace': '10.101.0.0/16',
     'connectivity.hubSpoke.primarySpokeAddressSpace': '10.102.0.0/16',

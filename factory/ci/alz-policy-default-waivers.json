@@ -1,0 +1,17 @@
+{
+  "$comment": "A debt register, not a suppression list. Every entry is a policy default value the pinned ALZ library declares and the emitted global layer does not yet supply. Test-AlzPolicyDefaults.ps1 prints each one with its reason on every run, fails if a waiver goes stale (the value is now supplied) or is orphaned (the library no longer declares it), and enforces the budget below. The budget only ever goes DOWN: supplying a value means deleting its waiver and decrementing the budget in the same change.",
+  "schemaVersion": "1.0.0",
+  "budget": 2,
+  "waivers": [
+    {
+      "default": "ddos_protection_plan_id",
+      "reason": "The factory creates no DDoS Network Protection plan, and one costs roughly USD 2,900/month. The library's own description says to set Enable-DDoS-VNET to DoNotEnforce when the plan is not used. Supplying a fake ID is worse than not supplying one: the policy is a Modify effect, so it would try to write a non-existent plan onto every virtual network at create and update.",
+      "resolution": "The wizard's policy selection step decides this: selecting DDoS protection collects a real plan ID, and not selecting it emits creation_enabled = false for Enable-DDoS-VNET."
+    },
+    {
+      "default": "email_security_contact",
+      "reason": "The wizard collects this as security.defender.securityContactEmail but it reaches no Terraform variable, so Deploy-MDFC-Config-H224 would carry the library placeholder security_contact@replace_me. Unlike the eleven values cleared alongside this change it cannot be derived: it is a real answer about who gets notified, and an empty string in its place would be no better than the placeholder.",
+      "resolution": "Collected and made required by the policy-selection step, which knows whether any Defender assignment is actually being created."
+    }
+  ]
+}

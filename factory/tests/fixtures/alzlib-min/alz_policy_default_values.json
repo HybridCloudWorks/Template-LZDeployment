@@ -1,0 +1,18 @@
+{
+  "defaults": [
+    {
+      "default_name": "ddos_protection_plan_id",
+      "description": "Plan id.",
+      "policy_assignments": [
+        { "policy_assignment_name": "Enable-DDoS-VNET", "parameter_names": ["ddosPlan"] }
+      ]
+    },
+    {
+      "default_name": "private_dns_zone_region",
+      "description": "Region.",
+      "policy_assignments": [
+        { "policy_assignment_name": "Deploy-Private-DNS-Zones", "parameter_names": ["dnsZoneRegion"] }
+      ]
+    }
+  ]
+}

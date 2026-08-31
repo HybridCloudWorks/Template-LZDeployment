@@ -1083,6 +1083,133 @@ item 5.1's separately reviewed PR.
 
 ---
 
+## Phase 6 — First-customer pre-flight (opened 2026-08-30)
+
+Findings from reviewing this factory against a candidate first engagement,
+triaged as **overall** defects rather than tenant-specific ones. Record:
+[REVIEW.md](REVIEW.md) §§18-20.
+
+### 6.1 Supply the ALZ policy default values — `[BLOCKER for a first plan]`
+
+**Largely done 2026-08-30 — waiver budget 13 -> 2.** The global layer now
+supplies 12 of the 14 values: the five Azure Monitor Agent values through the
+management layer's `user_assigned_identity_ids` and `data_collection_rule_ids`
+outputs (map keys read from `avm-ptn-alz-management` v0.9.0's variable *types*,
+so they cannot drift without a major bump), and six composed from config.
+
+The two that remain are the two that need a client answer rather than a
+derivation, and both are 6.2's to close:
+
+1. `email_security_contact` — collected by the wizard as
+   `security.defender.securityContactEmail` and mapped nowhere. Not derivable:
+   an empty string in place of `security_contact@replace_me` is no better than
+   the placeholder, so this wants collecting *and requiring* at the point where
+   the client selects a Defender assignment.
+2. `ddos_protection_plan_id` — not supplied by design. Selecting DDoS
+   protection collects a real plan ID; not selecting it emits
+   `creation_enabled = false` for `Enable-DDoS-VNET`.
+
+**Deploy-order constraint**: management → global → connectivity. The global
+layer may read management state but must not read connectivity state; the
+private-DNS values are therefore derived from config, which is sound because
+the policies consume them as strings, not as references to existing resources.
+
+**Validation criterion**: the waiver budget reaches 1 (DDoS only), and a
+`terraform plan` on a rendered `global` layer completes against a throwaway
+tenant. That plan has never been run anywhere in this repository — CI renders
+and runs `init + validate` on the output (`terraform-policy-checks.yml`), which
+resolves the AVM pins but never reaches the ALZ provider's policy-default
+resolution. See REVIEW §19.
+
+### 6.2 Client-facing ALZ policy selection — operator-directed 2026-08-30
+
+The client picks policies in the wizard; selected assignments are created and
+prompt for whatever values they need, unselected ones emit
+`creation_enabled = false`. This is what decides DDoS rather than the factory
+inventing a plan ID.
+
+`site/alz-policy-catalog.json` is the input and already exists: 12 capability
+groups over all 80 assignments, plus every assignment→required-value edge,
+generated from the pinned ref by `factory/ci/New-AlzPolicyCatalog.ps1`.
+Remaining: the wizard step (groups, with a collapsed advanced list),
+`governance.policySelection` in the schema, and
+`policy_assignments_to_modify` in `global/main.tf.tmpl`.
+
+`governance.policyBaseline.enforcementMode` becomes the global default written
+into every selected assignment, overridable per policy — closing the wizard's
+most consequential inert answer.
+
+### 6.3 Close the silent-answer class structurally
+
+A CI check that every leaf key in the schema is mapped in
+`variable-map.json`, referenced in a docs template, or on an explicit
+`recorded-not-deployed` allowlist — generalizing `unmetDependencies()` in
+`site/app.js`, which already stamps that status for Sentinel, CMK and
+Defender. Without it this class regrows. See REVIEW §20.
+
+### 6.4 Make the management-group hierarchy real — operator-directed 2026-08-30
+
+`azure.managementGroups.customHierarchy` has a full UI and no readers, and
+management-group IDs are immutable. Confirmed buildable: the `alz` provider
+accepts a local directory in `library_references`, and the architecture
+definition is a **flat list carrying `parent_id`** (not a nested tree — see the
+test in `Test-CI.ps1`), so emitting a client-specific
+`<org>.alz_architecture_definition.json` into the generated repo alongside the
+pinned remote ref is a contained change.
+
+Scope decision taken: client-named groups in the standard ALZ shape first;
+arbitrary structure deferred, because re-nesting changes which archetype — and
+so which policy set — each group inherits. Trim the `customHierarchy` editor to
+match rather than leaving it promising more than it delivers.
+
+### 6.5 Second state backend (HCP Terraform) — operator-directed 2026-08-30
+
+Reverses [ADR 0015](docs/decisions/0015-azurerm-only-emitted-backend.md), so it
+opens with a superseding ADR and a schema major bump (`backend.type` is a
+`const` under `additionalProperties: false`). TFC uses **dynamic provider
+credentials** so no Azure credential is stored; the TFC token itself is the one
+static credential the azurerm path does not have, and the ADR must say so.
+Touches: schema, wizard, `_layer/backend.tf.tmpl`, the `terraform_remote_state`
+block in `global/main.tf.tmpl` (which hard-codes `backend = "azurerm"`), guard
+G17, the broker, and the emitted workflows. `state-hardening` is meaningless
+under TFC and must be refused.
+
+### 6.6 Client-repo ingest — operator-directed 2026-08-30
+
+The client copy runs the wizard from its own Pages, commits `lz-config.json`,
+and a workflow picks it up. Render and validate need no credentials and run on
+every commit of the config. Discovery, the broker and the scaffold do need
+Azure access — and the broker is what creates the OIDC identities, so there is
+nothing to authenticate with on the first run. That half sits behind a
+protected environment holding a client-created bootstrap principal, opt-in;
+clients who prefer ADR 0004's run-it-locally motion never create it.
+
+Pages cannot be enabled by a workflow (`administration:write`, which
+`deploy-pages.yml` already documents at lines 22-25), so that stays a manual
+step in the client-copy checklist.
+
+### 6.7 Per-subscription brownfield disposition — operator-directed 2026-08-30
+
+Narrower than first reported: `workloadProd` is **not** a render blocker — the
+schema requires the key, not a value, and G09's own comment says workload slots
+are placement-only. Only `management` (always) and `connectivity` (unless
+`model = none`) block. `-Manual` in `New-LzSubscriptions.ps1` already covers
+CSP / pay-as-you-go / sponsorship tenants.
+
+Build: a per-subscription choice between **place now** — with explicit
+consequence warnings, a typed acknowledgment recorded in `lz-config.json`, and
+a render guard that refuses without it — and **defer**, which generates an
+onboarding runbook for bringing the subscription in later. Plus an R11 billing
+readiness check so "this tenant cannot create subscriptions" is known on day
+one rather than at vending time, and one guard that names the deadlock instead
+of two that do not mention each other.
+
+Governance only; no resource import.
+[ADR 0018](docs/decisions/0018-brownfield-exclude-and-create.md) needs
+amending, since it currently rules subscription placement out of scope.
+
+---
+
 ## Phase 5 — Release-time items
 
 ### 5.1 Run Stage 14 release attestation and the release-gate PR

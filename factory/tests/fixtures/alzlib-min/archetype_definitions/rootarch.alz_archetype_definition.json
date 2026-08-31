@@ -1,0 +1,1 @@
+{ "name": "rootarch", "policy_assignments": ["Enable-DDoS-VNET", "Deploy-Private-DNS-Zones"] }

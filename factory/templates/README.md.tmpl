@@ -72,11 +72,15 @@ carries the `approved-destroy` label.
 
 ## Working in this repository
 
-Pull requests run `terraform plan` using a read-only identity. Merging to
-`{{FACTORY-RAW:computed.defaultBranch}}` runs `terraform apply` per layer, in
-dependency order, behind the environment approval gates.
+Pull requests run `terraform plan` using a read-only identity that cannot
+apply. A plan that destroys resources fails the pull request by default.
 
-A plan that destroys resources fails the pull request by default.
+**Applying is a deliberate, manual step — merging does not deploy.** Run the
+`Terraform Apply` workflow (`workflow_dispatch`) once per layer, choosing the
+layer and its environment, in dependency order. Each run checks out
+`{{FACTORY-RAW:computed.defaultBranch}}` rather than the dispatcher's branch,
+refuses a layer that is not bound to the chosen environment, waits on that
+environment's approval gate, and aborts if the plan contains any destroy.
 
 ## Operations
 

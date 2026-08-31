@@ -168,12 +168,85 @@ foreach ($required in @(
 }
 
 $globalMain = Get-Content (Join-Path $out 'terraform/live/global/main.tf') -Raw
+$globalTfvars = Get-Content (Join-Path $out 'terraform/live/global/terraform.auto.tfvars') -Raw
 ok 'global references avm-ptn-alz by registry pin' ($globalMain -match 'source\s+=\s+"Azure/avm-ptn-alz/azurerm"' -and $globalMain -match 'version\s+=\s+"0\.21\.0"')
 ok 'alz provider pins the library'   ($globalMain -match 'library_references' -and $globalMain -match '2026\.04\.2')
 $mgmtMain = Get-Content (Join-Path $out 'terraform/live/platform-management/main.tf') -Raw
 ok 'management references avm-ptn-alz-management' ($mgmtMain -match 'source\s+=\s+"Azure/avm-ptn-alz-management/azurerm"')
+ok 'management wires the daily ingestion cap' ($mgmtMain -match 'log_analytics_workspace_daily_quota_gb\s+=\s+var\.log_daily_quota_gb')
+
+# The ALZ policy default values. Unsupplied, an assignment is created from the
+# placeholder in the library's own assignment file, and nothing here would ever
+# notice: init and validate never reach the provider's default resolution, and
+# no gate in this factory runs a plan.
+$mgmtOutputs = Get-Content (Join-Path $out 'terraform/live/platform-management/outputs.tf') -Raw
+foreach ($export in @(
+        'ama_user_assigned_identity_id', 'ama_user_assigned_identity_name',
+        'dcr_vm_insights_id', 'dcr_defender_sql_id', 'dcr_change_tracking_id')) {
+    ok "management exports $export" ($mgmtOutputs -match ('output "' + $export + '"'))
+}
+# The map keys are the module's, fixed by its variable *type* at the pinned
+# version rather than by a default, so a typo here is a plan-time failure.
+ok 'AMA identity read by the module key' ($mgmtOutputs -match 'user_assigned_identity_ids\["ama"\]')
+ok 'DCR keys match the module contract' (
+    $mgmtOutputs -match 'data_collection_rule_ids\["vm_insights"\]' -and
+    $mgmtOutputs -match 'data_collection_rule_ids\["defender_sql"\]' -and
+    $mgmtOutputs -match 'data_collection_rule_ids\["change_tracking"\]')
+ok 'identity name is derived from its ID, not restated' ($mgmtOutputs -match 'reverse\(split\("/"')
+
+$pdvBlock = if ($globalMain -match '(?s)policy_default_values\s*=\s*\{(.*?)\n  \}') { $Matches[1] } else { '' }
+$pdvKeys = @([regex]::Matches($pdvBlock, '(?m)^\s{4}([a-z0-9_]+)\s*=\s*jsonencode') | ForEach-Object { $_.Groups[1].Value })
+ok 'global supplies twelve policy default values' ($pdvKeys.Count -eq 12) ($pdvKeys -join ',')
+ok 'AMA defaults come from management remote state' (
+    $pdvBlock -match 'ama_user_assigned_managed_identity_id[\s\S]*?terraform_remote_state\.management')
+# Composed from config on purpose: platform-connectivity applies AFTER this
+# layer, so reading these back would invert the deploy order.
+ok 'private DNS RG name matches the connectivity layer naming' (
+    $pdvBlock -match 'rg-\$\{var\.org_prefix\}-connectivity-\$\{var\.primary_region_code\}')
+
+
+ok 'global tfvars carries the naming inputs' (
+    $globalTfvars -match 'org_prefix\s+=' -and $globalTfvars -match 'primary_region_code\s+=')
+
+# The management-group IDs are defined by the pinned ALZ library architecture,
+# not by us. A default that names a group the library does not define places
+# subscriptions into a management group that will never exist. Verified against
+# platform/alz@2026.04.2: the sandbox group is `sandbox`, singular.
+$globalVars = Get-Content (Join-Path $out 'terraform/live/global/variables.tf') -Raw
+ok 'sandbox MG default matches the library' ($globalVars -match '(?s)variable "sandbox_management_group_id".*?default\s+=\s+"sandbox"')
+ok 'sandbox MG default is not the plural typo' ($globalVars -notmatch 'default\s+=\s+"sandboxes"')
+
+# The emitted apply workflow is workflow_dispatch-only. A README promising that
+# a merge deploys ships a false statement to every generated repository.
+$genReadme = Get-Content (Join-Path $out 'README.md') -Raw
+ok 'README does not claim merging applies' ($genReadme -notmatch 'Merging to\s+`?\w*`?\s*\r?\n?runs `terraform apply`')
+ok 'README names the dispatch-gated apply' ($genReadme -match 'merging does not deploy' -and $genReadme -match 'workflow_dispatch')
 $connMain = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/main.tf') -Raw
 ok 'hub-spoke fixture emits hub-and-spoke module' ($connMain -match 'avm-ptn-alz-connectivity-hub-and-spoke-vnet')
+
+# The firewall answer has to reach tfvars. It is the layer's largest recurring
+# cost, the module takes it as a plain boolean, and the variable now carries no
+# default — so an unemitted line is a hard render failure, not a silent "true".
+$connTfvars = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/terraform.auto.tfvars') -Raw
+ok 'connectivity tfvars carries the firewall answer' ($connTfvars -match 'firewall_enabled\s+=\s+true')
+ok 'connectivity tfvars carries the bastion answer'  ($connTfvars -match 'deploy_bastion\s+=\s+(true|false)')
+
+# The two layers agree on a resource-group name by convention, not by reference:
+# global composes the name it hands Deploy-Private-DNS-Zones, and connectivity is
+# what actually creates the group. Nothing links them, and they apply in that
+# order, so a rename on either side would send the DINE policy's records to a
+# resource group that does not exist — with no gate noticing, because both files
+# stay valid HCL. Compare the literal skeletons with the interpolations masked:
+# the region interpolation differs by design (global uses the primary region,
+# connectivity iterates hubs), so only the fixed segments can be compared.
+$connRgName = if ($connMain -match '(?s)resource "azurerm_resource_group" "connectivity"\s*\{.*?\n\s*name\s*=\s*"([^"]+)"') { $Matches[1] } else { '' }
+$globalDnsRg = if ($pdvBlock -match '(?s)private_dns_zone_resource_group_name\s*=\s*jsonencode\(\{\s*\n\s*value\s*=\s*"([^"]+)"') { $Matches[1] } else { '' }
+$maskInterp = { param($t) ($t -replace '\$\{[^}]+\}', '<>') }
+ok 'both layers name the connectivity resource group' ($connRgName -and $globalDnsRg) "conn='$connRgName' global='$globalDnsRg'"
+ok 'the private-DNS resource group contract holds across layers' (
+    (& $maskInterp $connRgName) -eq (& $maskInterp $globalDnsRg)) `
+    "connectivity creates '$connRgName' but global tells the policy '$globalDnsRg'"
+
 ok 'hub-spoke fixture omits virtual-wan module'   ($connMain -notmatch 'avm-ptn-alz-connectivity-virtual-wan')
 
 $vendored = @(Get-ChildItem -Path $out -Recurse -Directory | Where-Object { $_.Name -eq 'modules' })
@@ -200,6 +273,50 @@ ok 'renovate targets terraform manager' (@($renovate.packageRules[0].matchManage
 $residual = Select-String -Path (Get-ChildItem $out -Recurse -File).FullName -Pattern '(?<!\$)\{\{[^}]*\}\}' -AllMatches -ErrorAction SilentlyContinue |
     Where-Object { $_.Line -notmatch '\$\{\{' }
 ok 'zero residual factory tokens'   (@($residual).Count -eq 0) (@($residual | Select-Object -First 3 | ForEach-Object { $_.Path + ':' + $_.LineNumber }) -join '; ')
+
+Write-Host "`n== 11b. Log Analytics daily ingestion cap ==" -ForegroundColor Cyan
+# -1 is the wizard's spelling of "uncapped". It must never reach tfvars: the
+# module's uncapped value is null, and -1 would fail the variable validation.
+$mgmtTfvars = Get-Content (Join-Path $out 'terraform/live/platform-management/terraform.auto.tfvars') -Raw
+ok 'uncapped config emits no quota line' ($mgmtTfvars -notmatch 'log_daily_quota_gb')
+
+$cfgQuota = Get-Content "$PSScriptRoot/fixtures/azurerm-config.json" -Raw | ConvertFrom-Json -Depth 30
+$cfgQuota.observability.logAnalytics.dailyQuotaGb = 25
+$quotaConfigPath = Join-Path ([IO.Path]::GetTempPath()) "lz-quota-$([guid]::NewGuid().ToString('n').Substring(0,8)).json"
+$cfgQuota | ConvertTo-Json -Depth 30 | Set-Content $quotaConfigPath -Encoding utf8
+$outQuota = Join-Path ([IO.Path]::GetTempPath()) "lz-render-test-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+try {
+    $null = Invoke-LzRender -ConfigPath $quotaConfigPath -OutputDirectory $outQuota -Force -Quiet
+    $quotaTfvars = Get-Content (Join-Path $outQuota 'terraform/live/platform-management/terraform.auto.tfvars') -Raw
+    ok 'a real cap reaches tfvars' ($quotaTfvars -match 'log_daily_quota_gb\s+=\s+25')
+}
+finally {
+    Remove-Item -Recurse -Force $outQuota -ErrorAction SilentlyContinue
+    Remove-Item -Force $quotaConfigPath -ErrorAction SilentlyContinue
+}
+
+Write-Host "`n== 11c. Declining the firewall ==" -ForegroundColor Cyan
+# ADR 0017 amended: the AVM connectivity patterns accept firewall_enabled=false.
+# Before this, the wizard asked which tier and never whether, and the answer
+# could not be expressed at all.
+$cfgNoFw = Get-Content "$PSScriptRoot/fixtures/azurerm-config.json" -Raw | ConvertFrom-Json -Depth 30
+$cfgNoFw.connectivity.firewall.enabled = $false
+$cfgNoFw.connectivity.bastion.enabled = $false
+$noFwPath = Join-Path ([IO.Path]::GetTempPath()) "lz-nofw-$([guid]::NewGuid().ToString('n').Substring(0,8)).json"
+$cfgNoFw | ConvertTo-Json -Depth 30 | Set-Content $noFwPath -Encoding utf8
+$outNoFw = Join-Path ([IO.Path]::GetTempPath()) "lz-render-test-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+try {
+    $null = Invoke-LzRender -ConfigPath $noFwPath -OutputDirectory $outNoFw -Force -Quiet
+    $noFwTfvars = Get-Content (Join-Path $outNoFw 'terraform/live/platform-connectivity/terraform.auto.tfvars') -Raw
+    ok 'declined firewall renders as false' ($noFwTfvars -match 'firewall_enabled\s+=\s+false')
+    ok 'declined bastion renders as false'  ($noFwTfvars -match 'deploy_bastion\s+=\s+false')
+    $noFwMain = Get-Content (Join-Path $outNoFw 'terraform/live/platform-connectivity/main.tf') -Raw
+    ok 'module still gates on the variable' ($noFwMain -match 'firewall\s+=\s+var\.firewall_enabled')
+}
+finally {
+    Remove-Item -Recurse -Force $outNoFw -ErrorAction SilentlyContinue
+    Remove-Item -Force $noFwPath -ErrorAction SilentlyContinue
+}
 
 Write-Host "`n== 12. Full render — Virtual WAN fixture ==" -ForegroundColor Cyan
 $outVwan = Join-Path ([IO.Path]::GetTempPath()) "lz-render-test-$([guid]::NewGuid().ToString('n').Substring(0,8))"

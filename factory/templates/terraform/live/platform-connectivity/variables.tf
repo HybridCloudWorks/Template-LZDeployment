@@ -51,10 +51,13 @@ variable "dr_hub_address_space" {
   default     = ""
 }
 
+# No default, deliberately. Azure Firewall is the largest single line item this
+# layer can create; a default here decides that spend on the client's behalf and
+# hides the decision. The renderer always emits a value, so an absent one means
+# a hand-edited tfvars — which should fail loudly rather than silently deploy.
 variable "firewall_enabled" {
   description = "Deploy Azure Firewall in each hub."
   type        = bool
-  default     = true
 }
 
 variable "azfw_tier" {
@@ -71,7 +74,6 @@ variable "azfw_tier" {
 variable "deploy_bastion" {
   description = "Deploy Azure Bastion in each hub (hub-and-spoke only)."
   type        = bool
-  default     = false
 }
 
 variable "deploy_vpn_gateway" {

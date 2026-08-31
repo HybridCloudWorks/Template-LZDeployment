@@ -2,6 +2,22 @@
 # This file is the contract the schema-drift check validates against; it is
 # copied verbatim, never templated.
 
+# Naming inputs. The ALZ library's policy default values include resource-group
+# names and a region that policies write into resources they create; those are
+# strings the policy carries, not references to resources that must already
+# exist, so they are composed here rather than read back from a layer that
+# applies after this one.
+
+variable "org_prefix" {
+  description = "Organization prefix used in resource names."
+  type        = string
+}
+
+variable "primary_region_code" {
+  description = "Short code for the primary region, used in resource names."
+  type        = string
+}
+
 variable "architecture_name" {
   description = "ALZ library architecture to deploy. Must exist in the pinned library reference."
   type        = string
@@ -90,7 +106,7 @@ variable "landing_zones_management_group_id" {
 variable "sandbox_management_group_id" {
   description = "Management-group ID that receives the sandbox subscription."
   type        = string
-  default     = "sandboxes"
+  default     = "sandbox"
 }
 
 # Remote-state read of the platform-management layer.
