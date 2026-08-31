@@ -732,5 +732,75 @@ console.log('\n== 21. The default subscription budget (schema 4.1.0) ==');
   ok('enabling the budget raises the resource estimate', after > before);
 }
 
+// ---------------------------------------------------------------------------
+// 22. Wizard defaults must agree with the schema's declared defaults
+// ---------------------------------------------------------------------------
+// Added after a Copilot finding on #128: the wizard defaulted
+// finops.defaultSubscriptionBudget.warningThresholdPercent to 80 while the
+// schema, the renderer fallback and guard G33 all said 90. Because the wizard
+// always emits the field, that gave the SAME SETTING two different defaults
+// decided by where the config came from — wizard-exported got 80, hand-authored
+// omitting the field got 90.
+//
+// Nothing else in the factory would have caught it: both values are valid, both
+// render, and both pass every guard. So the class is gated here rather than the
+// one instance being fixed and forgotten.
+console.log('\n== 22. Wizard defaults agree with the schema ==');
+{
+  const schema = JSON.parse(
+    require('fs').readFileSync(require('path').join(__dirname, '../schema/lz-config.schema.json'), 'utf8'));
+
+  // Every `default` the schema declares, keyed by its dotted path.
+  const declared = {};
+  (function walk(node, prefix) {
+    if (!node || typeof node !== 'object') return;
+    if (node.properties) {
+      for (const [key, child] of Object.entries(node.properties)) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (Object.prototype.hasOwnProperty.call(child, 'default')) declared[path] = child.default;
+        walk(child, path);
+      }
+    }
+  })(schema, '');
+
+  // KNOWN EXCEPTION, one entry, and it is the SCHEMA that is wrong rather than
+  // the wizard. governance.complianceFrameworks declares default ["none"], but
+  // the wizard's [] is the correct behaviour: it is a checkbox group where
+  // selecting nothing genuinely means [], estimateRum() costs the list as
+  // `.length * policyPerFramework` (so ["none"] bills a framework's worth of
+  // policy for having chosen none, against the HCP 500-resource cap), and the
+  // compliance document renders the list literally, so ["none"] would print the
+  // string "none" instead of taking its "_none declared_" branch.
+  //
+  // Left as an exception rather than fixed here because changing a schema
+  // default is a contract change, not a review fix, and it predates #128.
+  // Tracked separately. Do not add entries to this list to silence new drift.
+  const knownSchemaDefectPaths = new Set(['governance.complianceFrameworks']);
+
+  const cfg = A.defaultConfig();
+  const read = (obj, path) => path.split('.').reduce((o, k) => (o === undefined || o === null ? undefined : o[k]), obj);
+  const drifted = [];
+  let compared = 0;
+  for (const [path, schemaDefault] of Object.entries(declared)) {
+    if (knownSchemaDefectPaths.has(path)) continue;
+    const wizardDefault = read(cfg, path);
+    // A path the wizard does not pre-create is not drift: optional nested slots
+    // are stripped from the export and the renderer applies the schema default.
+    if (wizardDefault === undefined) continue;
+    compared++;
+    if (JSON.stringify(wizardDefault) !== JSON.stringify(schemaDefault)) {
+      drifted.push(`${path}: schema=${JSON.stringify(schemaDefault)} wizard=${JSON.stringify(wizardDefault)}`);
+    }
+  }
+
+  ok('no wizard default contradicts the schema', drifted.length === 0, drifted.join(' | '));
+  // Guards the guard: if the walk stops finding defaults — a schema restructure,
+  // a renamed `properties` key — the assertion above passes vacuously.
+  ok('and the comparison actually covered the contract', compared > 50, `compared ${compared}`);
+  ok('the budget threshold specifically agrees', 
+    A.defaultConfig().finops.defaultSubscriptionBudget.warningThresholdPercent ===
+    declared['finops.defaultSubscriptionBudget.warningThresholdPercent']);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -296,7 +296,7 @@ function defaultConfig() {
         enabled: false,
         managementGroup: 'alz',
         amountUsd: null,
-        warningThresholdPercent: 80,
+        warningThresholdPercent: 90,
         capThresholdPercent: 100,
         timeGrain: 'Monthly',
         contactEmails: [],
