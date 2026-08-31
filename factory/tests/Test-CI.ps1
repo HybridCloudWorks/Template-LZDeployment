@@ -81,5 +81,85 @@ finally {
     Remove-Item -Force $catalogOut -ErrorAction SilentlyContinue
 }
 
+Write-Host "`n== ALZ plan proof (TODO 6.1a) ==" -ForegroundColor Cyan
+# The harness assembles a standalone module around data "alz_architecture" from
+# the RENDERED output. Its two extraction helpers are where it can silently go
+# wrong: a truncated block or an unsubstituted reference would still produce a
+# module that plans, just not the one this estate rendered.
+$planProof = Join-Path $repo 'factory/ci/Test-AlzArchitecturePlan.ps1'
+ok 'the harness exists' (Test-Path $planProof)
+
+$planWorkflow = Join-Path $repo '.github/workflows/alz-plan-proof.yml'
+$planWorkflowText = Get-Content $planWorkflow -Raw
+ok 'the plan-proof workflow is dispatch-only' (
+    $planWorkflowText -match '(?m)^on:\s*$' -and
+    $planWorkflowText -match '(?m)^\s{2}workflow_dispatch:' -and
+    $planWorkflowText -notmatch '(?m)^\s{2}(push|pull_request):')
+ok 'it runs behind a protected environment' ($planWorkflowText -match '(?m)^\s*environment:\s*alz-plan-proof')
+# It reads built-in policy definitions and nothing else. A write permission
+# here would contradict the Reader-only claim its own header makes.
+ok 'it grants no repository write' ($planWorkflowText -notmatch '(?m)^\s*contents:\s*write')
+
+# Load the helpers without executing the script body. Dot-sourcing would run
+# the render and the plan; this takes the two functions only.
+$planSource = Get-Content $planProof -Raw
+foreach ($fn in @('Get-LzBalancedBlock', 'Convert-LzRemoteStateReference')) {
+    $m = [regex]::Match($planSource, "(?s)function $fn \{.*?\n\}\n")
+    if (-not $m.Success) { throw "Could not lift $fn out of Test-AlzArchitecturePlan.ps1 — the test's extraction pattern is stale." }
+    . ([scriptblock]::Create($m.Value))
+}
+$planStandIns = [regex]::Match($planSource, '(?s)\$script:RemoteStateStandIns = (\[ordered\]@\{.*?\n\})').Groups[1].Value
+$script:RemoteStateStandIns = & ([scriptblock]::Create($planStandIns))
+ok 'the stand-in table lifts cleanly' ($script:RemoteStateStandIns.Count -eq 6)
+
+# The reason brace counting replaced a regex: policy_default_values is full of
+# nested jsonencode({ ... }), and a non-greedy match stops at the first one.
+$nested = @'
+  policy_default_values = {
+    a = jsonencode({
+      value = "one"
+    })
+    b = jsonencode({
+      value = "two"
+    })
+  }
+'@
+$block = Get-LzBalancedBlock -Text $nested -OpenPattern '(?m)^\s*policy_default_values\s*=\s*\{'
+ok 'a nested jsonencode does not end the block early' ($block -match 'two' -and $block.TrimEnd().EndsWith('}'))
+
+# A brace inside a string or a comment must not close the block either.
+$tricky = @'
+  policy_default_values = {
+    a = "a } brace in a string"
+    # a } brace in a comment
+    b = "done"
+  }
+'@
+$trickyBlock = Get-LzBalancedBlock -Text $tricky -OpenPattern '(?m)^\s*policy_default_values\s*=\s*\{'
+ok 'braces in strings and comments do not end the block' ($trickyBlock -match 'done')
+
+# Substitution must be total. A surviving reference would make the plan fail on
+# a missing data source, and the failure would read as a defect in the estate.
+$substituted = Convert-LzRemoteStateReference -Text 'x = data.terraform_remote_state.management.outputs.log_analytics_workspace_id'
+ok 'a known output is substituted with a literal' ($substituted -match '^x = "/subscriptions/' -and $substituted -notmatch 'terraform_remote_state')
+
+# The important direction: a NEW remote-state read added to the global layer
+# must fail loudly here rather than be quietly left in place.
+$threwOnUnknown = $false
+try { Convert-LzRemoteStateReference -Text 'y = data.terraform_remote_state.management.outputs.something_new' | Out-Null }
+catch { $threwOnUnknown = $true }
+ok 'an unknown management output throws rather than passing through' $threwOnUnknown
+
+# Every stand-in the table claims to cover must actually be read by the layer,
+# and every one the layer reads must be covered. Checked against the template
+# rather than a render, so this holds without running the renderer.
+$globalTemplate = Get-Content (Join-Path $repo 'factory/templates/terraform/live/global/main.tf.tmpl') -Raw
+$layerOutputs = @([regex]::Matches($globalTemplate, 'data\.terraform_remote_state\.management\.outputs\.(?<n>[A-Za-z0-9_]+)') |
+    ForEach-Object { $_.Groups['n'].Value } | Sort-Object -Unique)
+$covered = @($script:RemoteStateStandIns.Keys | Sort-Object)
+ok 'the stand-ins match what the layer actually reads' (
+    ($layerOutputs.Count -gt 0) -and (-not (Compare-Object $layerOutputs $covered))
+) 
+
 Write-Host "`n$pass passed, $fail failed`n" -ForegroundColor $(if ($fail) { 'Red' } else { 'Green' })
 exit $(if ($fail) { 1 } else { 0 })

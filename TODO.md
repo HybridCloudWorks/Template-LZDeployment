@@ -1124,17 +1124,54 @@ layer may read management state but must not read connectivity state; the
 private-DNS values are therefore derived from config, which is sound because
 the policies consume them as strings, not as references to existing resources.
 
-### 6.1a `terraform plan` against a throwaway tenant — `[STILL OPEN]`
+### 6.1a Plan-verification — `[NARROWED 2026-08-31, still open]`
 
-The half of 6.1 that static analysis cannot reach. CI renders and runs
-`init + validate` on the output (`terraform-policy-checks.yml`), which resolves
-the AVM pins but never reaches the ALZ provider's policy-default resolution —
-that happens at PLAN time, and no plan runs anywhere in this repository.
+**A harness now exists and plans.** `factory/ci/Test-AlzArchitecturePlan.ps1`
+plus the dispatch-only `alz-plan-proof` workflow. This is the first thing in the
+repository that runs `terraform plan`.
 
-Everything 6.1 and 6.2 shipped is syntax-verified and contract-verified; none
-of it is plan-verified. `Test-AlzPolicyDefaults.ps1` and guard G28 exist
-precisely because this gap does, and they are a substitute for the plan, not a
-replacement. See REVIEW §19.
+**The premise of this item was wrong in two ways, both worth recording.**
+
+*It cannot be done by planning the rendered layer.* The global layer reads six
+of its fourteen `policy_default_values` out of
+`data.terraform_remote_state.management`, so planning it needs the
+platform-management layer **already applied** in a real tenant — a deployment,
+not a check. The harness instead assembles a standalone module around
+`data "alz_architecture"`, the point at which the provider resolves policy
+defaults against the pinned library and applies `policy_assignments_to_modify`
+per management group. Every input is **extracted from the rendered output**, not
+authored: a harness supplied with its own inputs proves only that it agrees
+with itself.
+
+*It does not need a throwaway tenant.* The ALZ provider needs a credential —
+`alzlib` calls `armpolicy.ClientFactory` to fetch **built-in** policy
+definitions, so that it can check each assigned definition is assignable and
+compute the role assignments `DeployIfNotExists` and `Modify` require — but
+that is all it reads. **`Reader` on any one subscription is enough.** No
+management group, no write, no landing zone, nothing created. (An earlier
+expectation that it would need no credential at all was wrong; the provider
+documentation says so outright, and `cache_file_name` exists precisely to avoid
+that fetch.)
+
+**What is checked on every run, uncredentialed:** `-AssembleOnly` renders,
+extracts and substitutes, then asserts no `terraform_remote_state` or
+`azurerm_client_config` reference survives. Registered in Factory CI across all
+four fixtures. This is the half that rots — a truncated block or a missed
+substitution still yields a module that plans, just not the one the estate
+rendered — and `Test-CI.ps1` additionally fails if the global layer gains a
+management-layer output the harness has no stand-in for.
+
+**Why this stays open.** Two residues:
+
+1. It plans the ALZ provider's resolution **and nothing else**. No Azure
+   resource is planned, so no permission, quota, naming or region failure is
+   caught. The AVM module's own resources are outside it.
+2. It is **dispatch-only, so it gates nothing.** A pull request can still merge
+   a defect of exactly the class it exists to catch — 6.6c is one that did —
+   and CI will be green. Closing that needs either a credential on
+   `pull_request`, which is not a casual decision on a forkable repository, or a
+   committed built-ins cache, which trades staleness for coverage. Neither has
+   been chosen.
 
 ### 6.2 Client-facing ALZ policy selection — `[CLOSED 2026-08-31]`
 
@@ -1455,6 +1492,27 @@ Three defects, all shipped by 6.5 in #125, none previously recorded. Decision
    `hcp-terraform`, saying the state is in HCP and outside this tenant-scoped
    discovery's reach. Silence about a storage account is not evidence about a
    workspace.
+
+### 6.6d The e2e proof's own output was committable — `[CLOSED 2026-08-31]`
+
+Found by running `factory/e2e/Invoke-E2EGenerationProof.ps1`, which is a
+documented command, and then reading `git status`.
+
+It writes a complete engagement to `e2e-output/` at the repository root — the
+answer record, the rendered tree and the evidence — and **no ignore rule
+reached it**. `e2e-output/answers/lz-config.json`,
+`deployment-metadata.json` and `rendered/lz-config.json` all carry `tenantId`
+and `subscriptionId`.
+
+Survivable rather than a live leak, because the wizard driver uses synthetic
+identities and the proof asserts as much (`zeroGuids — all synthetic driver
+identities`). But the shape is the third instance of one pattern: a documented
+command whose output lands somewhere unignored. The first was recorded in
+`.gitignore` on 2026-08-19; the second was `client/` in #126.
+
+`/e2e-output/` and `/node_modules/` are now ignored. The latter is plain
+hygiene — `playwright-core` is installed on demand to drive the wizard, and
+`--no-save` keeps it out of `package.json` but not out of the working tree.
 
 ### 6.7 Per-subscription brownfield disposition — `[CLOSED 2026-08-31]`
 

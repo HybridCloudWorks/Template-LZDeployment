@@ -1,0 +1,158 @@
+# The only thing in this repository that runs `terraform plan`.
+#
+# Everything else stops at `terraform validate`, and validate does not resolve
+# data sources. That is not a theoretical gap: the global layer's cross-layer
+# state read was pointed at the wrong backend for the entire life of the HCP
+# option and every check passed, because the only thing that would have noticed
+# is a plan. TODO 6.1a.
+#
+# WHAT THIS JOB CAN DO, WHICH IS DELIBERATELY ALMOST NOTHING
+#
+# It reads. The ALZ provider fetches BUILT-IN Azure policy and policy set
+# definitions — alzlib calls armpolicy.ClientFactory — so that it can check
+# every assigned definition is assignable and compute the role assignments that
+# DeployIfNotExists and Modify assignments require. That is the whole of its
+# Azure access.
+#
+# So the principal this federates with needs `Reader`, on any one subscription,
+# and NOTHING ELSE. No management-group role. No write of any kind. It cannot
+# create a landing zone, and it does not need a tenant that has one. If you are
+# reviewing this workflow, that is the claim to check: a job that only reads
+# built-in policy definitions should not hold anything that could change an
+# estate.
+#
+# It is workflow_dispatch only, and that is a limitation rather than a control —
+# see the note at the foot of this file.
+name: ALZ Plan Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixture:
+        description: 'Rendered shape to plan-verify'
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - azurerm-config
+          - vwan-config
+          - hcp-config
+          - custom-hierarchy-config
+
+permissions: {}
+
+concurrency:
+  group: alz-plan-proof
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: Resolve the fixture list
+    runs-on: ubuntu-latest
+    outputs:
+      fixtures: ${{ steps.pick.outputs.fixtures }}
+    steps:
+      # The 'all' option expands here rather than in a matrix `if`, so a single
+      # fixture run produces one job rather than four with three skipped.
+      - name: Pick
+        id: pick
+        shell: bash
+        # The input arrives through env rather than being interpolated into the
+        # script text. A `choice` input cannot carry anything but its declared
+        # options, so this is not closing a live injection — it is keeping the
+        # workflow to the one pattern that is safe when an input is later
+        # widened to a string, and it is what makes the block shellcheck-clean.
+        env:
+          FIXTURE: ${{ inputs.fixture }}
+        run: |
+          set -euo pipefail
+          if [ "$FIXTURE" = "all" ]; then
+            echo 'fixtures=["azurerm-config","vwan-config","hcp-config","custom-hierarchy-config"]' >> "$GITHUB_OUTPUT"
+          else
+            printf 'fixtures=["%s"]\n' "$FIXTURE" >> "$GITHUB_OUTPUT"
+          fi
+
+  plan:
+    name: plan (${{ matrix.fixture }})
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture: ${{ fromJSON(needs.resolve.outputs.fixtures) }}
+    # Holds the federated Reader identity. A protected environment is standard
+    # practice for anything credentialed here, but note what it is protecting:
+    # this job cannot write, so the gate guards the credential's existence
+    # rather than any action it could take.
+    environment: alz-plan-proof
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      # Reader. See the header. ARM_* rather than an az CLI login because the
+      # alz provider reads its credentials from the environment, and its
+      # use_cli default would otherwise send it looking for a session that
+      # azure/login has not established for it.
+      - name: Azure login
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
+        with:
+          client-id: ${{ vars.LZ_PLAN_PROOF_CLIENT_ID }}
+          tenant-id: ${{ vars.LZ_PLAN_PROOF_TENANT_ID }}
+          subscription-id: ${{ vars.LZ_PLAN_PROOF_SUBSCRIPTION_ID }}
+
+      - name: Plan the rendered ALZ architecture
+        shell: pwsh
+        env:
+          ARM_USE_OIDC: 'true'
+          ARM_CLIENT_ID: ${{ vars.LZ_PLAN_PROOF_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.LZ_PLAN_PROOF_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.LZ_PLAN_PROOF_SUBSCRIPTION_ID }}
+          # ACTIONS_ID_TOKEN_REQUEST_TOKEN and ACTIONS_ID_TOKEN_REQUEST_URL are
+          # deliberately NOT mapped here. The runner sets them in the process
+          # environment whenever id-token: write is granted, and the alz
+          # provider reads those names directly. Re-mapping them through the
+          # `env` context would read workflow-declared values that do not exist
+          # and hand the provider two empty strings.
+        run: |
+          ./factory/ci/Test-AlzArchitecturePlan.ps1 `
+            -Fixture '${{ matrix.fixture }}' `
+            -WorkDirectory "${{ runner.temp }}/plan-proof-${{ matrix.fixture }}" `
+            -Keep
+
+      # The generated harness module, so a failure can be read rather than
+      # guessed at. It contains no credential — only rendered configuration and
+      # the literal stand-ins the harness substitutes for management-layer
+      # outputs — but it does carry this fixture's tenant and subscription IDs,
+      # which is why it is a fixture and not a client's answer record.
+      - name: Upload the harness module
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: alz-plan-proof-${{ matrix.fixture }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/plan-proof-${{ matrix.fixture }}/harness/
+          if-no-files-found: warn
+          retention-days: 14
+
+# WHAT THIS STILL DOES NOT PROVE, AND WHY TODO 6.1a STAYS OPEN
+#
+#  * It plans the ALZ provider's resolution and nothing else. No Azure resource
+#    is planned, so no permission, quota, naming or region failure is caught.
+#    The AVM module's own resources are outside it entirely.
+#
+#  * It is dispatch-only, so it gates nothing. A pull request can still merge a
+#    defect of exactly the class this exists to catch, and CI will be green.
+#    Making it gate needs either a credential on pull_request — which is not
+#    something to do casually on a public-forkable repo — or a committed
+#    built-ins cache (`alzlibtool cache create`, then the script's -CacheFile),
+#    which trades staleness for coverage. Neither has been chosen.

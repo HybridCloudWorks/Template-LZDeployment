@@ -94,6 +94,20 @@ generated-output/
 # identity detail.
 /client/discovery-inventory.json
 /client/tenant-readiness-report.md
+
+# The e2e generation proof writes a complete engagement — answer record,
+# rendered tree and evidence — to the repository root. Running it is documented
+# and expected (factory/e2e/Invoke-E2EGenerationProof.ps1), and it was the one
+# output directory no rule reached. The driver's identities are synthetic, which
+# is why this was survivable rather than a live leak, but the shape is the same
+# one recorded on 2026-08-19 and again for client/ in #126: a documented command
+# whose output lands somewhere unignored.
+/e2e-output/
+
+# playwright-core is installed on demand to drive the wizard for that proof
+# (`npm install --no-save playwright-core`); --no-save keeps it out of
+# package.json but not out of the working tree.
+/node_modules/
 /scaffold-evidence/
 /brownfield-classifications.json
 /brownfield-evidence/
