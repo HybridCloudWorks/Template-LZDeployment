@@ -1,0 +1,8 @@
+{
+  "type": "Microsoft.Authorization/policyAssignments",
+  "name": "Deploy-Private-DNS-Zones",
+  "properties": {
+    "displayName": "Deploy private DNS zones",
+    "enforcementMode": "DoNotEnforce"
+  }
+}

@@ -414,7 +414,7 @@ globalThis.ALZ_POLICY_CATALOG = {
           ]
         }
       ],
-      "supplied": "none"
+      "supplied": "client"
     },
     "log_analytics_workspace_id": {
       "description": "The Log Analytics workspace id that should be used for centralized log collection.",
@@ -504,7 +504,7 @@ globalThis.ALZ_POLICY_CATALOG = {
           ]
         }
       ],
-      "supplied": "none"
+      "supplied": "client"
     }
   },
   "assignments": {
@@ -515,7 +515,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Audit"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Audit-PeDnsZones": {
       "archetypes": [
@@ -524,7 +529,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "corp"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Audit"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Audit-ResourceRGLocation": {
       "archetypes": [
@@ -533,7 +543,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Audit-TrustedLaunch": {
       "archetypes": [
@@ -542,7 +555,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Audit"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Audit-UnusedResources": {
       "archetypes": [
@@ -551,7 +569,14 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "EffectDisks": "Audit",
+        "EffectPublicIpAddresses": "Audit",
+        "EffectServerFarms": "Audit"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Audit-ZoneResiliency": {
       "archetypes": [
@@ -560,7 +585,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Audit"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deny-Classic-Resources": {
       "archetypes": [
@@ -569,7 +599,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Deny"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-HybridNetworking": {
       "archetypes": [
@@ -578,7 +613,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "corp"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Deny"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-IP-forwarding": {
       "archetypes": [
@@ -587,7 +627,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-MgmtPorts-Internet": {
       "archetypes": [
@@ -598,7 +641,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "identity",
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-Priv-Esc-AKS": {
       "archetypes": [
@@ -607,7 +653,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Deny"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-Privileged-AKS": {
       "archetypes": [
@@ -616,7 +667,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Deny"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-Public-Endpoints": {
       "archetypes": [
@@ -625,7 +681,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "corp"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-Public-IP": {
       "archetypes": [
@@ -634,7 +693,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "identity"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Deny"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-Public-IP-On-NIC": {
       "archetypes": [
@@ -643,7 +707,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "corp"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-Storage-http": {
       "archetypes": [
@@ -652,7 +719,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Deny"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-Subnet-Without-Nsg": {
       "archetypes": [
@@ -663,7 +735,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "identity",
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deny-UnmanagedDisk": {
       "archetypes": [
@@ -672,7 +747,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "DenyAction-DeleteUAMIAMA": {
       "archetypes": [
@@ -683,7 +761,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       ],
       "requiredDefaults": [
         "ama_user_assigned_managed_identity_name"
-      ]
+      ],
+      "effects": {
+        "effect": "DenyAction"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Deploy-ASC-Monitoring": {
       "archetypes": [
@@ -692,7 +775,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-AzActivity-Log": {
       "archetypes": [
@@ -703,7 +789,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       ],
       "requiredDefaults": [
         "log_analytics_workspace_id"
-      ]
+      ],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-AzSqlDb-Auditing": {
       "archetypes": [
@@ -714,7 +803,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       ],
       "requiredDefaults": [
         "log_analytics_workspace_id"
-      ]
+      ],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-Diag-LogsCat": {
       "archetypes": [
@@ -725,7 +817,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       ],
       "requiredDefaults": [
         "log_analytics_workspace_id"
-      ]
+      ],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-GuestAttest": {
       "archetypes": [
@@ -736,7 +831,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-MCSB2-Monitoring": {
       "archetypes": [
@@ -745,7 +843,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-MDEndpoints": {
       "archetypes": [
@@ -754,7 +855,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-MDEndpointsAMA": {
       "archetypes": [
@@ -763,7 +867,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-MDFC-Config-H224": {
       "archetypes": [
@@ -777,7 +884,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "log_analytics_workspace_id",
         "resource_group_location",
         "resource_group_name_mdfc"
-      ]
+      ],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-MDFC-DefSQL-AMA": {
       "archetypes": [
@@ -792,7 +902,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "ama_mdfc_sql_data_collection_rule_id",
         "ama_user_assigned_managed_identity_id",
         "log_analytics_workspace_id"
-      ]
+      ],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-MDFC-OssDb": {
       "archetypes": [
@@ -801,7 +914,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-MDFC-SqlAtp": {
       "archetypes": [
@@ -810,7 +926,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-Private-DNS-Zones": {
       "archetypes": [
@@ -823,7 +942,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "private_dns_zone_region",
         "private_dns_zone_resource_group_name",
         "private_dns_zone_subscription_id"
-      ]
+      ],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-SQL-TDE": {
       "archetypes": [
@@ -832,7 +954,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-SQL-Threat": {
       "archetypes": [
@@ -841,7 +966,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-SvcHealth-BuiltIn": {
       "archetypes": [
@@ -853,7 +981,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "requiredDefaults": [
         "resource_group_location",
         "resource_group_name_service_health_alerts"
-      ]
+      ],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-VM-Backup": {
       "archetypes": [
@@ -864,7 +995,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "identity",
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-VM-ChangeTrack": {
       "archetypes": [
@@ -878,7 +1012,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "requiredDefaults": [
         "ama_change_tracking_data_collection_rule_id",
         "ama_user_assigned_managed_identity_id"
-      ]
+      ],
+      "effects": {
+        "effect": "DeployIfNotExists"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-VM-Monitoring": {
       "archetypes": [
@@ -892,7 +1031,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "requiredDefaults": [
         "ama_user_assigned_managed_identity_id",
         "ama_vm_insights_data_collection_rule_id"
-      ]
+      ],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-vmArc-ChangeTrack": {
       "archetypes": [
@@ -905,7 +1047,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       ],
       "requiredDefaults": [
         "ama_change_tracking_data_collection_rule_id"
-      ]
+      ],
+      "effects": {
+        "effect": "DeployIfNotExists"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-vmHybr-Monitoring": {
       "archetypes": [
@@ -918,7 +1065,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       ],
       "requiredDefaults": [
         "ama_vm_insights_data_collection_rule_id"
-      ]
+      ],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-VMSS-ChangeTrack": {
       "archetypes": [
@@ -932,7 +1082,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "requiredDefaults": [
         "ama_change_tracking_data_collection_rule_id",
         "ama_user_assigned_managed_identity_id"
-      ]
+      ],
+      "effects": {
+        "effect": "DeployIfNotExists"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Deploy-VMSS-Monitoring": {
       "archetypes": [
@@ -946,7 +1101,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "requiredDefaults": [
         "ama_user_assigned_managed_identity_id",
         "ama_vm_insights_data_collection_rule_id"
-      ]
+      ],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Enable-AUM-CheckUpdates": {
       "archetypes": [
@@ -957,7 +1115,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Enable-DDoS-VNET": {
       "archetypes": [
@@ -970,7 +1131,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       ],
       "requiredDefaults": [
         "ddos_protection_plan_id"
-      ]
+      ],
+      "effects": {
+        "effect": "Modify"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Enforce-ACSB": {
       "archetypes": [
@@ -979,7 +1145,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "alz"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Enforce-AKS-HTTPS": {
       "archetypes": [
@@ -988,7 +1157,12 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Deny"
+      },
+      "libraryEnforcementMode": "Default",
+      "denyClass": true
     },
     "Enforce-ALDO-Services": {
       "archetypes": [
@@ -997,7 +1171,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "local"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Enforce-ALZ-Decomm": {
       "archetypes": [
@@ -1006,7 +1183,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "decommissioned"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Enforce-ALZ-Sandbox": {
       "archetypes": [
@@ -1015,7 +1195,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "sandbox"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Enforce-ASR": {
       "archetypes": [
@@ -1026,7 +1209,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Enforce-Encrypt-CMK0": {
       "archetypes": [
@@ -1037,7 +1223,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-APIM0": {
       "archetypes": [
@@ -1048,7 +1237,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-AppServices0": {
       "archetypes": [
@@ -1059,7 +1251,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-Automation0": {
       "archetypes": [
@@ -1070,7 +1265,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-BotService0": {
       "archetypes": [
@@ -1081,7 +1279,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-CogServ0": {
       "archetypes": [
@@ -1092,7 +1293,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-Compute0": {
       "archetypes": [
@@ -1103,7 +1307,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-ContApps0": {
       "archetypes": [
@@ -1114,7 +1321,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-ContInst0": {
       "archetypes": [
@@ -1125,7 +1335,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-ContReg0": {
       "archetypes": [
@@ -1136,7 +1349,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-CosmosDb0": {
       "archetypes": [
@@ -1147,7 +1363,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-DataExpl0": {
       "archetypes": [
@@ -1158,7 +1377,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-DataFactory0": {
       "archetypes": [
@@ -1169,7 +1391,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-EventGrid0": {
       "archetypes": [
@@ -1180,7 +1405,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-EventHub0": {
       "archetypes": [
@@ -1191,7 +1419,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-KeyVault": {
       "archetypes": [
@@ -1202,7 +1433,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     },
     "Enforce-GR-KeyVaultSup0": {
       "archetypes": [
@@ -1213,7 +1447,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-Kubernetes0": {
       "archetypes": [
@@ -1224,7 +1461,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-MachLearn0": {
       "archetypes": [
@@ -1235,7 +1475,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-MySQL0": {
       "archetypes": [
@@ -1246,7 +1489,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-Network0": {
       "archetypes": [
@@ -1257,7 +1503,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-OpenAI0": {
       "archetypes": [
@@ -1268,7 +1517,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-PostgreSQL0": {
       "archetypes": [
@@ -1279,7 +1531,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-ServiceBus0": {
       "archetypes": [
@@ -1290,7 +1545,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-SQL0": {
       "archetypes": [
@@ -1301,7 +1559,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-Storage0": {
       "archetypes": [
@@ -1312,7 +1573,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-Synapse0": {
       "archetypes": [
@@ -1323,7 +1587,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-GR-VirtualDesk0": {
       "archetypes": [
@@ -1334,7 +1601,10 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-Subnet-Private": {
       "archetypes": [
@@ -1345,7 +1615,12 @@ globalThis.ALZ_POLICY_CATALOG = {
         "landingzones",
         "platform"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {
+        "effect": "Audit"
+      },
+      "libraryEnforcementMode": "DoNotEnforce",
+      "denyClass": false
     },
     "Enforce-TLS-SSL-Q225": {
       "archetypes": [
@@ -1354,7 +1629,10 @@ globalThis.ALZ_POLICY_CATALOG = {
       "managementGroups": [
         "landingzones"
       ],
-      "requiredDefaults": []
+      "requiredDefaults": [],
+      "effects": {},
+      "libraryEnforcementMode": "Default",
+      "denyClass": false
     }
   },
   "groups": [

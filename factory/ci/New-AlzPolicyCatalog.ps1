@@ -137,6 +137,12 @@ $groupMap = [ordered]@{
     }
 }
 
+function Test-LzJsonProperty {
+    param($Object, [string]$Name)
+    if ($null -eq $Object) { return $false }
+    return [bool]($Object.PSObject.Properties.Name -contains $Name)
+}
+
 function Get-LzLibraryFile {
     param([Parameter(Mandatory)][string]$RelativePath)
 
@@ -251,10 +257,39 @@ function New-LzPolicyCatalog {
         # the archetype. This is the form a client can reason about: "corp and
         # everything under it", not "the corp archetype".
         $onGroups = @($managementGroups | Where-Object { $mgArchetypes = @($_.archetypes); @($carriedBy | Where-Object { $mgArchetypes -contains $_ }).Count -gt 0 } | ForEach-Object { $_.id } | Sort-Object)
+        # What the assignment itself declares. Read from the library rather
+        # than inferred from the name: whether a policy blocks a deployment or
+        # only reports on it decides what an "audit baseline" is allowed to
+        # change, and getting that wrong in either direction is expensive —
+        # downgrading a DeployIfNotExists assignment silently stops remediation
+        # for the whole estate.
+        $assignmentDoc = Get-LzLibraryFile "policy_assignments/$name.alz_policy_assignment.json" | ConvertFrom-Json -Depth 20
+        $effects = [ordered]@{}
+        if (Test-LzJsonProperty $assignmentDoc.properties 'parameters') {
+            foreach ($p in $assignmentDoc.properties.parameters.PSObject.Properties) {
+                if ($p.Name -match '^[Ee]ffect') { $effects[$p.Name] = [string]$p.Value.value }
+            }
+        }
+        $libraryEnforcement = if (Test-LzJsonProperty $assignmentDoc.properties 'enforcementMode') {
+            [string]$assignmentDoc.properties.enforcementMode
+        }
+        else { 'Default' }
+        # Deny-class by either signal. The declared effect is authoritative;
+        # the ALZ naming convention catches the assignments whose Deny effect
+        # comes from the built-in definition and so is not visible offline.
+        # Erring toward deny-class is safe: no Deny-named ALZ assignment is a
+        # remediation policy, so a false positive costs enforcement, never
+        # remediation.
+        $denyClass = ($name -match '^Deny(Action)?-') -or
+            (@($effects.Values | Where-Object { $_ -match '^Deny' }).Count -gt 0)
+
         $assignments[$name] = [ordered]@{
-            archetypes       = @($carriedBy)
-            managementGroups = @($onGroups)
-            requiredDefaults = @($needs)
+            archetypes             = @($carriedBy)
+            managementGroups       = @($onGroups)
+            requiredDefaults       = @($needs)
+            effects                = $effects
+            libraryEnforcementMode = $libraryEnforcement
+            denyClass              = [bool]$denyClass
         }
     }
 

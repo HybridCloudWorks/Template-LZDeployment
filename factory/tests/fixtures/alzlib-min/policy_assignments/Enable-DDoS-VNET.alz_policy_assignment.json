@@ -1,0 +1,12 @@
+{
+  "type": "Microsoft.Authorization/policyAssignments",
+  "name": "Enable-DDoS-VNET",
+  "properties": {
+    "displayName": "Enable DDoS protection on virtual networks",
+    "enforcementMode": "Default",
+    "parameters": {
+      "effect": { "value": "Modify" },
+      "ddosPlan": { "value": "placeholder" }
+    }
+  }
+}

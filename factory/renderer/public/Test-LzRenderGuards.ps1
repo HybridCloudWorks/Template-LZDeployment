@@ -411,6 +411,35 @@ function Test-LzRenderGuards {
         }
     }
 
+    # ── G28: a selected policy assignment whose default value nobody supplied ──
+    # The ALZ provider resolves policy_default_values at PLAN time, which nothing
+    # in this pipeline runs, so an unsupplied value is invisible to every other
+    # gate: the assignment is created from the placeholder in the library's own
+    # assignment file — security_contact@replace_me, or a plan under an
+    # all-zeroes subscription — and only misbehaves at remediation time. The
+    # wizard blocks the same case at export; this guard is what stops a
+    # hand-edited configuration from walking past it.
+    $policy = Resolve-LzPolicySelection -Config $Config
+    $catalog = Get-LzPolicyCatalog
+    $answers = $null
+    if ((Test-LzHasProperty $Config.governance 'policySelection') -and
+        (Test-LzHasProperty $Config.governance.policySelection 'values')) {
+        $answers = $Config.governance.policySelection.values
+    }
+    foreach ($name in @(Get-LzPropertyNames $catalog.defaults)) {
+        $declaration = $catalog.defaults.$name
+        if ($declaration.supplied -eq 'factory') { continue }
+        $asking = @(@($declaration.consumedBy | ForEach-Object { $_.assignment }) |
+            Where-Object { $_ -in $policy.CreatedAssignments } | Sort-Object -Unique)
+        if ($asking.Count -eq 0) { continue }
+        $supplied = ''
+        if ($answers -and (Test-LzHasProperty $answers $name)) { $supplied = [string]$answers.$name }
+        if ($supplied.Trim()) { continue }
+        $v += New-LzGuardViolation -Id 'G28' `
+            -Message "governance.policySelection.values.$name is required: $($asking -join ', ') is selected and the pinned ALZ library declares no usable default." `
+            -Remediation "Supply the value, or turn the assignment off in the wizard's Policies step. Created without it, the assignment carries the library's own placeholder, which either fails ARM validation or is accepted and then remediates against something that does not exist."
+    }
+
     $blocks = @($v | Where-Object { $_.Severity -eq 'Block' })
     $warns = @($v | Where-Object { $_.Severity -eq 'Warn' })
 

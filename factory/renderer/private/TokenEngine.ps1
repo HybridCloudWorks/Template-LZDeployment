@@ -195,6 +195,23 @@ function New-LzRenderContext {
     # Tag map rendered into every layer's default_tags.
     $map['computed.defaultTags'] = $Config.naming.defaultTags
 
+    # The client's policy selection, resolved against the generated catalog into
+    # the two variables the global layer inverts into
+    # policy_assignments_to_modify.
+    $policy = Resolve-LzPolicySelection -Config $Config
+    $map['computed.policyAssignmentChanges'] = ConvertTo-LzHclPolicyChanges $policy.Changes
+    $map['computed.policyAssignmentManagementGroups'] = ConvertTo-LzHclPolicyScopes $policy.Scopes
+    $map['computed.policyAssignmentsChanged'] = $policy.Changes.Count
+    $map['computed.policyAssignmentsCreated'] = $policy.CreatedCount
+    $map['computed.policyAssignmentsTotal'] = $policy.TotalCount
+    # Read through the resolver rather than off the configuration directly: the
+    # values object is optional and an exported configuration strips it when the
+    # client answered nothing, so a bare path read would throw on exactly the
+    # estates that need no answer. Empty is legitimate — guard G28 is what
+    # decides whether an empty value is a problem.
+    $map['computed.policyValueDdosPlanId'] = $policy.Values['ddos_protection_plan_id']
+    $map['computed.policyValueSecurityContact'] = $policy.Values['email_security_contact']
+
     if ($Discovery) { $map['computed.discoveryAvailable'] = $true }
     else { $map['computed.discoveryAvailable'] = $false }
 
@@ -203,6 +220,166 @@ function New-LzRenderContext {
         Tokens = $map
         Keys   = @($map.Keys)
     }
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Policy selection
+# ══════════════════════════════════════════════════════════════════════════════
+
+$script:LzPolicyCatalog = $null
+
+function Get-LzPolicyCatalog {
+    <#
+    .SYNOPSIS
+        The generated ALZ policy catalog, read once per session.
+    .DESCRIPTION
+        Produced by factory/ci/New-AlzPolicyCatalog.ps1 from the library ref
+        pinned in factory-version.json, and verified against that ref by the
+        ALZ policy catalog CI check. The renderer reads it rather than the
+        library directly for the same reason the wizard does: rendering must
+        work with no network, and the two must not be able to disagree about
+        which management groups carry which assignment.
+    #>
+    if ($null -ne $script:LzPolicyCatalog) { return $script:LzPolicyCatalog }
+    # factory/renderer/private -> the repository root.
+    $path = Join-Path $PSScriptRoot '../../../site/alz-policy-catalog.json'
+    if (-not (Test-Path $path)) {
+        throw "The generated ALZ policy catalog is missing ($path). Run factory/ci/New-AlzPolicyCatalog.ps1."
+    }
+    $script:LzPolicyCatalog = Get-Content $path -Raw | ConvertFrom-Json -Depth 30
+    return $script:LzPolicyCatalog
+}
+
+function Resolve-LzPolicySelection {
+    <#
+    .SYNOPSIS
+        Turn the client's answers into deltas from the pinned library baseline.
+    .DESCRIPTION
+        Returns only assignments the client actually changed. An assignment with
+        no entry is created exactly as the library declares it, which is what
+        keeps a library bump from being silently narrowed by an older answer
+        record — the same reason an absent group id means enabled.
+
+        Three things can produce a delta:
+
+          * a capability group the client turned off, or a per-assignment
+            override, either of which yields creation_enabled = false;
+          * a per-assignment enforcement override from the advanced list;
+          * the baseline enforcement mode. Audit downgrades the assignments the
+            catalog identifies as deny-class and nothing else. Applying it to
+            every enforcing assignment would read more literally but would also
+            stop DeployIfNotExists and Modify remediation across the estate —
+            the Defender configuration, the Azure Monitor Agent, diagnostic
+            settings and private-DNS registration this factory deploys would
+            never converge. Deny-class is read from the assignment's declared
+            effect at the pinned ref, widened by the ALZ naming convention for
+            the ones whose effect lives in a built-in definition; erring that
+            way costs enforcement, never remediation.
+    #>
+    param([Parameter(Mandatory)][object]$Config)
+
+    $catalog = Get-LzPolicyCatalog
+    $selection = $null
+    if ((Test-LzHasProperty $Config 'governance') -and
+        (Test-LzHasProperty $Config.governance 'policySelection')) {
+        $selection = $Config.governance.policySelection
+    }
+    $groups = if ($selection -and (Test-LzHasProperty $selection 'groups')) { $selection.groups } else { $null }
+    $overrides = if ($selection -and (Test-LzHasProperty $selection 'assignments')) { $selection.assignments } else { $null }
+
+    $auditBaseline = $Config.governance.policyBaseline.enforcementMode -ne 'deny'
+
+    # Assignment -> the group that claims it, so a group toggle can reach it.
+    $groupOf = @{}
+    foreach ($group in @($catalog.groups)) {
+        foreach ($name in @($group.assignments)) { $groupOf[$name] = $group.id }
+    }
+
+    $changes = [ordered]@{}
+    $scopes = [ordered]@{}
+    $created = 0
+    $createdNames = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($name in @(Get-LzPropertyNames $catalog.assignments | Sort-Object)) {
+        $assignment = $catalog.assignments.$name
+        $override = if ($overrides -and (Test-LzHasProperty $overrides $name)) { $overrides.$name } else { $null }
+
+        # Creation: the per-assignment override wins over its group, and an
+        # assignment no group claims is created.
+        $enabled = $true
+        if ($groupOf.ContainsKey($name) -and $groups -and (Test-LzHasProperty $groups $groupOf[$name])) {
+            $enabled = [bool]$groups.($groupOf[$name])
+        }
+        if ($override -and (Test-LzHasProperty $override 'creationEnabled')) {
+            $enabled = [bool]$override.creationEnabled
+        }
+        if ($enabled) { $created++; [void]$createdNames.Add($name) }
+
+        # Enforcement: an explicit override wins; otherwise the audit baseline
+        # reaches the deny-class assignments the library ships enforcing.
+        $enforcement = $null
+        if ($override -and (Test-LzHasProperty $override 'enforcementMode') -and $override.enforcementMode) {
+            $enforcement = [string]$override.enforcementMode
+        }
+        elseif ($auditBaseline -and $assignment.denyClass -and $assignment.libraryEnforcementMode -eq 'Default') {
+            $enforcement = 'DoNotEnforce'
+        }
+
+        $change = [ordered]@{}
+        # Only deltas travel: an assignment the library already creates needs no
+        # entry, and neither does an enforcement mode it already has. An
+        # assignment that is never created has no enforcement mode to state.
+        if (-not $enabled) { $change['creation_enabled'] = $false }
+        elseif ($enforcement -and $enforcement -ne $assignment.libraryEnforcementMode) {
+            $change['enforcement_mode'] = $enforcement
+        }
+        if ($change.Count -eq 0) { continue }
+
+        $changes[$name] = $change
+        $scopes[$name] = @($assignment.managementGroups)
+    }
+
+    # The client-owned default values, normalised so an absent object, an absent
+    # key and a blank answer are the same thing to every consumer.
+    $answered = [ordered]@{}
+    $values = if ($selection -and (Test-LzHasProperty $selection 'values')) { $selection.values } else { $null }
+    foreach ($name in @(Get-LzPropertyNames $catalog.defaults)) {
+        $answer = ''
+        if ($values -and (Test-LzHasProperty $values $name)) { $answer = ([string]$values.$name).Trim() }
+        $answered[$name] = $answer
+    }
+
+    [pscustomobject]@{
+        Values             = $answered
+        Changes            = $changes
+        Scopes             = $scopes
+        CreatedCount       = $created
+        CreatedAssignments = @($createdNames)
+        TotalCount         = @(Get-LzPropertyNames $catalog.assignments).Count
+    }
+}
+
+function ConvertTo-LzHclPolicyChanges {
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Changes)
+    if ($Changes.Count -eq 0) { return '{}' }
+    $lines = foreach ($name in $Changes.Keys) {
+        $body = foreach ($attribute in $Changes[$name].Keys) {
+            $value = $Changes[$name][$attribute]
+            $literal = if ($value -is [bool]) { ConvertTo-LzBoolLiteral $value } else { ConvertTo-LzHclString $value }
+            "      $attribute = $literal"
+        }
+        "  $(ConvertTo-LzHclString $name) = {`n" + ($body -join "`n") + "`n  }"
+    }
+    return "{`n" + ($lines -join "`n") + "`n}"
+}
+
+function ConvertTo-LzHclPolicyScopes {
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Scopes)
+    if ($Scopes.Count -eq 0) { return '{}' }
+    $lines = foreach ($name in $Scopes.Keys) {
+        "  $(ConvertTo-LzHclString $name) = $(ConvertTo-LzHclList $Scopes[$name])"
+    }
+    return "{`n" + ($lines -join "`n") + "`n}"
 }
 
 function Get-LzActiveLayers {
