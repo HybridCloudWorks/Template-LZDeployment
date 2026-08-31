@@ -1313,19 +1313,56 @@ does not weaken that gate, it deletes it — from both workflows, with no error.
 
 23 renderer assertions and 16 wizard assertions.
 
-### 6.6 Client-repo ingest — operator-directed 2026-08-30
+### 6.6 Client-repo ingest — `[PARTIALLY CLOSED 2026-08-31]`
 
-The client copy runs the wizard from its own Pages, commits `lz-config.json`,
-and a workflow picks it up. Render and validate need no credentials and run on
-every commit of the config. Discovery, the broker and the scaffold do need
-Azure access — and the broker is what creates the OIDC identities, so there is
-nothing to authenticate with on the first run. That half sits behind a
-protected environment holding a client-created bootstrap principal, opt-in;
-clients who prefer ADR 0004's run-it-locally motion never create it.
+**Shipped: the uncredentialed half.** `.github/workflows/client-config-check.yml`
+renders the client's committed answer record and runs every validation gate on
+each push and pull request touching it, uploads the rendered tree and the
+evidence, and posts the gate table back to the pull request. It holds **no
+credentials at all** — render and validate shell only `terraform`, `tflint` and
+a scanner, and validation's `terraform init -backend=false` is what keeps it
+authentication-free.
 
-Pages cannot be enabled by a workflow (`administration:write`, which
-`deploy-pages.yml` already documents at lines 22-25), so that stays a manual
-step in the client-copy checklist.
+`-Phase` is a single-valued `ValidateSet`, so this is two calls rather than one;
+`all` would pull in every credentialed phase the job exists to stay out of. A
+`skipped` gate is reported as SKIPPED, not FAIL: a gate whose tool is missing
+from the runner has not judged the configuration either way, and calling that a
+failure would train the client to ignore the table.
+
+**The committed path is `client/lz-config.json`, decided rather than defaulted.**
+The root `/lz-config.json` ignore is anchored, so a subpath is committable
+without weakening the rule that stops tenant identifiers reaching an upstream
+commit. `client-rendered/` and `client-evidence/` are newly ignored — they carry
+the same tenant detail and nothing should ever commit them. `client/README.md`
+records the split.
+
+### 6.6a The credentialed job — `[OPEN, needs an operator decision]`
+
+The plan called for a second, opt-in job running discovery → broker → scaffold
+behind a protected environment holding a client-created bootstrap principal.
+**Not built**, because it contradicts a ratified operator decision rather than
+merely extending it.
+
+CLAUDE.md §0 records, operator-ratified 2026-08-06: *"The client runs it, on
+their own machine, so the tenant-confirmation step is load-bearing: it is the
+client's own `gh` and `az` sessions that create the estate."* A CI job replaces
+an interactive session the client is sitting in front of with a stored principal
+they are not — on exactly the run that creates the estate. That is a security-
+model change, not a convenience, and it is the operator's call.
+
+(The plan's own stated reason it cannot be *automatic* still holds and is
+independent: the broker creates the OIDC identities later workflows federate
+with, so on the first run there is nothing to authenticate as.)
+
+Either ratify the CI path explicitly — with the protected environment, the
+client-created bootstrap principal, and an amendment to CLAUDE.md §0 — or close
+this as deliberately-not-done. The workflow documents the absence and why, so
+nothing is silently missing in the meantime.
+
+Also unchanged: GitHub Pages cannot be enabled by a workflow. It needs
+`administration:write`, which a job token structurally cannot hold, so manual
+enablement stays in the client checklist and `deploy-pages.yml` documents both
+routes.
 
 ### 6.7 Per-subscription brownfield disposition — operator-directed 2026-08-30
 

@@ -1,0 +1,186 @@
+# Renders and validates the client's answer record on every change to it.
+#
+# This is the one workflow in this repository that is FOR THE CLIENT COPY
+# rather than for upstream development. A client who copies this repository,
+# commits their wizard export to client/lz-config.json and opens a pull request
+# gets the render guards and the validation gates back on the pull request,
+# before anything touches their tenant.
+#
+# It deliberately needs NO credentials. Render and validate shell only
+# terraform, tflint and a scanner, and validation's `terraform init
+# -backend=false` is what keeps it auth-free: no Azure login, no gh token
+# beyond the default one used to comment. The phases that DO need credentials —
+# discovery, broker, scaffold — are not here, by design. See the "What is
+# deliberately absent" note at the bottom.
+name: Client Config Check
+
+on:
+  push:
+    paths:
+      - 'client/lz-config.json'
+      - '.github/workflows/client-config-check.yml'
+  pull_request:
+    paths:
+      - 'client/lz-config.json'
+      - '.github/workflows/client-config-check.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: client-config-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-and-validate:
+    name: Render + validate the answer record
+    runs-on: ubuntu-latest
+    # Only what commenting on the pull request needs. No id-token: this job
+    # federates to nothing.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Is there an answer record to check?
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f client/lz-config.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No client/lz-config.json yet. Export one from the wizard and commit it there — the path is deliberate, because the repository root's lz-config.json is gitignored to stop tenant identifiers reaching the upstream template."
+          fi
+
+      - name: Setup Terraform
+        if: steps.config.outputs.present == 'true'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+
+      # Two calls, not one: -Phase takes a single value, and `all` would pull in
+      # discovery, broker and scaffold — every credentialed phase this job
+      # exists to stay out of.
+      - name: Render
+        if: steps.config.outputs.present == 'true'
+        shell: pwsh
+        env:
+          LZ_RENDERED_PATH: ${{ github.workspace }}/client-rendered
+          LZ_VALIDATE_EVIDENCE: ${{ github.workspace }}/client-evidence
+        run: ./scripts/Invoke-CustomerEngagement.ps1 -ConfigPath ./client/lz-config.json -Phase render
+
+      - name: Validate
+        id: validate
+        if: steps.config.outputs.present == 'true'
+        shell: pwsh
+        env:
+          LZ_RENDERED_PATH: ${{ github.workspace }}/client-rendered
+          LZ_VALIDATE_EVIDENCE: ${{ github.workspace }}/client-evidence
+        # continue-on-error so the report is uploaded and commented even when a
+        # gate fails — a red gate with no evidence is worse than no gate.
+        continue-on-error: true
+        run: ./scripts/Invoke-CustomerEngagement.ps1 -ConfigPath ./client/lz-config.json -Phase validate
+
+      - name: Upload the rendered tree and the validation evidence
+        if: steps.config.outputs.present == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: client-render-${{ github.run_id }}
+          path: |
+            client-rendered/
+            client-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Summarize
+        if: steps.config.outputs.present == 'true'
+        shell: pwsh
+        run: |
+          $report = 'client-evidence/validate-report.json'
+          $lines = @('## Landing zone configuration check', '')
+          if (Test-Path $report) {
+            $r = Get-Content $report -Raw | ConvertFrom-Json -Depth 20
+            $lines += "**$($r.overallStatus)** — $($r.passedCount) passed, $($r.failedCount) failed, $($r.skippedCount) skipped."
+            $lines += ''
+            $lines += '| Gate | Status | Detail |'
+            $lines += '|---|---|---|'
+            foreach ($g in $r.gates) {
+              # `skipped` is a real third state, not a failure: a gate whose tool
+              # is absent has not judged this configuration either way, and
+              # reporting it as FAIL would train the client to ignore the table.
+              $mark = switch ($g.status) { 'pass' { 'PASS' } 'skipped' { 'SKIPPED' } default { 'FAIL' } }
+              $detail = (@($g.details) -join ' ')
+              if (-not $detail) { $detail = '&mdash;' }
+              $detail = $detail -replace '\|', '\\|'
+              if ($detail.Length -gt 200) { $detail = $detail.Substring(0, 197) + '...' }
+              $lines += "| ``$($g.id)`` $($g.name) | $mark | $detail |"
+            }
+            $failed = @($r.gates | Where-Object { $_.status -eq 'fail' })
+            if ($failed.Count) {
+              $lines += ''
+              $lines += '### What to do'
+              foreach ($g in $failed) { $lines += "- **$($g.id) $($g.name)** — $($g.remediation)" }
+            }
+          }
+          else {
+            $lines += 'The validation gates did not produce a report. The render phase most likely failed — check the job log above for the render guard that refused the configuration.'
+          }
+          $lines += ''
+          $lines += 'Nothing in this run touched Azure or GitHub: it renders the committed answer record and runs the validation gates, with no credentials of any kind.'
+          $body = $lines -join "`n"
+          $body | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "body<<LZEOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $body | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "LZEOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        id: summary
+
+      - name: Comment on the pull request
+        if: steps.config.outputs.present == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const body = process.env.SUMMARY_BODY;
+            const marker = '## Landing zone configuration check';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const existing = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const mine = existing.data.find(c => c.body && c.body.startsWith(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+        env:
+          SUMMARY_BODY: ${{ steps.summary.outputs.body }}
+
+      - name: Fail the check when a gate failed
+        if: steps.config.outputs.present == 'true' && steps.validate.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::error::The validation gates rejected this configuration. The table in the job summary names which gate and why."
+          exit 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# What is deliberately absent
+#
+# There is no job here that runs discovery, the bootstrap broker, or scaffold.
+# Those are the phases that need Azure and GitHub credentials, and the operator
+# ratified (2026-08-06) that the CLIENT runs them, on their own machine, under
+# their own `az` and `gh` sessions — which is what makes the tenant-confirmation
+# step load-bearing. Moving them into CI would replace an interactive session
+# the client can see with a stored principal they cannot, and it would do so on
+# exactly the run that creates the estate.
+#
+# There is also a plainer reason it could not be automatic even if that were
+# wanted: the broker CREATES the OIDC identities the workflows later federate
+# with. On the first run there is nothing to authenticate as.
+#
+# GitHub Pages cannot be enabled from here either — that needs
+# administration:write, which a job token structurally cannot hold. Enabling it
+# stays a manual step in the client checklist; .github/workflows/deploy-pages.yml
+# documents both routes.
+# ─────────────────────────────────────────────────────────────────────────────

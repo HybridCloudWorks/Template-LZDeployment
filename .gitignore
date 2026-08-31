@@ -70,6 +70,17 @@ generated-output/
 /rendered-output/
 /validate-evidence/
 /scaffold-output/
+
+# Client-copy render and validation outputs, written by
+# .github/workflows/client-config-check.yml and by the same phases run by hand.
+# They carry the same tenant, subscription and identity detail the answer record
+# does, so they are ignored for exactly the reason the answer record is.
+#
+# client/lz-config.json is deliberately NOT ignored: the root ignore above is
+# anchored, and the client copy is meant to commit its answers so the check
+# workflow has something to render. See client/README.md.
+/client-rendered/
+/client-evidence/
 /scaffold-evidence/
 /brownfield-classifications.json
 /brownfield-evidence/
