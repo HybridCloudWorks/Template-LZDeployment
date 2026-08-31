@@ -1625,6 +1625,58 @@ with it, which is the mistake this entry exists to have not made.
 
 Ledger budget **40 → 34**.
 
+### 6.9 The recorded-not-deployed ledger reaches zero — `[CLOSED 2026-08-31]`
+
+Operator-directed: close **all** of them. The ledger was 40 when Phase 6 opened
+and is now **0** — every answer the wizard collects reaches a delivered
+artifact.
+
+Three dispositions, and the largest was not "wire it to Terraform":
+
+**Six groups (31 answers) now render into the generated repository's
+documentation.** Non-prod spoke addressing and the ExpressRoute circuit detail
+into a new `docs/connectivity.md`; the operating-model contacts, approval chain
+and break-glass table into `docs/operating-model.md`; the budgets and cost
+exports into `docs/finops.md`, which previously named `finops.budgets` in prose
+and rendered no field of it; the security retention detail into
+`docs/threat-model.md`; the identity strategy into
+`docs/identity-trust-matrix.md`.
+
+**This is delivery, not a consolation prize.** A spoke address range is
+per-estate work under ADR 0017 and an ExpressRoute circuit is a carrier order
+placed outside Terraform — neither is a resource this factory can create, so
+the deliverable for those decisions *is* the decision, written where the person
+acting on it will look. Each document says plainly that nothing deploys it.
+
+**Three answers were wired to real Terraform.** `connectivity.bastion.sku`,
+`connectivity.vpn.sku` and `connectivity.vpn.activeActive` now reach the AVM
+connectivity module as `bastion.sku`, `virtual_network_gateways.vpn.sku` and
+`vpn_active_active_enabled`. Verified against the pinned module's own
+`variables.tf` before wiring rather than assumed — the register's alternative
+was to stop asking, and that would have been the answer if the module had not
+accepted them. The `vpn` object is emitted only when a VPN gateway is deployed:
+the enable flag governs creation, this object governs configuration, and
+supplying it for a gateway that is not created would describe a resource the
+estate does not have.
+
+**Six were removed** — see 6.8.
+
+**Fourteen moved to `consumedIndirectly`, not closed by sleight of hand.** The
+spoke ranges, budget fields and approval-chain fields are walked structurally
+into `computed.*` lists and rendered as tables, so no dotted path appears in
+source and the coverage scan cannot see them. They reach the client; the
+scanner's blind spot is not the client's problem, and the register records
+exactly which consumer reads each.
+
+**A latent defect in the checker itself, found by emptying it.** The asset
+emitter serialised the ledger with a piped `ConvertTo-Json`, which emits
+**nothing** for an empty collection — producing
+`globalThis.LZ_RECORDED_NOT_DEPLOYED = ;`, a syntax error that takes the whole
+wizard down at load. A single entry would have serialised as a bare object and
+made `unmetDependencies()` iterate the characters of a string. Neither case was
+reachable while the ledger held two or more groups. Both are handled explicitly
+now, and the wizard tests assert the shape rather than the contents.
+
 ## Phase 5 — Release-time items
 
 ### 5.1 Run Stage 14 release attestation and the release-gate PR

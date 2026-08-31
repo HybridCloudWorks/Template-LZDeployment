@@ -54,6 +54,26 @@ Private endpoints enabled:
 Public-network-access deny policy:
 {{FACTORY-BOOL:connectivity.privateEndpoints.denyPublicNetworkAccessPolicy}}.
 
+## Recorded security posture the factory does not build
+
+Per ADR 0017 the factory deploys neither Sentinel, nor this estate's key
+vaults, nor NSG flow logs. The answers below configure nothing here — they are
+the standard the estate team is expected to implement, carried into this
+repository so the decision travels with the deployment instead of being
+rediscovered.
+
+| Control | Recorded value |
+|---|---|
+| Sentinel retention | {{FACTORY-RAW:computed.docSentinelRetention}} days |
+| Key Vault purge protection | {{FACTORY-RAW:computed.docKeyVaultPurgeProtection}} |
+| Key Vault soft-delete retention | {{FACTORY-RAW:computed.docKeyVaultSoftDelete}} days |
+| Key Vault RBAC authorization | {{FACTORY-RAW:computed.docKeyVaultRbac}} |
+| NSG flow-log retention | {{FACTORY-RAW:computed.docFlowLogRetention}} days |
+| Traffic analytics | {{FACTORY-RAW:computed.docTrafficAnalytics}} |
+
+Treat a resource that does not meet this table as non-conforming. Nothing in
+the landing zone enforces it.
+
 ## Residual risks
 
 - Live identity federation and branch-protection settings are external state and

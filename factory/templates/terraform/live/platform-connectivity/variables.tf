@@ -82,6 +82,29 @@ variable "deploy_vpn_gateway" {
   default     = false
 }
 
+variable "bastion_sku" {
+  description = "Azure Bastion SKU. Basic drops native client, IP connect, shareable link and tunneling; Standard is roughly USD 140/month per hub."
+  type        = string
+  default     = "Standard"
+
+  validation {
+    condition     = contains(["Basic", "Standard"], var.bastion_sku)
+    error_message = "bastion_sku must be Basic or Standard."
+  }
+}
+
+variable "vpn_gateway_sku" {
+  description = "VPN gateway SKU. The AZ variants are zone-redundant and are what the wizard offers."
+  type        = string
+  default     = "VpnGw1AZ"
+}
+
+variable "vpn_gateway_active_active" {
+  description = "Run the VPN gateway active-active. Doubles the gateway instances and requires a second public IP; the module provisions both."
+  type        = bool
+  default     = true
+}
+
 variable "deploy_expressroute_gateway" {
   description = "Deploy an ExpressRoute gateway in each hub."
   type        = bool

@@ -278,6 +278,126 @@ function New-LzRenderContext {
     $map['computed.alzLibraryPath'] = $groups.LibraryPath
     $map['computed.alzLibraryRef'] = $groups.LibraryRef
 
+    # ── Answers that reach a document rather than a resource ─────────────────
+    # These were collected, recorded in lz-config.json, and rendered nowhere:
+    # the client answered and the repository they were handed said nothing about
+    # it. Flattened into FOREACH-ready lists here, in the same idiom as the
+    # brownfield dispositions above, because a template cannot join an array of
+    # objects into a table on its own.
+    #
+    # Always present, empty rather than absent: an unknown token path THROWS at
+    # render time, so a list that exists only when the client answered would
+    # turn every #{{FOREACH}} over it into a render failure for everyone else.
+    $approvals = [System.Collections.Generic.List[object]]::new()
+    if ((Test-LzHasProperty $Config 'operations') -and (Test-LzHasProperty $Config.operations 'approvalChain')) {
+        foreach ($stage in @($Config.operations.approvalChain)) {
+            $approvals.Add([pscustomobject]@{
+                stage        = [string]$stage.stage
+                approvers    = (@($stage.approvers) -join ', ')
+                environments = (@($stage.appliesToEnvironments) -join ', ')
+            })
+        }
+    }
+    $map['computed.approvalChain'] = @($approvals)
+    $map['computed.hasApprovalChain'] = ($approvals.Count -gt 0)
+
+    $budgets = [System.Collections.Generic.List[object]]::new()
+    if ((Test-LzHasProperty $Config 'finops') -and (Test-LzHasProperty $Config.finops 'budgets')) {
+        foreach ($budget in @($Config.finops.budgets)) {
+            $budgets.Add([pscustomobject]@{
+                scope      = [string]$budget.scope
+                amount     = [string]$budget.amountUsd
+                timeGrain  = [string]$budget.timeGrain
+                # Rendered as percentages because that is how they are set and
+                # how an alert reads; the raw integers would need explaining.
+                thresholds = ((@($budget.alertThresholdPercents) | ForEach-Object { "$_%" }) -join ', ')
+                contacts   = (@($budget.contactEmails) -join ', ')
+            })
+        }
+    }
+    $map['computed.finopsBudgets'] = @($budgets)
+    $map['computed.hasFinopsBudgets'] = ($budgets.Count -gt 0)
+
+    # $defs/contact objects, not strings — a FACTORY-LIST over the raw array
+    # would render PSCustomObject type names into the handed-over document.
+    # Phone is optional and deliberately included: the schema says it is used
+    # only in generated contact tables and never transmitted, and this is that
+    # table.
+    $breakGlass = [System.Collections.Generic.List[object]]::new()
+    if ((Test-LzHasProperty $Config 'operations') -and (Test-LzHasProperty $Config.operations 'breakGlassContacts')) {
+        foreach ($contact in @($Config.operations.breakGlassContacts)) {
+            $breakGlass.Add([pscustomobject]@{
+                name  = [string]$contact.name
+                email = [string]$contact.email
+                role  = if (Test-LzHasProperty $contact 'role') { [string]$contact.role } else { '—' }
+                phone = if (Test-LzHasProperty $contact 'phone') { [string]$contact.phone } else { '—' }
+            })
+        }
+    }
+    $map['computed.breakGlassContacts'] = @($breakGlass)
+    $map['computed.hasBreakGlassContacts'] = ($breakGlass.Count -gt 0)
+
+    # The non-prod spokes, as rows. Per ADR 0017 no layer builds a workload
+    # spoke, so these describe an addressing decision the estate team implements
+    # — which is exactly why writing them down is the whole of the fix.
+    $spokes = [System.Collections.Generic.List[object]]::new()
+    if ((Test-LzHasProperty $Config.connectivity 'hubSpoke') -and
+        (Test-LzHasProperty $Config.connectivity.hubSpoke 'nonProdSpokeAddressSpaces')) {
+        $spokeConfig = $Config.connectivity.hubSpoke.nonProdSpokeAddressSpaces
+        foreach ($environment in @('dev', 'test', 'uat')) {
+            if (-not (Test-LzHasProperty $spokeConfig $environment)) { continue }
+            $entry = $spokeConfig.$environment
+            $primary = if (Test-LzHasProperty $entry 'primary') { [string]$entry.primary } else { '' }
+            $dr = if (Test-LzHasProperty $entry 'dr') { [string]$entry.dr } else { '' }
+            if (-not $primary -and -not $dr) { continue }
+            $spokes.Add([pscustomobject]@{
+                environment = $environment
+                primary     = if ($primary) { $primary } else { '—' }
+                dr          = if ($dr) { $dr } else { '—' }
+            })
+        }
+    }
+    $map['computed.nonProdSpokes'] = @($spokes)
+    $map['computed.hasNonProdSpokes'] = ($spokes.Count -gt 0)
+
+    # Scalar answers that reach a document, resolved to a readable value here
+    # rather than guarded at seventeen call sites in the templates.
+    #
+    # Every one of these keys is OPTIONAL, and an exported configuration STRIPS
+    # an optional key rather than emitting it empty — so a bare {{FACTORY:...}}
+    # throws "Unknown configuration path" for any client who left it blank. The
+    # documented alternative is `#{{IF defined path}}` around each, which would
+    # turn six readable tables into forty lines of conditionals. Resolving once
+    # here keeps the templates flat and renders "not recorded" instead of a
+    # blank cell, which is what the reader actually needs to know.
+    $documented = [ordered]@{
+        'docCostExportAccount'       = 'finops.costExports.storageAccountName'
+        'docCostExportFrequency'     = 'finops.costExports.frequency'
+        'docPlatformTeamSlug'        = 'operations.platformTeam.githubTeamSlug'
+        'docSupportHours'            = 'operations.platformTeam.supportHours'
+        'docEscalationUrl'           = 'operations.platformTeam.escalationUrl'
+        'docIdentityStrategy'        = 'identity.strategy'
+        'docSentinelRetention'       = 'security.sentinel.retentionDays'
+        'docKeyVaultPurgeProtection' = 'security.keyVault.enablePurgeProtection'
+        'docKeyVaultSoftDelete'      = 'security.keyVault.softDeleteRetentionDays'
+        'docKeyVaultRbac'            = 'security.keyVault.enableRbacAuthorization'
+        'docFlowLogRetention'        = 'security.nsgFlowLogs.retentionDays'
+        'docTrafficAnalytics'        = 'security.nsgFlowLogs.trafficAnalytics'
+        'docErCircuitName'           = 'connectivity.expressRoute.circuitName'
+        'docErPeeringLocation'       = 'connectivity.expressRoute.peeringLocation'
+        'docErBandwidthMbps'         = 'connectivity.expressRoute.bandwidthMbps'
+        'docErServiceProvider'       = 'connectivity.expressRoute.serviceProvider'
+        'docPrimaryHubAddressSpace'  = 'connectivity.hubSpoke.primaryHubAddressSpace'
+    }
+    foreach ($token in $documented.Keys) {
+        $value = if ($map.Contains($documented[$token])) { $map[$documented[$token]] } else { $null }
+        # A boolean false is a recorded answer, not an absent one, so only null
+        # and empty string fall back.
+        $map["computed.$token"] = if ($value -is [bool]) { if ($value) { 'yes' } else { 'no' } }
+        elseif ($null -eq $value -or [string]::IsNullOrWhiteSpace([string]$value)) { 'not recorded' }
+        else { [string]$value }
+    }
+
     if ($Discovery) { $map['computed.discoveryAvailable'] = $true }
     else { $map['computed.discoveryAvailable'] = $false }
 

@@ -1,6 +1,6 @@
 {
-  "$comment": "Answer-coverage ledger for factory/ci/Test-SchemaCoverage.ps1. Two lists, and the difference between them matters. consumedIndirectly names answers that DO reach a delivered artifact through a consumer that reads them structurally rather than by dotted name \u2014 the coverage scan cannot see them, but the client gets what they answered. recordedNotDeployed names answers that reach nothing but lz-config.json: the client is asked, the answer is preserved, and no estate is built from it. That second list is debt, it carries a budget that only ratchets down, and every entry owes a reason and a way out.",
-  "budget": 34,
+  "$comment": "Answer-coverage ledger for factory/ci/Test-SchemaCoverage.ps1. Two lists, and the difference between them matters. consumedIndirectly names answers that DO reach a delivered artifact through a consumer that reads them structurally rather than by dotted name \u2014 the coverage scan cannot see them, but the client gets what they answered. recordedNotDeployed names answers that reach nothing but lz-config.json: the client is asked, the answer is preserved, and no estate is built from it. That second list is debt, it carries a budget that only ratchets down, and every entry owes a reason and a way out. It is now EMPTY: every answer the wizard collects reaches a delivered artifact. Six groups closed on 2026-08-31 by rendering them into the generated repository's documentation rather than by deploying anything \u2014 a spoke address range or an ExpressRoute circuit order is a decision the estate team acts on, not a resource this factory creates, and writing it down is the whole of the fix. A new entry here is a regression, not a routine addition.",
+  "budget": 0,
   "consumedIndirectly": [
     {
       "consumer": "scripts/New-LzSubscriptions.ps1",
@@ -49,14 +49,10 @@
       "paths": [
         "backend.hcpTerraform.acknowledgedResourceLimit"
       ]
-    }
-  ],
-  "recordedNotDeployed": [
+    },
     {
-      "label": "Non-prod spoke address spaces",
-      "module": "(per-estate)",
-      "reason": "Workload spokes are per-estate work built inside the generated repository against the connectivity layer's outputs (ADR 0017), so no layer renders these. The wizard does validate them for overlap against the hub ranges, which is why they are collected at all.",
-      "resolution": "Either render them into the generated repository's connectivity documentation so the addressing decision travels with the estate, or drop them from the schema and let the estate choose its own.",
+      "consumer": "factory/renderer/private/TokenEngine.ps1",
+      "note": "Walked structurally into computed.nonProdSpokes and rendered as a table by docs/CONNECTIVITY.md.tmpl. The environment keys are iterated as a list (dev/test/uat) rather than named individually, so no dotted path appears in source. The client gets what they answered: per ADR 0017 no layer builds a workload spoke, so the deliverable for an addressing decision is the decision, written down where the estate team building the spoke will read it.",
       "paths": [
         "connectivity.hubSpoke.nonProdSpokeAddressSpaces.dev.primary",
         "connectivity.hubSpoke.nonProdSpokeAddressSpaces.dev.dr",
@@ -67,80 +63,25 @@
       ]
     },
     {
-      "label": "ExpressRoute circuit detail",
-      "module": "(carrier order)",
-      "reason": "The connectivity layer deploys an ExpressRoute gateway from connectivity.expressRoute.enabled. The circuit itself is ordered from a carrier outside Terraform, and these four describe that order rather than anything the factory can create.",
-      "resolution": "Render them into the generated repository's connectivity runbook, where the person placing the carrier order will look, rather than leaving them only in the answer record.",
-      "paths": [
-        "connectivity.expressRoute.circuitName",
-        "connectivity.expressRoute.peeringLocation",
-        "connectivity.expressRoute.bandwidthMbps",
-        "connectivity.expressRoute.serviceProvider"
-      ]
-    },
-    {
-      "label": "VPN and Bastion SKUs",
-      "module": "(AVM connectivity module)",
-      "reason": "The layer deploys the VPN gateway and Bastion host from their enabled booleans; the AVM connectivity module owns the SKU, and these three answers select something the module does not take.",
-      "resolution": "Either pass them through to the module's hub settings, or stop asking \u2014 an answer the client can give and the estate cannot honour is worse than no question.",
-      "paths": [
-        "connectivity.vpn.sku",
-        "connectivity.vpn.activeActive",
-        "connectivity.bastion.sku"
-      ]
-    },
-    {
-      "label": "Identity strategy",
-      "module": "(per-estate)",
-      "reason": "The identity subscription is placed under its management group by the global layer from azure.subscriptions.identity. This answer describes an intended identity architecture that no layer builds.",
-      "resolution": "Render it into the generated repository's identity documentation, or retire it.",
-      "paths": [
-        "identity.strategy"
-      ]
-    },
-    {
-      "label": "Security retention and hardening detail",
-      "module": "(per-estate)",
-      "reason": "Per-estate work under ADR 0017: the factory deploys neither Sentinel, nor the estate's key vaults, nor NSG flow logs, so their retention and hardening detail configures nothing. The wizard already marks Sentinel and customer-managed keys recorded-not-deployed; these are the same decision at a finer grain.",
-      "resolution": "Carry them into the generated repository's security documentation so the estate team implements what the client actually answered, rather than rediscovering the question.",
-      "paths": [
-        "security.sentinel.retentionDays",
-        "security.keyVault.enablePurgeProtection",
-        "security.keyVault.softDeleteRetentionDays",
-        "security.keyVault.enableRbacAuthorization",
-        "security.nsgFlowLogs.retentionDays",
-        "security.nsgFlowLogs.trafficAnalytics"
-      ]
-    },
-    {
-      "label": "Operating-model contacts and approvals",
-      "module": "(docs)",
-      "reason": "Collected and rendered nowhere. OPERATING-MODEL.md.tmpl references none of them, so a client who records a support-hours window, an escalation URL, an approval chain and a break-glass contact list finds none of it in the repository they are handed.",
-      "resolution": "Render them into docs/operating-model.md \u2014 this is the cheapest entry in the ledger to close, and the one whose absence is most visible to the client.",
-      "paths": [
-        "operations.platformTeam.githubTeamSlug",
-        "operations.platformTeam.supportHours",
-        "operations.platformTeam.escalationUrl",
-        "operations.approvalChain.stage",
-        "operations.approvalChain.approvers",
-        "operations.approvalChain.appliesToEnvironments",
-        "operations.breakGlassContacts"
-      ]
-    },
-    {
-      "label": "FinOps budgets and cost exports",
-      "module": "(docs)",
-      "reason": "FINOPS.md.tmpl names finops.budgets in prose and renders no field of it, and no Azure Consumption budget or cost export is created by any layer. A client who sets a USD amount and alert thresholds gets neither the budget nor a document saying what they asked for.",
-      "resolution": "Render the budget and export tables into docs/finops.md, and decide separately whether the platform-management layer should create the budgets \u2014 Microsoft.Consumption budgets are a small, well-bounded addition.",
+      "consumer": "factory/renderer/private/TokenEngine.ps1",
+      "note": "Flattened into computed.finopsBudgets and rendered as a table by docs/FINOPS.md.tmpl, which previously named finops.budgets in prose and rendered no field of it. Each budget is an array element, so the fields are reached off the object rather than by dotted name. The document states plainly that no Microsoft.Consumption budget is created by any layer \u2014 the table is the requirement, not the state.",
       "paths": [
         "finops.budgets.scope",
         "finops.budgets.amountUsd",
         "finops.budgets.timeGrain",
         "finops.budgets.alertThresholdPercents",
-        "finops.budgets.contactEmails",
-        "finops.costExports.storageAccountName",
-        "finops.costExports.frequency"
+        "finops.budgets.contactEmails"
+      ]
+    },
+    {
+      "consumer": "factory/renderer/private/TokenEngine.ps1",
+      "note": "Flattened into computed.approvalChain and rendered as a table by docs/OPERATING-MODEL.md.tmpl. Array elements, so the fields are reached off the object. The generated workflows' environment protection rules are the mechanism; this table is who is expected to act on them, and the two are kept in step by hand.",
+      "paths": [
+        "operations.approvalChain.stage",
+        "operations.approvalChain.approvers",
+        "operations.approvalChain.appliesToEnvironments"
       ]
     }
-  ]
+  ],
+  "recordedNotDeployed": []
 }

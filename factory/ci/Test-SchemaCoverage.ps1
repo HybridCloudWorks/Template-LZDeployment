@@ -184,6 +184,25 @@ foreach ($entry in @($register.recordedNotDeployed)) {
 # policy catalog. Generating it here rather than in a fourth script is what
 # keeps the two from disagreeing: the check that decides an answer is
 # not-deployed is the same one that tells the wizard to say so.
+# Serialising this list correctly needs all three cases handled explicitly,
+# and two of them only became reachable when the ledger emptied.
+#
+#   0 entries — a PIPED empty collection gives ConvertTo-Json nothing to
+#               convert and it emits NOTHING, producing
+#               `globalThis.LZ_RECORDED_NOT_DEPLOYED = ;` — a syntax error that
+#               takes the whole wizard down, since app.js cannot parse.
+#   1 entry   — without -AsArray this serialises as a bare object, and
+#               unmetDependencies() would iterate the characters of a string.
+#   n entries — the only case the original code was ever exercised on.
+#
+# -InputObject is not the fix: it treats the collection as a single item and
+# -AsArray then wraps it again, yielding [[...]].
+$ledgerEntries = @($register.recordedNotDeployed | ForEach-Object {
+        [ordered]@{ label = $_.label; module = $_.module; impact = $_.reason; paths = @($_.paths) }
+    })
+$ledgerJson = if ($ledgerEntries.Count -eq 0) { '[]' }
+else { $ledgerEntries | ConvertTo-Json -Depth 10 -AsArray }
+
 $assetBody = @(
     '// GENERATED FILE. Do not hand-edit — regenerate with'
     '// factory/ci/Test-SchemaCoverage.ps1 -WriteAsset, whose CI run fails when'
@@ -192,11 +211,13 @@ $assetBody = @(
     '// The answers the wizard collects that reach nothing but lz-config.json.'
     '// unmetDependencies() in app.js marks them so the client is told at export'
     '// time, rather than discovering it in the repository they are handed.'
-    'globalThis.LZ_RECORDED_NOT_DEPLOYED = ' + (
-        @($register.recordedNotDeployed | ForEach-Object {
-                [ordered]@{ label = $_.label; module = $_.module; impact = $_.reason; paths = @($_.paths) }
-            }) | ConvertTo-Json -Depth 10
-    ) + ';'
+    # -AsArray is load-bearing twice over, and both cases are reachable.
+    # ConvertTo-Json emits NOTHING for an empty collection — which produced
+    # `globalThis.LZ_RECORDED_NOT_DEPLOYED = ;`, a syntax error that took the
+    # whole wizard down the first time the ledger reached zero — and emits a
+    # bare OBJECT rather than a one-element array for a single entry, which
+    # would have made unmetDependencies() iterate a string.
+    'globalThis.LZ_RECORDED_NOT_DEPLOYED = ' + $ledgerJson + ';'
 ) -join "`n"
 
 if (-not $AssetPath) { $AssetPath = Join-Path $repo 'site/schema-coverage.js' }

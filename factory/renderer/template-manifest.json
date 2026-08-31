@@ -2,7 +2,7 @@
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||. This manifest is the OUTPUT CONTRACT (docs/refactor/OUTPUT-CONTRACT.md): generation fails if a produced file is not listed here or a listed file is missing (validation gate V01). No generator machinery is ever listed.",
   "manifestVersion": "2.1.0",
   "targetSchemaVersion": "4.0.0",
-  "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored — the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
+  "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored \u2014 the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
   "files": [
     {
       "source": "README.md.tmpl",
@@ -37,7 +37,7 @@
       "destination": "lz-config.json",
       "mode": "config-snapshot",
       "when": "always",
-      "description": "The answer record — the validated configuration that produced this repository, secrets excluded by construction. Committed so provenance survives the factory copy's deletion."
+      "description": "The answer record \u2014 the validated configuration that produced this repository, secrets excluded by construction. Committed so provenance survives the factory copy's deletion."
     },
     {
       "source": "$factory-version",
@@ -51,21 +51,21 @@
       "destination": "terraform/live/platform-management/variables.tf",
       "mode": "copy",
       "when": "always",
-      "description": "Management variable declarations. Copied verbatim — this file is the contract the schema-drift check validates against, so it must never be templated."
+      "description": "Management variable declarations. Copied verbatim \u2014 this file is the contract the schema-drift check validates against, so it must never be templated."
     },
     {
       "source": "terraform/live/platform-management/main.tf.tmpl",
       "destination": "terraform/live/platform-management/main.tf",
       "mode": "render",
       "when": "always",
-      "description": "Root module referencing Azure/avm-ptn-alz-management by pinned registry version. Deployed first — the global layer reads its state."
+      "description": "Root module referencing Azure/avm-ptn-alz-management by pinned registry version. Deployed first \u2014 the global layer reads its state."
     },
     {
       "source": "terraform/live/platform-management/outputs.tf.tmpl",
       "destination": "terraform/live/platform-management/outputs.tf",
       "mode": "render",
       "when": "always",
-      "description": "Workspace and automation identifiers — the remote-state contract the global layer reads."
+      "description": "Workspace and automation identifiers \u2014 the remote-state contract the global layer reads."
     },
     {
       "source": "terraform/live/platform-management/terraform.auto.tfvars.tmpl",
@@ -121,7 +121,7 @@
       "destination": "terraform/live/platform-connectivity/main.tf",
       "mode": "render",
       "when": "connectivity.model != 'none'",
-      "description": "Root module referencing the hub-and-spoke OR Virtual WAN AVM pattern module by pinned registry version — one topology per estate, never both."
+      "description": "Root module referencing the hub-and-spoke OR Virtual WAN AVM pattern module by pinned registry version \u2014 one topology per estate, never both."
     },
     {
       "source": "terraform/live/platform-connectivity/outputs.tf.tmpl",
@@ -142,14 +142,14 @@
       "destination": "terraform/live/state-hardening/variables.tf",
       "mode": "copy",
       "when": "defined backend.azurerm.privateEndpoint.enabled && backend.azurerm.privateEndpoint.enabled",
-      "description": "State-hardening variable declarations. Copied verbatim — this file is the contract the schema-drift check validates against, so it must never be templated."
+      "description": "State-hardening variable declarations. Copied verbatim \u2014 this file is the contract the schema-drift check validates against, so it must never be templated."
     },
     {
       "source": "terraform/live/state-hardening/main.tf.tmpl",
       "destination": "terraform/live/state-hardening/main.tf",
       "mode": "render",
       "when": "defined backend.azurerm.privateEndpoint.enabled && backend.azurerm.privateEndpoint.enabled",
-      "description": "Stage-2 state hardening (ADR 0019): private endpoint + privatelink.blob zone group for the state account. Never manages the storage account itself. Deployed LAST — needs the hub applied first."
+      "description": "Stage-2 state hardening (ADR 0019): private endpoint + privatelink.blob zone group for the state account. Never manages the storage account itself. Deployed LAST \u2014 needs the hub applied first."
     },
     {
       "source": "terraform/live/state-hardening/outputs.tf.tmpl",
@@ -240,7 +240,7 @@
       "destination": "docs/subscription-onboarding.md",
       "mode": "render",
       "when": "computed.hasDeferredSubscriptions",
-      "description": "How to move a deferred brownfield subscription into the hierarchy later, and what starts evaluating its existing resources when you do. Emitted only when a subscription is actually deferred — a document about a decision nobody took is noise."
+      "description": "How to move a deferred brownfield subscription into the hierarchy later, and what starts evaluating its existing resources when you do. Emitted only when a subscription is actually deferred \u2014 a document about a decision nobody took is noise."
     },
     {
       "source": "docs/GOVERNANCE.md.tmpl",
@@ -262,6 +262,13 @@
       "mode": "render",
       "when": "always",
       "description": "Signals, routing, drift detection, SLO guidance, and validation."
+    },
+    {
+      "source": "docs/CONNECTIVITY.md.tmpl",
+      "destination": "docs/connectivity.md",
+      "mode": "render",
+      "when": "always",
+      "description": "Connectivity decisions no layer builds: the non-production spoke address ranges (per-estate under ADR 0017) and, when ExpressRoute is enabled, the circuit detail the carrier order needs. Recorded so an addressing decision made once during the engagement is not made again by the estate team."
     },
     {
       "source": "docs/FINOPS.md.tmpl",
@@ -289,7 +296,7 @@
       "destination": "docs/upgrade-guide.md",
       "mode": "render",
       "when": "always",
-      "description": "Module-pin and library-reference upgrade procedure — Renovate-driven, with no dependency on the factory."
+      "description": "Module-pin and library-reference upgrade procedure \u2014 Renovate-driven, with no dependency on the factory."
     },
     {
       "source": "docs/PHASE-MODEL.md.tmpl",

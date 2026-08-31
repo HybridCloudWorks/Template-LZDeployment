@@ -21,9 +21,40 @@ cost center. Shared platform costs are allocated using the configured
 **{{FACTORY-RAW:finops.chargebackModel}}** model. Untagged or ambiguously tagged
 spend is assigned to the platform exception queue until corrected.
 
+## Budgets
+
+#{{IF computed.hasFinopsBudgets}}
+| Scope | Amount (USD) | Period | Alert thresholds | Contacts |
+|---|---|---|---|---|
+#{{FOREACH budget IN computed.finopsBudgets}}
+| {{FACTORY-RAW:budget.scope}} | {{FACTORY-RAW:budget.amount}} | {{FACTORY-RAW:budget.timeGrain}} | {{FACTORY-RAW:budget.thresholds}} | {{FACTORY-RAW:budget.contacts}} |
+#{{ENDFOREACH}}
+
+**These are not deployed.** No layer creates a `Microsoft.Consumption` budget,
+so the table above is the requirement, not the state. Creating them is a small,
+well-bounded addition to the platform-management layer and is recorded as
+outstanding; until then, create them by hand to match this table and treat any
+divergence as drift.
+#{{ELSE}}
+No budgets were recorded. An empty budget list is an explicit onboarding gap,
+not evidence that cost is unbounded or unowned.
+#{{ENDIF}}
+
+## Cost exports
+
+| Field | Value |
+|---|---|
+| Enabled | {{FACTORY-BOOL:finops.costExports.enabled}} |
+| Destination storage account | `{{FACTORY-RAW:computed.docCostExportAccount}}` |
+| Frequency | {{FACTORY-RAW:computed.docCostExportFrequency}} |
+
+Also not deployed by any layer. If exports are enabled above, the destination
+must be protected to the same identity and retention standard as any other data
+store holding billing detail.
+
 ## Budget lifecycle
 
-Budgets are sourced from `finops.budgets`. For each budget:
+For each budget:
 
 1. define scope, amount, period, and accountable owner;
 2. configure actual and forecast thresholds;

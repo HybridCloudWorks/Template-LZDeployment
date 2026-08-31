@@ -362,24 +362,36 @@ console.log('\n== 15. Policy selection is read from the pinned library ==');
 
 console.log('\n== 16. Answers that reach nothing are declared, not discovered ==');
 {
-  ok('the ledger reached the wizard', A.RECORDED_NOT_DEPLOYED.length > 0,
-    'harness.js must load site/schema-coverage.js before app.js');
-  ok('every ledger entry is showable', A.RECORDED_NOT_DEPLOYED.every(
+  // THE LEDGER IS EMPTY, and that is the assertion. Every answer the wizard
+  // collects now reaches a delivered artifact. The last six groups closed on
+  // 2026-08-31 by being rendered into the generated repository's documentation
+  // rather than by deploying anything — a spoke address range or an
+  // ExpressRoute circuit order is a decision the estate team acts on, not a
+  // resource this factory creates, and writing it down IS the delivery.
+  //
+  // A new entry here is a regression, not a routine addition.
+  ok('the ledger is empty', A.RECORDED_NOT_DEPLOYED.length === 0,
+    JSON.stringify(A.RECORDED_NOT_DEPLOYED.map((e) => e.label)));
+  // The shape still has to be right for whatever lands here next: this file is
+  // generated, and its emitter silently produced `= ;` for an empty list and a
+  // bare object for a single one, both of which break app.js at load.
+  ok('and it is still an array', Array.isArray(A.RECORDED_NOT_DEPLOYED));
+  ok('every ledger entry would be showable', A.RECORDED_NOT_DEPLOYED.every(
     (e) => e.label && e.module && e.impact && Array.isArray(e.paths) && e.paths.length));
 
   // An untouched default is not an answer, and warning about one would train
   // the client to ignore the whole table.
   const clean = A.buildConfig();
-  const untouched = A.unmetDependencies(clean).filter((u) => u.feature === 'FinOps budgets and cost exports');
-  ok('an untouched default raises nothing', untouched.length === 0, JSON.stringify(untouched));
+  ok('an untouched default raises nothing',
+    A.unmetDependencies(clean).filter((u) => u.status === 'recorded-not-deployed').length === 0);
 
-  // A real answer does raise one, naming the path so the client can see which
-  // of their answers is the one going nowhere.
+  // FinOps budgets used to raise a row here. They now render into
+  // docs/finops.md — as a table stating plainly that no Microsoft.Consumption
+  // budget is created by any layer, so the client sees both what they asked
+  // for and that it is a requirement rather than a deployed state.
   c.finops.budgets = [{ scope: 'management', amountUsd: 5000, timeGrain: 'Monthly', alertThresholdPercents: [80], contactEmails: ['fin@contoso.com'] }];
-  const withBudget = A.unmetDependencies(A.buildConfig()).filter((u) => u.feature === 'FinOps budgets and cost exports');
-  ok('a real answer raises a recorded-not-deployed row', withBudget.length === 1, JSON.stringify(withBudget));
-  ok('the row names the answered path', withBudget.length === 1 && /finops\.budgets\.amountUsd/.test(withBudget[0].impact));
-  ok('and it is not reported as deployed', withBudget.length === 1 && withBudget[0].status === 'recorded-not-deployed');
+  const withBudget = A.unmetDependencies(A.buildConfig()).filter((u) => u.status === 'recorded-not-deployed');
+  ok('an answered budget no longer goes nowhere', withBudget.length === 0, JSON.stringify(withBudget));
   c.finops.budgets = [];
 
   // The four hand-written entries survive — they are conditions on a feature
