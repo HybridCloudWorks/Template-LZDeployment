@@ -1114,7 +1114,10 @@ the policies consume them as strings, not as references to existing resources.
 
 **Validation criterion**: the waiver budget reaches 1 (DDoS only), and a
 `terraform plan` on a rendered `global` layer completes against a throwaway
-tenant. That plan has never been run — see REVIEW §19.
+tenant. That plan has never been run anywhere in this repository — CI renders
+and runs `init + validate` on the output (`terraform-policy-checks.yml`), which
+resolves the AVM pins but never reaches the ALZ provider's policy-default
+resolution. See REVIEW §19.
 
 ### 6.2 Client-facing ALZ policy selection — operator-directed 2026-08-30
 

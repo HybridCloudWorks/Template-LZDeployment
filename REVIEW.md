@@ -520,16 +520,25 @@ DDoS plan should disable its assignment rather than invent an ID.
   provider resolves library policy defaults at **plan** time. That entire
   class of failure is invisible to every gate here until a client's first
   plan.
-- **Factory CI's `terraform init` / `validate` steps resolve nothing.** They
-  run against `factory/templates/terraform/live/<layer>/`, where the only
+- **Factory CI's own `terraform init` / `validate` steps resolve nothing.**
+  They run against `factory/templates/terraform/live/<layer>/`, where the only
   real `.tf` file is `variables.tf` — no `terraform` block, no
-  `required_providers`, no `module` block. They cannot fetch or verify a
-  single AVM pin or provider constraint, which is why
-  `avmPinsVerifiedByInit: false` is honest while those steps report green.
+  `required_providers`, no `module` block. Those particular steps cannot
+  fetch or verify a single AVM pin.
 
-`factory/ci/Test-AlzPolicyDefaults.ps1` closes the specific hole statically
-and without credentials. The general one is still open: a real plan gate, or
-an init against *rendered* output rather than the template directories.
+  **This is a redundant step, not a coverage gap** — corrected here after
+  first being written up as one. `.github/workflows/terraform-policy-checks.yml`
+  renders both topology fixtures and runs `terraform init + validate` on the
+  **rendered** output, under a step named "verifies AVM pins against the
+  registry". The pins are genuinely verified in CI; it is Factory CI's own
+  template-directory steps that are decorative. Which in turn suggests
+  `factory-version.json`'s `avmPinsVerifiedByInit: false` is simply stale.
+
+So the real hole is the first bullet alone, and it is narrow and sharp:
+`init` and `validate` resolve modules and check syntax, but only `plan`
+resolves the ALZ provider's policy defaults.
+`factory/ci/Test-AlzPolicyDefaults.ps1` closes that statically and without
+credentials; a real plan gate would close it completely.
 
 **Environment limitation encountered**: `registry.terraform.io` is refused by
 the egress proxy in the sandbox this was investigated from, so
