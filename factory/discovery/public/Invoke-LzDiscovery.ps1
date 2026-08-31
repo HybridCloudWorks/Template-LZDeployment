@@ -119,11 +119,25 @@ function Invoke-LzDiscovery {
 
     if ('Terraform' -notin $SkipDomain -and $config) {
         $terraform = Invoke-LzDomainSafely -Name 'Terraform' -Action {
-            # azurerm is the only backend (ADR 0015).
-            $p = @{
-                BackendType            = 'azurerm'
-                StorageAccountName     = $config.backend.azurerm.storageAccountName
-                StateResourceGroupName = $config.backend.azurerm.resourceGroupName
+            # Follow the declared backend rather than assuming azurerm. Two
+            # things were wrong with the assumption after decision 0023 added
+            # HCP Terraform for state: the coordinates below belong to an
+            # account an HCP estate never writes to, and — because the schema
+            # requires only backend.type — reaching for backend.azurerm at all
+            # THROWS under StrictMode on a config that legitimately omits it.
+            $backendType = if ($config.backend.PSObject.Properties.Name -contains 'type') {
+                [string]$config.backend.type
+            } else { 'azurerm' }
+
+            $p = @{ BackendType = $backendType }
+            if ($backendType -eq 'azurerm' -and ($config.backend.PSObject.Properties.Name -contains 'azurerm')) {
+                $azurerm = $config.backend.azurerm
+                if ($azurerm.PSObject.Properties.Name -contains 'storageAccountName') {
+                    $p.StorageAccountName = [string]$azurerm.storageAccountName
+                }
+                if ($azurerm.PSObject.Properties.Name -contains 'resourceGroupName') {
+                    $p.StateResourceGroupName = [string]$azurerm.resourceGroupName
+                }
             }
             Get-LzTerraformInventory @p
         }

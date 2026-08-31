@@ -69,6 +69,14 @@ data "azurerm_client_config" "current" {}
 # The management layer owns the workspace; its state is the only permitted
 # source for the policy default. Applying this layer before platform-management
 # fails here, by design, rather than assigning policies with a dangling scope.
+#
+# The block has to follow the backend this estate actually uses. It was
+# unconditionally `azurerm` until 2026-08-31, which meant an HCP Terraform
+# estate wrote every layer's state to HCP and then came here to read the
+# management layer's state out of an Azure storage account it never wrote to.
+# `terraform validate` cannot catch that — it does not resolve data sources —
+# so the shape passed CI while being unable to plan.
+#{{IF computed.backendIsAzurerm}}
 data "terraform_remote_state" "management" {
   backend = "azurerm"
 
@@ -81,6 +89,29 @@ data "terraform_remote_state" "management" {
     use_azuread_auth     = true
   }
 }
+#{{ELSE}}
+# HCP Terraform holds the state, so the management layer is read as a WORKSPACE
+# rather than a blob. The name is the same one _layer/backend-cloud.tf.tmpl
+# writes into that layer's own `cloud` block — one naming rule, in two places
+# that must never disagree, both derived from computed.workspacePrefix.
+#
+# `remote` rather than `cloud` is deliberate and is not the same choice made in
+# backend-cloud.tf: `cloud` configures where THIS layer's state goes, and the
+# terraform_remote_state data source does not accept it. Reading another
+# workspace is what the `remote` backend is for. TF_TOKEN_app_terraform_io
+# authenticates both.
+data "terraform_remote_state" "management" {
+  backend = "remote"
+
+  config = {
+    organization = "{{FACTORY-RAW:computed.hcpOrganization}}"
+
+    workspaces = {
+      name = "{{FACTORY-RAW:computed.workspacePrefix}}-platform-management"
+    }
+  }
+}
+#{{ENDIF}}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Subscription placement. The pattern module places each supplied subscription

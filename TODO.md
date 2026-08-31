@@ -1383,32 +1383,78 @@ committable, carrying tenant, subscription and identity detail. That is the same
 gap recorded in `.gitignore` on 2026-08-19, one directory over. Now ignored,
 with `client/lz-config.json` verified still committable.
 
-### 6.6b The wrong-tenant signal nothing reads — `[OPEN]`
+### 6.6b The wrong-tenant signal nothing reads — `[CLOSED 2026-08-31]`
 
-Found while fixing Copilot's finding on #126, and **not fixed there**, because
-it is not specific to the CI path: it weakens the *local* motion too.
+Closed as **R12, "Target tenant confirmed"**, in
+`factory/discovery/public/Test-LzTenantReadiness.ps1`.
 
-`Get-LzEntraInventory.ps1:51` computes
-`TenantMatches = ($acct.tenantId -eq $TenantId)` — the signed-in tenant against
-`azure.tenantId` from the answer record — and writes it onto the inventory
-alongside `ExpectedTenant`. Its own parameter documentation says it exists "to
-catch the common error of running discovery against the wrong tenant."
+`Get-LzEntraInventory.ps1:51` computed
+`TenantMatches = ($acct.tenantId -eq $TenantId)` and wrote it onto the
+inventory. Grepping the tree, the name appeared exactly once — at the
+assignment. No readiness check gated on it, so a run signed in to the wrong
+tenant recorded the mismatch, reported ready, and continued to the broker,
+which is the step that creates Entra applications, federated credentials and
+RBAC.
 
-**Nothing reads it.** Grepping the tree, `TenantMatches` appears exactly once,
-at the line that assigns it. No readiness check R01–R11 gates on it, so a run
-authenticated to the wrong tenant records the mismatch in the inventory and
-proceeds to the broker — the step that creates Entra applications, federated
-credentials and RBAC. The signal is computed, serialized, and ignored.
+R12 is deliberately a **Fail** rather than a Warning. Every other Fail in that
+file means "bootstrap will not succeed"; this one means something worse —
+bootstrap succeeds, somewhere else. Fail sets `Ready = $false`, which is what
+`-FailOnNotReady` already acts on and what the engagement wrapper turns into a
+stopped run under `-Apply`.
 
-This is the same shape as the guardrail that enforced nothing and the
-storage-key auth that was warned-but-never-honoured: a check that exists,
-looks like a control, and gates nothing.
+The three-state contract is kept: an unreadable session, a skipped Entra
+domain, or a config with no `azure.tenantId` all Warn. "I could not check" and
+"it is fine" still do not render identically.
 
-The fix is a readiness check — R12, `Fail` on a mismatch — so the existing
-`-FailOnNotReady` path stops the engagement. That gate then covers both
-motions: the CI job's pre-`azure/login` check (#126) stops it earlier and
-without a credential, and R12 stops a laptop run signed in to the wrong
-tenant, which today nothing does.
+This gates the **default** motion. #126's confirmation runs before
+`azure/login` and stops a wrong-tenant CI run without issuing a credential at
+all — but that covered only CI, and the client-local motion, which decision
+0004 ratified as the default, had nothing.
+
+While here: the file's header said "ten capability questions" and eleven were
+registered. Twelve now, and it says so.
+
+### 6.6c The HCP backend did not survive contact with discovery — `[CLOSED 2026-08-31]`
+
+Three defects, all shipped by 6.5 in #125, none previously recorded. Decision
+0023 added HCP Terraform for state; three places kept believing decision 0015's
+"azurerm is the only backend".
+
+1. **The cross-layer state read pointed at the wrong store.** The global layer's
+   `data "terraform_remote_state" "management"` was unconditionally
+   `backend = "azurerm"`, reading `state_*` variables from `backend.azurerm.*`.
+   An HCP estate wrote every layer's state to HCP and then came here to read
+   the management layer's state out of an Azure storage account it had never
+   written to. **This is the serious one: the HCP option did not work
+   end-to-end.** It is now conditional — `remote`, naming
+   `<workspacePrefix>-platform-management`, the same name
+   `_layer/backend-cloud.tf.tmpl` writes into that layer's own `cloud` block.
+   `remote` rather than `cloud` is required: `cloud` configures where *this*
+   layer's state goes, and `terraform_remote_state` does not accept it.
+
+   **`terraform validate` cannot catch this** — it does not resolve data
+   sources — so the `hcp-config` leg added in #126 passed while the estate
+   could not have planned. That is a live instance of exactly the gap TODO 6.1a
+   describes, found by reading rather than by any check.
+
+2. **Discovery threw on a schema-valid config.** `Invoke-LzDiscovery.ps1` read
+   `$config.backend.azurerm.storageAccountName` unguarded. The schema requires
+   only `backend.type`, so an HCP config that omits the block is valid — and
+   under StrictMode that read throws. Reproduced before fixing: the render
+   failed with `Unknown configuration path 'backend.azurerm.resourceGroupName'`.
+   Masked in practice only because the wizard never pruned the block, which its
+   own comment claimed it did. The comment was wrong, not the code — the
+   generated repo's `state-access-flip` workflow and the global layer's tfvars
+   both read `backend.azurerm.*` on the azurerm path — and the comment now says
+   so.
+
+3. **R10 reported on the wrong object.** `Get-LzTerraformInventory` still
+   carried `[ValidateSet('azurerm')]` and hardcoded `BackendType = 'azurerm'`
+   in its output, so every HCP client had an Azure storage account probed as
+   though it were their state store. R10 now returns Warning for
+   `hcp-terraform`, saying the state is in HCP and outside this tenant-scoped
+   discovery's reach. Silence about a storage account is not evidence about a
+   workspace.
 
 ### 6.7 Per-subscription brownfield disposition — `[CLOSED 2026-08-31]`
 

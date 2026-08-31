@@ -40,9 +40,16 @@ identity_management_group_id     = {{FACTORY:computed.identityManagementGroupId}
 sandbox_management_group_id      = {{FACTORY:computed.sandboxManagementGroupId}}
 workload_management_group_id     = {{FACTORY:computed.workloadManagementGroupId}}
 
+# Only the azurerm path reads the management layer's state out of a storage
+# account. Under HCP Terraform it is read as a workspace, these three configure
+# nothing, and emitting them would name a state location this estate does not
+# use — the schema does not require backend.azurerm at all when the type is
+# hcp-terraform, so they may not even exist to render.
+#{{IF computed.backendIsAzurerm}}
 state_resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
 state_storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
 state_container_name       = {{FACTORY:backend.azurerm.containerName}}
+#{{ENDIF}}
 
 # Client policy selection, resolved against the ALZ policy catalog generated
 # from the pinned library ref. Only deltas from the library's own baseline

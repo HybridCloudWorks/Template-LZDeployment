@@ -561,6 +561,26 @@ try {
     ok 'no azure credential is emitted' ($hcpPlan -notmatch 'client-secret|AZURE_CLIENT_SECRET')
     # state-hardening hardens a storage account this backend does not create.
     ok 'state-hardening is not emitted under TFC' (-not (Test-Path (Join-Path $outHcp 'terraform/live/state-hardening')))
+
+    # The CROSS-LAYER read, which is a different thing from where this layer
+    # writes its own state. Until 2026-08-31 the global layer wrote every
+    # layer's state to HCP and then read platform-management's state back out
+    # of an Azure storage account it had never written to. `terraform validate`
+    # does not resolve data sources, so the hcp-config CI leg passed while the
+    # estate could not have planned.
+    $hcpGlobal = Get-Content (Join-Path $outHcp 'terraform/live/global/main.tf') -Raw
+    ok 'the management state is read as a workspace, not a blob' ($hcpGlobal -match '(?s)data "terraform_remote_state" "management".*?backend\s*=\s*"remote"')
+    ok 'no azurerm state read survives under TFC' ($hcpGlobal -notmatch '(?s)data "terraform_remote_state" "management".*?backend\s*=\s*"azurerm"')
+    # One naming rule in two places that must never disagree: the workspace this
+    # reads is the one backend-cloud.tf writes for that layer.
+    $hcpMgmtBackend = Get-Content (Join-Path $outHcp 'terraform/live/platform-management/backend.tf') -Raw
+    ok 'it names the workspace that layer actually writes' (
+        ($hcpMgmtBackend -match 'name\s*=\s*"(?<w>[^"]+)"') -and
+        ($hcpGlobal -match ('name\s*=\s*"' + [regex]::Escape($Matches.w) + '"')))
+    # Emitting these would name a state location this estate does not use, and
+    # the schema does not require backend.azurerm at all under hcp-terraform.
+    $hcpTfvars = Get-Content (Join-Path $outHcp 'terraform/live/global/terraform.auto.tfvars') -Raw
+    ok 'no azure state coordinates are emitted under TFC' ($hcpTfvars -notmatch 'state_storage_account_name|state_resource_group_name|state_container_name')
 }
 finally {
     Remove-Item -Recurse -Force $outHcp -ErrorAction SilentlyContinue
@@ -572,6 +592,9 @@ ok 'azurerm still emits an empty backend block' ((Get-Content (Join-Path $out 't
 ok 'azurerm still emits backend.hcl'            (Test-Path (Join-Path $out 'terraform/live/global/backend.hcl'))
 ok 'azurerm init still supplies it'             ((Get-Content (Join-Path $out '.github/workflows/terraform-plan.yml') -Raw) -match 'backend-config=backend\.hcl')
 ok 'azurerm carries no workspace token'         ((Get-Content (Join-Path $out '.github/workflows/terraform-plan.yml') -Raw) -notmatch 'cli_config_credentials_token')
+$azGlobal = Get-Content (Join-Path $out 'terraform/live/global/main.tf') -Raw
+ok 'azurerm still reads management state from the blob' ($azGlobal -match '(?s)data "terraform_remote_state" "management".*?backend\s*=\s*"azurerm"')
+ok 'azurerm still emits its state coordinates' ((Get-Content (Join-Path $out 'terraform/live/global/terraform.auto.tfvars') -Raw) -match 'state_storage_account_name')
 
 # Guards: the combinations that cannot work.
 $hcpGuard = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40

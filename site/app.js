@@ -2056,9 +2056,13 @@ function buildConfig() {
   if (!out.connectivity.expressRoute.enabled) out.connectivity.expressRoute = { enabled: false };
   if (!out.connectivity.vpn.enabled) out.connectivity.vpn = { enabled: false };
   if (!out.security.defender.securityContactEmail) delete out.security.defender.securityContactEmail;
-  // Only the chosen backend's block travels. The schema requires whichever one
-  // `type` names, and carrying the other would record coordinates for a state
-  // location this estate does not use.
+  // The hcpTerraform block travels only when it is the chosen backend. The
+  // azurerm block travels ALWAYS, and that asymmetry is deliberate rather than
+  // an oversight: an earlier version of this comment claimed only the chosen
+  // block travels, which was never what the code did and would have broken the
+  // estate if it had been. The generated repository's state-access-flip
+  // workflow and the global layer's tfvars both read backend.azurerm.* on the
+  // azurerm path, and pruning it is only safe once nothing does.
   if (out.backend.type === 'hcp-terraform') {
     if (!out.backend.hcpTerraform.workspacePrefix) delete out.backend.hcpTerraform.workspacePrefix;
   } else {
