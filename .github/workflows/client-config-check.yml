@@ -190,16 +190,20 @@ jobs:
 # What is deliberately absent
 #
 # There is no job here that runs discovery, the bootstrap broker, or scaffold.
-# Those are the phases that need Azure and GitHub credentials, and the operator
-# ratified (2026-08-06) that the CLIENT runs them, on their own machine, under
-# their own `az` and `gh` sessions — which is what makes the tenant-confirmation
-# step load-bearing. Moving them into CI would replace an interactive session
-# the client can see with a stored principal they cannot, and it would do so on
-# exactly the run that creates the estate.
+# Those need Azure and GitHub credentials, and by default the CLIENT runs them
+# on their own machine under their own `az` and `gh` sessions — which is what
+# makes the tenant-confirmation step load-bearing (decision 0004).
 #
-# There is also a plainer reason it could not be automatic even if that were
-# wanted: the broker CREATES the OIDC identities the workflows later federate
-# with. On the first run there is nothing to authenticate as.
+# Since 2026-08-31 there is a sanctioned alternative for clients who would
+# rather not: `client-bootstrap.yml`, ratified by decision 0024. It runs the
+# same engagement behind a protected environment and a typed tenant
+# confirmation checked before any credential is issued. It is deliberately a
+# separate workflow, on a manual dispatch only — this one runs on every push
+# and must never acquire a credential.
+#
+# Neither is automatic, and one reason is structural rather than chosen: the
+# broker CREATES the OIDC identities the workflows later federate with. On the
+# first run there is nothing to authenticate as.
 #
 # GitHub Pages cannot be enabled from here either — that needs
 # administration:write, which a job token structurally cannot hold. Enabling it

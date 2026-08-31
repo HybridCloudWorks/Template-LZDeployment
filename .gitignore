@@ -81,6 +81,19 @@ generated-output/
 # workflow has something to render. See client/README.md.
 /client-rendered/
 /client-evidence/
+/client-bootstrap-output/
+/client-scaffold-output/
+/client-scaffold-evidence/
+
+# Invoke-Discovery.ps1 reads no environment variables and always writes
+# discovery-inventory.json BESIDE THE CONFIG FILE, so running the engagement
+# against client/lz-config.json puts it — and the readiness report rendered
+# from it — inside client/. The entries above are root-anchored and do not
+# reach there, which is the same gap that let a discovery run at the repo root
+# commit tenant data before 2026-08-19. Both carry tenant, subscription and
+# identity detail.
+/client/discovery-inventory.json
+/client/tenant-readiness-report.md
 /scaffold-evidence/
 /brownfield-classifications.json
 /brownfield-evidence/

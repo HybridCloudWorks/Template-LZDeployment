@@ -36,7 +36,16 @@ Consequences that are routinely gotten wrong:
   the target tenant, then the `site/` wizard.
 - **The client runs it, on their own machine** (operator-ratified 2026-08-06),
   so the tenant-confirmation step is load-bearing: it is the client's own `gh`
-  and `az` sessions that create the estate.
+  and `az` sessions that create the estate. Still the default, and still
+  ratified. There is now one sanctioned exception — the opt-in
+  `client-bootstrap` workflow
+  ([decision 0024](docs/decisions/0024-credentialed-client-bootstrap-in-ci.md),
+  ratified 2026-08-31), which runs the same engagement in CI behind a protected
+  environment and a typed tenant confirmation checked before any credential is
+  issued. Read that ADR before treating CI execution as normal: what makes it
+  acceptable is the reviewer gate, not the automation, and delivery alone was
+  already covered by
+  [decision 0014](docs/decisions/0014-delivery-auth-app-pat-and-template-instantiation.md).
 - **Never assume the copy is a fork.** The operator's position is "forks (or
   clones, whatever is better)" — the motion must work from a plain clone or a
   downloaded archive with no GitHub-side representation at all.

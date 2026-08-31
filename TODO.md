@@ -1313,9 +1313,12 @@ does not weaken that gate, it deletes it — from both workflows, with no error.
 
 23 renderer assertions and 16 wizard assertions.
 
-### 6.6 Client-repo ingest — `[PARTIALLY CLOSED 2026-08-31]`
+### 6.6 Client-repo ingest — `[CLOSED 2026-08-31]`
 
-**Shipped: the uncredentialed half.** `.github/workflows/client-config-check.yml`
+Both halves are now shipped; the credentialed one is 6.6a below, ratified
+separately because it needed a decision rather than an implementation.
+
+**The uncredentialed half.** `.github/workflows/client-config-check.yml`
 renders the client's committed answer record and runs every validation gate on
 each push and pull request touching it, uploads the rendered tree and the
 evidence, and posts the gate table back to the pull request. It holds **no
@@ -1336,33 +1339,49 @@ commit. `client-rendered/` and `client-evidence/` are newly ignored — they car
 the same tenant detail and nothing should ever commit them. `client/README.md`
 records the split.
 
-### 6.6a The credentialed job — `[OPEN, needs an operator decision]`
+### 6.6a The credentialed job — `[CLOSED 2026-08-31 — ratified and built]`
 
-The plan called for a second, opt-in job running discovery → broker → scaffold
-behind a protected environment holding a client-created bootstrap principal.
-**Not built**, because it contradicts a ratified operator decision rather than
-merely extending it.
+Operator-ratified 2026-08-31. `.github/workflows/client-bootstrap.yml` runs
+`Invoke-CustomerEngagement.ps1 -Phase all` — discovery → broker → render →
+validate → scaffold — as an **opt-in**, recorded as
+[decision 0024](docs/decisions/0024-credentialed-client-bootstrap-in-ci.md).
+The client-local motion stays the default and stays ratified; CLAUDE.md §0 now
+cross-references the exception rather than losing the original sentence.
 
-CLAUDE.md §0 records, operator-ratified 2026-08-06: *"The client runs it, on
-their own machine, so the tenant-confirmation step is load-bearing: it is the
-client's own `gh` and `az` sessions that create the estate."* A CI job replaces
-an interactive session the client is sitting in front of with a stored principal
-they are not — on exactly the run that creates the estate. That is a security-
-model change, not a convenience, and it is the operator's call.
+The design question was never "can this run in CI" — [decision
+0014](docs/decisions/0014-delivery-auth-app-pat-and-template-instantiation.md)
+already answered that for delivery. It was **what replaces the human who was
+present when the estate got created**, because that presence was the safety
+property, not an implementation detail. Four things do, and each maps to
+something the local motion had for free:
 
-(The plan's own stated reason it cannot be *automatic* still holds and is
-independent: the broker creates the OIDC identities later workflows federate
-with, so on the first run there is nothing to authenticate as.)
+- `workflow_dispatch` only — never push, never pull_request.
+- A **protected environment with required reviewers**. Configured without
+  reviewers, this job is strictly weaker than the motion it replaces; that is
+  the one thing to check when auditing it.
+- A **typed tenant confirmation** checked against `azure.tenantId` in the
+  committed answer record, positioned **before `azure/login`**, so a run aimed
+  at the wrong tenant fails while it is still harmless. Same shape as the
+  generated `state-access-flip` workflow's confirmation.
+- **Plan-first**: an explicit `apply` input defaulting to false.
 
-Either ratify the CI path explicitly — with the protected environment, the
-client-created bootstrap principal, and an amendment to CLAUDE.md §0 — or close
-this as deliberately-not-done. The workflow documents the absence and why, so
-nothing is silently missing in the meantime.
+`-AllowNotReady` is deliberately not exposed. Under `-Apply` the wrapper runs
+discovery with `-FailOnNotReady`; an input that skips that gate is the one that
+would get clicked past.
 
-Also unchanged: GitHub Pages cannot be enabled by a workflow. It needs
-`administration:write`, which a job token structurally cannot hold, so manual
-enablement stays in the client checklist and `deploy-pages.yml` documents both
-routes.
+`LZ_GITHUB_APP_PRIVATE_KEY_PATH` takes a **path**, not a key, so the workflow
+writes the secret to `RUNNER_TEMP` and removes it in an `always()` step —
+handing that variable a PEM body fails inside `Initialize-LzDeliveryAuth` with a
+misleading "does not exist".
+
+**One defect found while building it.** `Invoke-Discovery.ps1` reads no
+environment variables and always writes `discovery-inventory.json` beside the
+config file, so an engagement run against `client/lz-config.json` puts it — and
+the readiness report rendered from it — inside `client/`. The existing ignore
+entries are root-anchored and do not reach there, so both would have been
+committable, carrying tenant, subscription and identity detail. That is the same
+gap recorded in `.gitignore` on 2026-08-19, one directory over. Now ignored,
+with `client/lz-config.json` verified still committable.
 
 ### 6.7 Per-subscription brownfield disposition — `[CLOSED 2026-08-31]`
 
