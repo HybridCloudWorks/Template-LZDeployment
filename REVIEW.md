@@ -473,9 +473,10 @@ and secrets. [TODO.md](TODO.md) item 4.6 closed.
 
 ## 🔨 Found by the first-customer pre-flight (2026-08-30)
 
-Four entries from a review of this factory against a candidate first
+Five entries from a review of this factory against a candidate first
 engagement, read as **overall** defects rather than ones specific to that
-tenant. §21 was found while closing §18 and §20, not in the original review. The triage question throughout: does this stop the client copy from
+tenant. §21 and §22 were found while closing §18 and §20, not in the original
+review — §22 by the structural check §20 asked for, on its first run. The triage question throughout: does this stop the client copy from
 producing what the generated repo needs, or does it make the generated repo
 itself fail?
 
@@ -605,12 +606,23 @@ the ability to differentiate `corp` from `online` later without moving the
 subscription, since `corp` adds five deny-style assignments that `online` does
 not.
 
-**Unblocked by**: a structural check that no schema key can be collected
-without being mapped, documented, or explicitly marked recorded-not-deployed.
-Still open — TODO 6.3. Four of this class have now been closed one at a time
-(`dailyQuotaGb`, `firewall`, `enforcementMode`, and the policy surface itself);
-`customHierarchy` is the one that remains, and closing them individually is
-exactly what the structural check exists to stop needing.
+**Closed structurally 2026-08-31** — TODO 6.3, `Test-SchemaCoverage.ps1`. Four
+of this class had been closed one at a time (`dailyQuotaGb`, `firewall`,
+`enforcementMode`, and the policy surface itself), which is exactly the pattern
+the check exists to stop needing.
+
+The measurement it produced is the useful part: of **169** schema leaves, 115
+reach a delivered artifact, 10 are consumed indirectly, and **44 reach nothing
+but `lz-config.json`**. That is far more than the four this entry named. The
+largest groups are `operations.*` — the platform-team contact block, the
+approval chain and the break-glass contacts, collected in full and rendered
+nowhere — and `finops.*`, where a client can set a budget amount, a time grain
+and alert thresholds and get neither an Azure budget nor a document saying what
+they asked for. `customHierarchy` remains, as TODO 6.4.
+
+Each is now in a ledger with a reason and a way out, under a budget that only
+ratchets down, and the wizard tells the client at export time rather than
+letting them discover it in the repository they are handed.
 
 ### 21. The generated repo's policy guardrail enforced nothing
 **Class: the generated repo ships a control that is not one. Universal.**
@@ -641,6 +653,27 @@ One case is stated in the workflow rather than papered over: a pull request
 that both regenerates a file and hand-edits the same file is not
 distinguished. Nothing short of re-running the factory separates those, and
 the factory does not run in the generated repository.
+
+### 22. The wizard warned about a state-auth answer it never honoured
+**Class: silent, and the answer could not have worked. Universal.**
+**Found by the §20 coverage check on its first run, and fixed, both 2026-08-31.**
+
+`backend.azurerm.useAzureAdAuth` defaults true and the wizard *warned* when a
+client set it false — "storage-key authentication means a long-lived shared
+secret, Entra ID auth is strongly preferred". A preference, in other words.
+
+It is not a preference. The broker creates the state storage account with
+`--allow-shared-key-access false`
+(`factory/bootstrap/LZFactory.Bootstrap.psm1:945`), and every emitted
+`backend.hcl` and remote-state block sets `use_azuread_auth = true`
+unconditionally. Answering "no" produced a configuration that could not
+authenticate to its own state, and the wizard let it export with a warning.
+
+Now an export blocker. Worth recording chiefly for *how* it was found: the
+coverage check ignores paths that appear only in comments, and this one
+appeared only in two comments in `TokenEngine.ps1` explaining a different
+matter. Counting a comment as consumption would have marked it covered — the
+exact inversion the check exists to prevent.
 
 ## 🎯 Needs a decision
 

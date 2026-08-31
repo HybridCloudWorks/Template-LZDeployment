@@ -1175,13 +1175,40 @@ emits it enforced nothing. It now rejects `enforcement_mode = "DoNotEnforce"`
 and `creation_enabled = false` too, exempting a regeneration by requiring both
 the render stamp and `lz-config.json` to have moved.
 
-### 6.3 Close the silent-answer class structurally
+### 6.3 Close the silent-answer class structurally — `[CLOSED 2026-08-31]`
 
-A CI check that every leaf key in the schema is mapped in
-`variable-map.json`, referenced in a docs template, or on an explicit
-`recorded-not-deployed` allowlist — generalizing `unmetDependencies()` in
-`site/app.js`, which already stamps that status for Sentinel, CMK and
-Defender. Without it this class regrows. See REVIEW §20.
+`factory/ci/Test-SchemaCoverage.ps1`, registered in Factory CI as **Schema
+answer coverage**. Every leaf key the schema declares must reach a Terraform
+variable, a template, a factory script or the wizard's own generated markdown,
+or be listed in `factory/ci/schema-coverage-register.json`.
+
+The register has two lists and the difference matters. `consumedIndirectly`
+names answers that *do* reach a delivered artifact through a consumer that
+reads them structurally rather than by dotted name, and each entry must name a
+file that still mentions the key — otherwise it is a second suppression list.
+`recordedNotDeployed` names answers that reach nothing but `lz-config.json`,
+carries a reason and a way out for each, and ratchets down.
+
+**Today: 169 leaves, 115 reaching an artifact, 10 consumed indirectly, 44
+recorded-not-deployed.** The 44 are not new; they are what was already true,
+written down. Worth reading the register for what is in it — the largest
+entries are `operations.*` (the whole platform-team contact block, the approval
+chain and the break-glass contacts, collected in full and rendered nowhere) and
+`finops.*` (budgets and cost exports, likewise), and the six
+`governance.policyBaseline.enforce*` toggles the Policies step now supersedes.
+Each of those is a small, self-contained follow-up.
+
+`unmetDependencies()` reads the same ledger through a generated
+`site/schema-coverage.js`, so the UI marker and the CI gate cannot disagree. It
+reports a path only when the client gave it a value that differs from the
+default.
+
+**One defect found and fixed on the first run**: the wizard *warned* about
+storage-key state authentication and delivered Entra-only regardless — the
+broker creates the state account with `--allow-shared-key-access false` and
+every emitted backend sets `use_azuread_auth = true`, so answering "no"
+produced a configuration that could not reach its own state. Now an export
+blocker.
 
 ### 6.4 Make the management-group hierarchy real — operator-directed 2026-08-30
 
