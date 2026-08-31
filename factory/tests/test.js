@@ -594,5 +594,50 @@ console.log('\n== 19. Placing an existing subscription is a decision, not a defa
   ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
 }
 
+console.log('\n== 20. caf-minimal trims the hierarchy, so the sandbox slot must be empty ==');
+{
+  // The estimate stopped being cosmetic in #125: it gates HCP Terraform export
+  // above the free tier's 500-resource cap. Both weights were wrong — the
+  // pinned library defines twelve management groups, and caf-minimal now
+  // creates ten.
+  const a = c.azure;
+  a.managementGroups.strategy = 'caf-standard';
+  a.subscriptions.sandbox = '';
+  const standardEstimate = A.estimateRum();
+  a.managementGroups.strategy = 'caf-minimal';
+  const minimalEstimate = A.estimateRum();
+  ok('caf-minimal is costed as a smaller estate', minimalEstimate < standardEstimate);
+  ok('and by exactly the two groups it drops', standardEstimate - minimalEstimate === 2,
+    `${standardEstimate} - ${minimalEstimate}`);
+
+  // No Sandbox group means the sandbox subscription has nowhere to land. This
+  // must BLOCK: the placement would otherwise fail mid-apply, after management
+  // groups whose ids are immutable have already been created. Mirrored by
+  // render guard G31 for a hand-edited answer record.
+  ok('an empty sandbox slot exports under caf-minimal', A.validate().errors.length === 0,
+    JSON.stringify(A.validate().errors, null, 1));
+  a.subscriptions.sandbox = '11111111-1111-1111-1111-111111111111';
+  ok('a sandbox subscription blocks export under caf-minimal',
+    A.validate().errors.some((e) => /Sandbox management group/.test(e.message)));
+  a.managementGroups.strategy = 'caf-standard';
+  ok('and is fine again under caf-standard',
+    !A.validate().errors.some((e) => /Sandbox management group/.test(e.message)));
+
+  // The six governance.policyBaseline booleans were retired in schema 4.0.0.
+  // They asked what the Policies step asks, with only the Policies step wired.
+  const pb = A.buildConfig().governance.policyBaseline;
+  ok('the retired policy-baseline toggles no longer export',
+    !('enforceAllowedLocations' in pb) && !('enforceTlsMinimum' in pb) &&
+    !('enforceNsgOnSubnets' in pb) && !('denyPublicIpOnNics' in pb) &&
+    !('enforceDiagnosticSettings' in pb) && !('enforceEncryptionAtRest' in pb));
+  // Their siblings ARE consumed and must survive: requiredTags reaches
+  // FINOPS.md, enforcementMode reaches the policy assignments.
+  ok('but requiredTags and enforcementMode survive',
+    Array.isArray(pb.requiredTags) && pb.requiredTags.length > 0 && typeof pb.enforcementMode === 'string');
+
+  a.subscriptions.sandbox = '';
+  ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

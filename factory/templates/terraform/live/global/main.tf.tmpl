@@ -54,9 +54,12 @@ provider "alz" {
 #{{IF computed.hasCustomArchitecture}}
     # A local library carrying this estate's own architecture definition. It
     # composes with the pinned one rather than replacing it: every archetype,
-    # policy definition and assignment still comes from the ref above, and the
-    # local file only says what the management groups are called. custom_url
-    # conflicts with path/ref, so it has to be its own entry.
+    # policy definition and assignment still comes from the ref above. The local
+    # file says only which management groups exist and what they are called —
+    # `custom` renames them, `caf-minimal` omits Sandbox and Decommissioned —
+    # and never which archetype governs one, because that would change the
+    # policy set applied to everything beneath it. custom_url conflicts with
+    # path/ref, so it has to be its own entry.
     {
       custom_url = "${path.root}/lib"
     }

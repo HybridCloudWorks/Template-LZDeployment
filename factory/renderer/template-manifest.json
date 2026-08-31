@@ -1,7 +1,7 @@
 {
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||. This manifest is the OUTPUT CONTRACT (docs/refactor/OUTPUT-CONTRACT.md): generation fails if a produced file is not listed here or a listed file is missing (validation gate V01). No generator machinery is ever listed.",
   "manifestVersion": "2.1.0",
-  "targetSchemaVersion": "3.2.0",
+  "targetSchemaVersion": "4.0.0",
   "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored — the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
   "files": [
     {
@@ -85,8 +85,8 @@
       "source": "$alz-architecture",
       "destination": "terraform/live/global/lib/architecture_definitions/{{FACTORY-RAW:computed.architectureName}}.alz_architecture_definition.json",
       "mode": "alz-architecture",
-      "when": "azure.managementGroups.strategy == 'custom'",
-      "description": "Client-named ALZ architecture definition. Composed with the pinned remote library through the alz provider's library_references, so the estate's management groups carry the client's names while the shape and archetypes stay the library's. Emitted only for the custom strategy; a $-prefixed source has no template file, like $config and $factory-version."
+      "when": "computed.hasCustomArchitecture",
+      "description": "Local ALZ architecture definition. Composed with the pinned remote library through the alz provider's library_references. Emitted for any strategy the pinned library cannot supply an architecture for: 'custom' renames the groups, 'caf-minimal' drops Sandbox and Decommissioned. Gated on the computed flag rather than a literal strategy name so this and main.tf's library_references block cannot disagree about whether a local library exists. A $-prefixed source has no template file, like $config and $factory-version."
     },
     {
       "source": "terraform/live/global/main.tf.tmpl",

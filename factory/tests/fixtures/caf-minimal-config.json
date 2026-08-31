@@ -22,11 +22,12 @@
       "mode": "existing",
       "management": "aaaaaaaa-0000-0000-0000-000000000001",
       "connectivity": "aaaaaaaa-0000-0000-0000-000000000002",
-      "workloadProd": "aaaaaaaa-0000-0000-0000-000000000003"
+      "workloadProd": "aaaaaaaa-0000-0000-0000-000000000003",
+      "sandbox": ""
     },
     "managementGroups": {
       "rootId": "mg-contoso",
-      "strategy": "caf-standard",
+      "strategy": "caf-minimal",
       "workloadPlacement": "corp"
     }
   },

@@ -19,7 +19,7 @@
  * Constants
  * ------------------------------------------------------------------- */
 
-const SCHEMA_VERSION = '3.2.0';
+const SCHEMA_VERSION = '4.0.0';
 
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
@@ -120,8 +120,13 @@ const DEFAULT_ENV_ABBREV = {
  * These are estimates, not a plan. Treat the output as a rough sizing signal
  * for the estate, never as a billing figure. */
 const RUM_WEIGHTS = {
-  managementGroupsCafStandard: 9,
-  managementGroupsCafMinimal: 4,
+  // The pinned ALZ library defines TWELVE management groups, not nine — count
+  // them in site/alz-policy-catalog.json. caf-minimal drops sandbox and
+  // decommissioned, so it creates ten. Both numbers were wrong until
+  // 2026-08-31, and the estimate stopped being cosmetic when it began gating
+  // HCP Terraform export above the free tier's 500-resource cap.
+  managementGroupsCafStandard: 12,
+  managementGroupsCafMinimal: 10,
   policyBaselineCore: 28,        // 17 blocks, assignments fanning out across scopes
   policyPerFramework: 12,
   hubPerRegion: 30,              // 24 blocks; subnets/NSGs/routes fan out per for_each
@@ -252,8 +257,6 @@ function defaultConfig() {
       policyBaseline: {
         enforcementMode: 'audit',
         requiredTags: ['owner', 'application', 'environment', 'cost_center'],
-        enforceAllowedLocations: true, enforceTlsMinimum: true, enforceNsgOnSubnets: true,
-        denyPublicIpOnNics: false, enforceDiagnosticSettings: true, enforceEncryptionAtRest: true
       },
       policyAsCodeEngines: ['azure-policy', 'conftest'],
       // An absent group id means enabled, so a config written before a library
@@ -450,11 +453,13 @@ function validate() {
     warn('azure', 'The same subscription ID is used for more than one role. This is valid but collapses the isolation boundary between those planes.');
   }
   if (!a.managementGroups.rootId.trim()) err('azure', 'Root management group ID is required.');
-  // Said out loud rather than left for the client to discover in the rendered
-  // output: caf-minimal and caf-standard emit byte-identical Terraform today,
-  // because the architecture is the pinned library's `alz` in both cases.
-  if (a.managementGroups.strategy === 'caf-minimal') {
-    warn('azure', 'CAF minimal currently deploys the same management groups as CAF standard: the hierarchy comes from the pinned Azure Landing Zones library architecture, which includes Corp, Online, Sandbox and Decommissioned. Trimming it needs a decision about where the sandbox subscription lands (REVIEW §23).');
+  // caf-minimal now genuinely trims the hierarchy — Platform and Landing Zones
+  // only — which leaves the sandbox subscription with nowhere to go. Blocking
+  // rather than warning: the placement would otherwise fail mid-apply, after
+  // management groups whose ids are immutable have already been created.
+  // Mirrored by render guard G31 for a hand-edited answer record.
+  if (a.managementGroups.strategy === 'caf-minimal' && a.subscriptions.sandbox) {
+    err('azure', 'CAF minimal creates no Sandbox management group, so the sandbox subscription has nowhere to be placed. Either choose CAF standard, or clear the sandbox subscription.');
   }
   if (a.managementGroups.strategy === 'custom') {
     const renames = a.managementGroups.customHierarchy || {};

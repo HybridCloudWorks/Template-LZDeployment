@@ -263,7 +263,12 @@ function New-LzRenderContext {
     # about what a group is called — and management-group IDs are immutable, so
     # a disagreement is not something a later apply corrects.
     $groups = Resolve-LzManagementGroups -Config $Config
-    $map['computed.hasCustomArchitecture'] = [bool]$groups.IsCustom
+    $map['computed.hasCustomArchitecture'] = [bool]$groups.HasCustomArchitecture
+    # Whether the sandbox management group is one this estate creates. Under
+    # caf-minimal it is not, so the global layer must not be handed a placement
+    # target that will never exist. Guard G31 refuses the combination that would
+    # need one anyway.
+    $map['computed.hasSandboxGroup'] = ('sandbox' -in $groups.EmittedGroupIds)
     $map['computed.architectureName'] = $groups.ArchitectureName
     $map['computed.managementGroupId'] = $groups.Effective['management'].id
     $map['computed.connectivityManagementGroupId'] = $groups.Effective['connectivity'].id
@@ -433,16 +438,34 @@ function Resolve-LzManagementGroups {
         IDs are immutable in Azure, which makes that a one-way mistake per
         client — the reason 6.4's scope is names first.
 
-        Returns the effective id and display name for every library group, the
-        architecture name to select, and the group the workload subscriptions
-        land in.
+        `caf-minimal` is the one strategy that changes the SHAPE rather than the
+        names: it drops the two groups the standard hierarchy carries outside
+        Platform and Landing Zones. It emits its own architecture definition for
+        the same reason `custom` does — the pinned library has no trimmed
+        architecture to select.
+
+        Returns the effective id and display name for every library group, which
+        of them are actually emitted, the architecture name to select, and the
+        group the workload subscriptions land in.
     #>
     param([Parameter(Mandatory)][object]$Config)
 
     $catalog = Get-LzPolicyCatalog
     $mg = $Config.azure.managementGroups
     $isCustom = ($mg.strategy -eq 'custom')
+    $isMinimal = ($mg.strategy -eq 'caf-minimal')
     $renames = if ($isCustom -and (Test-LzHasProperty $mg 'customHierarchy')) { $mg.customHierarchy } else { $null }
+
+    # "Platform + Landing Zones only" — the schema's own description of
+    # caf-minimal, which until 2026-08-31 described nothing the factory did.
+    #
+    # These two and no others, and the choice is forced rather than a matter of
+    # taste. Both are direct children of the root with NO CHILDREN OF THEIR OWN,
+    # so dropping them re-parents nothing; every other library group is either
+    # Platform, Landing Zones, or a child of one of those two. Dropping Corp or
+    # Online instead would strand azure.managementGroups.workloadPlacement,
+    # which is exactly why 6.4a was left open rather than guessed at.
+    $dropped = if ($isMinimal) { @('sandbox', 'decommissioned') } else { @() }
 
     $effective = @{}
     foreach ($group in @($catalog.managementGroups)) {
@@ -467,12 +490,25 @@ function Resolve-LzManagementGroups {
     $factoryVersionPath = Join-Path $PSScriptRoot '../../../factory-version.json'
     $pinned = Get-Content $factoryVersionPath -Raw | ConvertFrom-Json -Depth 20
 
+    $short = ([string]$Config.organization.companyShortName).ToLowerInvariant()
+
     [pscustomobject]@{
         IsCustom         = $isCustom
+        IsMinimal        = $isMinimal
+        # Both strategies that depart from the pinned library's own architecture
+        # need a local definition emitted and library_references pointed at it.
+        # Renaming groups and dropping groups are the same problem to the
+        # provider: the architecture it is asked for is not one the library has.
+        HasCustomArchitecture = ($isCustom -or $isMinimal)
         # The architecture name doubles as the emitted library file's basename,
         # so it has to be a safe identifier rather than a display string.
-        ArchitectureName = if ($isCustom) { ([string]$Config.organization.companyShortName).ToLowerInvariant() } else { $catalog.library.architecture }
+        ArchitectureName = if ($isCustom) { $short } elseif ($isMinimal) { "$short-minimal" } else { $catalog.library.architecture }
         Effective        = $effective
+        # Every library group keeps an entry in Effective so the computed.*
+        # tokens that name one still resolve; EmittedGroupIds is what decides
+        # which are actually created.
+        EmittedGroupIds  = @(@($catalog.managementGroups | ForEach-Object { [string]$_.id }) | Where-Object { $_ -notin $dropped })
+        DroppedGroupIds  = @($dropped)
         WorkloadGroupId  = $effective[$placement].id
         WorkloadLibraryId = $placement
         LibraryPath      = [string]$pinned.avm.alzLibrary.path
@@ -496,6 +532,10 @@ function New-LzAlzArchitectureDefinition {
     $catalog = Get-LzPolicyCatalog
 
     $managementGroups = foreach ($group in @($catalog.managementGroups)) {
+        # caf-minimal drops groups; a dropped group must not be emitted, and
+        # nothing under the standard hierarchy parents to one, so no child is
+        # orphaned by the omission.
+        if ([string]$group.id -notin $groups.EmittedGroupIds) { continue }
         $current = $groups.Effective[$group.id]
         # The parent edge travels renamed too, or a renamed parent would leave
         # its children pointing at a group that is never created.

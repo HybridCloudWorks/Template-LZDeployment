@@ -31,13 +31,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # azurerm-config and vwan-config cover the two topologies. The other
-        # two cover the two shapes whose validity is decided by the PROVIDER
-        # at init rather than by the renderer: the HCP `cloud` block, and the
+        # azurerm-config and vwan-config cover the two topologies. The rest
+        # cover shapes whose validity is decided by the PROVIDER at init rather
+        # than by the renderer: the HCP `cloud` block, and the
         # library_references list composed from a pinned remote {path, ref}
-        # plus a local {custom_url}. Both were text-asserted only until this
-        # matrix grew — and `terraform init` is the only thing that reads them.
-        fixture: [azurerm-config, vwan-config, hcp-config, custom-hierarchy-config]
+        # plus a local {custom_url} — emitted both by a renamed hierarchy
+        # (custom-hierarchy-config) and by a trimmed one (caf-minimal-config,
+        # which drops Sandbox and Decommissioned). `terraform init` is the only
+        # thing that reads any of them.
+        fixture: [azurerm-config, vwan-config, hcp-config, custom-hierarchy-config, caf-minimal-config]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

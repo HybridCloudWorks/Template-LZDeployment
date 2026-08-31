@@ -1287,18 +1287,44 @@ the local library is emitted and composed — but what is missing is a decision
 about which archetype a client-invented group inherits, and that is precisely
 the decision this scope declines to make on their behalf by accident.
 
-### 6.4a `caf-minimal` deploys the same hierarchy as `caf-standard` — `[OPEN]`
+### 6.4a `caf-minimal` deploys the same hierarchy as `caf-standard` — `[CLOSED 2026-08-31]`
 
-Found while closing 6.4. Rendering the same config under both strategies
-produces byte-for-byte identical Terraform: the emitted architecture is the
-library's `alz` either way, Corp, Online, Sandbox and Decommissioned included.
+Operator-directed: **make it real** rather than retire the option. Shipped as
+**schema 4.0.0** and
+[decision 0025](docs/decisions/0025-schema-4-caf-minimal-real-and-policy-baseline-retired.md).
 
-Not fixed in passing, because trimming a hierarchy is not a rename: dropping
-Sandbox leaves `azure.subscriptions.sandbox` with nowhere to be placed, and
-dropping Corp and Online makes `workloadPlacement` meaningless. Either make it
-real — a second emitted architecture definition, plus a decision about the
-orphaned slots — or retire the option. The wizard says so in the option text
-and in a warning until then. See REVIEW §23.
+`caf-minimal` now emits its own architecture definition —
+`<companyShortName>-minimal`, ten management groups — dropping **exactly
+`sandbox` and `decommissioned`**.
+
+**The objection this item was left open for does not apply to those two.** It
+said trimming would strand `workloadPlacement`. It would, for Corp or Online.
+But both dropped groups are direct children of the root **with no children of
+their own**, so nothing re-parents, and every other library group is Platform,
+Landing Zones, or a child of one. The trim the schema always described happens
+to be the one trim that is safe.
+
+**The sandbox subscription is refused, not re-homed.** Guard **G31** and the
+wizard both block `caf-minimal` with a non-empty `azure.subscriptions.sandbox`.
+Silently dropping the placement would hand the client a subscription outside the
+hierarchy without saying so; placing it under Landing Zones would put a sandbox
+subscription under a governed archetype nobody chose. It is an **error** rather
+than a warning because `active_placements` filters *empty* subscription ids, not
+missing management groups — so the failure would otherwise land mid-apply,
+against management-group ids that are immutable.
+
+**Three artefacts were describing a hierarchy nobody deployed**, and all three
+are corrected: the schema's `strategy` description, the option label, and the
+wizard's resource estimator — which costed `caf-minimal` at 4 groups and
+`caf-standard` at 9 when **the pinned library defines 12**. Both weights were
+wrong, and that estimate has gated HCP Terraform export above the 500-resource
+free tier since #125.
+
+The test this item asked for is that the two strategies now render
+**differently**, and that the minimal one omits exactly those two groups while
+keeping the landing-zone groups `workloadPlacement` targets. A test asserting
+only that each renders something would have passed for the whole year this was
+broken.
 
 ### 6.5 Second state backend (HCP Terraform) — `[CLOSED 2026-08-31]`
 
@@ -1574,6 +1600,30 @@ Wired through now, and a declined inventory is recorded as declined rather than
 as "no policy assignments found" — those are very different statements. The
 answer-coverage budget drops 41 → 40.
 
+
+### 6.8 The bespoke policy baseline, retired — `[CLOSED 2026-08-31]`
+
+Six of the forty recorded-not-deployed answers, closed by removal rather than by
+wiring, in the same schema 4.0.0 as 6.4a (decision 0025).
+
+`governance.policyBaseline.{enforceAllowedLocations, enforceTlsMinimum,
+enforceNsgOnSubnets, denyPublicIpOnNics, enforceDiagnosticSettings,
+enforceEncryptionAtRest}` predate the ALZ policy surface. Every control they
+name is enforced by an assignment the pinned library ships, and since #123 the
+client chooses those in the wizard's Policies step against the real assignment
+names. The wizard was asking the same six questions twice, with only one side
+connected to anything.
+
+Removed rather than mapped to the catalog: mapping keeps two controls that can
+disagree, and only the Policies step has a generated catalog behind it that CI
+validates against the pinned library.
+
+**`enforcementMode` and `requiredTags` survive.** They sit under the same object
+and both are consumed — `requiredTags` reaches `FINOPS.md`, `enforcementMode`
+reaches the assignments. Removing the parent wholesale would have taken them
+with it, which is the mistake this entry exists to have not made.
+
+Ledger budget **40 → 34**.
 
 ## Phase 5 — Release-time items
 

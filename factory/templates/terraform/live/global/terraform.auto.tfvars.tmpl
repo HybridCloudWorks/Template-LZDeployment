@@ -37,7 +37,14 @@ architecture_name                = {{FACTORY:computed.architectureName}}
 management_management_group_id   = {{FACTORY:computed.managementGroupId}}
 connectivity_management_group_id = {{FACTORY:computed.connectivityManagementGroupId}}
 identity_management_group_id     = {{FACTORY:computed.identityManagementGroupId}}
+# caf-minimal does not create a Sandbox group, so naming one here would point
+# the placement at a management group this estate never makes. variables.tf
+# defaults it, and guard G31 refuses a caf-minimal config that actually carries
+# a sandbox subscription — this only keeps the tfvars honest for one that does
+# not.
+#{{IF computed.hasSandboxGroup}}
 sandbox_management_group_id      = {{FACTORY:computed.sandboxManagementGroupId}}
+#{{ENDIF}}
 workload_management_group_id     = {{FACTORY:computed.workloadManagementGroupId}}
 
 # Only the azurerm path reads the management layer's state out of a storage

@@ -173,7 +173,7 @@ if (-not $result.InSync) { exit 1 }
     # credential nor the registry, and that is the half that rots: a truncated
     # block or a missed substitution still yields a module that plans, just not
     # the one this estate rendered. Checked on every fixture, on every run.
-    foreach ($planFixture in @('azurerm-config', 'vwan-config', 'hcp-config', 'custom-hierarchy-config')) {
+    foreach ($planFixture in @('azurerm-config', 'vwan-config', 'hcp-config', 'custom-hierarchy-config', 'caf-minimal-config')) {
         Invoke-LzFactoryCheck "ALZ plan harness assembles ($planFixture)" pwsh @(
             '-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-AlzArchitecturePlan.ps1',
             '-Fixture', $planFixture, '-AssembleOnly') -Category 'contract' | Out-Null

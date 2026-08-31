@@ -1,6 +1,6 @@
 {
-  "$comment": "Answer-coverage ledger for factory/ci/Test-SchemaCoverage.ps1. Two lists, and the difference between them matters. consumedIndirectly names answers that DO reach a delivered artifact through a consumer that reads them structurally rather than by dotted name — the coverage scan cannot see them, but the client gets what they answered. recordedNotDeployed names answers that reach nothing but lz-config.json: the client is asked, the answer is preserved, and no estate is built from it. That second list is debt, it carries a budget that only ratchets down, and every entry owes a reason and a way out.",
-  "budget": 40,
+  "$comment": "Answer-coverage ledger for factory/ci/Test-SchemaCoverage.ps1. Two lists, and the difference between them matters. consumedIndirectly names answers that DO reach a delivered artifact through a consumer that reads them structurally rather than by dotted name \u2014 the coverage scan cannot see them, but the client gets what they answered. recordedNotDeployed names answers that reach nothing but lz-config.json: the client is asked, the answer is preserved, and no estate is built from it. That second list is debt, it carries a budget that only ratchets down, and every entry owes a reason and a way out.",
+  "budget": 34,
   "consumedIndirectly": [
     {
       "consumer": "scripts/New-LzSubscriptions.ps1",
@@ -23,7 +23,7 @@
     },
     {
       "consumer": "factory/renderer/private/TokenEngine.ps1",
-      "note": "Resolve-LzPolicySelection walks the policySelection object by key to build policy_assignment_changes, so the group ids and assignment names — which come from the generated ALZ catalog, not from the schema — are never spelled in source.",
+      "note": "Resolve-LzPolicySelection walks the policySelection object by key to build policy_assignment_changes, so the group ids and assignment names \u2014 which come from the generated ALZ catalog, not from the schema \u2014 are never spelled in source.",
       "paths": [
         "governance.policySelection.groups",
         "governance.policySelection.assignments"
@@ -45,7 +45,7 @@
     },
     {
       "consumer": "site/app.js",
-      "note": "Read off the hcpTerraform object by key in validate(), which is why the dotted path appears nowhere. It gates export: with the HCP Terraform backend selected and the estimated resource count above the free tier's 500, the wizard refuses to export until it is ticked. Like backend.azurerm.useAzureAdAuth it reaches no rendered artifact by design — its purpose is to be the record that the client was shown the cap, sitting beside the estimate in deployment-metadata.json.",
+      "note": "Read off the hcpTerraform object by key in validate(), which is why the dotted path appears nowhere. It gates export: with the HCP Terraform backend selected and the estimated resource count above the free tier's 500, the wizard refuses to export until it is ticked. Like backend.azurerm.useAzureAdAuth it reaches no rendered artifact by design \u2014 its purpose is to be the record that the client was shown the cap, sitting beside the estimate in deployment-metadata.json.",
       "paths": [
         "backend.hcpTerraform.acknowledgedResourceLimit"
       ]
@@ -82,7 +82,7 @@
       "label": "VPN and Bastion SKUs",
       "module": "(AVM connectivity module)",
       "reason": "The layer deploys the VPN gateway and Bastion host from their enabled booleans; the AVM connectivity module owns the SKU, and these three answers select something the module does not take.",
-      "resolution": "Either pass them through to the module's hub settings, or stop asking — an answer the client can give and the estate cannot honour is worse than no question.",
+      "resolution": "Either pass them through to the module's hub settings, or stop asking \u2014 an answer the client can give and the estate cannot honour is worse than no question.",
       "paths": [
         "connectivity.vpn.sku",
         "connectivity.vpn.activeActive",
@@ -113,24 +113,10 @@
       ]
     },
     {
-      "label": "Bespoke policy-baseline toggles",
-      "module": "(superseded by the Policies step)",
-      "reason": "Superseded rather than merely unwired. These six booleans predate the ALZ policy surface: allowed locations, TLS minimums, NSGs on subnets, public IPs on NICs, diagnostic settings and encryption at rest are all enforced by assignments the pinned library ships, and the client now chooses those in the wizard's Policies step. Leaving them collected offers the same decision twice, in two places, with only one of them connected to anything.",
-      "resolution": "Retire them in a schema major, or map each to the catalog assignment it duplicates so the two controls cannot disagree.",
-      "paths": [
-        "governance.policyBaseline.enforceAllowedLocations",
-        "governance.policyBaseline.enforceTlsMinimum",
-        "governance.policyBaseline.enforceNsgOnSubnets",
-        "governance.policyBaseline.denyPublicIpOnNics",
-        "governance.policyBaseline.enforceDiagnosticSettings",
-        "governance.policyBaseline.enforceEncryptionAtRest"
-      ]
-    },
-    {
       "label": "Operating-model contacts and approvals",
       "module": "(docs)",
       "reason": "Collected and rendered nowhere. OPERATING-MODEL.md.tmpl references none of them, so a client who records a support-hours window, an escalation URL, an approval chain and a break-glass contact list finds none of it in the repository they are handed.",
-      "resolution": "Render them into docs/operating-model.md — this is the cheapest entry in the ledger to close, and the one whose absence is most visible to the client.",
+      "resolution": "Render them into docs/operating-model.md \u2014 this is the cheapest entry in the ledger to close, and the one whose absence is most visible to the client.",
       "paths": [
         "operations.platformTeam.githubTeamSlug",
         "operations.platformTeam.supportHours",
@@ -145,7 +131,7 @@
       "label": "FinOps budgets and cost exports",
       "module": "(docs)",
       "reason": "FINOPS.md.tmpl names finops.budgets in prose and renders no field of it, and no Azure Consumption budget or cost export is created by any layer. A client who sets a USD amount and alert thresholds gets neither the budget nor a document saying what they asked for.",
-      "resolution": "Render the budget and export tables into docs/finops.md, and decide separately whether the platform-management layer should create the budgets — Microsoft.Consumption budgets are a small, well-bounded addition.",
+      "resolution": "Render the budget and export tables into docs/finops.md, and decide separately whether the platform-management layer should create the budgets \u2014 Microsoft.Consumption budgets are a small, well-bounded addition.",
       "paths": [
         "finops.budgets.scope",
         "finops.budgets.amountUsd",

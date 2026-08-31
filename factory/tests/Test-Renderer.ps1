@@ -610,6 +610,77 @@ $hcpGuard.backend.azurerm | Add-Member -NotePropertyName privateEndpoint -NotePr
 $g = @((Test-LzRenderGuards -Config $hcpGuard).Violations | Where-Object { $_.Id -eq 'G17' })
 ok 'G17 refuses state hardening under TFC' (@($g | Where-Object { $_.Message -match 'privateEndpoint' }).Count -eq 1)
 
+Write-Host "`n== 12f. caf-minimal is a different hierarchy (TODO 6.4a) ==" -ForegroundColor Cyan
+# For a year caf-minimal and caf-standard rendered byte-identical Terraform: the
+# architecture was the pinned library's `alz` either way. The schema described a
+# trim that never happened and the estimator costed a hierarchy that was never
+# deployed. THE ASSERTION THAT MATTERS IS THAT THEY DIFFER — a test checking
+# only that each renders something would have passed throughout.
+$minPath = Join-Path ([IO.Path]::GetTempPath()) "lz-min-$([guid]::NewGuid().ToString('n').Substring(0,8)).json"
+$outMin = Join-Path ([IO.Path]::GetTempPath()) "lz-render-min-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+$outStd = Join-Path ([IO.Path]::GetTempPath()) "lz-render-std-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+try {
+    $minConfig = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+    $minConfig.azure.managementGroups.strategy = 'caf-minimal'
+    # No Sandbox group means no home for a sandbox subscription (G31). Add-Member
+    # rather than assignment: optional slots are STRIPPED from an exported
+    # configuration rather than emitted empty, so sample-config.json has no
+    # sandbox property to assign to.
+    $minConfig.azure.subscriptions | Add-Member -NotePropertyName sandbox -NotePropertyValue '' -Force
+    $minConfig | ConvertTo-Json -Depth 40 | Set-Content $minPath -Encoding utf8
+
+    $null = Invoke-LzRender -ConfigPath $minPath -OutputDirectory $outMin -Quiet
+    $null = Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/sample-config.json" -OutputDirectory $outStd -Quiet
+
+    $minMain = Get-Content (Join-Path $outMin 'terraform/live/global/main.tf') -Raw
+    $stdMain = Get-Content (Join-Path $outStd 'terraform/live/global/main.tf') -Raw
+    ok 'caf-minimal no longer renders identically to caf-standard' ($minMain -ne $stdMain)
+
+    # Exactly two groups, and exactly which two. "Fewer than standard" would
+    # pass for a trim that stranded workloadPlacement.
+    $defs = @(Get-ChildItem (Join-Path $outMin 'terraform/live/global/lib/architecture_definitions') -File -ErrorAction SilentlyContinue)
+    ok 'caf-minimal emits its own architecture definition' ($defs.Count -eq 1)
+    $arch = Get-Content $defs[0].FullName -Raw | ConvertFrom-Json -Depth 20
+    $minIds = @($arch.management_groups | ForEach-Object { [string]$_.id } | Sort-Object)
+    ok 'it drops exactly sandbox and decommissioned' (
+        ($minIds -notcontains 'sandbox') -and ($minIds -notcontains 'decommissioned') -and $minIds.Count -eq 10) ($minIds -join ',')
+    # The reason those two and not others: everything else is Platform, Landing
+    # Zones, or a child of one, and workloadPlacement targets corp/online.
+    ok 'the landing-zone groups workloadPlacement needs survive' (
+        ($minIds -contains 'corp') -and ($minIds -contains 'online') -and ($minIds -contains 'landingzones'))
+    ok 'no emitted group parents to a dropped one' (
+        @($arch.management_groups | Where-Object { $_.parent_id -in @('sandbox','decommissioned') }).Count -eq 0)
+
+    # caf-standard emits none: its architecture IS the library's.
+    ok 'caf-standard still selects the library architecture' (
+        -not (Test-Path (Join-Path $outStd 'terraform/live/global/lib')))
+
+    # A tfvars naming a group this estate never creates is the failure G31 is
+    # the backstop for; under caf-minimal the line must simply not be there.
+    $minVars = Get-Content (Join-Path $outMin 'terraform/live/global/terraform.auto.tfvars') -Raw
+    ok 'no sandbox placement target is emitted' ($minVars -notmatch 'sandbox_management_group_id')
+    ok 'caf-standard still emits one' ((Get-Content (Join-Path $outStd 'terraform/live/global/terraform.auto.tfvars') -Raw) -match 'sandbox_management_group_id')
+
+    # G31: caf-minimal + a populated sandbox slot. active_placements filters
+    # EMPTY subscription ids, not missing management groups, so without this the
+    # failure lands mid-apply against immutable management-group ids.
+    $g31Config = Get-Content $minPath -Raw | ConvertFrom-Json -Depth 40
+    $g31Config.azure.subscriptions | Add-Member -NotePropertyName sandbox -NotePropertyValue '11111111-1111-1111-1111-111111111111' -Force
+    $g31 = @((Test-LzRenderGuards -Config $g31Config).Violations | Where-Object { $_.Id -eq 'G31' })
+    ok 'G31 blocks a sandbox subscription under caf-minimal' ($g31.Count -eq 1 -and $g31[0].Severity -eq 'Block')
+    ok 'G31 stays quiet when the slot is empty' (
+        @((Test-LzRenderGuards -Config $minConfig).Violations | Where-Object { $_.Id -eq 'G31' }).Count -eq 0)
+    # caf-standard creates Sandbox, so the same subscription is fine there.
+    $stdSandbox = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+    $stdSandbox.azure.subscriptions | Add-Member -NotePropertyName sandbox -NotePropertyValue '11111111-1111-1111-1111-111111111111' -Force
+    ok 'G31 does not fire under caf-standard' (
+        @((Test-LzRenderGuards -Config $stdSandbox).Violations | Where-Object { $_.Id -eq 'G31' }).Count -eq 0)
+}
+finally {
+    Remove-Item -Recurse -Force $outMin, $outStd -ErrorAction SilentlyContinue
+    Remove-Item -Force $minPath -ErrorAction SilentlyContinue
+}
+
 Write-Host "`n== 13. Schema drift check ==" -ForegroundColor Cyan
 $drift = Test-LzSchemaDrift -SchemaPath "$repo/factory/schema/lz-config.schema.json" -MappingPath "$repo/factory/renderer/variable-map.json" -TemplateRoot "$repo/factory/templates"
 ok 'wizard and corpus in sync'      ($drift.InSync) (($drift.Findings | Select-Object -First 3 | ForEach-Object { $_.Detail }) -join '; ')

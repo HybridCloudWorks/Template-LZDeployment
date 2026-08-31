@@ -62,19 +62,6 @@ globalThis.LZ_RECORDED_NOT_DEPLOYED = [
     ]
   },
   {
-    "label": "Bespoke policy-baseline toggles",
-    "module": "(superseded by the Policies step)",
-    "impact": "Superseded rather than merely unwired. These six booleans predate the ALZ policy surface: allowed locations, TLS minimums, NSGs on subnets, public IPs on NICs, diagnostic settings and encryption at rest are all enforced by assignments the pinned library ships, and the client now chooses those in the wizard's Policies step. Leaving them collected offers the same decision twice, in two places, with only one of them connected to anything.",
-    "paths": [
-      "governance.policyBaseline.enforceAllowedLocations",
-      "governance.policyBaseline.enforceTlsMinimum",
-      "governance.policyBaseline.enforceNsgOnSubnets",
-      "governance.policyBaseline.denyPublicIpOnNics",
-      "governance.policyBaseline.enforceDiagnosticSettings",
-      "governance.policyBaseline.enforceEncryptionAtRest"
-    ]
-  },
-  {
     "label": "Operating-model contacts and approvals",
     "module": "(docs)",
     "impact": "Collected and rendered nowhere. OPERATING-MODEL.md.tmpl references none of them, so a client who records a support-hours window, an escalation URL, an approval chain and a break-glass contact list finds none of it in the repository they are handed.",

@@ -39,6 +39,7 @@ on:
           - vwan-config
           - hcp-config
           - custom-hierarchy-config
+          - caf-minimal-config
 
 permissions: {}
 
@@ -68,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$FIXTURE" = "all" ]; then
-            echo 'fixtures=["azurerm-config","vwan-config","hcp-config","custom-hierarchy-config"]' >> "$GITHUB_OUTPUT"
+            echo 'fixtures=["azurerm-config","vwan-config","hcp-config","custom-hierarchy-config","caf-minimal-config"]' >> "$GITHUB_OUTPUT"
           else
             printf 'fixtures=["%s"]\n' "$FIXTURE" >> "$GITHUB_OUTPUT"
           fi
