@@ -48,6 +48,9 @@ wizard question. Enforced automatically in both directions:
 | `firewall_enabled` (conn) | `connectivity.firewall.enabled` | Connectivity → Deploy an Azure Firewall | Yes — no default, the client must answer |
 | `policy_assignment_changes` (global) | `governance.policySelection.groups` / `.assignments` via `computed.policyAssignmentChanges` | Policies → Capability groups + advanced list | No (empty = the library's own baseline) |
 | `policy_assignment_management_groups` (global) | derived from `site/alz-policy-catalog.json` via `computed.policyAssignmentManagementGroups` | none — a library fact, not an answer | No |
+| `architecture_name` (global) | `azure.managementGroups.strategy` + `.customHierarchy` via `computed.architectureName` | Azure tenant → Hierarchy strategy + Management group names | Yes (`alz` unless renamed) |
+| `management_management_group_id` / `connectivity_` / `identity_` / `sandbox_` (global) | `azure.managementGroups.customHierarchy` via `computed.*ManagementGroupId` | Azure tenant → Management group names | Yes — emitted always, never defaulted |
+| `workload_management_group_id` (global) | `azure.managementGroups.workloadPlacement` via `computed.workloadManagementGroupId` | Azure tenant → Workload subscription placement | Yes (default `corp`) |
 | `ddos_protection_plan_id` (global) | `governance.policySelection.values.ddos_protection_plan_id` | Policies → DDoS protection plan resource ID | Yes when the DDoS group is on (guard G28) |
 | `email_security_contact` (global) | `governance.policySelection.values.email_security_contact` | Policies → Defender for Cloud security contact | Yes when a Defender assignment is selected (guard G28) |
 
@@ -77,6 +80,8 @@ wizard warns wherever an answer is recorded-not-deployed:
 | Governance (`policyBaseline.requiredTags`, frameworks, locks) | `docs/governance.md` + guard G06 | Docs |
 | `policyBaseline.enforcementMode` | `docs/governance.md`, **and** the deny-class assignments' `enforcement_mode` in the global layer | Deployed — audit emits `DoNotEnforce` for the 14 Deny/DenyAction assignments only; downgrading the DeployIfNotExists ones would stop remediation across the estate |
 | `governance.policySelection` | `policy_assignment_changes` in the global layer, `docs/governance.md`, guard G28 | Deployed |
+| `azure.managementGroups.customHierarchy` | The emitted ALZ architecture definition and the placement targets, `docs/governance.md`, guard G29 | Deployed — schema 3.0.0 reshaped it from a free-form tree with zero readers into a rename map (ADR 0022) |
+| `azure.managementGroups.strategy` | Manifest inclusion of the architecture definition (`custom` only), `docs/governance.md` | Partly deployed — **`caf-minimal` and `caf-standard` emit byte-identical Terraform** (REVIEW §23) |
 | Defender plans / Sentinel / Key Vault CMK | `docs/*, unmet-dependency report, answer record` | **Recorded-not-deployed (ADR 0017)** — wizard warns, guard G02/G03 warns |
 | FinOps (cost center, budgets, exports) | `docs/finops.md` | Docs |
 | Operations (team, escalation, break-glass) | `docs/operating-model.md`, identity matrix | Docs |

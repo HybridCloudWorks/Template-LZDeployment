@@ -473,10 +473,11 @@ and secrets. [TODO.md](TODO.md) item 4.6 closed.
 
 ## 🔨 Found by the first-customer pre-flight (2026-08-30)
 
-Five entries from a review of this factory against a candidate first
+Six entries from a review of this factory against a candidate first
 engagement, read as **overall** defects rather than ones specific to that
-tenant. §21 and §22 were found while closing §18 and §20, not in the original
-review — §22 by the structural check §20 asked for, on its first run. The triage question throughout: does this stop the client copy from
+tenant. §§21-23 were found while closing §18 and §20, not in the original
+review — §22 by the structural check §20 asked for, on its first run, and §23
+by the one thing that check structurally cannot do. The triage question throughout: does this stop the client copy from
 producing what the generated repo needs, or does it make the generated repo
 itself fail?
 
@@ -572,7 +573,15 @@ or `governance.*` at all. The sharpest cases:
   referential-integrity validator and a schema conditional-`required`, with
   **zero** downstream readers. The IDs actually created come from the pinned
   library. Management-group IDs are immutable in Azure, so this is a one-shot
-  mistake per client.
+  mistake per client. **Closed 2026-08-31** (schema 3.0.0, ADR 0022) — but by
+  changing the question rather than answering it. The old shape invited a client
+  to describe a tree, and an arbitrary tree is not a thing this factory should
+  accept: an archetype is bound to a management group *by the architecture
+  definition*, so re-nesting a group changes which policy set governs everything
+  beneath it, silently and irreversibly. The key is now a rename map over the
+  library's own groups, the renderer emits a local architecture definition that
+  composes with the pinned library, and the subscription placement targets
+  follow the renames.
 - **`governance.policyBaseline.enforcementMode`** — audit versus deny,
   arguably the most consequential answer in the wizard, reaches only
   `docs/GOVERNANCE.md.tmpl`. Guards G02 and G03 warn about Sentinel and CMK;
@@ -674,6 +683,30 @@ coverage check ignores paths that appear only in comments, and this one
 appeared only in two comments in `TokenEngine.ps1` explaining a different
 matter. Counting a comment as consumption would have marked it covered — the
 exact inversion the check exists to prevent.
+### 23. `caf-minimal` and `caf-standard` emit identical Terraform
+**Class: silent — the fifth of its shape, and the one the new check cannot see.**
+**Found 2026-08-31 while closing 6.4; not fixed.**
+
+`azure.managementGroups.strategy` offers `caf-minimal` as "Platform + Landing
+Zones only". Rendering the same configuration under `caf-standard` and
+`caf-minimal` produces **byte-for-byte identical** output: the emitted
+architecture is the pinned library's `alz` in both cases, including Corp,
+Online, Sandbox and Decommissioned.
+
+The interesting part is why §20's structural check does not catch it.
+`Test-SchemaCoverage.ps1` verifies that a *key* is read by something that
+reaches a delivered artifact. `strategy` is read — by the manifest's
+`when` condition and by `buildConfig` — so the key is covered. What is not
+covered is that one of its three *values* changes nothing. A key-level check
+cannot see a value-level lie, and it would be wrong to claim otherwise.
+
+Not fixed here because trimming the hierarchy is not a rename: dropping Sandbox
+leaves `azure.subscriptions.sandbox` with nowhere to be placed, and dropping
+Corp and Online makes `workloadPlacement` meaningless. That is a design
+decision, not a gap to fill in passing. The wizard now says so in the option
+text and in a validation warning, which is the honest minimum until it is made
+real or retired.
+
 
 ## 🎯 Needs a decision
 

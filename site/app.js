@@ -445,6 +445,12 @@ function validate() {
     warn('azure', 'The same subscription ID is used for more than one role. This is valid but collapses the isolation boundary between those planes.');
   }
   if (!a.managementGroups.rootId.trim()) err('azure', 'Root management group ID is required.');
+  // Said out loud rather than left for the client to discover in the rendered
+  // output: caf-minimal and caf-standard emit byte-identical Terraform today,
+  // because the architecture is the pinned library's `alz` in both cases.
+  if (a.managementGroups.strategy === 'caf-minimal') {
+    warn('azure', 'CAF minimal currently deploys the same management groups as CAF standard: the hierarchy comes from the pinned Azure Landing Zones library architecture, which includes Corp, Online, Sandbox and Decommissioned. Trimming it needs a decision about where the sandbox subscription lands (REVIEW §23).');
+  }
   if (a.managementGroups.strategy === 'custom') {
     const renames = a.managementGroups.customHierarchy || {};
     const known = new Set(POLICY_CATALOG.managementGroups.map((g) => g.id));

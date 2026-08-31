@@ -1210,20 +1210,58 @@ every emitted backend sets `use_azuread_auth = true`, so answering "no"
 produced a configuration that could not reach its own state. Now an export
 blocker.
 
-### 6.4 Make the management-group hierarchy real — operator-directed 2026-08-30
+### 6.4 Make the management-group hierarchy real — `[CLOSED 2026-08-31]`
 
-`azure.managementGroups.customHierarchy` has a full UI and no readers, and
-management-group IDs are immutable. Confirmed buildable: the `alz` provider
-accepts a local directory in `library_references`, and the architecture
-definition is a **flat list carrying `parent_id`** (not a nested tree — see the
-test in `Test-CI.ps1`), so emitting a client-specific
-`<org>.alz_architecture_definition.json` into the generated repo alongside the
-pinned remote ref is a contained change.
+Operator-directed 2026-08-30, shipped 2026-08-31 as **schema 3.0.0** and
+[decision 0022](docs/decisions/0022-management-group-names-not-shape.md).
 
-Scope decision taken: client-named groups in the standard ALZ shape first;
-arbitrary structure deferred, because re-nesting changes which archetype — and
-so which policy set — each group inherits. Trim the `customHierarchy` editor to
-match rather than leaving it promising more than it delivers.
+`customHierarchy` had a repeater UI, a referential-integrity validator and a
+schema conditional-`required`, and zero readers. It is now a **rename map** over
+the pinned library's own management groups, keyed by the library's id, carrying
+only `id` and `displayName`.
+
+The reshape is the decision, not a simplification of it. An archetype is bound
+to a management group *by the architecture definition*, so re-nesting a group
+changes which policy set governs everything beneath it — silently, and
+irreversibly, since management-group IDs are immutable in Azure. Offering
+arbitrary structure meant offering a client that outcome by accident.
+
+- Under `strategy = custom` the renderer emits
+  `lib/architecture_definitions/<org>.alz_architecture_definition.json` and
+  appends a local `custom_url` entry to the `alz` provider's
+  `library_references`, **composing** with the pinned remote reference rather
+  than replacing it. Parent edges travel renamed, or a renamed parent leaves
+  orphans no archetype governs.
+- `provider "alz"`'s `library_references` was a hardcoded literal with no
+  tokens. Templated now, so the pin is stated once in `factory-version.json`.
+- The five `*_management_group_id` placement targets are emitted from the same
+  resolution rather than defaulted in `variables.tf` — a renamed hierarchy whose
+  placement targets still said the library names would place every subscription
+  into groups that do not exist.
+- New `azure.managementGroups.workloadPlacement` (`corp`/`online`/
+  `landingzones`), replacing `landing_zones_management_group_id` with
+  `workload_management_group_id`.
+- Render guard **G29**: an unknown rename key, two groups resolving to one id,
+  or a custom strategy that renames nothing.
+- Answer-coverage budget 44 → 41: `customHierarchy` has a real reader now.
+
+**Left deferred, deliberately**: arbitrary nesting. The mechanism now exists —
+the local library is emitted and composed — but what is missing is a decision
+about which archetype a client-invented group inherits, and that is precisely
+the decision this scope declines to make on their behalf by accident.
+
+### 6.4a `caf-minimal` deploys the same hierarchy as `caf-standard` — `[OPEN]`
+
+Found while closing 6.4. Rendering the same config under both strategies
+produces byte-for-byte identical Terraform: the emitted architecture is the
+library's `alz` either way, Corp, Online, Sandbox and Decommissioned included.
+
+Not fixed in passing, because trimming a hierarchy is not a rename: dropping
+Sandbox leaves `azure.subscriptions.sandbox` with nowhere to be placed, and
+dropping Corp and Online makes `workloadPlacement` meaningless. Either make it
+real — a second emitted architecture definition, plus a decision about the
+orphaned slots — or retire the option. The wizard says so in the option text
+and in a warning until then. See REVIEW §23.
 
 ### 6.5 Second state backend (HCP Terraform) — operator-directed 2026-08-30
 

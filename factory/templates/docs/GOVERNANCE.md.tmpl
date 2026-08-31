@@ -9,6 +9,8 @@ rendered {{FACTORY-RAW:computed.generatedAt}}.
 |---|---|
 | Management-group root | `{{FACTORY-RAW:azure.managementGroups.rootId}}` |
 | Hierarchy strategy | {{FACTORY-RAW:azure.managementGroups.strategy}} |
+| ALZ architecture | `{{FACTORY-RAW:computed.architectureName}}` |
+| Workload subscriptions land in | `{{FACTORY-RAW:computed.workloadManagementGroupId}}` |
 | Policy enforcement | {{FACTORY-RAW:governance.policyBaseline.enforcementMode}} |
 | Allowed locations | {{FACTORY-LIST:azure.allowedLocations}} |
 | Data-residency regions | {{FACTORY-LIST:governance.dataResidencyRegions}} |
@@ -42,6 +44,38 @@ Do not hand-edit those files to change a policy. The
 `policy-diff-guardrails.yml` check rejects a downgrade that is not accompanied
 by a re-exported answer record, and the next render would undo it regardless.
 Re-run the wizard and regenerate.
+
+## Management groups
+
+#{{IF computed.hasCustomArchitecture}}
+This estate uses its own names for the Azure Landing Zones management groups.
+They are declared in
+`terraform/live/global/lib/architecture_definitions/{{FACTORY-RAW:computed.architectureName}}.alz_architecture_definition.json`,
+which the `alz` provider loads **alongside** the pinned library rather than
+instead of it: every archetype, policy definition and policy assignment still
+comes from `{{FACTORY-RAW:computed.alzLibraryPath}}@{{FACTORY-RAW:computed.alzLibraryRef}}`,
+and the local file says only what the groups are called.
+
+Only the names are this estate's. The parent edges and the archetype each group
+carries are the library's, deliberately: an archetype is attached to a
+management group by the architecture definition, so moving a group under a
+different parent changes which policy set governs everything beneath it.
+#{{ELSE}}
+This estate uses the management groups the pinned Azure Landing Zones library
+defines, with the library's own names. The hierarchy comes from
+`{{FACTORY-RAW:computed.alzLibraryPath}}@{{FACTORY-RAW:computed.alzLibraryRef}}`.
+#{{ENDIF}}
+
+**Management-group IDs are immutable in Azure.** Changing one after the first
+apply means creating a new group and moving every subscription and assignment
+into it — this is not a decision a later release corrects.
+
+Workload subscriptions are placed in `{{FACTORY-RAW:computed.workloadManagementGroupId}}`.
+That choice does not change how many policy assignments they inherit: the
+`online` group carries none of its own and inherits the landing-zones set plus
+the root's either way. What it decides is whether Corp and Online can be told
+apart later without moving the subscription, since Corp adds five deny-style
+assignments that Online does not.
 
 ## Control hierarchy
 
