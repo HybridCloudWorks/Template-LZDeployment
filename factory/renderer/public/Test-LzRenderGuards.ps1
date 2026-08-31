@@ -308,17 +308,44 @@ function Test-LzRenderGuards {
     }
 
     # ── Backend coherence ────────────────────────────────────────────────────
-    # The emitted backend is azurerm-only (ADR 0015). G17/G19 (HCP organization
-    # and Sentinel-requires-HCP) retired with the dual-backend feature.
-    if ($Config.backend.type -ne 'azurerm') {
-        $v += New-LzGuardViolation -Id 'G17' `
-            -Message "Backend type '$($Config.backend.type)' is not supported: the generator emits the azurerm backend only (ADR 0015)." `
-            -Remediation 'Set backend.type to azurerm and supply the state storage coordinates.'
+    # Two backends again (decision 0023, partially reversing 0015). G17 was a
+    # const-refusal of everything but azurerm while there was only one backend;
+    # it now carries the coherence checks that belong to each.
+    $backendType = [string](Get-LzGuardConfigValue -Object $Config -Path 'backend.type' -Default 'azurerm')
+    if ($backendType -eq 'hcp-terraform') {
+        # backend.hcpTerraform may exist without .organization; the nested read
+        # must not crash where G17 is supposed to report the gap.
+        if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.hcpTerraform.organization' -Default ''))) {
+            $v += New-LzGuardViolation -Id 'G17' `
+                -Message 'Backend is hcp-terraform but no organization is configured.' `
+                -Remediation 'Supply backend.hcpTerraform.organization. Workspaces are created as {prefix}-{layer} inside it.'
+        }
+        $executionMode = [string](Get-LzGuardConfigValue -Object $Config -Path 'backend.hcpTerraform.executionMode' -Default 'local')
+        if ($executionMode -and $executionMode -ne 'local') {
+            $v += New-LzGuardViolation -Id 'G17' `
+                -Message "HCP Terraform execution mode '$executionMode' is not supported: this factory uses HCP Terraform for state only." `
+                -Remediation 'Set backend.hcpTerraform.executionMode to local, or omit it. The emitted plan and apply workflows gate destroys on a saved plan file, and TFC remote runs do not support terraform plan -out — remote execution would delete that gate without saying so.'
+        }
+        # The state-hardening layer puts a private endpoint in front of a state
+        # storage account this backend does not create.
+        $peEnabled = [bool](Get-LzGuardConfigValue -Object $Config -Path 'backend.azurerm.privateEndpoint.enabled' -Default $false)
+        if ($peEnabled) {
+            $v += New-LzGuardViolation -Id 'G17' `
+                -Message 'backend.azurerm.privateEndpoint.enabled is set while the backend is hcp-terraform.' `
+                -Remediation 'Clear the flag, or switch the backend to azurerm. The state-hardening layer reads the state storage account as a data source and puts a private endpoint in front of it; under HCP Terraform there is no such account, so the layer would point at nothing.'
+        }
     }
-    if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.azurerm.storageAccountName' -Default ''))) {
-        $v += New-LzGuardViolation -Id 'G18' `
-            -Message 'No state storage account is configured.' `
-            -Remediation 'Supply backend.azurerm.storageAccountName and resourceGroupName.'
+    elseif ($backendType -eq 'azurerm') {
+        if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.azurerm.storageAccountName' -Default ''))) {
+            $v += New-LzGuardViolation -Id 'G18' `
+                -Message 'No state storage account is configured.' `
+                -Remediation 'Supply backend.azurerm.storageAccountName and resourceGroupName.'
+        }
+    }
+    else {
+        $v += New-LzGuardViolation -Id 'G17' `
+            -Message "Backend type '$backendType' is not supported: this factory emits azurerm or hcp-terraform." `
+            -Remediation 'Set backend.type to azurerm or hcp-terraform.'
     }
 
     # ── Repository visibility ────────────────────────────────────────────────

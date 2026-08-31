@@ -1263,17 +1263,55 @@ real — a second emitted architecture definition, plus a decision about the
 orphaned slots — or retire the option. The wizard says so in the option text
 and in a warning until then. See REVIEW §23.
 
-### 6.5 Second state backend (HCP Terraform) — operator-directed 2026-08-30
+### 6.5 Second state backend (HCP Terraform) — `[CLOSED 2026-08-31]`
 
-Reverses [ADR 0015](docs/decisions/0015-azurerm-only-emitted-backend.md), so it
-opens with a superseding ADR and a schema major bump (`backend.type` is a
-`const` under `additionalProperties: false`). TFC uses **dynamic provider
-credentials** so no Azure credential is stored; the TFC token itself is the one
-static credential the azurerm path does not have, and the ADR must say so.
-Touches: schema, wizard, `_layer/backend.tf.tmpl`, the `terraform_remote_state`
-block in `global/main.tf.tmpl` (which hard-codes `backend = "azurerm"`), guard
-G17, the broker, and the emitted workflows. `state-hardening` is meaningless
-under TFC and must be refused.
+Operator-directed 2026-08-30 ("there should be two options for the state, TFC
+and Azure Storage"), shipped 2026-08-31 as **schema 3.1.0** and
+[decision 0023](docs/decisions/0023-hcp-terraform-for-state-only.md), which
+partially reverses ADR 0015.
+
+**State only. Terraform still runs in GitHub Actions**, and `executionMode` is a
+schema `const` rather than an enum with a default. The reason is specific and
+worth keeping in front of anyone who wants to "just enable remote": the emitted
+plan and apply workflows refuse an unreviewed destroy by inspecting a saved plan
+file (`terraform plan -out=tfplan`, then `terraform show -json tfplan`), and HCP
+Terraform remote runs do not support `-out`. Switching a workspace to remote
+does not weaken that gate, it deletes it — from both workflows, with no error.
+
+- `backend.type` widens to `azurerm | hcp-terraform`, still defaulting to
+  `azurerm`, so every existing configuration is unaffected. Additive, hence a
+  minor rather than a major.
+- The `cloud` block is a **second manifest-selected template**
+  (`_layer/backend-cloud.tf.tmpl`) rather than a branch inside the existing
+  `backend.tf.tmpl`. The manifest's own `$comment` says inclusion belongs in the
+  manifest so a template stays valid HCL on its own and CI can `fmt`-check the
+  raw corpus; the recovered dual-branch file would have violated that.
+  `backend.hcl`'s `perLayerFiles` entry is now conditional too — it was
+  `"always"`.
+- One workspace per layer, `{prefix}-{layer}`, created by the broker with
+  `execution-mode: local`. An existing workspace is left alone rather than
+  reconfigured — the broker does not take execution away from an operator who
+  set it deliberately — but a non-local mode becomes a pending user activity.
+- **The credential trade, stated rather than buried**: Azure auth is unchanged
+  (GitHub OIDC, no stored Azure credential, so TFC holds nothing pointing at the
+  tenant), but `TF_API_TOKEN` is one static credential the azurerm path does not
+  have. The wizard warns on every export, the ADR says it plainly, and the
+  generated state documentation says it again.
+- The **state-hardening layer is azurerm-only, structurally**: it reads the
+  state storage account as a data source. `Get-LzActiveLayers` drops it and G17
+  refuses the combination.
+- The **free-tier cap returns to scope**. It counts resources under management,
+  which holding state elsewhere does not change, so the wizard blocks export
+  above 500 without an explicit acknowledgement.
+- `Set-LzHcpBackend` recovered from `e961cd5^` **with its bug fixed**: the
+  no-token path returned a bare string array while the caller read `.pending`
+  off it, throwing under StrictMode — the one path nobody had run.
+- Call-site position is not symmetric and is now commented as such.
+  `Set-LzAzurermBackend` runs *before* the identities because their data-plane
+  grants are scoped to the storage account; HCP needs the repository, not an
+  Azure scope, so it runs with the other repository configuration.
+
+23 renderer assertions and 16 wizard assertions.
 
 ### 6.6 Client-repo ingest — operator-directed 2026-08-30
 

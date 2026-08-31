@@ -452,5 +452,61 @@ console.log('\n== 17. Management-group names are the client’s; the shape is no
     !('customHierarchy' in A.buildConfig().azure.managementGroups));
 }
 
+console.log('\n== 18. HCP Terraform is a state backend, not an execution model ==');
+{
+  const b = c.backend;
+  b.type = 'hcp-terraform';
+  b.hcpTerraform = { organization: '', workspacePrefix: '', acknowledgedResourceLimit: true };
+  ok('a missing organization blocks export',
+    A.validate().errors.some((e) => /HCP Terraform organization is required/.test(e.message)));
+  b.hcpTerraform.organization = 'contoso-tf';
+  ok('an organization clears it', !A.validate().errors.some((e) => /organization is required/.test(e.message)));
+
+  // The one honest cost of this backend, said out loud rather than buried.
+  ok('the static credential is called out',
+    A.validate().warnings.some((e) => /TF_API_TOKEN/.test(e.message)));
+
+  // The free tier caps resources UNDER MANAGEMENT. Holding state elsewhere
+  // does not change that — the resources are in the state TFC stores.
+  b.hcpTerraform.acknowledgedResourceLimit = false;
+  const baseEstimate = A.estimateRum();
+  ok('a modest estate is under the free tier', baseEstimate <= 500, String(baseEstimate));
+  ok('and raises no cap gate', !A.validate().errors.some((e) => /free tier/.test(e.message)));
+
+  // Push it over by declaring compliance frameworks, each of which fans out
+  // into its own policy set.
+  const savedFrameworks = c.governance.complianceFrameworks.slice();
+  c.governance.complianceFrameworks = ['nist-800-53-r5', 'pci-dss-v4', 'iso-27001', 'cis-azure-2', 'hipaa-hitrust',
+    'fedramp-moderate', 'soc2-type2', 'nist-csf', 'ukofficial', 'canada-pbmm',
+    'irs-1075', 'cmmc-l3', 'azure-security-benchmark', 'rmit-malaysia', 'rbi-itf-banks',
+    'new-zealand-ism', 'spain-ens'];
+  const bigEstimate = A.estimateRum();
+  ok('a large estate exceeds the free tier', bigEstimate > 500, String(bigEstimate));
+  ok('an unacknowledged resource cap blocks export',
+    A.validate().errors.some((e) => /above the HCP Terraform free tier/.test(e.message)));
+  b.hcpTerraform.acknowledgedResourceLimit = true;
+  ok('acknowledging it clears the block',
+    !A.validate().errors.some((e) => /free tier/.test(e.message)));
+  c.governance.complianceFrameworks = savedFrameworks;
+
+  // The state-hardening overlay hardens a storage account this backend never
+  // creates, so the two cannot both be selected.
+  c.backend.azurerm.privateEndpoint = { enabled: true };
+  ok('the private-endpoint overlay blocks export under TFC',
+    A.validate().errors.some((e) => /Azure Storage account this backend does not create/.test(e.message)));
+  c.backend.azurerm.privateEndpoint = { enabled: false };
+
+  const hcpExport = A.buildConfig();
+  ok('the export carries the HCP block', hcpExport.backend.hcpTerraform.organization === 'contoso-tf');
+  ok('an empty workspace prefix is stripped', !('workspacePrefix' in hcpExport.backend.hcpTerraform));
+  ok('the fixture exports under TFC', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+
+  b.type = 'azurerm';
+  ok('the azurerm export drops the HCP block entirely', !('hcpTerraform' in A.buildConfig().backend));
+  ok('and no free-tier gate fires on azurerm', !A.validate().errors.some((e) => /free tier/.test(e.message)));
+  ok('and no token warning fires on azurerm', !A.validate().warnings.some((e) => /TF_API_TOKEN/.test(e.message)));
+  ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

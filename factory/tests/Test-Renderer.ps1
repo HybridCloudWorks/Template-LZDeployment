@@ -503,6 +503,71 @@ ok 'a standard strategy emits no local library' ($stdMain -notmatch 'custom_url'
 ok 'and selects the library architecture' ((Get-Content (Join-Path $out 'terraform/live/global/terraform.auto.tfvars') -Raw) -match 'architecture_name\s+=\s+"alz"')
 ok 'and no architecture definition is written' (-not (Test-Path (Join-Path $out 'terraform/live/global/lib')))
 
+Write-Host "`n== 12e. HCP Terraform: state only ==" -ForegroundColor Cyan
+# Decision 0023 partially reverses 0015. The whole point of "state only" is the
+# destroy gate: both emitted workflows refuse a destroy by reading a SAVED PLAN
+# FILE, and TFC remote runs cannot produce one. If remote execution ever became
+# reachable, that gate would disappear from both workflows with no error.
+$hcpPath = Join-Path ([IO.Path]::GetTempPath()) "lz-hcp-$([guid]::NewGuid().ToString('n').Substring(0,8)).json"
+$outHcp = Join-Path ([IO.Path]::GetTempPath()) "lz-render-test-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+try {
+    $hcpConfig = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+    $hcpConfig.backend.type = 'hcp-terraform'
+    $hcpConfig.backend | Add-Member -NotePropertyName hcpTerraform -NotePropertyValue ([pscustomobject]@{
+            organization = 'contoso-tf'; workspacePrefix = 'contoso'
+        }) -Force
+    $hcpConfig | ConvertTo-Json -Depth 40 | Set-Content $hcpPath -Encoding utf8
+    $null = Invoke-LzRender -ConfigPath $hcpPath -OutputDirectory $outHcp -Quiet
+
+    $hcpLayers = @(Get-ChildItem (Join-Path $outHcp 'terraform/live') -Directory)
+    foreach ($layerDir in $hcpLayers) {
+        $backend = Get-Content (Join-Path $layerDir.FullName 'backend.tf') -Raw
+        ok "$($layerDir.Name) uses the cloud block" ($backend -match '(?s)terraform\s*\{\s*cloud\s*\{')
+        ok "$($layerDir.Name) gets its own workspace" ($backend -match "name\s*=\s*`"contoso-$($layerDir.Name)`"")
+        # Sharing one workspace across layers is the failure this asserts against.
+        ok "$($layerDir.Name) has no azurerm partial config" (-not (Test-Path (Join-Path $layerDir.FullName 'backend.hcl')))
+    }
+    ok 'the organization is emitted once per layer' `
+    (@($hcpLayers | Where-Object { (Get-Content (Join-Path $_.FullName 'backend.tf') -Raw) -match 'organization\s*=\s*"contoso-tf"' }).Count -eq $hcpLayers.Count)
+
+    $hcpPlan = Get-Content (Join-Path $outHcp '.github/workflows/terraform-plan.yml') -Raw
+    $hcpApply = Get-Content (Join-Path $outHcp '.github/workflows/terraform-apply.yml') -Raw
+    ok 'init drops the azurerm partial config' ($hcpPlan -notmatch 'backend-config=backend\.hcl')
+    ok 'the CLI gets a workspace token' ($hcpPlan -match 'cli_config_credentials_token:\s*\$\{\{\s*secrets\.TF_API_TOKEN\s*\}\}')
+    # The reason state-only is a const and not a preference.
+    ok 'the plan destroy gate survives' ($hcpPlan -match 'terraform plan -input=false -no-color -out=tfplan' -and $hcpPlan -match 'terraform show -json tfplan')
+    ok 'the apply destroy gate survives' ($hcpApply -match '-out=tfplan' -and $hcpApply -match 'terraform show -json tfplan')
+    # Azure auth is untouched: TFC never holds a credential to the tenant.
+    ok 'azure login is still OIDC' ($hcpPlan -match 'azure/login' -and $hcpPlan -match 'id-token:\s*write')
+    ok 'no azure credential is emitted' ($hcpPlan -notmatch 'client-secret|AZURE_CLIENT_SECRET')
+    # state-hardening hardens a storage account this backend does not create.
+    ok 'state-hardening is not emitted under TFC' (-not (Test-Path (Join-Path $outHcp 'terraform/live/state-hardening')))
+}
+finally {
+    Remove-Item -Recurse -Force $outHcp -ErrorAction SilentlyContinue
+    Remove-Item -Force $hcpPath -ErrorAction SilentlyContinue
+}
+
+# The azurerm path must be untouched by any of this.
+ok 'azurerm still emits an empty backend block' ((Get-Content (Join-Path $out 'terraform/live/global/backend.tf') -Raw) -match 'backend "azurerm" \{\}')
+ok 'azurerm still emits backend.hcl'            (Test-Path (Join-Path $out 'terraform/live/global/backend.hcl'))
+ok 'azurerm init still supplies it'             ((Get-Content (Join-Path $out '.github/workflows/terraform-plan.yml') -Raw) -match 'backend-config=backend\.hcl')
+ok 'azurerm carries no workspace token'         ((Get-Content (Join-Path $out '.github/workflows/terraform-plan.yml') -Raw) -notmatch 'cli_config_credentials_token')
+
+# Guards: the combinations that cannot work.
+$hcpGuard = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+$hcpGuard.backend.type = 'hcp-terraform'
+$hcpGuard.backend | Add-Member -NotePropertyName hcpTerraform -NotePropertyValue ([pscustomobject]@{ organization = '' }) -Force
+$g = @((Test-LzRenderGuards -Config $hcpGuard).Violations | Where-Object { $_.Id -eq 'G17' })
+ok 'G17 catches a missing organization' (@($g | Where-Object { $_.Message -match 'no organization' }).Count -eq 1)
+$hcpGuard.backend.hcpTerraform = [pscustomobject]@{ organization = 'contoso-tf'; executionMode = 'remote' }
+$g = @((Test-LzRenderGuards -Config $hcpGuard).Violations | Where-Object { $_.Id -eq 'G17' })
+ok 'G17 refuses remote execution' (@($g | Where-Object { $_.Message -match 'execution mode' }).Count -eq 1)
+$hcpGuard.backend.hcpTerraform = [pscustomobject]@{ organization = 'contoso-tf' }
+$hcpGuard.backend.azurerm | Add-Member -NotePropertyName privateEndpoint -NotePropertyValue ([pscustomobject]@{ enabled = $true }) -Force
+$g = @((Test-LzRenderGuards -Config $hcpGuard).Violations | Where-Object { $_.Id -eq 'G17' })
+ok 'G17 refuses state hardening under TFC' (@($g | Where-Object { $_.Message -match 'privateEndpoint' }).Count -eq 1)
+
 Write-Host "`n== 13. Schema drift check ==" -ForegroundColor Cyan
 $drift = Test-LzSchemaDrift -SchemaPath "$repo/factory/schema/lz-config.schema.json" -MappingPath "$repo/factory/renderer/variable-map.json" -TemplateRoot "$repo/factory/templates"
 ok 'wizard and corpus in sync'      ($drift.InSync) (($drift.Findings | Select-Object -First 3 | ForEach-Object { $_.Detail }) -join '; ')

@@ -1,7 +1,7 @@
 {
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||. This manifest is the OUTPUT CONTRACT (docs/refactor/OUTPUT-CONTRACT.md): generation fails if a produced file is not listed here or a listed file is missing (validation gate V01). No generator machinery is ever listed.",
   "manifestVersion": "2.1.0",
-  "targetSchemaVersion": "3.0.0",
+  "targetSchemaVersion": "3.1.0",
   "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored — the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
   "files": [
     {
@@ -296,14 +296,20 @@
     {
       "source": "terraform/live/_layer/backend.tf.tmpl",
       "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.tf",
-      "when": "always",
-      "description": "Empty azurerm backend block, rendered once per active layer. Values live in backend.hcl (control AR3: layers are never merged)."
+      "when": "computed.backendIsAzurerm",
+      "description": "Empty azurerm backend block, rendered once per active layer. Values live in backend.hcl (control AR3: layers are never merged). Selected here rather than branched inside the template so each backend file stays valid HCL on its own and CI can fmt-check the raw corpus."
     },
     {
       "source": "terraform/live/_layer/backend.hcl.tmpl",
       "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.hcl",
-      "when": "always",
-      "description": "Per-layer backend partial configuration: state coordinates plus use_oidc and use_azuread_auth. Supplied via terraform init -backend-config=backend.hcl."
+      "when": "computed.backendIsAzurerm",
+      "description": "Per-layer azurerm backend partial configuration: state coordinates plus use_oidc and use_azuread_auth. Supplied via terraform init -backend-config=backend.hcl. The HCP Terraform backend needs no partial configuration, so this is emitted only for azurerm."
+    },
+    {
+      "source": "terraform/live/_layer/backend-cloud.tf.tmpl",
+      "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.tf",
+      "when": "computed.backendIsHcp",
+      "description": "HCP Terraform cloud block, one workspace per layer, state only (decision 0023). Emits to the same destination as the azurerm backend block; the two are mutually exclusive by their when conditions."
     }
   ]
 }

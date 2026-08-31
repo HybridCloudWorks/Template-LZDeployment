@@ -136,9 +136,27 @@ function New-LzRenderContext {
     $map['computed.layers'] = Get-LzActiveLayers -Config $Config
     $map['computed.layersCsv'] = (@($map['computed.layers']) -join ',')
 
-    # The emitted backend is azurerm-only (ADR 0015); the flag survives for
-    # templates that want to state it explicitly.
-    $map['computed.backendIsAzurerm'] = $true
+    # Which state backend is emitted (decision 0023, partially reversing 0015).
+    # Both flags and the workspace prefix are set unconditionally, empty rather
+    # than absent on the path that does not use them: an unknown template path
+    # THROWS at render time, so a token that exists only under one backend turns
+    # every #{{IF}} referencing it into a render failure on the other.
+    $backendType = if (Test-LzHasProperty $Config.backend 'type') { [string]$Config.backend.type } else { 'azurerm' }
+    $map['computed.backendIsAzurerm'] = ($backendType -eq 'azurerm')
+    $map['computed.backendIsHcp'] = ($backendType -eq 'hcp-terraform')
+
+    $workspacePrefix = ''
+    $hcpOrganization = ''
+    if ($backendType -eq 'hcp-terraform' -and (Test-LzHasProperty $Config.backend 'hcpTerraform')) {
+        $hcp = $Config.backend.hcpTerraform
+        $hcpOrganization = [string]$hcp.organization
+        if ((Test-LzHasProperty $hcp 'workspacePrefix') -and ([string]$hcp.workspacePrefix).Trim()) {
+            $workspacePrefix = ([string]$hcp.workspacePrefix).Trim()
+        }
+        else { $workspacePrefix = [string]$short }
+    }
+    $map['computed.workspacePrefix'] = $workspacePrefix
+    $map['computed.hcpOrganization'] = $hcpOrganization
 
     # The subscription hosting the state storage account: the explicit
     # backend.azurerm.subscriptionId when supplied, else the management
@@ -524,12 +542,21 @@ function Get-LzActiveLayers {
     # LAST: it needs the hub (platform-connectivity) applied first, and guard
     # G27 refuses the flag without hub-spoke + centralized private DNS +
     # self-hosted runners.
+    #
+    # It is also azurerm-only, structurally: the layer reads the state storage
+    # account as a data source and puts a private endpoint in front of it. Under
+    # the HCP Terraform backend there is no storage account to harden, so the
+    # layer would emit a data source pointing at nothing. Guard G17 refuses the
+    # combination rather than letting it render.
     $pe = $null
     if ((Test-LzHasProperty $Config.backend 'azurerm') -and
         (Test-LzHasProperty $Config.backend.azurerm 'privateEndpoint')) {
         $pe = $Config.backend.azurerm.privateEndpoint
     }
-    if ($pe -and (Test-LzHasProperty $pe 'enabled') -and $pe.enabled) { $layers += 'state-hardening' }
+    $backendType = if (Test-LzHasProperty $Config.backend 'type') { [string]$Config.backend.type } else { 'azurerm' }
+    if ($backendType -eq 'azurerm' -and $pe -and (Test-LzHasProperty $pe 'enabled') -and $pe.enabled) {
+        $layers += 'state-hardening'
+    }
 
     return $layers
 }

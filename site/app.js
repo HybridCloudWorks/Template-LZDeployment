@@ -19,7 +19,7 @@
  * Constants
  * ------------------------------------------------------------------- */
 
-const SCHEMA_VERSION = '3.0.0';
+const SCHEMA_VERSION = '3.1.0';
 
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
@@ -188,6 +188,7 @@ function defaultConfig() {
     },
     backend: {
       type: 'azurerm',
+      hcpTerraform: { organization: '', workspacePrefix: '', acknowledgedResourceLimit: false },
       azurerm: {
         resourceGroupName: '', storageAccountName: '', containerName: 'tfstate',
         subscriptionId: '', useAzureAdAuth: true,
@@ -519,8 +520,23 @@ function validate() {
 
   // --- Backend
   const b = config.backend;
-  if (b.type !== 'azurerm') {
-    err('backend', 'azurerm is the only supported state backend (ADR 0015).');
+  if (b.type === 'hcp-terraform') {
+    if (!b.hcpTerraform.organization.trim()) {
+      err('backend', 'HCP Terraform organization is required. Workspaces are created as {prefix}-{layer} inside it.');
+    }
+    // The free tier caps resources UNDER MANAGEMENT, and holding state
+    // elsewhere does not change that — the resources are in the state HCP
+    // Terraform stores. A landing zone commonly exceeds it.
+    const estimate = estimateRum();
+    if (estimate > 500 && !b.hcpTerraform.acknowledgedResourceLimit) {
+      err('backend', `This configuration estimates ${estimate} managed resources, above the HCP Terraform free tier's 500. Confirm the plan covers it, or choose the Azure Storage backend.`);
+    }
+    if (b.azurerm.privateEndpoint && b.azurerm.privateEndpoint.enabled) {
+      err('backend', 'The state private-endpoint overlay hardens an Azure Storage account this backend does not create. Clear it, or choose the Azure Storage backend.');
+    }
+    warn('backend', 'HCP Terraform adds one static credential the Azure Storage path does not have: TF_API_TOKEN, set as a repository secret so the Terraform CLI can reach the workspace. Azure authentication is unchanged — GitHub OIDC, no stored Azure credential.');
+  } else if (b.type !== 'azurerm') {
+    err('backend', `"${b.type}" is not a supported state backend. Choose Azure Storage or HCP Terraform.`);
   } else {
     if (!b.azurerm.resourceGroupName.trim()) err('backend', 'State resource group name is required.');
     if (!RE.storageAccount.test(b.azurerm.storageAccountName || '')) {
@@ -1910,6 +1926,14 @@ function buildConfig() {
   if (!out.connectivity.expressRoute.enabled) out.connectivity.expressRoute = { enabled: false };
   if (!out.connectivity.vpn.enabled) out.connectivity.vpn = { enabled: false };
   if (!out.security.defender.securityContactEmail) delete out.security.defender.securityContactEmail;
+  // Only the chosen backend's block travels. The schema requires whichever one
+  // `type` names, and carrying the other would record coordinates for a state
+  // location this estate does not use.
+  if (out.backend.type === 'hcp-terraform') {
+    if (!out.backend.hcpTerraform.workspacePrefix) delete out.backend.hcpTerraform.workspacePrefix;
+  } else {
+    delete out.backend.hcpTerraform;
+  }
   // Policy selection travels only where it says something. A value for a
   // default nothing asks for any more would otherwise outlive the choice that
   // required it and be rendered into the layer regardless.

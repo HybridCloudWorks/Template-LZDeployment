@@ -42,6 +42,13 @@
       "paths": [
         "azure.managementGroups.workloadPlacement"
       ]
+    },
+    {
+      "consumer": "site/app.js",
+      "note": "Read off the hcpTerraform object by key in validate(), which is why the dotted path appears nowhere. It gates export: with the HCP Terraform backend selected and the estimated resource count above the free tier's 500, the wizard refuses to export until it is ticked. Like backend.azurerm.useAzureAdAuth it reaches no rendered artifact by design — its purpose is to be the record that the client was shown the cap, sitting beside the estimate in deployment-metadata.json.",
+      "paths": [
+        "backend.hcpTerraform.acknowledgedResourceLimit"
+      ]
     }
   ],
   "recordedNotDeployed": [
