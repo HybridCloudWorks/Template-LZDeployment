@@ -1010,7 +1010,79 @@
         </div>
       </div>
 
-      <h3 class="sub">Budgets</h3>
+      <h3 class="sub">Default subscription budget</h3>
+      <p class="hint">
+        The one budget this factory <strong>deploys</strong>. It assigns the ALZ
+        library&rsquo;s <code>Deploy-Budget</code> policy at a management group, which
+        creates an Azure budget on every subscription beneath it &mdash; including
+        subscriptions vended after this estate is built. A budget notifies; it does
+        not stop spend.
+      </p>
+      <div class="checks">
+        <label class="check"><input type="checkbox" data-path="finops.defaultSubscriptionBudget.enabled"> Deploy a default budget on every subscription</label>
+      </div>
+      <div data-visible-when="finops.defaultSubscriptionBudget.enabled=true">
+        <div class="grid-2">
+          <div class="field">
+            <label for="fo_dsbMg">Management group</label>
+            <select id="fo_dsbMg" data-path="finops.defaultSubscriptionBudget.managementGroup">
+              <option value="alz">Tenant root &mdash; the whole estate</option>
+              <option value="platform">Platform</option>
+              <option value="landingzones">Landing Zones</option>
+              <option value="corp">Corp</option>
+              <option value="online">Online</option>
+              <option value="local">Local</option>
+              <option value="sandbox">Sandbox</option>
+              <option value="security">Security</option>
+              <option value="management">Management</option>
+              <option value="connectivity">Connectivity</option>
+              <option value="identity">Identity</option>
+              <option value="decommissioned">Decommissioned</option>
+            </select>
+            <p class="hint">Every subscription beneath this group gets the budget.</p>
+          </div>
+          <div class="field">
+            <label for="fo_dsbAmount">Amount per subscription <span class="req">*</span></label>
+            <input id="fo_dsbAmount" data-path="finops.defaultSubscriptionBudget.amountUsd" data-type="float" type="number" min="1" step="1" placeholder="2500">
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="fo_dsbWarn">Warning threshold %</label>
+            <input id="fo_dsbWarn" data-path="finops.defaultSubscriptionBudget.warningThresholdPercent" data-type="int" type="number" min="1" max="1000" step="1" placeholder="80">
+          </div>
+          <div class="field">
+            <label for="fo_dsbCap">Second threshold %</label>
+            <input id="fo_dsbCap" data-path="finops.defaultSubscriptionBudget.capThresholdPercent" data-type="int" type="number" min="1" max="1000" step="1" placeholder="100">
+            <p class="hint">Deploy-Budget takes exactly two thresholds, and the second must be above the first.</p>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="fo_dsbGrain">Period</label>
+            <select id="fo_dsbGrain" data-path="finops.defaultSubscriptionBudget.timeGrain">
+              <option value="Monthly">Monthly</option>
+              <option value="Quarterly">Quarterly</option>
+              <option value="Annually">Annually</option>
+              <option value="BillingMonth">Billing month</option>
+              <option value="BillingQuarter">Billing quarter</option>
+              <option value="BillingAnnual">Billing year</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fo_dsbEmails">Alert emails</label>
+            <input id="fo_dsbEmails" data-path="finops.defaultSubscriptionBudget.contactEmails" data-type="csv" type="text" spellcheck="false" placeholder="finops@contoso.com">
+            <p class="hint">Optional. Subscription Owners and Contributors are notified regardless.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="sub">Recorded budgets</h3>
+      <p class="hint">
+        Per-scope budgets, <strong>recorded into <code>docs/finops.md</code> and not
+        deployed</strong>. Use these where the default above does not fit &mdash; a
+        different amount for one environment, or more than two thresholds.
+      </p>
       <div class="repeater" data-repeater="finops.budgets"
            data-fields='[{"key":"scope","label":"Scope","placeholder":"prod"},{"key":"amountUsd","label":"Amount (USD)","placeholder":"5000","type":"float"},{"key":"alertThresholdPercents","label":"Alert thresholds %","placeholder":"50, 80, 100","type":"csvint"},{"key":"contactEmails","label":"Alert emails","placeholder":"finops@contoso.com","type":"csv"}]'></div>
 

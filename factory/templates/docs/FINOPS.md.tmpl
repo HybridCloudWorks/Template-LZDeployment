@@ -21,7 +21,51 @@ cost center. Shared platform costs are allocated using the configured
 **{{FACTORY-RAW:finops.chargebackModel}}** model. Untagged or ambiguously tagged
 spend is assigned to the platform exception queue until corrected.
 
-## Budgets
+## The two budget mechanisms, and which one covers what
+
+This estate has two budget records and they do different things. Reading one as
+the other is the mistake this section exists to prevent.
+
+#{{IF computed.defaultBudgetEnabled}}
+### 1. The default subscription budget — DEPLOYED
+
+| Field | Value |
+|---|---|
+| Assigned at | {{FACTORY-RAW:computed.defaultBudgetGroupName}} |
+| Amount per subscription | {{FACTORY-RAW:computed.defaultBudgetAmount}} |
+| Period | {{FACTORY-RAW:computed.defaultBudgetTimeGrain}} |
+| Notifies at | {{FACTORY-RAW:computed.defaultBudgetWarning}}% and {{FACTORY-RAW:computed.defaultBudgetCap}}% |
+| Email contacts | {{FACTORY-RAW:computed.defaultBudgetContacts}} |
+| Role contacts | {{FACTORY-RAW:computed.defaultBudgetRoles}} |
+
+This one is real. `terraform/live/global` assigns the ALZ library's
+`Deploy-Budget` policy at the management group above, and the policy creates a
+`Microsoft.Consumption` budget on **every subscription beneath it**.
+
+Two properties are worth being explicit about:
+
+- **It covers subscriptions that do not exist yet.** `Deploy-Budget` is
+  DeployIfNotExists, so a subscription vended into this hierarchy next year gets
+  the budget without anyone rendering anything. A budget written as a Terraform
+  resource would cover the subscriptions named at render time and silently miss
+  every later one. That is the whole reason for preferring the policy.
+- **A budget notifies. It does not cap.** Nothing stops at
+  {{FACTORY-RAW:computed.defaultBudgetCap}}%; the threshold sends an alert and
+  spend continues. Anyone reading "cap" as "limit" will be wrong at the moment
+  it matters.
+
+To change the amount, re-run the factory. Editing the budget by hand in the
+portal is reverted the next time the policy remediates.
+#{{ELSE}}
+### 1. The default subscription budget — NOT ENABLED
+
+No `Deploy-Budget` assignment was requested, so no subscription in this estate
+carries a policy-created budget. The pinned ALZ library ships the policy
+definition regardless — it is created at the tenant root and assigned nowhere —
+so enabling it later is a factory answer, not new policy authoring.
+#{{ENDIF}}
+
+### 2. Recorded budgets — NOT deployed
 
 #{{IF computed.hasFinopsBudgets}}
 | Scope | Amount (USD) | Period | Alert thresholds | Contacts |
@@ -30,11 +74,15 @@ spend is assigned to the platform exception queue until corrected.
 | {{FACTORY-RAW:budget.scope}} | {{FACTORY-RAW:budget.amount}} | {{FACTORY-RAW:budget.timeGrain}} | {{FACTORY-RAW:budget.thresholds}} | {{FACTORY-RAW:budget.contacts}} |
 #{{ENDFOREACH}}
 
-**These are not deployed.** No layer creates a `Microsoft.Consumption` budget,
-so the table above is the requirement, not the state. Creating them is a small,
-well-bounded addition to the platform-management layer and is recorded as
-outstanding; until then, create them by hand to match this table and treat any
-divergence as drift.
+**These are not deployed.** No layer creates a `Microsoft.Consumption` budget
+from this table, so it is the requirement and not the state. It is deliberately
+not folded into the default budget above: `Deploy-Budget` places one amount on
+every subscription under one management group and takes exactly two thresholds,
+where this list is per-scope with as many thresholds as were entered. Merging
+them would have meant either dropping thresholds somebody chose or inventing
+ones they did not.
+
+Create these by hand to match the table, and treat any divergence as drift.
 #{{ELSE}}
 No budgets were recorded. An empty budget list is an explicit onboarding gap,
 not evidence that cost is unbounded or unowned.

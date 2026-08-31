@@ -81,6 +81,16 @@
         "operations.approvalChain.approvers",
         "operations.approvalChain.appliesToEnvironments"
       ]
+    },
+    {
+      "consumer": "factory/renderer/private/TokenEngine.ps1",
+      "note": "Read off the resolved defaultSubscriptionBudget object by Resolve-LzDefaultBudget and written into lib/policy_assignments/Deploy-Budget.alz_policy_assignment.json as that policy's own parameter names \u2014 amountUsd becomes amount, timeGrain becomes timeGrain, contactEmails and contactRoles keep theirs. No dotted path appears in source because the object is resolved once and its fields read off it, the same shape as finops.budgets above. Unlike finops.budgets, these DO reach a deployed resource: Deploy-Budget is a DeployIfNotExists that creates the Microsoft.Consumption budget on every subscription under the assigned management group. Asserted field by field in Test-Renderer section 12g, including that amount and both thresholds are emitted as JSON strings, which is what the policy declares them as.",
+      "paths": [
+        "finops.defaultSubscriptionBudget.amountUsd",
+        "finops.defaultSubscriptionBudget.timeGrain",
+        "finops.defaultSubscriptionBudget.contactEmails",
+        "finops.defaultSubscriptionBudget.contactRoles"
+      ]
     }
   ],
   "recordedNotDeployed": []

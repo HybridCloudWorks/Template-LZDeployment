@@ -712,6 +712,132 @@ finally {
     Remove-Item -Force $minPath -ErrorAction SilentlyContinue
 }
 
+Write-Host "`n== 12g. The default subscription budget (Deploy-Budget) ==" -ForegroundColor Cyan
+# vwan-config carries the budget, so the fixture is also what gives this path
+# real `terraform validate` coverage in the CI matrix.
+$budgetLib = Join-Path $outVwan 'terraform/live/global/lib'
+$budgetAssignmentPath = Join-Path $budgetLib 'policy_assignments/Deploy-Budget.alz_policy_assignment.json'
+$budgetOverridePath = Join-Path $budgetLib 'archetype_definitions/root_budget.alz_archetype_override.yaml'
+ok 'the assignment file is emitted' (Test-Path $budgetAssignmentPath)
+ok 'the archetype override is emitted' (Test-Path $budgetOverridePath)
+
+$budgetAssignment = Get-Content $budgetAssignmentPath -Raw | ConvertFrom-Json -Depth 20
+# The library indexes assignments by the `name` field and finds the file by its
+# basename. A mismatch is not an error anywhere — the assignment is simply never
+# found, and the estate deploys without the budget it was told it had.
+ok 'the assignment name matches its basename' ($budgetAssignment.name -eq 'Deploy-Budget')
+ok 'it references the library definition through the placeholder' (
+    $budgetAssignment.properties.policyDefinitionId -eq '/providers/Microsoft.Management/managementGroups/placeholder/providers/Microsoft.Authorization/policyDefinitions/Deploy-Budget')
+
+# Deploy-Budget declares amount and both thresholds as STRING parameters.
+# Emitting them as JSON numbers is rejected at assignment time — after the
+# management groups exist, with ids that cannot be changed.
+$p = $budgetAssignment.properties.parameters
+ok 'amount is a string, not a number'          ($p.amount.value -is [string] -and $p.amount.value -eq '2500')
+ok 'firstThreshold is a string'                ($p.firstThreshold.value -is [string] -and $p.firstThreshold.value -eq '80')
+ok 'secondThreshold is a string'               ($p.secondThreshold.value -is [string] -and $p.secondThreshold.value -eq '100')
+ok 'the client contacts reach the assignment'  (@($p.contactEmails.value) -contains 'finops@contoso.com')
+ok 'contact roles reach it too'                (@($p.contactRoles.value).Count -eq 2)
+ok 'the effect is DeployIfNotExists'           ($p.effect.value -eq 'DeployIfNotExists')
+# Not wired to governance.policyBaseline.enforcementMode. That switch exists so
+# a client can watch deny-class guardrails before they start refusing things; a
+# budget refuses nothing, and DoNotEnforce here means no budget is created.
+ok 'enforcement is Default regardless of the audit baseline' (
+    $budgetAssignment.properties.enforcementMode -eq 'Default')
+
+$budgetOverride = Get-Content $budgetOverridePath -Raw
+ok 'the override is based on the group''s library archetype' ($budgetOverride -match 'base_archetype:\s+"root"')
+ok 'and adds the assignment'                                 ($budgetOverride -match 'policy_assignments_to_add:\s+-\s+"Deploy-Budget"')
+ok 'and adds nothing else'                                   (
+    ($budgetOverride -match 'policy_definitions_to_add: \[\]') -and
+    ($budgetOverride -match 'role_definitions_to_add: \[\]'))
+
+# The architecture definition is the only thing that binds the override to a
+# group, which is why enabling the budget forces one even under caf-standard.
+$budgetArchPath = Join-Path $budgetLib 'architecture_definitions'
+$budgetArchFile = @(Get-ChildItem $budgetArchPath -Filter '*.alz_architecture_definition.json')
+ok 'a local architecture definition is emitted under caf-standard' ($budgetArchFile.Count -eq 1)
+# Never `alz`: both libraries compose into one set, and two architectures
+# sharing a name is a collision rather than a merge.
+ok 'and it is not named after the library architecture' ($budgetArchFile[0].BaseName -notmatch '^alz\.')
+$budgetArch = Get-Content $budgetArchFile[0].FullName -Raw | ConvertFrom-Json -Depth 20
+ok 'the architecture name is not the library''s' ($budgetArch.name -ne 'alz')
+$budgetRoot = @($budgetArch.management_groups | Where-Object { $_.id -eq $budgetArch.management_groups[0].id })[0]
+ok 'the target group points at the override archetype' (@($budgetRoot.archetypes) -contains 'root_budget')
+ok 'and at nothing else — an override replaces its base, it does not stack' (
+    @($budgetRoot.archetypes).Count -eq 1)
+ok 'caf-standard still emits all twelve groups with the budget on' (
+    @($budgetArch.management_groups).Count -eq 12)
+
+# REGRESSION LOCK. `archetypes` is a REQUIRED ARRAY in the library's schema, and
+# an `if` used as an expression sends its value through the pipeline, which
+# unrolls a single-element array to a bare string. That produced
+# "archetypes": "root_budget" where ["root_budget"] is required. Nothing else
+# catches it: terraform validate never resolves the data source that reads this
+# file, so the shape is only tested here and by the dispatch-only plan proof.
+$budgetArchRaw = Get-Content $budgetArchFile[0].FullName -Raw
+ok 'every group''s archetypes stays a JSON array' (
+    $budgetArchRaw -notmatch '"archetypes":\s*"')
+ok 'including groups that were never touched by the budget' (
+    ([regex]::Matches($budgetArchRaw, '"archetypes":\s*\[')).Count -eq 12)
+
+# The same lock on the strategies that emitted an architecture before the budget
+# existed, so a future edit to this function cannot regress one and not the other.
+foreach ($shape in @('custom-hierarchy-config', 'caf-minimal-config')) {
+    $shapeOut = Join-Path ([IO.Path]::GetTempPath()) "lz-arch-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+    try {
+        $null = Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/$shape.json" -OutputDirectory $shapeOut -Quiet
+        $shapeFile = @(Get-ChildItem (Join-Path $shapeOut 'terraform/live/global/lib/architecture_definitions') -Filter '*.json')[0]
+        $shapeRaw = Get-Content $shapeFile.FullName -Raw
+        ok "$shape emits archetypes as arrays" ($shapeRaw -notmatch '"archetypes":\s*"')
+    }
+    finally { Remove-Item -Recurse -Force $shapeOut -ErrorAction SilentlyContinue }
+}
+
+# A configuration that does not ask for a budget must emit none of the three
+# files, and must go back to selecting the library's own architecture.
+ok 'a config without the budget emits no assignment' (
+    -not (Test-Path (Join-Path $out 'terraform/live/global/lib/policy_assignments')))
+ok 'and no override' (
+    -not (Test-Path (Join-Path $out 'terraform/live/global/lib/archetype_definitions')))
+
+# G32 / G33
+$budgetGuardBase = Get-Content "$PSScriptRoot/fixtures/caf-minimal-config.json" -Raw | ConvertFrom-Json -Depth 40
+$budgetGuardBase.finops | Add-Member -NotePropertyName defaultSubscriptionBudget -NotePropertyValue ([pscustomobject]@{
+        enabled                 = $true
+        managementGroup         = 'sandbox'
+        amountUsd               = 1000
+        warningThresholdPercent = 80
+        capThresholdPercent     = 100
+    }) -Force
+$g32 = @((Test-LzRenderGuards -Config $budgetGuardBase).Violations | Where-Object { $_.Id -eq 'G32' })
+ok 'G32 refuses a budget on a group caf-minimal does not create' (
+    $g32.Count -eq 1 -and $g32[0].Severity -eq 'Block')
+ok 'and the remediation names the groups that do exist' ($g32[0].Remediation -match 'landingzones')
+
+$budgetGuardBase.finops.defaultSubscriptionBudget.managementGroup = 'landingzones'
+ok 'G32 is quiet once the group is one caf-minimal creates' (
+    @((Test-LzRenderGuards -Config $budgetGuardBase).Violations | Where-Object { $_.Id -eq 'G32' }).Count -eq 0)
+
+foreach ($pair in @(
+        @{ label = 'equal thresholds'; warn = 100; cap = 100 },
+        @{ label = 'an inverted pair'; warn = 100; cap = 80 }
+    )) {
+    $budgetGuardBase.finops.defaultSubscriptionBudget.warningThresholdPercent = $pair.warn
+    $budgetGuardBase.finops.defaultSubscriptionBudget.capThresholdPercent = $pair.cap
+    $g33 = @((Test-LzRenderGuards -Config $budgetGuardBase).Violations | Where-Object { $_.Id -eq 'G33' })
+    ok "G33 refuses $($pair.label)" ($g33.Count -eq 1 -and $g33[0].Severity -eq 'Block')
+}
+$budgetGuardBase.finops.defaultSubscriptionBudget.warningThresholdPercent = 80
+$budgetGuardBase.finops.defaultSubscriptionBudget.capThresholdPercent = 100
+ok 'G33 is quiet on a sane pair' (
+    @((Test-LzRenderGuards -Config $budgetGuardBase).Violations | Where-Object { $_.Id -eq 'G33' }).Count -eq 0)
+
+# Neither guard may fire for an estate that never asked for a budget.
+ok 'neither guard fires when the budget is absent' (
+    @((Test-LzRenderGuards -Config (Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40)).Violations |
+        Where-Object { $_.Id -in @('G32', 'G33') }).Count -eq 0)
+
 Write-Host "`n== 13. Schema drift check ==" -ForegroundColor Cyan
 $drift = Test-LzSchemaDrift -SchemaPath "$repo/factory/schema/lz-config.schema.json" -MappingPath "$repo/factory/renderer/variable-map.json" -TemplateRoot "$repo/factory/templates"
 ok 'wizard and corpus in sync'      ($drift.InSync) (($drift.Findings | Select-Object -First 3 | ForEach-Object { $_.Detail }) -join '; ')

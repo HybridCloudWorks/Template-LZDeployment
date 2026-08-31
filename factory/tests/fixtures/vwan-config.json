@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "4.0.0",
+  "schemaVersion": "4.1.0",
   "factoryVersion": "0.11.0",
   "generatedAt": "2026-07-25T00:00:00.000Z",
   "organization": {
@@ -237,6 +237,21 @@
       "email": "jordan@contoso.com"
     },
     "budgets": [],
+    "defaultSubscriptionBudget": {
+      "enabled": true,
+      "managementGroup": "alz",
+      "amountUsd": 2500,
+      "warningThresholdPercent": 80,
+      "capThresholdPercent": 100,
+      "timeGrain": "Monthly",
+      "contactEmails": [
+        "finops@contoso.com"
+      ],
+      "contactRoles": [
+        "Owner",
+        "Contributor"
+      ]
+    },
     "chargebackModel": "showback",
     "costExports": {
       "enabled": false

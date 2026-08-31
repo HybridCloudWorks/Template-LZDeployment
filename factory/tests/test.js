@@ -651,5 +651,86 @@ console.log('\n== 20. caf-minimal trims the hierarchy, so the sandbox slot must 
   ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
 }
 
+// ---------------------------------------------------------------------------
+// 21. The default subscription budget (schema 4.1.0)
+// ---------------------------------------------------------------------------
+console.log('\n== 21. The default subscription budget (schema 4.1.0) ==');
+{
+  // Absent by default, and absent from the export rather than exported as
+  // enabled:false. A half-filled disabled block in the answer record invites
+  // someone to flip one boolean later without re-reading what it turns on.
+  ok('a fresh config exports no budget block',
+    !('defaultSubscriptionBudget' in A.buildConfig().finops));
+
+  const dsb = c.finops.defaultSubscriptionBudget;
+  dsb.enabled = true;
+  dsb.amountUsd = 2500;
+  dsb.managementGroup = 'alz';
+  dsb.contactEmails = ['finops@contoso.com'];
+  ok('enabling it exports the block', 'defaultSubscriptionBudget' in A.buildConfig().finops);
+  ok('with the amount the client entered',
+    A.buildConfig().finops.defaultSubscriptionBudget.amountUsd === 2500);
+  ok('and the client exports cleanly', A.validate().errors.length === 0,
+    JSON.stringify(A.validate().errors, null, 1));
+
+  // An enabled budget with no amount is the one field that cannot be defaulted:
+  // there is no sensible number to pick on a client's behalf.
+  dsb.amountUsd = null;
+  ok('an enabled budget with no amount is refused',
+    A.validate().errors.some((e) => /amount greater than zero/.test(e.message)));
+  dsb.amountUsd = 2500;
+
+  // Mirrors render guard G33 — both directions.
+  dsb.warningThresholdPercent = 100;
+  dsb.capThresholdPercent = 100;
+  ok('equal thresholds are refused',
+    A.validate().errors.some((e) => /must be below its second threshold/.test(e.message)));
+  dsb.warningThresholdPercent = 100;
+  dsb.capThresholdPercent = 80;
+  ok('an inverted pair is refused',
+    A.validate().errors.some((e) => /must be below its second threshold/.test(e.message)));
+  dsb.warningThresholdPercent = 80;
+  dsb.capThresholdPercent = 100;
+  ok('a sane pair is accepted', A.validate().errors.length === 0,
+    JSON.stringify(A.validate().errors, null, 1));
+
+  // Mirrors render guard G32. The wizard has to catch this too: the schema's
+  // enum lists all twelve library groups and cannot know the strategy.
+  c.azure.managementGroups.strategy = 'caf-minimal';
+  c.azure.subscriptions.sandbox = '';
+  dsb.managementGroup = 'sandbox';
+  ok('a budget on a group caf-minimal drops is refused',
+    A.validate().errors.some((e) => /caf-minimal hierarchy does not create/.test(e.message)));
+  dsb.managementGroup = 'landingzones';
+  ok('and accepted once it targets a group caf-minimal creates',
+    !A.validate().errors.some((e) => /caf-minimal hierarchy does not create/.test(e.message)));
+  dsb.managementGroup = 'alz';
+  ok('the tenant root is fine under caf-minimal too',
+    !A.validate().errors.some((e) => /caf-minimal hierarchy does not create/.test(e.message)));
+  c.azure.managementGroups.strategy = 'caf-standard';
+
+  dsb.contactEmails = ['not-an-email'];
+  ok('an invalid alert email is refused',
+    A.validate().errors.some((e) => /alert email/.test(e.message)));
+  dsb.contactEmails = ['finops@contoso.com'];
+
+  // The "no budgets" warning must not fire as a gap when the deployed budget
+  // covers every subscription — and must still fire when nothing does.
+  c.finops.budgets = [];
+  ok('an enabled default budget is not reported as an unbudgeted estate',
+    !A.validate().warnings.some((w) => /Nothing will alert on cost overrun/.test(w.message)));
+  dsb.enabled = false;
+  ok('and with nothing enabled the gap is reported again',
+    A.validate().warnings.some((w) => /Nothing will alert on cost overrun/.test(w.message)));
+
+  // The estimator has to move, because enabling the budget adds an assignment,
+  // its role assignment, and the local architecture definition it forces —
+  // and the estimate gates HCP Terraform's 500-resource free tier.
+  const before = A.estimateRum();
+  dsb.enabled = true;
+  const after = A.estimateRum();
+  ok('enabling the budget raises the resource estimate', after > before);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

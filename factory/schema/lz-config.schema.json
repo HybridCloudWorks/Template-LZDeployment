@@ -94,8 +94,8 @@
   },
   "properties": {
     "schemaVersion": {
-      "const": "4.0.0",
-      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement. 4.0.0 (BREAKING), two changes that both had to be majors and so land together: (1) azure.managementGroups.strategy 'caf-minimal' now deploys a DIFFERENT hierarchy from 'caf-standard' instead of the identical one \u2014 it drops Sandbox and Decommissioned, emits its own architecture definition, and refuses a config that also sets azure.subscriptions.sandbox, because that subscription would have nowhere to be placed (guard G31). A 3.x config selecting caf-minimal deployed the full hierarchy and will now deploy ten groups rather than twelve. (2) The six governance.policyBaseline booleans (enforceAllowedLocations, enforceTlsMinimum, enforceNsgOnSubnets, denyPublicIpOnNics, enforceDiagnosticSettings, enforceEncryptionAtRest) are REMOVED. They predate the ALZ policy surface and asked the same questions as the Policies step, with only the Policies step connected to anything. enforcementMode and requiredTags are unaffected and still consumed. 3.2.0: per-subscription brownfield dispositions \u2014 an existing subscription is either placed into the new hierarchy now, against a typed acknowledgement, or deferred with onboarding instructions generated for it (ADR 0018 amended). Additive. 3.1.0: a second state backend \u2014 HCP Terraform for STATE ONLY, execution stays in GitHub Actions (decision 0023, partially reversing 0015). Additive: backend.type widens to an enum that still defaults to azurerm. 3.0.0 (BREAKING): azure.managementGroups.customHierarchy changed from a free-form flat list of {id, displayName, parentId} into a map of renames keyed by the pinned ALZ library's own management-group ids. The old shape let a client describe a tree the factory never built \u2014 it had zero readers \u2014 and re-nesting a group changes which archetype, and so which policy set, it inherits. Names are now honoured; structure is the library's. Also adds azure.managementGroups.workloadPlacement. 2.2.0: subscription vending (azure.subscriptions.mode=create with plannedNames, ADR 0020), brownfield redefined as exclude-and-create (ADR 0018), state-storage private-endpoint flag (ADR 0019)."
+      "const": "4.1.0",
+      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement. 4.1.0: finops.defaultSubscriptionBudget \u2014 the first budget the factory DEPLOYS rather than documents. It assigns the pinned ALZ library's own Deploy-Budget policy (a DeployIfNotExists the library ships and assigns nowhere) at one management group, giving every subscription beneath it a budget, now and as subscriptions are added later. Additive: absent or enabled=false renders exactly as 4.0.0 did. Note the shape does NOT mirror finops.budgets, because the policy does not: Deploy-Budget takes exactly two thresholds and a single management-group scope, where finops.budgets carries a threshold array and a free-text scope. finops.budgets stays documented-only. Enabling this pins the estate to a local architecture definition even under caf-standard, because the architecture is what binds the override archetype carrying the assignment to the group (decision 0026). 4.0.0 (BREAKING), two changes that both had to be majors and so land together: (1) azure.managementGroups.strategy 'caf-minimal' now deploys a DIFFERENT hierarchy from 'caf-standard' instead of the identical one \u2014 it drops Sandbox and Decommissioned, emits its own architecture definition, and refuses a config that also sets azure.subscriptions.sandbox, because that subscription would have nowhere to be placed (guard G31). A 3.x config selecting caf-minimal deployed the full hierarchy and will now deploy ten groups rather than twelve. (2) The six governance.policyBaseline booleans (enforceAllowedLocations, enforceTlsMinimum, enforceNsgOnSubnets, denyPublicIpOnNics, enforceDiagnosticSettings, enforceEncryptionAtRest) are REMOVED. They predate the ALZ policy surface and asked the same questions as the Policies step, with only the Policies step connected to anything. enforcementMode and requiredTags are unaffected and still consumed. 3.2.0: per-subscription brownfield dispositions \u2014 an existing subscription is either placed into the new hierarchy now, against a typed acknowledgement, or deferred with onboarding instructions generated for it (ADR 0018 amended). Additive. 3.1.0: a second state backend \u2014 HCP Terraform for STATE ONLY, execution stays in GitHub Actions (decision 0023, partially reversing 0015). Additive: backend.type widens to an enum that still defaults to azurerm. 3.0.0 (BREAKING): azure.managementGroups.customHierarchy changed from a free-form flat list of {id, displayName, parentId} into a map of renames keyed by the pinned ALZ library's own management-group ids. The old shape let a client describe a tree the factory never built \u2014 it had zero readers \u2014 and re-nesting a group changes which archetype, and so which policy set, it inherits. Names are now honoured; structure is the library's. Also adds azure.managementGroups.workloadPlacement. 2.2.0: subscription vending (azure.subscriptions.mode=create with plannedNames, ADR 0020), brownfield redefined as exclude-and-create (ADR 0018), state-storage private-endpoint flag (ADR 0019)."
     },
     "factoryVersion": {
       "type": "string",
@@ -1542,6 +1542,109 @@
               }
             }
           }
+        },
+        "defaultSubscriptionBudget": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "A default budget placed on EVERY subscription beneath one management group, by assigning the pinned ALZ library's own Deploy-Budget policy. This is the one budget mechanism the factory deploys. It is deliberately not the same thing as finops.budgets: that list is per-scope and free-text, and it is recorded in docs/finops.md for someone to act on. Deploy-Budget is a DeployIfNotExists policy, so it creates the Microsoft.Consumption budget on subscriptions that exist now AND on every subscription added under the scope later \u2014 which is the property a hand-built budget resource cannot have.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Assign Deploy-Budget. When false nothing is emitted and the estate carries no policy-created budget."
+            },
+            "managementGroup": {
+              "enum": [
+                "alz",
+                "platform",
+                "landingzones",
+                "corp",
+                "online",
+                "local",
+                "sandbox",
+                "security",
+                "management",
+                "connectivity",
+                "identity",
+                "decommissioned"
+              ],
+              "default": "alz",
+              "description": "Which management group the assignment lands on, keyed by the PINNED LIBRARY's id rather than any rename this estate applies \u2014 the rename is resolved during rendering. Every subscription beneath it gets a budget. 'alz' is the tenant root: the whole estate. Note that caf-minimal does not create sandbox or decommissioned, so selecting one of those alongside caf-minimal is refused (guard G32)."
+            },
+            "amountUsd": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Budget amount per subscription, in the billing currency. Named Usd for consistency with finops.budgets; Azure budgets carry no currency of their own and take the billing account's."
+            },
+            "warningThresholdPercent": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 90,
+              "description": "First notification threshold, as a percentage of the amount. Deploy-Budget takes EXACTLY TWO thresholds \u2014 this one and capThresholdPercent \u2014 which is why this block does not reuse the alertThresholdPercents array finops.budgets carries."
+            },
+            "capThresholdPercent": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100,
+              "description": "Second notification threshold, as a percentage of the amount. Must be greater than warningThresholdPercent (guard G33). Nothing is stopped at either threshold: an Azure budget notifies, it does not cap spend."
+            },
+            "timeGrain": {
+              "enum": [
+                "Monthly",
+                "Quarterly",
+                "Annually",
+                "BillingMonth",
+                "BillingQuarter",
+                "BillingAnnual"
+              ],
+              "default": "Monthly",
+              "description": "Reset period. The Billing* variants follow the billing account's cycle rather than the calendar. These are the values the Deploy-Budget definition itself allows, which is why the list is longer than the one on finops.budgets."
+            },
+            "contactEmails": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/email"
+              },
+              "default": [],
+              "description": "Addresses notified at both thresholds. May be empty, in which case contactRoles alone carries the notification."
+            },
+            "contactRoles": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "Owner",
+                  "Contributor",
+                  "Reader"
+                ]
+              },
+              "default": [
+                "Owner",
+                "Contributor"
+              ],
+              "description": "Subscription roles notified at both thresholds, resolved per subscription at alert time. This is what makes the default budget useful without knowing every subscription's owner in advance."
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "then": {
+                "required": [
+                  "amountUsd"
+                ]
+              }
+            }
+          ]
         },
         "chargebackModel": {
           "enum": [

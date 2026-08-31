@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 <#
     Landing Zone Factory — token engine.
 
@@ -295,6 +295,28 @@ function New-LzRenderContext {
     $map['computed.alzLibraryPath'] = $groups.LibraryPath
     $map['computed.alzLibraryRef'] = $groups.LibraryRef
 
+    # The default budget. Only the two tokens the manifest needs are published:
+    # everything else about the assignment is written by the emitters, and a
+    # token nothing reads is a token that drifts.
+    $map['computed.defaultBudgetEnabled'] = [bool]$groups.Budget.Enabled
+    $map['computed.defaultBudgetArchetype'] = [string]$groups.Budget.ArchetypeName
+    # For docs/finops.md, which has to tell the client which of the two budget
+    # mechanisms covers what. Resolved to the group's EFFECTIVE display name,
+    # because a renamed estate does not recognise the library's id.
+    $map['computed.defaultBudgetGroupName'] = if ($groups.Budget.Enabled) {
+        $groups.Effective[$groups.Budget.LibraryGroupId].displayName
+    }
+    else { '' }
+    $map['computed.defaultBudgetAmount'] = if ($groups.Budget.Enabled) { $groups.Budget.AmountUsd } else { 0 }
+    $map['computed.defaultBudgetWarning'] = if ($groups.Budget.Enabled) { $groups.Budget.Warning } else { 0 }
+    $map['computed.defaultBudgetCap'] = if ($groups.Budget.Enabled) { $groups.Budget.Cap } else { 0 }
+    $map['computed.defaultBudgetTimeGrain'] = if ($groups.Budget.Enabled) { $groups.Budget.TimeGrain } else { '' }
+    $map['computed.defaultBudgetContacts'] = if ($groups.Budget.Enabled -and @($groups.Budget.ContactEmails).Count -gt 0) {
+        @($groups.Budget.ContactEmails) -join ', '
+    }
+    else { 'none — notification goes to the subscription roles below' }
+    $map['computed.defaultBudgetRoles'] = if ($groups.Budget.Enabled) { @($groups.Budget.ContactRoles) -join ', ' } else { '' }
+
     # ── Answers that reach a document rather than a resource ─────────────────
     # These were collected, recorded in lz-config.json, and rendered nowhere:
     # the client answered and the repository they were handed said nothing about
@@ -562,6 +584,194 @@ function Resolve-LzPolicySelection {
     }
 }
 
+function Resolve-LzDefaultBudget {
+    <#
+    .SYNOPSIS
+        The Deploy-Budget assignment this estate places, if it places one.
+    .DESCRIPTION
+        The pinned ALZ library ships a Deploy-Budget policy DEFINITION and
+        assigns it in no archetype. The definition is carried by the `root`
+        archetype, so it is created at the tenant root management group in every
+        strategy — root is never dropped — and an assignment at any descendant
+        resolves against it. That is not an assumption: the library's own `corp`
+        archetype assigns Deny-Public-Endpoints, whose policy set is deployed at
+        root, using the same `placeholder` form this emits.
+
+        Deploy-Budget is DeployIfNotExists, which is the whole reason to prefer
+        it over a Terraform budget resource: it reaches subscriptions that do
+        not exist yet. A budget written as a resource covers the subscriptions
+        named at render time and silently misses every one vended afterwards.
+
+        The shape here deliberately does NOT mirror finops.budgets, because the
+        policy does not. Deploy-Budget takes exactly two thresholds and one
+        management-group scope; finops.budgets carries a threshold array and a
+        free-text scope string. Collapsing one into the other would have meant
+        either dropping thresholds a client entered or inventing ones they did
+        not. finops.budgets stays documented-only, in docs/finops.md.
+    #>
+    param([Parameter(Mandatory)][object]$Config)
+
+    $budget = $null
+    if ((Test-LzHasProperty $Config 'finops') -and
+        (Test-LzHasProperty $Config.finops 'defaultSubscriptionBudget')) {
+        $budget = $Config.finops.defaultSubscriptionBudget
+    }
+    $enabled = $false
+    if ($budget -and (Test-LzHasProperty $budget 'enabled')) { $enabled = [bool]$budget.enabled }
+
+    if (-not $enabled) {
+        return [pscustomobject]@{
+            Enabled          = $false
+            LibraryGroupId   = ''
+            AssignmentName   = ''
+            ArchetypeName    = ''
+            BaseArchetype    = ''
+        }
+    }
+
+    # Keyed by the PINNED LIBRARY's group id, never the client's rename: the
+    # rename is a display concern and the archetype binding is not. Resolving it
+    # here means a renamed estate and a default-named one emit the same override.
+    $libraryGroupId = if (Test-LzHasProperty $budget 'managementGroup') { [string]$budget.managementGroup } else { 'alz' }
+
+    $catalog = Get-LzPolicyCatalog
+    $group = @($catalog.managementGroups) | Where-Object { [string]$_.id -eq $libraryGroupId } | Select-Object -First 1
+    if (-not $group) {
+        throw "finops.defaultSubscriptionBudget.managementGroup '$libraryGroupId' is not a management group the pinned ALZ library defines."
+    }
+    # Every library group carries exactly one archetype. Asserted rather than
+    # assumed: an override has a single base_archetype, so a group carrying two
+    # would need a different emission shape and should fail loudly here rather
+    # than silently governing by the first one.
+    $archetypes = @($group.archetypes)
+    if ($archetypes.Count -ne 1) {
+        throw "Management group '$libraryGroupId' carries $($archetypes.Count) archetypes; the budget override needs exactly one base archetype."
+    }
+    $base = [string]$archetypes[0]
+
+    $thresholds = @{
+        Warning = if (Test-LzHasProperty $budget 'warningThresholdPercent') { [int]$budget.warningThresholdPercent } else { 90 }
+        Cap     = if (Test-LzHasProperty $budget 'capThresholdPercent') { [int]$budget.capThresholdPercent } else { 100 }
+    }
+
+    [pscustomobject]@{
+        Enabled        = $true
+        LibraryGroupId = $libraryGroupId
+        # Fixed, not derived from the client's name: the ALZ provider indexes
+        # assignments by this name, and it has to match the file basename and
+        # the override's policy_assignments_to_add entry exactly.
+        AssignmentName = 'Deploy-Budget'
+        ArchetypeName  = "${base}_budget"
+        BaseArchetype  = $base
+        AmountUsd      = if (Test-LzHasProperty $budget 'amountUsd') { [decimal]$budget.amountUsd } else { 0 }
+        Warning        = $thresholds.Warning
+        Cap            = $thresholds.Cap
+        TimeGrain      = if (Test-LzHasProperty $budget 'timeGrain') { [string]$budget.timeGrain } else { 'Monthly' }
+        ContactEmails  = @(if (Test-LzHasProperty $budget 'contactEmails') { $budget.contactEmails } else { @() })
+        ContactRoles   = @(if (Test-LzHasProperty $budget 'contactRoles') { $budget.contactRoles } else { @('Owner', 'Contributor') })
+    }
+}
+
+function New-LzDefaultBudgetAssignment {
+    <#
+    .SYNOPSIS
+        lib/policy_assignments/Deploy-Budget.alz_policy_assignment.json.
+    .DESCRIPTION
+        The library's own assignment schema, with two traps worth naming.
+
+        Deploy-Budget declares amount, firstThreshold and secondThreshold as
+        String parameters, not numbers — so these are emitted quoted. Passing a
+        JSON number is rejected by Azure Policy at assignment time, which is
+        after management groups have been created.
+
+        enforcementMode is Default and is NOT wired to
+        governance.policyBaseline.enforcementMode. That switch downgrades
+        deny-class guardrails to DoNotEnforce so an estate can be observed
+        before it starts refusing deployments. A budget refuses nothing — it
+        creates a notification — so there is nothing to observe first, and
+        DoNotEnforce would mean the client enabled a budget and got none.
+    #>
+    param([Parameter(Mandatory)][object]$Config)
+
+    $budget = Resolve-LzDefaultBudget -Config $Config
+    if (-not $budget.Enabled) { throw 'New-LzDefaultBudgetAssignment called for a configuration that does not enable the default budget.' }
+
+    # Trailing zeroes would reach Azure as the literal budget amount string;
+    # 1000 and 1000.00 are the same number and not the same string.
+    $amount = ([decimal]$budget.AmountUsd).ToString('0.############', [System.Globalization.CultureInfo]::InvariantCulture)
+
+    [ordered]@{
+        type       = 'Microsoft.Authorization/policyAssignments'
+        apiVersion = '2024-04-01'
+        name       = $budget.AssignmentName
+        dependsOn  = @()
+        properties = [ordered]@{
+            displayName = 'Deploy a default budget on every subscription'
+            description = ("Creates a Microsoft.Consumption budget of {0} per subscription beneath this management group, notifying at {1}% and {2}%. Deployed by policy rather than by Terraform so that subscriptions vended after this estate was built are covered too. Azure budgets notify; they do not stop spend." -f $amount, $budget.Warning, $budget.Cap)
+            # The definition is deployed at the tenant root by the `root`
+            # archetype. `placeholder` is the library's own indirection and the
+            # provider rewrites it; a literal management-group id here would be
+            # wrong for every estate but the one it was written against.
+            policyDefinitionId = '/providers/Microsoft.Management/managementGroups/placeholder/providers/Microsoft.Authorization/policyDefinitions/Deploy-Budget'
+            enforcementMode    = 'Default'
+            nonComplianceMessages = @(
+                @{ message = 'This subscription has no default budget. The platform team assigns one by policy; remediate the assignment rather than creating a budget by hand.' }
+            )
+            parameters = [ordered]@{
+                amount          = [ordered]@{ value = $amount }
+                budgetName      = [ordered]@{ value = 'budget-set-by-policy' }
+                contactEmails   = [ordered]@{ value = @($budget.ContactEmails) }
+                contactGroups   = [ordered]@{ value = @() }
+                contactRoles    = [ordered]@{ value = @($budget.ContactRoles) }
+                effect          = [ordered]@{ value = 'DeployIfNotExists' }
+                firstThreshold  = [ordered]@{ value = [string]$budget.Warning }
+                secondThreshold = [ordered]@{ value = [string]$budget.Cap }
+                timeGrain       = [ordered]@{ value = $budget.TimeGrain }
+            }
+            scope     = '/providers/Microsoft.Management/managementGroups/placeholder'
+            notScopes = @()
+        }
+        location = '${default_location}'
+    }
+}
+
+function New-LzDefaultBudgetArchetypeOverride {
+    <#
+    .SYNOPSIS
+        lib/archetype_definitions/<base>_budget.alz_archetype_override.yaml.
+    .DESCRIPTION
+        An override adds the assignment to a COPY of the library archetype,
+        under a new name; the architecture definition is then what binds that
+        name to the group. Adding only the assignment and nothing else is the
+        point — every policy the base archetype carries still comes from the
+        pinned library, and a library bump changes them without touching this.
+
+        Emitted as YAML by hand rather than through a serializer, because
+        PowerShell ships no YAML writer and the file is nine fixed keys.
+    #>
+    param([Parameter(Mandatory)][object]$Config)
+
+    $budget = Resolve-LzDefaultBudget -Config $Config
+    if (-not $budget.Enabled) { throw 'New-LzDefaultBudgetArchetypeOverride called for a configuration that does not enable the default budget.' }
+
+    @(
+        "# GENERATED. Adds the default-budget assignment to a copy of the pinned"
+        "# library's '$($budget.BaseArchetype)' archetype. Everything else this archetype"
+        "# governs still comes from the library at the ref main.tf pins."
+        "name: `"$($budget.ArchetypeName)`""
+        "base_archetype: `"$($budget.BaseArchetype)`""
+        "policy_assignments_to_add:"
+        "  - `"$($budget.AssignmentName)`""
+        "policy_assignments_to_remove: []"
+        "policy_definitions_to_add: []"
+        "policy_definitions_to_remove: []"
+        "policy_set_definitions_to_add: []"
+        "policy_set_definitions_to_remove: []"
+        "role_definitions_to_add: []"
+        "role_definitions_to_remove: []"
+    ) -join "`n"
+}
+
 function Resolve-LzManagementGroups {
     <#
     .SYNOPSIS
@@ -591,6 +801,13 @@ function Resolve-LzManagementGroups {
     $mg = $Config.azure.managementGroups
     $isCustom = ($mg.strategy -eq 'custom')
     $isMinimal = ($mg.strategy -eq 'caf-minimal')
+    # A default budget is a THIRD reason to emit a local architecture, and the
+    # only one that is not about the group list at all. The assignment reaches a
+    # group by way of an override archetype, and an architecture definition is
+    # the only thing that binds an archetype name to a group — so enabling the
+    # budget pins even a caf-standard estate to a locally-defined hierarchy.
+    # Decision 0026 records that cost and why it was accepted.
+    $budget = Resolve-LzDefaultBudget -Config $Config
     $renames = if ($isCustom -and (Test-LzHasProperty $mg 'customHierarchy')) { $mg.customHierarchy } else { $null }
 
     # "Platform + Landing Zones only" — the schema's own description of
@@ -636,10 +853,17 @@ function Resolve-LzManagementGroups {
         # need a local definition emitted and library_references pointed at it.
         # Renaming groups and dropping groups are the same problem to the
         # provider: the architecture it is asked for is not one the library has.
-        HasCustomArchitecture = ($isCustom -or $isMinimal)
+        HasCustomArchitecture = ($isCustom -or $isMinimal -or $budget.Enabled)
         # The architecture name doubles as the emitted library file's basename,
-        # so it has to be a safe identifier rather than a display string.
-        ArchitectureName = if ($isCustom) { $short } elseif ($isMinimal) { "$short-minimal" } else { $catalog.library.architecture }
+        # so it has to be a safe identifier rather than a display string. It
+        # must also never be the pinned library's own architecture name: both
+        # libraries are composed into one set, and two architectures sharing a
+        # name is not a merge. That is why the budget-only case gets its own
+        # "-standard" name rather than re-emitting `alz` with one group changed.
+        ArchitectureName = if ($isCustom) { $short }
+        elseif ($isMinimal) { "$short-minimal" }
+        elseif ($budget.Enabled) { "$short-standard" }
+        else { $catalog.library.architecture }
         Effective        = $effective
         # Every library group keeps an entry in Effective so the computed.*
         # tokens that name one still resolve; EmittedGroupIds is what decides
@@ -650,6 +874,7 @@ function Resolve-LzManagementGroups {
         WorkloadLibraryId = $placement
         LibraryPath      = [string]$pinned.avm.alzLibrary.path
         LibraryRef       = [string]$pinned.avm.alzLibrary.ref
+        Budget           = $budget
     }
 }
 
@@ -680,8 +905,24 @@ function New-LzAlzArchitectureDefinition {
             $groups.Effective[$current.parent].id
         }
         else { $null }
+        # The one group carrying the default budget swaps its library archetype
+        # for the override that adds the assignment. A REPLACEMENT, not an
+        # addition: the override is a copy of the base with one assignment added,
+        # so listing both would apply everything the base carries twice.
+        # [string[]] is load-bearing, not decoration. An `if` used as an
+        # expression sends its result through the pipeline, and the pipeline
+        # UNROLLS a single-element array — so an untyped assignment here yields
+        # the bare string "root_budget" where the library schema requires
+        # ["root_budget"], and `archetypes` is a required array on every group.
+        # Nothing in CI would have caught it: terraform validate never resolves
+        # the data source that reads this file.
+        [string[]]$archetypes = if ($groups.Budget.Enabled -and [string]$group.id -eq $groups.Budget.LibraryGroupId) {
+            @($groups.Budget.ArchetypeName)
+        }
+        else { @($current.archetypes) }
+
         [ordered]@{
-            archetypes   = @($current.archetypes)
+            archetypes   = $archetypes
             display_name = $current.displayName
             exists       = $false
             id           = $current.id

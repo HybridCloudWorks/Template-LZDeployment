@@ -150,14 +150,15 @@ function Invoke-LzRender {
 
         $mode = if ($entry.PSObject.Properties.Name -contains 'mode') { $entry.mode } else { 'render' }
 
-        # Three modes have no template file: config-snapshot writes the validated
+        # Five modes have no template file: config-snapshot writes the validated
         # answer record itself, version-stamp writes the generator's version
-        # metadata, and alz-architecture synthesizes the client-named ALZ
-        # architecture definition. All go through the manifest so the
-        # inventory-integrity gate (V01) accounts for them like any other
-        # emitted file.
+        # metadata, and the three alz-* modes synthesize the local ALZ library —
+        # the client-named architecture definition, and the policy assignment
+        # and archetype override that carry the default budget. All go through
+        # the manifest so the inventory-integrity gate (V01) accounts for them
+        # like any other emitted file.
         $sourcePath = Join-Path $TemplateRoot $entry.source
-        if ($mode -notin @('config-snapshot', 'version-stamp', 'alz-architecture') -and -not (Test-Path $sourcePath)) {
+        if ($mode -notin @('config-snapshot', 'version-stamp', 'alz-architecture', 'alz-policy-assignment', 'alz-archetype-override') -and -not (Test-Path $sourcePath)) {
             throw "Manifest references a template that does not exist: $($entry.source)"
         }
 
@@ -194,6 +195,19 @@ function Invoke-LzRender {
                 # group changes which policy set governs everything under it.
                 $architecture = New-LzAlzArchitectureDefinition -Config $config
                 Set-Content -Path $outPath -Value ($architecture | ConvertTo-Json -Depth 10) -Encoding utf8
+            }
+            elseif ($mode -eq 'alz-policy-assignment') {
+                # The default-budget assignment. Depth 10 rather than the
+                # default 2: the parameters are nested three deep and
+                # ConvertTo-Json silently stringifies past its depth rather
+                # than failing, which would emit a syntactically valid file
+                # the provider cannot read.
+                $assignment = New-LzDefaultBudgetAssignment -Config $config
+                Set-Content -Path $outPath -Value ($assignment | ConvertTo-Json -Depth 10) -Encoding utf8
+            }
+            elseif ($mode -eq 'alz-archetype-override') {
+                $override = New-LzDefaultBudgetArchetypeOverride -Config $config
+                Set-Content -Path $outPath -Value $override -Encoding utf8
             }
             elseif ($mode -eq 'copy') {
                 Copy-Item -Path $sourcePath -Destination $outPath -Force
