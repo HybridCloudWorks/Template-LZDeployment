@@ -51,7 +51,7 @@ renumbered or deleted. **Only the six entries marked OPEN need anyone.**
 | 15a | Stale branches on `origin` | 🔐 **OPEN** — branch deletion is 403 for this token; 1 safe, 2 need inspection |
 | 16 | Wire `Configure-DeploymentOptions.ps1` | ⊘ **SUPERSEDED** (inherits §14) |
 | 17 | Cost estimates in module READMEs | ⊘ **LARGELY VOIDED**; narrowed residual |
-| 18 | ALZ policy default values unsupplied | 🔨 **OPEN — gated, 13 waived** (2026-08-30) |
+| 18 | ALZ policy default values unsupplied | 🔨 **OPEN — 12 of 14 supplied, 2 waived** (2026-08-30) |
 | 19 | Gates that verify less than their names suggest | 🔨 **OPEN** (2026-08-30) |
 | 20 | Wizard answers that reach no Terraform | 🔨 **OPEN — partially closed** (2026-08-30) |
 
@@ -496,19 +496,27 @@ ships a `ddosPlan` in subscription `00000000-0000-0000-0000-000000000000` —
 enforced, with a `Modify` effect, so it attempts to write a non-existent plan
 onto every virtual network at create and update.
 
-**Now gated rather than silent.** `factory/ci/Test-AlzPolicyDefaults.ps1`
-fails when a declared default is neither supplied nor waived;
-`factory/ci/alz-policy-default-waivers.json` records the 13 with a reason and
-a resolution each, under a budget that only ratchets down.
+**Gated, then largely closed (both 2026-08-30).**
+`factory/ci/Test-AlzPolicyDefaults.ps1` fails when a declared default is
+neither supplied nor waived, and `factory/ci/alz-policy-default-waivers.json`
+carries the remainder under a budget that only ratchets down.
 
-**Unblocked by**: supplying them. Five are available from
-`avm-ptn-alz-management` 0.9.0 outputs (`user_assigned_identity_ids`,
-`data_collection_rule_ids`) that `platform-management/outputs.tf.tmpl` does
-not export yet — its own header already calls itself "the contract the global
-layer reads through remote state to feed ALZ policy defaults", plural. Six are
-derivable from config. `email_security_contact` is already collected by the
-wizard as `security.defender.securityContactEmail` and mapped nowhere. The
-DDoS plan should disable its assignment rather than invent an ID.
+The layer now supplies **12 of 14**. The five Azure Monitor Agent values come
+through the management layer's `user_assigned_identity_ids` and
+`data_collection_rule_ids` outputs — `platform-management/outputs.tf.tmpl`
+finally being the thing its own header always claimed to be, "the contract the
+global layer reads through remote state to feed ALZ policy defaults", plural.
+Six more are composed from config rather than read back from
+platform-connectivity, which applies *after* the global layer; that is sound
+because the policies consume them as strings they write into resources they
+create, not as references to resources that must already exist.
+
+**Still open — 2 waived**, and both need a client answer rather than a
+derivation, so both belong to the policy-selection step:
+`email_security_contact` (an empty string in place of
+`security_contact@replace_me` is no better than the placeholder) and
+`ddos_protection_plan_id` (whose assignment should be disabled rather than
+pointed at an invented ID).
 
 ### 19. Two gates verify less than their names suggest
 **Class: meta — this is why §18 survived to a first customer.**

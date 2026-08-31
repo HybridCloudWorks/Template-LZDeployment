@@ -1091,21 +1091,23 @@ triaged as **overall** defects rather than tenant-specific ones. Record:
 
 ### 6.1 Supply the ALZ policy default values — `[BLOCKER for a first plan]`
 
-13 of the 14 values the pinned library declares are unsupplied, so any
-assignment consuming one is created from the library's placeholder. Now gated
-by `factory/ci/Test-AlzPolicyDefaults.ps1` and recorded in
-`factory/ci/alz-policy-default-waivers.json` under a ratcheting budget, but
-gated is not fixed.
+**Largely done 2026-08-30 — waiver budget 13 -> 2.** The global layer now
+supplies 12 of the 14 values: the five Azure Monitor Agent values through the
+management layer's `user_assigned_identity_ids` and `data_collection_rule_ids`
+outputs (map keys read from `avm-ptn-alz-management` v0.9.0's variable *types*,
+so they cannot drift without a major bump), and six composed from config.
 
-Work, in order:
-1. Export `user_assigned_identity_ids` and `data_collection_rule_ids` from
-   `platform-management/outputs.tf.tmpl` (both exist at the pinned
-   `avm-ptn-alz-management` 0.9.0) and read them in the global layer through
-   the remote state it already reads. Clears 5 waivers.
-2. Emit the 6 config-derivable values (region twice, connectivity
-   subscription, three resource-group names). Clears 6.
-3. Map `security.defender.securityContactEmail`. Clears 1.
-4. `ddos_protection_plan_id` is not supplied — it is decided by 6.2.
+The two that remain are the two that need a client answer rather than a
+derivation, and both are 6.2's to close:
+
+1. `email_security_contact` — collected by the wizard as
+   `security.defender.securityContactEmail` and mapped nowhere. Not derivable:
+   an empty string in place of `security_contact@replace_me` is no better than
+   the placeholder, so this wants collecting *and requiring* at the point where
+   the client selects a Defender assignment.
+2. `ddos_protection_plan_id` — not supplied by design. Selecting DDoS
+   protection collects a real plan ID; not selecting it emits
+   `creation_enabled = false` for `Enable-DDoS-VNET`.
 
 **Deploy-order constraint**: management → global → connectivity. The global
 layer may read management state but must not read connectivity state; the

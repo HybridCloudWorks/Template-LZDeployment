@@ -168,11 +168,43 @@ foreach ($required in @(
 }
 
 $globalMain = Get-Content (Join-Path $out 'terraform/live/global/main.tf') -Raw
+$globalTfvars = Get-Content (Join-Path $out 'terraform/live/global/terraform.auto.tfvars') -Raw
 ok 'global references avm-ptn-alz by registry pin' ($globalMain -match 'source\s+=\s+"Azure/avm-ptn-alz/azurerm"' -and $globalMain -match 'version\s+=\s+"0\.21\.0"')
 ok 'alz provider pins the library'   ($globalMain -match 'library_references' -and $globalMain -match '2026\.04\.2')
 $mgmtMain = Get-Content (Join-Path $out 'terraform/live/platform-management/main.tf') -Raw
 ok 'management references avm-ptn-alz-management' ($mgmtMain -match 'source\s+=\s+"Azure/avm-ptn-alz-management/azurerm"')
 ok 'management wires the daily ingestion cap' ($mgmtMain -match 'log_analytics_workspace_daily_quota_gb\s+=\s+var\.log_daily_quota_gb')
+
+# The ALZ policy default values. Unsupplied, an assignment is created from the
+# placeholder in the library's own assignment file, and nothing here would ever
+# notice: init and validate never reach the provider's default resolution, and
+# no gate in this factory runs a plan.
+$mgmtOutputs = Get-Content (Join-Path $out 'terraform/live/platform-management/outputs.tf') -Raw
+foreach ($export in @(
+        'ama_user_assigned_identity_id', 'ama_user_assigned_identity_name',
+        'dcr_vm_insights_id', 'dcr_defender_sql_id', 'dcr_change_tracking_id')) {
+    ok "management exports $export" ($mgmtOutputs -match ('output "' + $export + '"'))
+}
+# The map keys are the module's, fixed by its variable *type* at the pinned
+# version rather than by a default, so a typo here is a plan-time failure.
+ok 'AMA identity read by the module key' ($mgmtOutputs -match 'user_assigned_identity_ids\["ama"\]')
+ok 'DCR keys match the module contract' (
+    $mgmtOutputs -match 'data_collection_rule_ids\["vm_insights"\]' -and
+    $mgmtOutputs -match 'data_collection_rule_ids\["defender_sql"\]' -and
+    $mgmtOutputs -match 'data_collection_rule_ids\["change_tracking"\]')
+ok 'identity name is derived from its ID, not restated' ($mgmtOutputs -match 'reverse\(split\("/"')
+
+$pdvBlock = if ($globalMain -match '(?s)policy_default_values\s*=\s*\{(.*?)\n  \}') { $Matches[1] } else { '' }
+$pdvKeys = @([regex]::Matches($pdvBlock, '(?m)^\s{4}([a-z0-9_]+)\s*=\s*jsonencode') | ForEach-Object { $_.Groups[1].Value })
+ok 'global supplies twelve policy default values' ($pdvKeys.Count -eq 12) ($pdvKeys -join ',')
+ok 'AMA defaults come from management remote state' (
+    $pdvBlock -match 'ama_user_assigned_managed_identity_id[\s\S]*?terraform_remote_state\.management')
+# Composed from config on purpose: platform-connectivity applies AFTER this
+# layer, so reading these back would invert the deploy order.
+ok 'private DNS RG name matches the connectivity layer naming' (
+    $pdvBlock -match 'rg-\$\{var\.org_prefix\}-connectivity-\$\{var\.primary_region_code\}')
+ok 'global tfvars carries the naming inputs' (
+    $globalTfvars -match 'org_prefix\s+=' -and $globalTfvars -match 'primary_region_code\s+=')
 
 # The management-group IDs are defined by the pinned ALZ library architecture,
 # not by us. A default that names a group the library does not define places

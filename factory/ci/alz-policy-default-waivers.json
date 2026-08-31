@@ -1,7 +1,7 @@
 {
   "$comment": "A debt register, not a suppression list. Every entry is a policy default value the pinned ALZ library declares and the emitted global layer does not yet supply. Test-AlzPolicyDefaults.ps1 prints each one with its reason on every run, fails if a waiver goes stale (the value is now supplied) or is orphaned (the library no longer declares it), and enforces the budget below. The budget only ever goes DOWN: supplying a value means deleting its waiver and decrementing the budget in the same change.",
   "schemaVersion": "1.0.0",
-  "budget": 13,
+  "budget": 2,
   "waivers": [
     {
       "default": "ddos_protection_plan_id",
@@ -9,64 +9,9 @@
       "resolution": "The wizard's policy selection step decides this: selecting DDoS protection collects a real plan ID, and not selecting it emits creation_enabled = false for Enable-DDoS-VNET."
     },
     {
-      "default": "ama_user_assigned_managed_identity_id",
-      "reason": "Available from the management layer, which is not exporting it yet. avm-ptn-alz-management 0.9.0 emits user_assigned_identity_ids; platform-management/outputs.tf.tmpl exports only the workspace and automation account.",
-      "resolution": "Export it from platform-management and read it through the existing global -> management remote state."
-    },
-    {
-      "default": "ama_user_assigned_managed_identity_name",
-      "reason": "Same source as ama_user_assigned_managed_identity_id; consumed by DenyAction-DeleteUAMIAMA, which protects that identity from deletion.",
-      "resolution": "Export it from platform-management alongside the identity ID."
-    },
-    {
-      "default": "ama_vm_insights_data_collection_rule_id",
-      "reason": "Available from the management layer's data_collection_rule_ids output at the pinned 0.9.0; not exported yet.",
-      "resolution": "Export it from platform-management and read it through remote state."
-    },
-    {
-      "default": "ama_mdfc_sql_data_collection_rule_id",
-      "reason": "Available from the management layer's data_collection_rule_ids output at the pinned 0.9.0; not exported yet.",
-      "resolution": "Export it from platform-management and read it through remote state."
-    },
-    {
-      "default": "ama_change_tracking_data_collection_rule_id",
-      "reason": "Available from the management layer's data_collection_rule_ids output at the pinned 0.9.0; not exported yet.",
-      "resolution": "Export it from platform-management and read it through remote state."
-    },
-    {
-      "default": "private_dns_zone_subscription_id",
-      "reason": "Derivable from azure.subscriptions.connectivity, which the config already carries. It is a string the policy writes into DNS records, not a reference to a resource that must already exist, so it does not need to be read back from the connectivity layer — which would invert the documented management -> global -> connectivity deploy order.",
-      "resolution": "Emit it into the global layer from config."
-    },
-    {
-      "default": "private_dns_zone_resource_group_name",
-      "reason": "Derivable from the naming convention the connectivity layer already uses. Same string-not-reference reasoning as private_dns_zone_subscription_id.",
-      "resolution": "Emit it into the global layer from config."
-    },
-    {
-      "default": "private_dns_zone_region",
-      "reason": "Derivable from azure.primaryRegion.",
-      "resolution": "Emit it into the global layer from config."
-    },
-    {
-      "default": "resource_group_location",
-      "reason": "Derivable from azure.primaryRegion. Consumed by Deploy-MDFC-Config-H224 and Deploy-SvcHealth-BuiltIn.",
-      "resolution": "Emit it into the global layer from config."
-    },
-    {
-      "default": "resource_group_name_service_health_alerts",
-      "reason": "Derivable from the naming convention.",
-      "resolution": "Emit it into the global layer from config."
-    },
-    {
-      "default": "resource_group_name_mdfc",
-      "reason": "Derivable from the naming convention.",
-      "resolution": "Emit it into the global layer from config."
-    },
-    {
       "default": "email_security_contact",
-      "reason": "The wizard already collects this as security.defender.securityContactEmail. It reaches no Terraform variable, so Deploy-MDFC-Config-H224 would be created with the library placeholder security_contact@replace_me.",
-      "resolution": "Map security.defender.securityContactEmail and emit it into the global layer."
+      "reason": "The wizard collects this as security.defender.securityContactEmail but it reaches no Terraform variable, so Deploy-MDFC-Config-H224 would carry the library placeholder security_contact@replace_me. Unlike the eleven values cleared alongside this change it cannot be derived: it is a real answer about who gets notified, and an empty string in its place would be no better than the placeholder.",
+      "resolution": "Collected and made required by the policy-selection step, which knows whether any Defender assignment is actually being created."
     }
   ]
 }

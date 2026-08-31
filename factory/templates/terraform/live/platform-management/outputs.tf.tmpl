@@ -17,3 +17,43 @@ output "automation_account_id" {
   description = "Resource ID of the management Automation Account."
   value       = module.management.automation_account.id
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Azure Monitor Agent estate. The ALZ library declares five policy default
+# values over these, consumed by Deploy-VM-Monitoring, Deploy-VMSS-Monitoring,
+# Deploy-vmHybr-Monitoring, Deploy-VM-ChangeTrack, Deploy-VMSS-ChangeTrack,
+# Deploy-vmArc-ChangeTrack, Deploy-MDFC-DefSQL-AMA and DenyAction-DeleteUAMIAMA.
+# Unsupplied, every one of those is created pointing at nothing.
+#
+# The map keys below are the module's own, read from
+# terraform-azurerm-avm-ptn-alz-management v0.9.0: `user_assigned_managed_identities`
+# is an object with a single `ama` attribute, and `data_collection_rules` an
+# object with `change_tracking`, `vm_insights` and `defender_sql`. They are
+# fixed by the module's variable *type*, not by its defaults, so they cannot
+# drift without a major version bump.
+# ─────────────────────────────────────────────────────────────────────────────
+
+output "ama_user_assigned_identity_id" {
+  description = "Resource ID of the Azure Monitor Agent user-assigned managed identity."
+  value       = module.management.user_assigned_identity_ids["ama"].id
+}
+
+output "ama_user_assigned_identity_name" {
+  description = "Name of the Azure Monitor Agent user-assigned managed identity. Derived from the resource ID rather than restated, so it cannot disagree with it."
+  value       = reverse(split("/", module.management.user_assigned_identity_ids["ama"].id))[0]
+}
+
+output "dcr_vm_insights_id" {
+  description = "Resource ID of the VM Insights data collection rule."
+  value       = module.management.data_collection_rule_ids["vm_insights"].id
+}
+
+output "dcr_defender_sql_id" {
+  description = "Resource ID of the Defender for SQL data collection rule."
+  value       = module.management.data_collection_rule_ids["defender_sql"].id
+}
+
+output "dcr_change_tracking_id" {
+  description = "Resource ID of the change-tracking data collection rule."
+  value       = module.management.data_collection_rule_ids["change_tracking"].id
+}

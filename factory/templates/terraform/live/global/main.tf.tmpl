@@ -120,9 +120,65 @@ module "alz" {
   location           = var.primary_region
   parent_resource_id = var.root_parent_management_group_id != "" ? var.root_parent_management_group_id : data.azurerm_client_config.current.tenant_id
 
+  # Every value the pinned ALZ library declares that this estate can answer.
+  # An unsupplied one does not fail: the assignment is created from the
+  # placeholder in the library's own assignment file — an all-zeroes
+  # subscription, or security_contact@replace_me — and that only surfaces at
+  # plan or remediation time. factory/ci/Test-AlzPolicyDefaults.ps1 fails the
+  # build for any declared value that is neither supplied here nor waived.
+  #
+  # The two that remain waived need a client answer rather than a derivation:
+  # email_security_contact and ddos_protection_plan_id.
   policy_default_values = {
     log_analytics_workspace_id = jsonencode({
       value = data.terraform_remote_state.management.outputs.log_analytics_workspace_id
+    })
+
+    # Azure Monitor Agent estate, owned by platform-management. Read through
+    # remote state, which the documented deploy order already allows:
+    # management applies before this layer.
+    ama_user_assigned_managed_identity_id = jsonencode({
+      value = data.terraform_remote_state.management.outputs.ama_user_assigned_identity_id
+    })
+    ama_user_assigned_managed_identity_name = jsonencode({
+      value = data.terraform_remote_state.management.outputs.ama_user_assigned_identity_name
+    })
+    ama_vm_insights_data_collection_rule_id = jsonencode({
+      value = data.terraform_remote_state.management.outputs.dcr_vm_insights_id
+    })
+    ama_mdfc_sql_data_collection_rule_id = jsonencode({
+      value = data.terraform_remote_state.management.outputs.dcr_defender_sql_id
+    })
+    ama_change_tracking_data_collection_rule_id = jsonencode({
+      value = data.terraform_remote_state.management.outputs.dcr_change_tracking_id
+    })
+
+    # Private DNS. Composed from config rather than read from
+    # platform-connectivity, which applies AFTER this layer — reading it back
+    # would invert the deploy order. Safe because Deploy-Private-DNS-Zones
+    # consumes these as strings it writes into records, not as references to
+    # resources that must already exist. The resource-group name matches the
+    # one the connectivity layer creates its zones in.
+    private_dns_zone_subscription_id = jsonencode({
+      value = var.connectivity_subscription_id
+    })
+    private_dns_zone_resource_group_name = jsonencode({
+      value = "rg-${var.org_prefix}-connectivity-${var.primary_region_code}"
+    })
+    private_dns_zone_region = jsonencode({
+      value = var.primary_region
+    })
+
+    # Resource groups the DINE policies create for themselves. These names do
+    # not have to exist yet; they are what the policy will name what it makes.
+    resource_group_location = jsonencode({
+      value = var.primary_region
+    })
+    resource_group_name_service_health_alerts = jsonencode({
+      value = "rg-${var.org_prefix}-svchealth-${var.primary_region_code}"
+    })
+    resource_group_name_mdfc = jsonencode({
+      value = "rg-${var.org_prefix}-mdfc-${var.primary_region_code}"
     })
   }
 

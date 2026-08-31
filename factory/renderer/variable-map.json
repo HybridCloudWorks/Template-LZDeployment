@@ -26,6 +26,8 @@
       "$comment": "architecture_name and the five *_management_group_id placement targets default in variables.tf to the id set the pinned ALZ library architecture defines; they are operator-overridable alongside a custom architecture, so no wizard question feeds them (ADR 0017). The state_* trio feeds the remote-state read of platform-management.",
       "variables": {
         "root_parent_management_group_id": "azure.managementGroups.rootId",
+        "org_prefix": "organization.companyShortName",
+        "primary_region_code": "azure.primaryRegionCode",
         "primary_region": "azure.primaryRegion",
         "management_subscription_id": "azure.subscriptions.management",
         "connectivity_subscription_id": "azure.subscriptions.connectivity",
