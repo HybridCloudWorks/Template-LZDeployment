@@ -724,8 +724,8 @@
               "enum": [
                 "azfw"
               ],
-              "description": "Azure Firewall — the firewall the AVM connectivity patterns deploy (ADR 0017). A landing zone always deploys at least one firewall.",
-              "$comment": "none is deliberately excluded (operator decision 2026-08-06: a landing zone NEEDS at least one firewall). palo/fortinet NVA options retired with the bespoke hub-network module (ADR 0017): third-party NVAs are per-estate work inside the generated repository."
+              "description": "Azure Firewall — the only firewall type the AVM connectivity patterns deploy (ADR 0017). This says WHICH firewall, not WHETHER: connectivity.firewall.enabled is a separate required answer that accepts false.",
+              "$comment": "The `none` value was retired from this enum on 2026-08-30, and it did not become the `enabled` answer — it was replaced by it. Choosing not to deploy a firewall is `enabled: false`, which the AVM connectivity patterns accept; this enum only narrows the type, and palo/fortinet NVA options retired with the bespoke hub-network module (ADR 0017) because third-party NVAs are per-estate work inside the generated repository. An imported configuration still carrying type `none` is blocked by the wizard rather than silently read as `enabled: false`, since the two meant different things."
             },
             "azfwTier": {
               "enum": [

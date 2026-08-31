@@ -1104,12 +1104,6 @@ function policyAssignmentEnabled(name) {
   return group ? policyGroupEnabled(group.id) : true;
 }
 
-function policyEnforcementOf(name) {
-  const override = policySelection().assignments[name];
-  if (override && override.enforcementMode) return override.enforcementMode;
-  return config.governance.policyBaseline.enforcementMode === 'deny' ? 'Default' : 'DoNotEnforce';
-}
-
 /** Which library default values the current selection obliges the client to
  *  supply, and which enabled assignments are asking. Read per assignment, not
  *  per group, so switching one assignment off in the advanced list retires its
