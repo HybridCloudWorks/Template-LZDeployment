@@ -1,7 +1,7 @@
 {
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||. This manifest is the OUTPUT CONTRACT (docs/refactor/OUTPUT-CONTRACT.md): generation fails if a produced file is not listed here or a listed file is missing (validation gate V01). No generator machinery is ever listed.",
   "manifestVersion": "2.1.0",
-  "targetSchemaVersion": "3.1.0",
+  "targetSchemaVersion": "3.2.0",
   "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored — the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
   "files": [
     {
@@ -234,6 +234,13 @@
       "mode": "render",
       "when": "always",
       "description": "Ownership, decision rights, service boundaries, operating cadence, and incident escalation."
+    },
+    {
+      "source": "docs/SUBSCRIPTION-ONBOARDING.md.tmpl",
+      "destination": "docs/subscription-onboarding.md",
+      "mode": "render",
+      "when": "computed.hasDeferredSubscriptions",
+      "description": "How to move a deferred brownfield subscription into the hierarchy later, and what starts evaluating its existing resources when you do. Emitted only when a subscription is actually deferred — a document about a decision nobody took is noise."
     },
     {
       "source": "docs/GOVERNANCE.md.tmpl",

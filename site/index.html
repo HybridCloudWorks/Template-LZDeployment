@@ -402,6 +402,24 @@
         <div class="checks">
           <label class="check"><input type="checkbox" data-path="deploymentStrategy.brownfield.inventoryExistingPolicies" checked> Inventory existing tenant-scope policy assignments during discovery (read-only)</label>
         </div>
+
+        <div class="field">
+          <label>Existing subscriptions you want governed anyway</label>
+          <p class="hint">Excluding is the default and the safe answer. If an existing subscription <em>should</em> come under this landing zone, say so here &mdash; per subscription, with your eyes open. Anything you leave out of both lists is simply excluded.</p>
+          <div class="callout callout-warn">
+            <h4>Read this before choosing &ldquo;Place now&rdquo;</h4>
+            <p>The moment a subscription moves under a management group, <strong>every policy assignment above it starts evaluating the resources already inside it</strong>. Nothing is deleted by the move, but:</p>
+            <ul>
+              <li><strong>Audit</strong> assignments will report a large number of findings on the first evaluation cycle. That is information, not damage.</li>
+              <li><strong>Deny</strong> assignments will not touch what exists &mdash; but they will refuse the next <em>change</em> to it. A pipeline that has worked for years can start failing on its next run. This is the one that surprises people.</li>
+              <li><strong>DeployIfNotExists and Modify</strong> assignments <em>will create and change things</em>: diagnostic settings, agent extensions, tags, private DNS records. On a schedule, or on the next resource write.</li>
+            </ul>
+            <p>Choose this only if you understand and accept all three. If you are not sure, choose <strong>Defer</strong>: it changes nothing today and the factory writes you a document explaining exactly how to onboard the subscription later.</p>
+          </div>
+          <div class="repeater" data-repeater="deploymentStrategy.brownfield.dispositionRows"
+               data-fields='[{"key":"id","label":"Subscription ID","placeholder":"GUID"},{"key":"action","label":"Disposition","type":"select","options":["defer","place-now"]},{"key":"note","label":"Note (carried into the onboarding document)","placeholder":"optional"}]'></div>
+          <div id="dispositionAckHost"></div>
+        </div>
       </div>
     </section>
 

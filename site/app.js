@@ -19,7 +19,7 @@
  * Constants
  * ------------------------------------------------------------------- */
 
-const SCHEMA_VERSION = '3.1.0';
+const SCHEMA_VERSION = '3.2.0';
 
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
@@ -198,6 +198,10 @@ function defaultConfig() {
     deploymentStrategy: {
       mode: 'greenfield',
       brownfield: {
+        // Working shape for the repeater. buildConfig turns it into the
+        // schema's dispositions map and strips it; adoptConfig turns the map
+        // back into rows, the same round trip defaultTagRows makes.
+        dispositionRows: [],
         excludedSubscriptionIds: [], inventoryExistingPolicies: true
       }
     },
@@ -565,6 +569,23 @@ function validate() {
   // --- Deployment strategy
   const ds = config.deploymentStrategy;
   if (ds.mode === 'brownfield') {
+    const rows = brownfieldDispositionRows();
+    const seen = new Set();
+    for (const row of rows) {
+      const id = (row.id || '').trim();
+      if (!id) { err('deploymentStrategy', 'Every brownfield disposition needs a subscription ID.'); continue; }
+      if (!RE.guid.test(id)) { err('deploymentStrategy', `"${id}" is not a subscription ID.`); continue; }
+      if (seen.has(id)) err('deploymentStrategy', `Subscription ${id} has more than one disposition. It can only have one.`);
+      seen.add(id);
+      if (row.action === 'place-now') {
+        if ((row.acknowledgement || '').trim() !== placementAcknowledgement(id)) {
+          err('deploymentStrategy', `Placing ${id} needs the acknowledgement typed exactly. Placing an existing subscription starts every policy assignment above it evaluating the resources already in it — Deny assignments will refuse the next change to them, and DeployIfNotExists assignments will create and change things. Choose Defer if that is not what you want.`);
+        }
+        if ((ds.brownfield.excludedSubscriptionIds || []).includes(id)) {
+          err('deploymentStrategy', `Subscription ${id} is both excluded and set to be placed. It cannot be both.`);
+        }
+      }
+    }
     const excluded = ds.brownfield.excludedSubscriptionIds || [];
     for (const id of excluded) {
       if (!RE.guid.test(id)) err('deploymentStrategy', `Excluded subscription ID "${id}" is not a valid GUID.`);
@@ -1021,17 +1042,39 @@ function renderRepeater(host) {
       lbl.htmlFor = `rep_${path.replace(/\W/g, '_')}_${idx}_${f.key}`;
       wrap.appendChild(lbl);
 
-      const input = document.createElement('input');
-      input.type = f.type === 'float' ? 'number' : 'text';
-      if (f.type === 'float') input.step = 'any';
+      // A repeater column can be a closed set. Without this a field whose
+      // legal values are an enum is a free-text box that fails at the schema
+      // instead of at the point of entry.
+      const isSelect = f.type === 'select' && Array.isArray(f.options);
+      const input = document.createElement(isSelect ? 'select' : 'input');
+      if (isSelect) {
+        for (const option of f.options) {
+          const opt = document.createElement('option');
+          opt.value = typeof option === 'string' ? option : option.value;
+          opt.textContent = typeof option === 'string' ? option : option.label;
+          input.appendChild(opt);
+        }
+      }
+      else {
+        input.type = f.type === 'float' ? 'number' : 'text';
+        if (f.type === 'float') input.step = 'any';
+        input.placeholder = f.placeholder || '';
+        input.spellcheck = false;
+      }
       input.id = lbl.htmlFor;
-      input.placeholder = f.placeholder || '';
-      input.spellcheck = false;
 
       const v = row[f.key];
-      input.value = Array.isArray(v) ? v.join(', ') : (v === undefined || v === null ? '' : v);
+      if (isSelect) {
+        const first = typeof f.options[0] === 'string' ? f.options[0] : f.options[0].value;
+        input.value = (v === undefined || v === null || v === '') ? first : v;
+        // Seed the row so an untouched select still exports the value it shows.
+        row[f.key] = input.value;
+      }
+      else {
+        input.value = Array.isArray(v) ? v.join(', ') : (v === undefined || v === null ? '' : v);
+      }
 
-      input.addEventListener('input', () => {
+      input.addEventListener(isSelect ? 'change' : 'input', () => {
         const raw = input.value;
         if (f.type === 'csv') row[f.key] = csv(raw);
         else if (f.type === 'csvint') row[f.key] = csv(raw).map((x) => parseInt(x, 10)).filter((x) => !Number.isNaN(x));
@@ -1336,6 +1379,58 @@ function renderPolicyAdvanced() {
     row.appendChild(create);
     row.appendChild(enforce);
     host.appendChild(row);
+  }
+}
+
+/** The exact sentence a client must type to place an existing subscription
+ *  into the hierarchy. Composed here the same way Get-LzPlacementAcknowledgement
+ *  composes it in the renderer — the wizard blocking export on one sentence
+ *  while guard G30 expects another would export a configuration that then
+ *  refuses to render. It names the subscription on purpose: a sentence that is
+ *  the same for every estate is one a client can paste without reading, and
+ *  reading it is the entire control. */
+function placementAcknowledgement(subscriptionId) {
+  return `I accept that ${subscriptionId} will be governed by the landing zone policy set, including its existing resources.`;
+}
+
+function brownfieldDispositionRows() {
+  const bf = config.deploymentStrategy.brownfield;
+  if (!Array.isArray(bf.dispositionRows)) bf.dispositionRows = [];
+  return bf.dispositionRows;
+}
+
+/** One acknowledgement box per subscription the client wants placed. Rendered
+ *  rather than declared, because the required sentence depends on the row. */
+function renderDispositionAcknowledgements() {
+  const host = $('#dispositionAckHost');
+  if (!host) return;
+  host.innerHTML = '';
+  for (const row of brownfieldDispositionRows()) {
+    if (row.action !== 'place-now' || !(row.id || '').trim()) continue;
+    const expected = placementAcknowledgement(row.id.trim());
+
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const lbl = document.createElement('label');
+    lbl.htmlFor = 'ack_' + row.id.trim();
+    lbl.textContent = 'Type this to confirm placing ' + row.id.trim();
+    wrap.appendChild(lbl);
+
+    const sentence = document.createElement('p');
+    sentence.className = 'hint';
+    const code = document.createElement('code');
+    code.textContent = expected;
+    sentence.appendChild(code);
+    wrap.appendChild(sentence);
+
+    const input = document.createElement('input');
+    input.id = lbl.htmlFor;
+    input.type = 'text';
+    input.spellcheck = false;
+    input.value = row.acknowledgement || '';
+    input.addEventListener('input', () => { row.acknowledgement = input.value; onChange(input); });
+    wrap.appendChild(input);
+    host.appendChild(wrap);
   }
 }
 
@@ -1826,6 +1921,7 @@ function onChange(changedEl) {
     renderApprovals();
     renderEnvAbbreviations();
     renderPlannedNames();
+    renderDispositionAcknowledgements();
     updateStepStatus();
     if (steps[currentStep] && steps[currentStep].key === 'review') renderReview();
   });
@@ -1910,7 +2006,27 @@ function buildConfig() {
   } else {
     delete out.azure.subscriptions.plannedNames;
   }
-  if (out.deploymentStrategy.mode !== 'brownfield') delete out.deploymentStrategy.brownfield;
+  if (out.deploymentStrategy.mode !== 'brownfield') {
+    delete out.deploymentStrategy.brownfield;
+  } else {
+    // The repeater needs an array; the schema wants a map keyed by subscription
+    // so a disposition cannot be recorded twice for the same subscription.
+    const bf = out.deploymentStrategy.brownfield;
+    const dispositions = {};
+    for (const row of (bf.dispositionRows || [])) {
+      const id = (row.id || '').trim();
+      if (!id) continue;
+      const entry = { action: row.action === 'place-now' ? 'place-now' : 'defer' };
+      if (entry.action === 'place-now' && (row.acknowledgement || '').trim()) {
+        entry.acknowledgement = row.acknowledgement.trim();
+      }
+      if ((row.note || '').trim()) entry.note = row.note.trim();
+      dispositions[id] = entry;
+    }
+    delete bf.dispositionRows;
+    if (Object.keys(dispositions).length) bf.dispositions = dispositions;
+    else delete bf.dispositions;
+  }
   if (out.naming.standard !== 'custom') {
     delete out.naming.resourceGroupPattern;
     delete out.naming.resourcePattern;
@@ -2903,6 +3019,17 @@ function adoptConfig(loaded, tagRows) {
     defaultTagRows = Object.entries(loaded.naming.defaultTags).map(([k, v]) => ({ k, v: String(v == null ? '' : v) }));
   }
 
+  // The dispositions map is the contract; the repeater needs rows. Rebuild them
+  // on adoption or a re-imported configuration shows an empty table beside a
+  // populated answer record.
+  const bf = config.deploymentStrategy.brownfield;
+  if (bf) {
+    const adopted = (loaded.deploymentStrategy && loaded.deploymentStrategy.brownfield || {}).dispositions;
+    bf.dispositionRows = Object.entries(adopted || {}).map(([id, entry]) => ({
+      id, action: entry.action || 'defer', acknowledgement: entry.acknowledgement || '', note: entry.note || ''
+    }));
+  }
+
   rebind();
   return warnings;
 }
@@ -2919,6 +3046,7 @@ function rebind() {
   renderPolicyStep();
   renderManagementGroupNames();
   renderAllRepeaters();
+  renderDispositionAcknowledgements();
   onChange(null);
 }
 

@@ -9,7 +9,6 @@
     FunctionsToExport = @(
         'Invoke-LzRender'
         'Resolve-LzTemplate'
-        'Get-LzSchemaPaths'
         'Test-LzRenderGuards'
         'Test-LzSchemaDrift'
         'New-LzRenderContext'
@@ -32,6 +31,7 @@
         'Get-LzSchemaEnum'
         'Get-LzConstraintCounterexample'
         'Test-LzRendererCidrOverlap'
+        'Get-LzPlacementAcknowledgement'
         'New-LzGuardViolation'
     )
     CmdletsToExport   = @()

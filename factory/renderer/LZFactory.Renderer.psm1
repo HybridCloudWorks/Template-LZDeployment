@@ -29,10 +29,6 @@ foreach ($file in @($private) + @($public)) {
 Export-ModuleMember -Function @(
     'Invoke-LzRender'
     'Resolve-LzTemplate'
-    # Exported so factory/ci/Test-SchemaCoverage.ps1 enumerates schema paths the
-    # same way Test-LzSchemaDrift does. Two checks disagreeing about what counts
-    # as a path is exactly the drift both exist to prevent.
-    'Get-LzSchemaPaths'
     'Test-LzRenderGuards'
     'Test-LzSchemaDrift'
     'New-LzRenderContext'
@@ -55,5 +51,8 @@ Export-ModuleMember -Function @(
     'Get-LzSchemaEnum'
     'Get-LzConstraintCounterexample'
     'Test-LzRendererCidrOverlap'
+    # Composed in one place because the guard, the wizard's export block and the
+    # generated onboarding document all compare against the same sentence.
+    'Get-LzPlacementAcknowledgement'
     'New-LzGuardViolation'
 )

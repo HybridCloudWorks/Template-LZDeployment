@@ -4,6 +4,10 @@
   environments exclude those subscriptions and create new subscriptions that
   are meant for all new deployments … there is a process of integration …
   but that is out of scope of this").
+- **Amended 2026-08-31** (schema 3.2.0): exclusion is still the default and
+  still what happens to a subscription nobody mentions, but a client may now say
+  otherwise **per subscription**, and the amendment records what they were told
+  when they did. See "The 2026-08-31 amendment" below.
 - **Date**: 2026-08-17
 - **Deciders**: operator (directed the redefinition and the out-of-scope
   boundary); recorded during the schema 2.2.0 change set
@@ -72,3 +76,52 @@ what runs in them is a separate engagement outside this tool.
 - Narrows the Stage 11 scope recorded in the pre-0.11.0 checklists; those
   sections are rewritten in `docs/USER-CHECKLIST.md` and the emitted
   `USER-CHECKLIST.md.tmpl` / `README.md.tmpl`.
+
+
+## The 2026-08-31 amendment — per-subscription dispositions
+
+### What was wrong with a flat exclusion list
+
+`excludedSubscriptionIds` says what the landing zone must never touch. It has no
+way to say the opposite, so a client who genuinely wanted an existing
+subscription governed had two options: leave it out of the list, which is not a
+decision anybody records, or not use the factory. The list answered the
+question the ADR asked and none of the questions clients actually have.
+
+### What changed
+
+`deploymentStrategy.brownfield.dispositions` maps a subscription ID to
+`place-now` or `defer`. A subscription with no entry is excluded — the ADR 0018
+behaviour, unchanged, and still the answer for anything nobody thought about.
+
+**`place-now` requires a typed acknowledgement**, checked against an exact
+sentence naming that subscription, by the wizard at export and by render guard
+G30 at render. It is not a boolean, on the same reasoning as the
+state-access-flip workflow's typed confirmation: a checkbox records that
+somebody clicked, and what needs recording here is that somebody read what
+placing an existing subscription does.
+
+What it does is worth restating, because the third item is the one people miss:
+
+- **Audit** assignments start reporting non-compliance against resources built
+  under different rules. Information, not damage.
+- **Deny** assignments do not touch what exists — but they refuse the next
+  *change* to it. A pipeline that has worked for years can fail on its next run.
+- **DeployIfNotExists and Modify** assignments **create and change things**:
+  diagnostic settings, agent extensions, tags, private DNS records. On a
+  schedule, or on the next resource write.
+
+**`defer` generates a document.** `docs/subscription-onboarding.md` is emitted
+into the generated repository, listing the deferred subscriptions with the
+client's own notes and the procedure for onboarding one later — inventory the
+compliance impact first, exempt or fix before moving, then move, then record it
+back in the answer record. It is emitted only when something is actually
+deferred; a document about a decision nobody took is noise.
+
+### What did not change
+
+**Governance only. No resource is ever imported into Terraform state.** Placing
+a subscription moves it under a management group so policy applies to it. It
+does not bring its resources under Terraform management, and this factory still
+has no import path. That remains a separate engagement, exactly as this ADR
+said.

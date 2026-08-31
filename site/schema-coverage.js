@@ -101,13 +101,5 @@ globalThis.LZ_RECORDED_NOT_DEPLOYED = [
       "finops.costExports.storageAccountName",
       "finops.costExports.frequency"
     ]
-  },
-  {
-    "label": "Brownfield policy inventory",
-    "module": "(discovery)",
-    "impact": "Part of the brownfield surface that has no disposition mechanism yet: nothing inventories existing policy assignments in a tenant being adopted.",
-    "paths": [
-      "deploymentStrategy.brownfield.inventoryExistingPolicies"
-    ]
   }
 ];

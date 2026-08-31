@@ -414,6 +414,47 @@ function Test-LzRenderGuards {
         }
     }
 
+    # ── Brownfield dispositions ──────────────────────────────────────────────
+    # ADR 0018 made brownfield recognise-and-exclude. The amendment lets a
+    # client say otherwise per subscription, and G30 is what makes that a
+    # decision rather than a default: placing an existing subscription into the
+    # new hierarchy starts every ALZ assignment above it evaluating resources
+    # that were built under different rules, on the first apply, with no
+    # separate confirmation step anywhere else in the motion.
+    #
+    # The acknowledgement is a sentence naming the subscription rather than a
+    # boolean, on the same reasoning as the state-access-flip workflow's typed
+    # confirmation: the expected string is composed here from the configuration,
+    # so it cannot be satisfied by copying a value from a template.
+    $dispositions = Get-LzGuardConfigValue -Object $Config -Path 'deploymentStrategy.brownfield.dispositions' -Default $null
+    $excludedForDisposition = @(Get-LzGuardConfigValue -Object $Config -Path 'deploymentStrategy.brownfield.excludedSubscriptionIds' -Default @())
+    foreach ($subscriptionId in @(Get-LzPropertyNames $dispositions)) {
+        $entry = $dispositions.$subscriptionId
+        $action = [string](Get-LzGuardConfigValue -Object $entry -Path 'action' -Default '')
+
+        if ($action -eq 'place-now') {
+            $expected = Get-LzPlacementAcknowledgement -SubscriptionId $subscriptionId
+            $supplied = ([string](Get-LzGuardConfigValue -Object $entry -Path 'acknowledgement' -Default '')).Trim()
+            if ($supplied -ne $expected) {
+                $v += New-LzGuardViolation -Id 'G30' `
+                    -Message "Subscription $subscriptionId is set to place-now without a matching acknowledgement." `
+                    -Remediation "Placing an existing subscription applies the landing zone policy set to the resources already in it, on the first apply. Set deploymentStrategy.brownfield.dispositions.'$subscriptionId'.acknowledgement to exactly: $expected — or set action to defer, which leaves the subscription outside the hierarchy and generates written onboarding instructions for it."
+            }
+            # place-now and excluded are opposite instructions about the same
+            # subscription. G26 catches the slot case; this catches the pair.
+            if ($excludedForDisposition -contains $subscriptionId) {
+                $v += New-LzGuardViolation -Id 'G30' `
+                    -Message "Subscription $subscriptionId is on the brownfield exclusion list and also set to place-now." `
+                    -Remediation 'A subscription cannot be both kept out of the landing zone and placed into it. Remove it from excludedSubscriptionIds, or change the disposition to defer.'
+            }
+        }
+        elseif ($action -ne 'defer') {
+            $v += New-LzGuardViolation -Id 'G30' `
+                -Message "Subscription $subscriptionId carries an unrecognised disposition '$action'." `
+                -Remediation 'Use place-now or defer.'
+        }
+    }
+
     # ── State private-endpoint prerequisites ─────────────────────────────────
     # Day-0 state posture is public endpoint + Entra-only auth (ADR 0019); the
     # hardening overlay moves state behind a private endpoint and is only
@@ -519,6 +560,24 @@ function Test-LzRenderGuards {
         WarnCount  = $warns.Count
         CanRender  = ($blocks.Count -eq 0)
     }
+}
+
+function Get-LzPlacementAcknowledgement {
+    <#
+    .SYNOPSIS
+        The exact sentence a client must type to place an existing subscription.
+    .DESCRIPTION
+        Composed in one place because three consumers compare against it — the
+        render guard, the wizard's own export block, and the generated
+        documentation. Two of them agreeing and one not would produce a
+        configuration that exports and then refuses to render.
+
+        It names the subscription deliberately: a sentence that is the same for
+        every estate is one a client can paste without reading, and reading it
+        is the entire control.
+    #>
+    param([Parameter(Mandatory)][string]$SubscriptionId)
+    return "I accept that $SubscriptionId will be governed by the landing zone policy set, including its existing resources."
 }
 
 function Test-LzRendererCidrOverlap {

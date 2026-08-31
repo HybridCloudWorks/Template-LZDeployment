@@ -473,11 +473,13 @@ and secrets. [TODO.md](TODO.md) item 4.6 closed.
 
 ## 🔨 Found by the first-customer pre-flight (2026-08-30)
 
-Six entries from a review of this factory against a candidate first
+Eight entries from a review of this factory against a candidate first
 engagement, read as **overall** defects rather than ones specific to that
-tenant. §§21-23 were found while closing §18 and §20, not in the original
-review — §22 by the structural check §20 asked for, on its first run, and §23
-by the one thing that check structurally cannot do. The triage question throughout: does this stop the client copy from
+tenant. Only the first three came from the original review; §§21-25 were found
+while closing them — §22 by the structural check §20 asked for, on its first
+run, and §23, §24 and §25 by the two things that check structurally cannot do:
+see whether every *value* of a key means something, and see whether *all* of a
+key is read. The triage question throughout: does this stop the client copy from
 producing what the generated repo needs, or does it make the generated repo
 itself fail?
 
@@ -707,6 +709,43 @@ decision, not a gap to fill in passing. The wizard now says so in the option
 text and in a validation warning, which is the honest minimum until it is made
 real or retired.
 
+
+### 24. Discovery probed two things that were not subscriptions
+**Class: silent, and it sent operators after a subscription that does not exist.**
+**Found and fixed 2026-08-31.**
+
+`Invoke-LzDiscovery.ps1` built its probe list by sweeping *every* property value
+of `azure.subscriptions`. That was correct when the object held nothing but the
+six role slots. Subscription vending (ADR 0020, schema 2.2.0) added `mode` and
+`plannedNames` beside them, and the sweep was never revisited.
+
+So on **every export with the default `mode: create`**, discovery probed the
+literal string `create` and the `plannedNames` object as though each were a
+subscription ID, and reported both as *"Not visible to the signed-in account.
+Either the ID is wrong or the operator lacks access — the deployment will fail
+at plan time."* An operator clearing discovery findings before `-Apply` was
+being sent to chase access to a subscription that has never existed.
+
+Fixed by filtering on shape — a string matching the GUID form — rather than by
+naming the six slots, so it stays correct when a slot is added and cannot be
+quietly broken by the next key that lands there. The regression test extracts
+the real expression from the source and runs it, rather than restating it.
+
+Worth noting what this says about §20's structural check: it would not have
+caught this either. `azure.subscriptions` is read, thoroughly. The defect was in
+*how much* of it was read.
+
+### 25. `inventoryExistingPolicies` toggled something that always happened
+**Class: silent. Found and fixed 2026-08-31 while closing 6.7.**
+
+The schema said discovery records existing tenant-scope policy assignments *when
+this flag is set*. `Get-LzAzureInventory` inventoried them unconditionally and
+never read the flag, so turning it off changed nothing.
+
+Wired through. The one design point worth keeping: a declined inventory now
+throws rather than returning an empty list, because an empty list reads as *"the
+tenant has no policy assignments"* — a considerably more comfortable statement
+than *"nobody looked"*, and the wrong one to leave in a readiness report.
 
 ## 🎯 Needs a decision
 

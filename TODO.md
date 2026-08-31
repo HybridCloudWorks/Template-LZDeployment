@@ -1364,27 +1364,66 @@ Also unchanged: GitHub Pages cannot be enabled by a workflow. It needs
 enablement stays in the client checklist and `deploy-pages.yml` documents both
 routes.
 
-### 6.7 Per-subscription brownfield disposition — operator-directed 2026-08-30
+### 6.7 Per-subscription brownfield disposition — `[CLOSED 2026-08-31]`
 
-Narrower than first reported: `workloadProd` is **not** a render blocker — the
-schema requires the key, not a value, and G09's own comment says workload slots
-are placement-only. Only `management` (always) and `connectivity` (unless
-`model = none`) block. `-Manual` in `New-LzSubscriptions.ps1` already covers
-CSP / pay-as-you-go / sponsorship tenants.
+Operator-directed 2026-08-30, shipped as **schema 3.2.0** and an amendment to
+[decision 0018](docs/decisions/0018-brownfield-exclude-and-create.md).
 
-Build: a per-subscription choice between **place now** — with explicit
-consequence warnings, a typed acknowledgment recorded in `lz-config.json`, and
-a render guard that refuses without it — and **defer**, which generates an
-onboarding runbook for bringing the subscription in later. Plus an R11 billing
-readiness check so "this tenant cannot create subscriptions" is known on day
-one rather than at vending time, and one guard that names the deadlock instead
-of two that do not mention each other.
+`deploymentStrategy.brownfield.dispositions` maps a subscription ID to
+`place-now` or `defer`. A subscription with no entry is excluded — the ADR 0018
+behaviour, unchanged, and still the answer for anything nobody thought about.
+A flat exclusion list could say what the landing zone must never touch and had
+no way to say the opposite, so a client who genuinely wanted an existing
+subscription governed had to either leave it out of the list, which records no
+decision, or not use the factory.
 
-Governance only; no resource import.
-[ADR 0018](docs/decisions/0018-brownfield-exclude-and-create.md) needs
-amending, since it currently rules subscription placement out of scope.
+**place-now requires a typed acknowledgement**, checked against an exact
+sentence naming that subscription — by the wizard at export and by render guard
+**G30** at render, composed in one place (`Get-LzPlacementAcknowledgement`) so
+the two cannot disagree and produce a config that exports and then refuses to
+render. Not a boolean, on the state-access-flip precedent: a checkbox records
+that somebody clicked, and what needs recording is that somebody read what
+placing an existing subscription does to the resources already in it. The wizard
+spells out all three consequences, and the third — DeployIfNotExists and Modify
+assignments *create and change things* — is the one people miss.
 
----
+**defer generates `docs/subscription-onboarding.md`** into the generated
+repository, listing the deferred subscriptions with the client's own notes and
+the procedure for onboarding one later. The client-config-check workflow
+converts it to PDF, best-effort. Emitted only when something is deferred.
+
+**R11 billing readiness** joins the readiness checks: under
+`azure.subscriptions.mode = create`, an operator with no visible EA or MCA
+billing scope discovers it at `az account alias create` rather than before the
+engagement starts. A Fail blocks the broker's `-Apply` with no further wiring.
+It mirrors `Get-UsableBillingScopes` rather than calling it —
+`Resolve-BillingScope` closes over a script parameter and contains an
+interactive `Read-Host`, neither of which belongs in a readiness check.
+
+**Governance only. No resource is imported into Terraform state.** Placing a
+subscription applies policy to it; it does not bring its resources under
+Terraform management, and there is still no import path.
+
+### Two live defects found while closing 6.7
+
+**The discovery subscription sweep probed things that were not subscriptions.**
+`Invoke-LzDiscovery.ps1` swept *every* property value of `azure.subscriptions`
+into the probe list. That was correct when the object held nothing but six role
+slots; subscription vending (ADR 0020) added `mode` and `plannedNames`, and
+since then **every default export has probed the literal string `create` and the
+plannedNames object as though they were subscriptions**, reporting both as
+inaccessible with "the deployment will fail at plan time". An operator resolving
+discovery findings before `-Apply` was being sent after a subscription that does
+not exist. Now filtered on shape rather than by naming the six slots, so it
+stays correct when a slot is added.
+
+**`inventoryExistingPolicies` was a switch for something that happened anyway.**
+The schema said discovery inventories existing policy assignments when the flag
+is set; discovery inventoried them unconditionally and never read the flag.
+Wired through now, and a declined inventory is recorded as declined rather than
+as "no policy assignments found" — those are very different statements. The
+answer-coverage budget drops 41 → 40.
+
 
 ## Phase 5 — Release-time items
 

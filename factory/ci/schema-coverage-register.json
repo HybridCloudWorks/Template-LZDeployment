@@ -1,6 +1,6 @@
 {
   "$comment": "Answer-coverage ledger for factory/ci/Test-SchemaCoverage.ps1. Two lists, and the difference between them matters. consumedIndirectly names answers that DO reach a delivered artifact through a consumer that reads them structurally rather than by dotted name — the coverage scan cannot see them, but the client gets what they answered. recordedNotDeployed names answers that reach nothing but lz-config.json: the client is asked, the answer is preserved, and no estate is built from it. That second list is debt, it carries a budget that only ratchets down, and every entry owes a reason and a way out.",
-  "budget": 41,
+  "budget": 40,
   "consumedIndirectly": [
     {
       "consumer": "scripts/New-LzSubscriptions.ps1",
@@ -154,15 +154,6 @@
         "finops.budgets.contactEmails",
         "finops.costExports.storageAccountName",
         "finops.costExports.frequency"
-      ]
-    },
-    {
-      "label": "Brownfield policy inventory",
-      "module": "(discovery)",
-      "reason": "Part of the brownfield surface that has no disposition mechanism yet: nothing inventories existing policy assignments in a tenant being adopted.",
-      "resolution": "TODO 6.7 — per-subscription brownfield disposition.",
-      "paths": [
-        "deploymentStrategy.brownfield.inventoryExistingPolicies"
       ]
     }
   ]

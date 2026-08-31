@@ -88,12 +88,32 @@ function Invoke-LzDiscovery {
             $root = ''
             $cidrs = @()
             if ($config) {
+                # Only the values that are subscription IDs. Sweeping every
+                # property of azure.subscriptions was correct when the object
+                # held nothing but the six role slots; it stopped being correct
+                # when subscription vending added `mode` and `plannedNames`
+                # (ADR 0020), and every default export has since probed the
+                # literal string "create" and the plannedNames object as though
+                # they were subscriptions — reporting both as inaccessible with
+                # "the deployment will fail at plan time".
+                #
+                # Filtering on the shape rather than naming the six slots is
+                # deliberate: it stays correct when a slot is added, and it
+                # cannot be quietly broken by the next key that lands here.
                 $subs = @($config.azure.subscriptions.PSObject.Properties |
-                          ForEach-Object { $_.Value } | Where-Object { $_ })
+                          ForEach-Object { $_.Value } |
+                          Where-Object { $_ -is [string] -and $_ -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' })
                 $root = $config.azure.managementGroups.rootId
                 $cidrs = Get-LzPlannedCidrs -Config $config
             }
-            Get-LzAzureInventory -SubscriptionIds $subs -ManagementGroupRootId $root -PlannedAddressSpaces $cidrs
+            # Honours the brownfield answer rather than inventorying regardless.
+            $inventoryPolicies = $true
+            if ($config -and ($config.deploymentStrategy.PSObject.Properties.Name -contains 'brownfield') -and
+                ($config.deploymentStrategy.brownfield.PSObject.Properties.Name -contains 'inventoryExistingPolicies')) {
+                $inventoryPolicies = [bool]$config.deploymentStrategy.brownfield.inventoryExistingPolicies
+            }
+            Get-LzAzureInventory -SubscriptionIds $subs -ManagementGroupRootId $root -PlannedAddressSpaces $cidrs `
+                -InventoryPolicyAssignments $inventoryPolicies
         }
     }
 

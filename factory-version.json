@@ -4,7 +4,7 @@
   "status": "pre-release",
   "releasedAt": "2026-08-17",
   "contracts": {
-    "configSchemaVersion": "3.1.0",
+    "configSchemaVersion": "3.2.0",
     "$comment": "Must match the const value of schemaVersion in factory/schema/lz-config.schema.json. The renderer refuses any config whose schemaVersion it does not implement."
   },
   "landingZone": {

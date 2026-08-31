@@ -158,6 +158,33 @@ function New-LzRenderContext {
     $map['computed.workspacePrefix'] = $workspacePrefix
     $map['computed.hcpOrganization'] = $hcpOrganization
 
+    # Brownfield dispositions, split for the templates that render them. Both
+    # lists are objects rather than bare ids so a FOREACH body can reach the
+    # note the client left, and both are always present — empty rather than
+    # absent, because an unknown token path throws at render time.
+    $deferred = [System.Collections.Generic.List[object]]::new()
+    $placed = [System.Collections.Generic.List[object]]::new()
+    $dispositions = $null
+    if ((Test-LzHasProperty $Config 'deploymentStrategy') -and
+        (Test-LzHasProperty $Config.deploymentStrategy 'brownfield') -and
+        (Test-LzHasProperty $Config.deploymentStrategy.brownfield 'dispositions')) {
+        $dispositions = $Config.deploymentStrategy.brownfield.dispositions
+    }
+    foreach ($subscriptionId in @(Get-LzPropertyNames $dispositions | Sort-Object)) {
+        $entry = $dispositions.$subscriptionId
+        $note = if (Test-LzHasProperty $entry 'note') { [string]$entry.note } else { '' }
+        $record = [pscustomobject]@{ id = $subscriptionId; note = $note }
+        if ([string]$entry.action -eq 'defer') { $deferred.Add($record) } else { $placed.Add($record) }
+    }
+    $map['computed.deferredSubscriptions'] = @($deferred)
+    $map['computed.placedSubscriptions'] = @($placed)
+    $map['computed.hasDeferredSubscriptions'] = ($deferred.Count -gt 0)
+    # Used by the onboarding document's sample command. A real id from this
+    # estate rather than a <placeholder>: the document is read by someone about
+    # to run the command, and a placeholder is one more thing to get wrong.
+    $map['computed.placementExampleSubscription'] = if ($deferred.Count -gt 0) { $deferred[0].id } else { '<subscription-id>' }
+    $map['computed.hasPlacedSubscriptions'] = ($placed.Count -gt 0)
+
     # The subscription hosting the state storage account: the explicit
     # backend.azurerm.subscriptionId when supplied, else the management
     # subscription — the same fallback the broker and backend.hcl use.

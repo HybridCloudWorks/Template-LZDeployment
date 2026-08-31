@@ -1,7 +1,7 @@
 {
   "$comment": "Declares the correspondence between configuration keys and the Terraform variables each layer consumes. Test-LzSchemaDrift validates this in both directions: a mapped config key with no matching Terraform variable would silently do nothing, and a required Terraform variable that nothing feeds would stall apply waiting for input. Together with docs/refactor/COVERAGE.md this is the placeholder/question coverage gate.",
   "mapVersion": "2.1.0",
-  "targetSchemaVersion": "3.1.0",
+  "targetSchemaVersion": "3.2.0",
   "$pathConventions": {
     "plain": "A dotted path into lz-config.json, e.g. azure.primaryRegion.",
     "computed.*": "A value derived by the renderer rather than stored in the config. Exempt from the schema-existence check.",

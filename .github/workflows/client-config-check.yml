@@ -85,6 +85,28 @@ jobs:
         continue-on-error: true
         run: ./scripts/Invoke-CustomerEngagement.ps1 -ConfigPath ./client/lz-config.json -Phase validate
 
+      # A deferred brownfield subscription produces written onboarding
+      # instructions. The client hands those to whoever eventually owns the
+      # onboarding, which is rarely the person reading a CI artifact, so it
+      # travels as a PDF alongside the markdown. Best-effort: a missing
+      # converter is not a reason to fail the configuration check.
+      - name: Convert the onboarding document to PDF
+        if: steps.config.outputs.present == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          doc=client-rendered/docs/subscription-onboarding.md
+          if [ ! -f "$doc" ]; then
+            echo "No deferred subscriptions, so no onboarding document to convert."
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pandoc weasyprint
+          pandoc "$doc" --pdf-engine=weasyprint --metadata title="Onboarding a deferred subscription" \
+            -o client-rendered/docs/subscription-onboarding.pdf
+          echo "::notice::Onboarding instructions for the deferred subscriptions are in the build artifact, as both markdown and PDF."
+
       - name: Upload the rendered tree and the validation evidence
         if: steps.config.outputs.present == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

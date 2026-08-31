@@ -508,5 +508,66 @@ console.log('\n== 18. HCP Terraform is a state backend, not an execution model =
   ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
 }
 
+console.log('\n== 19. Placing an existing subscription is a decision, not a default ==');
+{
+  const ds = c.deploymentStrategy;
+  ds.mode = 'brownfield';
+  ds.brownfield = { excludedSubscriptionIds: [], inventoryExistingPolicies: true, dispositionRows: [] };
+  ok('brownfield with no dispositions exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+
+  const target = 'aaaaaaaa-0000-0000-0000-00000000000a';
+  ds.brownfield.dispositionRows.push({ id: target, action: 'defer', note: 'Legacy billing platform.' });
+  ok('deferring needs no acknowledgement', A.validate().errors.length === 0);
+  ok('a deferred row exports as defer',
+    A.buildConfig().deploymentStrategy.brownfield.dispositions[target].action === 'defer');
+  ok('and carries the note through',
+    A.buildConfig().deploymentStrategy.brownfield.dispositions[target].note === 'Legacy billing platform.');
+
+  // The whole point: place-now is refused until somebody types the sentence.
+  ds.brownfield.dispositionRows[0].action = 'place-now';
+  ok('placing without the acknowledgement blocks export',
+    A.validate().errors.some((e) => /needs the acknowledgement typed exactly/.test(e.message)));
+  ds.brownfield.dispositionRows[0].acknowledgement = 'yes I agree';
+  ok('a paraphrase does not count',
+    A.validate().errors.some((e) => /needs the acknowledgement typed exactly/.test(e.message)));
+  // Naming the subscription is what stops one sentence being pasted for all.
+  ds.brownfield.dispositionRows[0].acknowledgement =
+    'I accept that aaaaaaaa-0000-0000-0000-0000000000ff will be governed by the landing zone policy set, including its existing resources.';
+  ok('another subscription’s sentence does not count',
+    A.validate().errors.some((e) => /needs the acknowledgement typed exactly/.test(e.message)));
+  ds.brownfield.dispositionRows[0].acknowledgement =
+    `I accept that ${target} will be governed by the landing zone policy set, including its existing resources.`;
+  ok('the exact sentence clears it', !A.validate().errors.some((e) => /acknowledgement/.test(e.message)),
+    JSON.stringify(A.validate().errors, null, 1));
+
+  // Excluded and placed are opposite instructions about one subscription.
+  ds.brownfield.excludedSubscriptionIds = [target];
+  ok('excluded and placed cannot both be true',
+    A.validate().errors.some((e) => /both excluded and set to be placed/.test(e.message)));
+  ds.brownfield.excludedSubscriptionIds = [];
+
+  ds.brownfield.dispositionRows.push({ id: target, action: 'defer' });
+  ok('one subscription cannot have two dispositions',
+    A.validate().errors.some((e) => /more than one disposition/.test(e.message)));
+  ds.brownfield.dispositionRows.pop();
+
+  ds.brownfield.dispositionRows.push({ id: 'not-a-guid', action: 'defer' });
+  ok('a malformed subscription ID blocks export',
+    A.validate().errors.some((e) => /is not a subscription ID/.test(e.message)));
+  ds.brownfield.dispositionRows.pop();
+
+  // The repeater's working array must not reach the answer record: the schema
+  // is additionalProperties:false and would reject it.
+  const exported = A.buildConfig().deploymentStrategy.brownfield;
+  ok('the working rows are stripped from the export', !('dispositionRows' in exported), JSON.stringify(Object.keys(exported)));
+  ok('the export is keyed by subscription', exported.dispositions[target].action === 'place-now');
+  ok('and carries the acknowledgement', /^I accept that/.test(exported.dispositions[target].acknowledgement));
+
+  ds.mode = 'greenfield';
+  ok('greenfield drops the brownfield block entirely',
+    !('brownfield' in A.buildConfig().deploymentStrategy));
+  ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -32,12 +32,20 @@ function Get-LzAzureInventory {
         Hub/spoke CIDRs from the configuration. Existing VNets are checked for
         overlap against these — a collision discovered here costs minutes; the
         same collision discovered at apply costs a redeployment.
+    .PARAMETER InventoryPolicyAssignments
+        Honours deploymentStrategy.brownfield.inventoryExistingPolicies. The
+        probe used to run unconditionally, which made that answer a switch for
+        something that happened either way. It is read-only and its finding —
+        existing Deny assignments are the most common cause of a first apply
+        failing in a tenant believed to be empty — is worth having, so the
+        default is on; a client who declines it now actually declines it.
     #>
     [CmdletBinding()]
     param(
         [string[]]$SubscriptionIds = @(),
         [string]$ManagementGroupRootId = '',
-        [string[]]$PlannedAddressSpaces = @()
+        [string[]]$PlannedAddressSpaces = @(),
+        [bool]$InventoryPolicyAssignments = $true
     )
 
     Write-LzSection 'Azure discovery'
@@ -144,6 +152,12 @@ function Get-LzAzureInventory {
     # ── Governance ───────────────────────────────────────────────────────────
     $probes['Policy assignments'] = Invoke-LzProbe -Name 'Policy assignments' -ForbiddenRemediation `
         'Cannot list policy assignments. Existing Deny policies are the most common cause of a first apply failing in a tenant believed to be empty.' -Probe {
+        if (-not $InventoryPolicyAssignments) {
+            # Declined, not unavailable. Returning empty here would read as "the
+            # tenant has no policy assignments", which is a different and much
+            # more comfortable statement than "nobody looked".
+            throw [System.Management.Automation.ItemNotFoundException]::new('Declined: deploymentStrategy.brownfield.inventoryExistingPolicies is false, so existing policy assignments were not inventoried.')
+        }
         $pa = Invoke-LzAz policy assignment list --disable-scope-strict-match `
             --query '[].{Name:name,DisplayName:displayName,Scope:scope,EnforcementMode:enforcementMode,PolicyDefinitionId:policyDefinitionId}'
         if (-not $pa) { return @() }
