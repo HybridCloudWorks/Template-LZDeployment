@@ -7,6 +7,11 @@
   [decision 0011](0011-standardize-live-tree-on-azurerm.md)** ("the
   factory's client-facing render path… dual-backend capability is a
   product feature") — that product feature is now retired.
+- **Superseded in part** by
+  [decision 0023](0023-hcp-terraform-for-state-only.md) (2026-08-31): HCP
+  Terraform returns as a **state** backend. The reasoning below still holds for
+  execution — Terraform still runs in GitHub Actions, and the emitted destroy
+  gate is why.
 - **Date**: 2026-08-15
 - **Deciders**: operator (superseding directive, 2026-08-15); recorded by
   `docs-knowledge-curator`

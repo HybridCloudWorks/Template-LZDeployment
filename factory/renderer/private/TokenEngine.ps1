@@ -136,9 +136,54 @@ function New-LzRenderContext {
     $map['computed.layers'] = Get-LzActiveLayers -Config $Config
     $map['computed.layersCsv'] = (@($map['computed.layers']) -join ',')
 
-    # The emitted backend is azurerm-only (ADR 0015); the flag survives for
-    # templates that want to state it explicitly.
-    $map['computed.backendIsAzurerm'] = $true
+    # Which state backend is emitted (decision 0023, partially reversing 0015).
+    # Both flags and the workspace prefix are set unconditionally, empty rather
+    # than absent on the path that does not use them: an unknown template path
+    # THROWS at render time, so a token that exists only under one backend turns
+    # every #{{IF}} referencing it into a render failure on the other.
+    $backendType = if (Test-LzHasProperty $Config.backend 'type') { [string]$Config.backend.type } else { 'azurerm' }
+    $map['computed.backendIsAzurerm'] = ($backendType -eq 'azurerm')
+    $map['computed.backendIsHcp'] = ($backendType -eq 'hcp-terraform')
+
+    $workspacePrefix = ''
+    $hcpOrganization = ''
+    if ($backendType -eq 'hcp-terraform' -and (Test-LzHasProperty $Config.backend 'hcpTerraform')) {
+        $hcp = $Config.backend.hcpTerraform
+        $hcpOrganization = [string]$hcp.organization
+        if ((Test-LzHasProperty $hcp 'workspacePrefix') -and ([string]$hcp.workspacePrefix).Trim()) {
+            $workspacePrefix = ([string]$hcp.workspacePrefix).Trim()
+        }
+        else { $workspacePrefix = [string]$short }
+    }
+    $map['computed.workspacePrefix'] = $workspacePrefix
+    $map['computed.hcpOrganization'] = $hcpOrganization
+
+    # Brownfield dispositions, split for the templates that render them. Both
+    # lists are objects rather than bare ids so a FOREACH body can reach the
+    # note the client left, and both are always present — empty rather than
+    # absent, because an unknown token path throws at render time.
+    $deferred = [System.Collections.Generic.List[object]]::new()
+    $placed = [System.Collections.Generic.List[object]]::new()
+    $dispositions = $null
+    if ((Test-LzHasProperty $Config 'deploymentStrategy') -and
+        (Test-LzHasProperty $Config.deploymentStrategy 'brownfield') -and
+        (Test-LzHasProperty $Config.deploymentStrategy.brownfield 'dispositions')) {
+        $dispositions = $Config.deploymentStrategy.brownfield.dispositions
+    }
+    foreach ($subscriptionId in @(Get-LzPropertyNames $dispositions | Sort-Object)) {
+        $entry = $dispositions.$subscriptionId
+        $note = if (Test-LzHasProperty $entry 'note') { [string]$entry.note } else { '' }
+        $record = [pscustomobject]@{ id = $subscriptionId; note = $note }
+        if ([string]$entry.action -eq 'defer') { $deferred.Add($record) } else { $placed.Add($record) }
+    }
+    $map['computed.deferredSubscriptions'] = @($deferred)
+    $map['computed.placedSubscriptions'] = @($placed)
+    $map['computed.hasDeferredSubscriptions'] = ($deferred.Count -gt 0)
+    # Used by the onboarding document's sample command. A real id from this
+    # estate rather than a <placeholder>: the document is read by someone about
+    # to run the command, and a placeholder is one more thing to get wrong.
+    $map['computed.placementExampleSubscription'] = if ($deferred.Count -gt 0) { $deferred[0].id } else { '<subscription-id>' }
+    $map['computed.hasPlacedSubscriptions'] = ($placed.Count -gt 0)
 
     # The subscription hosting the state storage account: the explicit
     # backend.azurerm.subscriptionId when supplied, else the management
@@ -211,6 +256,22 @@ function New-LzRenderContext {
     # decides whether an empty value is a problem.
     $map['computed.policyValueDdosPlanId'] = $policy.Values['ddos_protection_plan_id']
     $map['computed.policyValueSecurityContact'] = $policy.Values['email_security_contact']
+
+    # Management-group names. The pinned library owns the shape; the client may
+    # own the names. Resolved once here so the emitted architecture definition,
+    # the subscription placement targets and the documentation cannot disagree
+    # about what a group is called — and management-group IDs are immutable, so
+    # a disagreement is not something a later apply corrects.
+    $groups = Resolve-LzManagementGroups -Config $Config
+    $map['computed.hasCustomArchitecture'] = [bool]$groups.IsCustom
+    $map['computed.architectureName'] = $groups.ArchitectureName
+    $map['computed.managementGroupId'] = $groups.Effective['management'].id
+    $map['computed.connectivityManagementGroupId'] = $groups.Effective['connectivity'].id
+    $map['computed.identityManagementGroupId'] = $groups.Effective['identity'].id
+    $map['computed.sandboxManagementGroupId'] = $groups.Effective['sandbox'].id
+    $map['computed.workloadManagementGroupId'] = $groups.WorkloadGroupId
+    $map['computed.alzLibraryPath'] = $groups.LibraryPath
+    $map['computed.alzLibraryRef'] = $groups.LibraryRef
 
     if ($Discovery) { $map['computed.discoveryAvailable'] = $true }
     else { $map['computed.discoveryAvailable'] = $false }
@@ -359,6 +420,105 @@ function Resolve-LzPolicySelection {
     }
 }
 
+function Resolve-LzManagementGroups {
+    <#
+    .SYNOPSIS
+        The management groups this estate will create, after the client's renames.
+    .DESCRIPTION
+        The `custom` hierarchy strategy renames the groups the pinned ALZ library
+        architecture defines. It does not re-shape them, and the distinction is
+        the whole design: an archetype is attached to a management group by the
+        architecture definition, so moving a group under a different parent
+        changes which policy set governs everything beneath it. Management-group
+        IDs are immutable in Azure, which makes that a one-way mistake per
+        client — the reason 6.4's scope is names first.
+
+        Returns the effective id and display name for every library group, the
+        architecture name to select, and the group the workload subscriptions
+        land in.
+    #>
+    param([Parameter(Mandatory)][object]$Config)
+
+    $catalog = Get-LzPolicyCatalog
+    $mg = $Config.azure.managementGroups
+    $isCustom = ($mg.strategy -eq 'custom')
+    $renames = if ($isCustom -and (Test-LzHasProperty $mg 'customHierarchy')) { $mg.customHierarchy } else { $null }
+
+    $effective = @{}
+    foreach ($group in @($catalog.managementGroups)) {
+        $id = [string]$group.id
+        $displayName = [string]$group.displayName
+        if ($renames -and (Test-LzHasProperty $renames $group.id)) {
+            $rename = $renames.($group.id)
+            if ((Test-LzHasProperty $rename 'id') -and ([string]$rename.id).Trim()) { $id = ([string]$rename.id).Trim() }
+            if ((Test-LzHasProperty $rename 'displayName') -and ([string]$rename.displayName).Trim()) {
+                $displayName = ([string]$rename.displayName).Trim()
+            }
+        }
+        $effective[$group.id] = @{ id = $id; displayName = $displayName; parent = [string]$group.parent; archetypes = @($group.archetypes) }
+    }
+
+    # Where workload subscriptions land. corp and online are the ALZ landing-zone
+    # children; landingzones places directly and forecloses telling them apart
+    # later without moving the subscription.
+    $placement = if (Test-LzHasProperty $mg 'workloadPlacement') { [string]$mg.workloadPlacement } else { 'corp' }
+    if (-not $effective.ContainsKey($placement)) { $placement = 'landingzones' }
+
+    $factoryVersionPath = Join-Path $PSScriptRoot '../../../factory-version.json'
+    $pinned = Get-Content $factoryVersionPath -Raw | ConvertFrom-Json -Depth 20
+
+    [pscustomobject]@{
+        IsCustom         = $isCustom
+        # The architecture name doubles as the emitted library file's basename,
+        # so it has to be a safe identifier rather than a display string.
+        ArchitectureName = if ($isCustom) { ([string]$Config.organization.companyShortName).ToLowerInvariant() } else { $catalog.library.architecture }
+        Effective        = $effective
+        WorkloadGroupId  = $effective[$placement].id
+        WorkloadLibraryId = $placement
+        LibraryPath      = [string]$pinned.avm.alzLibrary.path
+        LibraryRef       = [string]$pinned.avm.alzLibrary.ref
+    }
+}
+
+function New-LzAlzArchitectureDefinition {
+    <#
+    .SYNOPSIS
+        The client-named architecture definition, in the library's own format.
+    .DESCRIPTION
+        A flat management-group list carrying parent_id — not a nested tree.
+        Reading it as nested yields a plausible-looking hierarchy in which
+        everything is a child of the root, which is why this mirrors the pinned
+        library's shape edge for edge and only substitutes names.
+    #>
+    param([Parameter(Mandatory)][object]$Config)
+
+    $groups = Resolve-LzManagementGroups -Config $Config
+    $catalog = Get-LzPolicyCatalog
+
+    $managementGroups = foreach ($group in @($catalog.managementGroups)) {
+        $current = $groups.Effective[$group.id]
+        # The parent edge travels renamed too, or a renamed parent would leave
+        # its children pointing at a group that is never created.
+        $parent = if ($current.parent -and $groups.Effective.ContainsKey($current.parent)) {
+            $groups.Effective[$current.parent].id
+        }
+        else { $null }
+        [ordered]@{
+            archetypes   = @($current.archetypes)
+            display_name = $current.displayName
+            exists       = $false
+            id           = $current.id
+            parent_id    = $parent
+        }
+    }
+
+    [ordered]@{
+        '$schema'         = 'https://raw.githubusercontent.com/Azure/Azure-Landing-Zones-Library/main/schemas/architecture_definition.json'
+        name              = $groups.ArchitectureName
+        management_groups = @($managementGroups)
+    }
+}
+
 function ConvertTo-LzHclPolicyChanges {
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Changes)
     if ($Changes.Count -eq 0) { return '{}' }
@@ -409,12 +569,21 @@ function Get-LzActiveLayers {
     # LAST: it needs the hub (platform-connectivity) applied first, and guard
     # G27 refuses the flag without hub-spoke + centralized private DNS +
     # self-hosted runners.
+    #
+    # It is also azurerm-only, structurally: the layer reads the state storage
+    # account as a data source and puts a private endpoint in front of it. Under
+    # the HCP Terraform backend there is no storage account to harden, so the
+    # layer would emit a data source pointing at nothing. Guard G17 refuses the
+    # combination rather than letting it render.
     $pe = $null
     if ((Test-LzHasProperty $Config.backend 'azurerm') -and
         (Test-LzHasProperty $Config.backend.azurerm 'privateEndpoint')) {
         $pe = $Config.backend.azurerm.privateEndpoint
     }
-    if ($pe -and (Test-LzHasProperty $pe 'enabled') -and $pe.enabled) { $layers += 'state-hardening' }
+    $backendType = if (Test-LzHasProperty $Config.backend 'type') { [string]$Config.backend.type } else { 'azurerm' }
+    if ($backendType -eq 'azurerm' -and $pe -and (Test-LzHasProperty $pe 'enabled') -and $pe.enabled) {
+        $layers += 'state-hardening'
+    }
 
     return $layers
 }

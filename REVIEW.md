@@ -473,10 +473,13 @@ and secrets. [TODO.md](TODO.md) item 4.6 closed.
 
 ## 🔨 Found by the first-customer pre-flight (2026-08-30)
 
-Five entries from a review of this factory against a candidate first
+Eight entries from a review of this factory against a candidate first
 engagement, read as **overall** defects rather than ones specific to that
-tenant. §21 and §22 were found while closing §18 and §20, not in the original
-review — §22 by the structural check §20 asked for, on its first run. The triage question throughout: does this stop the client copy from
+tenant. Only the first three came from the original review; §§21-25 were found
+while closing them — §22 by the structural check §20 asked for, on its first
+run, and §23, §24 and §25 by the two things that check structurally cannot do:
+see whether every *value* of a key means something, and see whether *all* of a
+key is read. The triage question throughout: does this stop the client copy from
 producing what the generated repo needs, or does it make the generated repo
 itself fail?
 
@@ -572,7 +575,15 @@ or `governance.*` at all. The sharpest cases:
   referential-integrity validator and a schema conditional-`required`, with
   **zero** downstream readers. The IDs actually created come from the pinned
   library. Management-group IDs are immutable in Azure, so this is a one-shot
-  mistake per client.
+  mistake per client. **Closed 2026-08-31** (schema 3.0.0, ADR 0022) — but by
+  changing the question rather than answering it. The old shape invited a client
+  to describe a tree, and an arbitrary tree is not a thing this factory should
+  accept: an archetype is bound to a management group *by the architecture
+  definition*, so re-nesting a group changes which policy set governs everything
+  beneath it, silently and irreversibly. The key is now a rename map over the
+  library's own groups, the renderer emits a local architecture definition that
+  composes with the pinned library, and the subscription placement targets
+  follow the renames.
 - **`governance.policyBaseline.enforcementMode`** — audit versus deny,
   arguably the most consequential answer in the wizard, reaches only
   `docs/GOVERNANCE.md.tmpl`. Guards G02 and G03 warn about Sentinel and CMK;
@@ -674,6 +685,67 @@ coverage check ignores paths that appear only in comments, and this one
 appeared only in two comments in `TokenEngine.ps1` explaining a different
 matter. Counting a comment as consumption would have marked it covered — the
 exact inversion the check exists to prevent.
+### 23. `caf-minimal` and `caf-standard` emit identical Terraform
+**Class: silent — the fifth of its shape, and the one the new check cannot see.**
+**Found 2026-08-31 while closing 6.4; not fixed.**
+
+`azure.managementGroups.strategy` offers `caf-minimal` as "Platform + Landing
+Zones only". Rendering the same configuration under `caf-standard` and
+`caf-minimal` produces **byte-for-byte identical** output: the emitted
+architecture is the pinned library's `alz` in both cases, including Corp,
+Online, Sandbox and Decommissioned.
+
+The interesting part is why §20's structural check does not catch it.
+`Test-SchemaCoverage.ps1` verifies that a *key* is read by something that
+reaches a delivered artifact. `strategy` is read — by the manifest's
+`when` condition and by `buildConfig` — so the key is covered. What is not
+covered is that one of its three *values* changes nothing. A key-level check
+cannot see a value-level lie, and it would be wrong to claim otherwise.
+
+Not fixed here because trimming the hierarchy is not a rename: dropping Sandbox
+leaves `azure.subscriptions.sandbox` with nowhere to be placed, and dropping
+Corp and Online makes `workloadPlacement` meaningless. That is a design
+decision, not a gap to fill in passing. The wizard now says so in the option
+text and in a validation warning, which is the honest minimum until it is made
+real or retired.
+
+
+### 24. Discovery probed two things that were not subscriptions
+**Class: silent, and it sent operators after a subscription that does not exist.**
+**Found and fixed 2026-08-31.**
+
+`Invoke-LzDiscovery.ps1` built its probe list by sweeping *every* property value
+of `azure.subscriptions`. That was correct when the object held nothing but the
+six role slots. Subscription vending (ADR 0020, schema 2.2.0) added `mode` and
+`plannedNames` beside them, and the sweep was never revisited.
+
+So on **every export with the default `mode: create`**, discovery probed the
+literal string `create` and the `plannedNames` object as though each were a
+subscription ID, and reported both as *"Not visible to the signed-in account.
+Either the ID is wrong or the operator lacks access — the deployment will fail
+at plan time."* An operator clearing discovery findings before `-Apply` was
+being sent to chase access to a subscription that has never existed.
+
+Fixed by filtering on shape — a string matching the GUID form — rather than by
+naming the six slots, so it stays correct when a slot is added and cannot be
+quietly broken by the next key that lands there. The regression test extracts
+the real expression from the source and runs it, rather than restating it.
+
+Worth noting what this says about §20's structural check: it would not have
+caught this either. `azure.subscriptions` is read, thoroughly. The defect was in
+*how much* of it was read.
+
+### 25. `inventoryExistingPolicies` toggled something that always happened
+**Class: silent. Found and fixed 2026-08-31 while closing 6.7.**
+
+The schema said discovery records existing tenant-scope policy assignments *when
+this flag is set*. `Get-LzAzureInventory` inventoried them unconditionally and
+never read the flag, so turning it off changed nothing.
+
+Wired through. The one design point worth keeping: a declined inventory now
+throws rather than returning an empty list, because an empty list reads as *"the
+tenant has no policy assignments"* — a considerably more comfortable statement
+than *"nobody looked"*, and the wrong one to leave in a readiness report.
 
 ## 🎯 Needs a decision
 

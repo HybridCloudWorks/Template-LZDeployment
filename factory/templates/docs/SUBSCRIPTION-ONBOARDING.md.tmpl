@@ -1,0 +1,82 @@
+# Onboarding a deferred subscription — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
+rendered {{FACTORY-RAW:computed.generatedAt}}.
+
+This document exists because you chose to **defer** one or more existing
+subscriptions rather than place them into the new hierarchy on the first apply.
+That was the safe choice. This is how to undo it later, deliberately, when you
+are ready.
+
+## The subscriptions you deferred
+
+| Subscription | Your note |
+|---|---|
+#{{FOREACH sub IN computed.deferredSubscriptions}}
+| `{{FACTORY-RAW:sub.id}}` | {{FACTORY-RAW:sub.note}} |
+#{{ENDFOREACH}}
+
+Each is outside the landing zone's management-group hierarchy. Nothing in this
+estate places it, grants RBAC on it, or applies policy to it. That is not a gap
+in the deployment — it is what deferring means.
+
+## What changes when you onboard one
+
+The moment a subscription is moved under a management group, **every policy
+assignment above it begins evaluating the resources already inside it**. Nothing
+is deleted and nothing is reconfigured by the move itself, but:
+
+- **Audit and AuditIfNotExists** assignments start reporting non-compliance
+  against resources built under different rules. Expect a large number of
+  findings on the first evaluation cycle. This is information, not damage.
+- **Deny** assignments do not touch what exists, but they will refuse the next
+  *change* to it. A deployment pipeline that has worked for years can begin
+  failing on its next run — this is the consequence people are surprised by.
+- **DeployIfNotExists and Modify** assignments will remediate, on a schedule or
+  on the next resource write. They create and change things: diagnostic
+  settings, agent extensions, tags, private DNS records.
+
+Read that third bullet again before onboarding a production subscription.
+
+## The procedure
+
+1. **Inventory the compliance impact first, without moving anything.** Assign
+   the policy set to the subscription in `DoNotEnforce` mode, or use
+   `az policy state summarize` against the management group's assignments with
+   the subscription temporarily in a scratch group. You want the finding count
+   before you own it.
+
+2. **Fix, or exempt, before you move.** Azure Policy exemptions are scoped and
+   time-bound; use them for what you intend to fix later, and record an owner
+   and an expiry for each. An exemption with neither is a permanent gap wearing
+   a temporary label.
+
+3. **Move the subscription.**
+
+   ```
+   az account management-group subscription add \
+     --name <management-group-id> \
+     --subscription {{FACTORY-RAW:computed.placementExampleSubscription}}
+   ```
+
+   Choose the management group deliberately. Placing under
+   `{{FACTORY-RAW:computed.workloadManagementGroupId}}` gives it the same
+   posture as this estate's workload subscriptions.
+
+4. **Record it in the answer record.** Add the subscription to
+   `deploymentStrategy.brownfield.dispositions` with `action: place-now` and the
+   acknowledgement sentence the wizard requires, then re-render. Leaving it out
+   means the next regeneration will still describe it as deferred, and this
+   document will still be telling you to onboard it.
+
+5. **Watch the first remediation cycle.** DeployIfNotExists tasks run
+   asynchronously after the move. Check the remediation task list before
+   declaring the onboarding finished.
+
+## If you decide not to onboard it
+
+That is a supportable end state, not a loose end. Add the subscription to
+`deploymentStrategy.brownfield.excludedSubscriptionIds` and remove its
+disposition entry. It is then structurally excluded — never placed, never
+permissioned, never policied — and the render guards will refuse any
+configuration that contradicts that.

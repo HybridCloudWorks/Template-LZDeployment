@@ -70,6 +70,7 @@ function Test-LzTenantReadiness {
     $checks += Test-LzCanDeployNetworking -Config $Config -Azure $AzureInventory
     $checks += Test-LzGitHubAccess -Config $Config -GitHub $GitHubInventory
     $checks += Test-LzTerraformBackendAccess -Config $Config -Terraform $TerraformInventory
+    $checks += Test-LzBillingScopeAvailable -Config $Config
 
     foreach ($c in $checks) {
         switch ($c.Status) {
@@ -249,6 +250,64 @@ function Test-LzCanCreateSubscriptions {
 
     return New-LzReadinessCheck -Id 'R04' -Category 'Azure' -Name 'Subscription availability' -Status 'Pass' `
         -Detail "All $($probe.Count) configured subscriptions are accessible."
+}
+
+function Test-LzBillingScopeAvailable {
+    <#
+    .SYNOPSIS
+        R11 — can this operator actually create the subscriptions they planned?
+    .DESCRIPTION
+        Only meaningful under azure.subscriptions.mode = create (ADR 0020),
+        where scripts/New-LzSubscriptions.ps1 creates the planned subscriptions
+        through `az account alias create`. That call needs a billing scope, and
+        an operator with no visible billing account discovers it at the moment
+        of creation rather than here — after the tenant-confirmation step, with
+        the engagement already in motion.
+
+        The probe is a READ (`az billing account list`) and mirrors
+        Get-UsableBillingScopes in New-LzSubscriptions.ps1 rather than calling
+        it: that script's Resolve-BillingScope closes over a script parameter
+        and contains an interactive Read-Host, neither of which belongs in a
+        readiness check.
+
+        A Fail here blocks the broker's -Apply with no further wiring, which is
+        the point: creating identities and a state account for subscriptions
+        that cannot be created is work to undo.
+    #>
+    param([object]$Config)
+
+    $mode = 'create'
+    if (($Config.azure.subscriptions.PSObject.Properties.Name -contains 'mode') -and $Config.azure.subscriptions.mode) {
+        $mode = [string]$Config.azure.subscriptions.mode
+    }
+    if ($mode -ne 'create') {
+        return New-LzReadinessCheck -Id 'R11' -Category 'Azure' -Name 'Billing scope for subscription vending' -Status 'Pass' `
+            -Detail 'Not applicable: the configuration consumes existing subscriptions rather than creating them.'
+    }
+
+    $accountsRaw = & az billing account list --output json 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $accountsRaw) {
+        return New-LzReadinessCheck -Id 'R11' -Category 'Azure' -Name 'Billing scope for subscription vending' -Status 'Fail' `
+            -Detail 'No billing account is visible to the signed-in account.' `
+            -Remediation 'Subscription vending needs a billing scope: an EA enrollment account, or an MCA billing profile with an invoice section. Have the billing administrator grant this operator the relevant role, or set azure.subscriptions.mode to existing and supply subscription IDs that already exist. CSP, pay-as-you-go and sponsorship estates cannot vend through the alias API at all — use the broker''s -Manual path.'
+    }
+
+    $accounts = @($accountsRaw | ConvertFrom-Json)
+    $agreements = @($accounts | ForEach-Object {
+            $direct = $_.PSObject.Properties['agreementType']
+            if ($direct) { [string]$direct.Value }
+            elseif ($_.PSObject.Properties['properties']) { [string]$_.properties.agreementType }
+        } | Where-Object { $_ } | Sort-Object -Unique)
+
+    $vendable = @($agreements | Where-Object { $_ -in @('EnterpriseAgreement', 'MicrosoftCustomerAgreement') })
+    if ($vendable.Count -eq 0) {
+        return New-LzReadinessCheck -Id 'R11' -Category 'Azure' -Name 'Billing scope for subscription vending' -Status 'Fail' `
+            -Detail "Visible billing agreements [$($agreements -join ', ')] cannot vend subscriptions through the alias API." `
+            -Remediation 'The alias API supports Enterprise Agreement and Microsoft Customer Agreement only. For CSP, pay-as-you-go or sponsorship, create the subscriptions by hand and set azure.subscriptions.mode to existing, or run the broker''s -Manual path.'
+    }
+
+    return New-LzReadinessCheck -Id 'R11' -Category 'Azure' -Name 'Billing scope for subscription vending' -Status 'Pass' `
+        -Detail "$($accounts.Count) billing account(s) visible, including [$($vendable -join ', ')]."
 }
 
 function Test-LzCanCreatePolicies {

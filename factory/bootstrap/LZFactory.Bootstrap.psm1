@@ -1011,6 +1011,102 @@ function Set-LzAzurermBackend {
     }
 }
 
+function Set-LzHcpBackend {
+    <#
+    .SYNOPSIS
+        Reconcile one HCP Terraform workspace per layer, for STATE ONLY.
+    .DESCRIPTION
+        Recovered with the dual-backend feature (decision 0023, partially
+        reversing 0015). One workspace per layer, never one shared: collapsing
+        two layers into one state is the single most common way a landing zone
+        becomes unrecoverable.
+
+        Every workspace is created with execution-mode `local`. Terraform runs
+        in GitHub Actions and TFC only holds the state, because the emitted plan
+        and apply workflows gate destroys on a saved plan file and TFC remote
+        runs cannot produce one. A workspace that already exists is left alone
+        rather than reconfigured — the broker does not silently take execution
+        away from an operator who set it deliberately — but its mode is reported
+        so a mismatch is visible.
+
+        Reads $env:TFE_TOKEN (the operator's HCP API token) and writes it to the
+        generated repository as the TF_API_TOKEN secret. That secret is the one
+        static credential this pipeline carries; Azure authentication stays
+        GitHub OIDC, so TFC holds no credential to the tenant.
+    #>
+    param([object]$Config, [string[]]$Layers)
+
+    $prefix = Get-LzConfigValue $Config.backend.hcpTerraform 'workspacePrefix' $Config.organization.companyShortName
+
+    # No token is a PENDING, not a failure: the rest of the bootstrap is still
+    # worth completing. The shape must match the success return, because the
+    # caller reads .pending and .workspaces off it — the recovered version
+    # returned a bare string array here and threw under StrictMode.
+    if (-not $env:TFE_TOKEN) {
+        return [pscustomobject]@{
+            pending    = @("Set TFE_TOKEN and re-run the broker with -Apply to create the $prefix-* HCP Terraform workspaces and set the TF_API_TOKEN secret.")
+            workspaces = @()
+            organization = $Config.backend.hcpTerraform.organization
+            workspacePrefix = $prefix
+        }
+    }
+
+    $headers = @{ Authorization = "Bearer $env:TFE_TOKEN"; 'Content-Type' = 'application/vnd.api+json' }
+    $org = $Config.backend.hcpTerraform.organization
+    $workspaces = @()
+    $pending = @()
+
+    foreach ($layer in $Layers) {
+        $name = "$prefix-$layer"
+        $encoded = [uri]::EscapeDataString($name)
+        $created = $false
+        try {
+            $workspace = Invoke-RestMethod -Method Get -Headers $headers `
+                -Uri "https://app.terraform.io/api/v2/organizations/$org/workspaces/$encoded"
+        }
+        catch {
+            if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
+            $body = @{
+                data = @{
+                    type       = 'workspaces'
+                    attributes = @{
+                        name             = $name
+                        'execution-mode' = 'local'
+                        description      = "Terraform state for the $layer layer. State only: Terraform runs in GitHub Actions."
+                    }
+                }
+            } | ConvertTo-Json -Depth 10
+            $workspace = Invoke-RestMethod -Method Post -Headers $headers -Body $body `
+                -Uri "https://app.terraform.io/api/v2/organizations/$org/workspaces"
+            $created = $true
+        }
+
+        $mode = [string]$workspace.data.attributes.'execution-mode'
+        if ($mode -and $mode -ne 'local') {
+            $pending += "HCP Terraform workspace '$name' runs in '$mode' execution mode. The emitted workflows gate destroys on a saved plan file, which remote runs cannot produce — set the workspace to local execution."
+        }
+        $workspaces += [pscustomobject]@{
+            name          = $workspace.data.attributes.name
+            id            = $workspace.data.id
+            executionMode = $mode
+            created       = $created
+        }
+    }
+
+    $repo = "$($Config.github.ownerName)/$($Config.github.repositoryName)"
+    $env:TFE_TOKEN | & gh secret set TF_API_TOKEN --repo $repo
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to set the TF_API_TOKEN GitHub secret.' }
+    Set-LzGitHubVariable -Repository $repo -Name 'TF_CLOUD_ORGANIZATION' -Value $org
+    Set-LzGitHubVariable -Repository $repo -Name 'TF_CLOUD_WORKSPACE_PREFIX' -Value $prefix
+
+    return [pscustomobject]@{
+        pending         = @($pending)
+        workspaces      = @($workspaces)
+        organization    = $org
+        workspacePrefix = $prefix
+    }
+}
+
 function Get-LzLayerEnvironment {
     param([object]$Config, [string]$Layer)
     switch ($Layer) {
@@ -1320,8 +1416,16 @@ function Invoke-LzBootstrap {
             Set-LzGitHubVariable -Repository $plan.repository -Name 'AZURE_TENANT_ID' -Value $config.azure.tenantId
             Set-LzGitHubVariable -Repository $plan.repository -Name 'FACTORY_VERSION' -Value $config.factoryVersion
             $audit.branchProtection = Set-LzBranchProtection -Config $config
-            # azurerm state storage was already reconciled before the
-            # identities (see above); azurerm is the only backend (ADR 0015).
+            # azurerm state storage was already reconciled BEFORE the identities
+            # (see above), because the identity records carry data-plane grants
+            # scoped to the storage account. HCP Terraform has no such ordering
+            # constraint — it needs the repository, not a scope — so it is
+            # reconciled here, alongside the other repository configuration.
+            if ($config.backend.type -eq 'hcp-terraform') {
+                $hcp = Set-LzHcpBackend -Config $config -Layers $plan.layers
+                $audit.backend.details = $hcp
+                $audit.pendingUserActivities += @($hcp.pending)
+            }
             $audit.backend.status = if ($audit.pendingUserActivities.Count) { 'pending-user-activity' } else { 'reconciled' }
             # Registration pendings are appended AFTER backend.status so a
             # reconciled backend is not mislabeled by a slow (server-side,

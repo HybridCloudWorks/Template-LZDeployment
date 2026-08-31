@@ -7,10 +7,34 @@ rendered {{FACTORY-RAW:computed.generatedAt}}.
 
 Backend type: **{{FACTORY-RAW:backend.type}}**.
 
+#{{IF computed.backendIsAzurerm}}
 State uses Azure Storage with Entra authentication (`use_oidc = true`,
 `use_azuread_auth = true`, supplied through each layer's `backend.hcl`).
 Shared keys and embedded backend credentials are prohibited; the committed
-`backend "azurerm" {}` block is deliberately empty.
+`backend "azurerm" {}` block is deliberately empty, so state can be migrated
+by re-initialising rather than by editing committed Terraform.
+
+**There is no long-lived secret anywhere in this path.** Both the workflows and
+any operator reach state through Entra ID.
+#{{ELSE}}
+State lives in HCP Terraform, organization
+`{{FACTORY-RAW:computed.hcpOrganization}}`, one workspace per layer named
+`{{FACTORY-RAW:computed.workspacePrefix}}-<layer>`.
+
+**Terraform still runs in GitHub Actions.** The workspaces are created in
+`local` execution mode and must stay that way. This is not a preference: the
+plan and apply workflows refuse an unreviewed destroy by inspecting a saved plan
+file (`terraform plan -out=tfplan`, then `terraform show -json tfplan`), and HCP
+Terraform remote runs do not support `-out`. Switching a workspace to remote
+execution removes that gate from both workflows, with no error and no warning.
+Decision 0023 records the reasoning.
+
+Azure authentication is unchanged — GitHub OIDC, no stored Azure credential —
+so HCP Terraform holds no credential to this tenant. It does carry **one static
+credential the Azure Storage backend does not have**: the `TF_API_TOKEN`
+repository secret, which the Terraform CLI needs to reach the workspace state
+API. Rotate it with the same cadence as any other repository secret.
+#{{ENDIF}}
 
 ## Isolation model
 

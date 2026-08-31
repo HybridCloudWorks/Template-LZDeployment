@@ -1,7 +1,7 @@
 {
   "$comment": "Declares the correspondence between configuration keys and the Terraform variables each layer consumes. Test-LzSchemaDrift validates this in both directions: a mapped config key with no matching Terraform variable would silently do nothing, and a required Terraform variable that nothing feeds would stall apply waiting for input. Together with docs/refactor/COVERAGE.md this is the placeholder/question coverage gate.",
   "mapVersion": "2.1.0",
-  "targetSchemaVersion": "2.2.0",
+  "targetSchemaVersion": "3.2.0",
   "$pathConventions": {
     "plain": "A dotted path into lz-config.json, e.g. azure.primaryRegion.",
     "computed.*": "A value derived by the renderer rather than stored in the config. Exempt from the schema-existence check.",
@@ -23,7 +23,7 @@
     },
     "global": {
       "variablesFile": "terraform/live/global/variables.tf",
-      "$comment": "architecture_name and the five *_management_group_id placement targets default in variables.tf to the id set the pinned ALZ library architecture defines; they are operator-overridable alongside a custom architecture, so no wizard question feeds them (ADR 0017). The state_* trio feeds the remote-state read of platform-management. The two policy_assignment_* maps are computed rather than mapped to a config path: the wizard's governance.policySelection answers carry no management-group edge, and resolving them against site/alz-policy-catalog.json is what supplies it — see Resolve-LzPolicySelection.",
+      "$comment": "The state_* trio feeds the remote-state read of platform-management. The two policy_assignment_* maps and the six architecture/placement ids are computed rather than mapped to a config path: the wizard's answers carry no management-group edge and no library id set, and resolving them against site/alz-policy-catalog.json is what supplies both — see Resolve-LzPolicySelection and Resolve-LzManagementGroups. The placement ids are emitted always, not left to variables.tf defaults: under the custom strategy the hierarchy carries the client's names, and a placement target still spelling the library's would put every subscription into a management group that does not exist.",
       "variables": {
         "root_parent_management_group_id": "azure.managementGroups.rootId",
         "org_prefix": "organization.companyShortName",
@@ -35,19 +35,19 @@
         "workload_prod_subscription_id": "azure.subscriptions.workloadProd",
         "workload_nonprod_subscription_id": "azure.subscriptions.workloadNonProd",
         "sandbox_subscription_id": "azure.subscriptions.sandbox",
-        "architecture_name": "literal:defaulted-alz",
-        "management_management_group_id": "literal:defaulted-library-id",
-        "connectivity_management_group_id": "literal:defaulted-library-id",
-        "identity_management_group_id": "literal:defaulted-library-id",
-        "landing_zones_management_group_id": "literal:defaulted-library-id",
-        "sandbox_management_group_id": "literal:defaulted-library-id",
+        "architecture_name": "computed.architectureName",
+        "management_management_group_id": "computed.managementGroupId",
+        "connectivity_management_group_id": "computed.connectivityManagementGroupId",
+        "identity_management_group_id": "computed.identityManagementGroupId",
+        "sandbox_management_group_id": "computed.sandboxManagementGroupId",
         "state_resource_group_name": "backend.azurerm.resourceGroupName",
         "state_storage_account_name": "backend.azurerm.storageAccountName",
         "state_container_name": "backend.azurerm.containerName",
         "policy_assignment_changes": "computed.policyAssignmentChanges",
         "policy_assignment_management_groups": "computed.policyAssignmentManagementGroups",
         "ddos_protection_plan_id": "governance.policySelection.values.ddos_protection_plan_id",
-        "email_security_contact": "governance.policySelection.values.email_security_contact"
+        "email_security_contact": "governance.policySelection.values.email_security_contact",
+        "workload_management_group_id": "computed.workloadManagementGroupId"
       }
     },
     "platform-connectivity": {

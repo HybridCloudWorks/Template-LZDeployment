@@ -19,7 +19,7 @@
  * Constants
  * ------------------------------------------------------------------- */
 
-const SCHEMA_VERSION = '2.2.0';
+const SCHEMA_VERSION = '3.2.0';
 
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
@@ -175,7 +175,7 @@ function defaultConfig() {
       tenantId: '', primaryRegion: '', primaryRegionCode: '', drRegion: '', drRegionCode: '',
       allowedLocations: [],
       subscriptions: { mode: 'create', management: '', identity: '', connectivity: '', workloadProd: '', workloadNonProd: '', sandbox: '' },
-      managementGroups: { rootId: '', strategy: 'caf-standard', customHierarchy: [] }
+      managementGroups: { rootId: '', strategy: 'caf-standard', workloadPlacement: 'corp', customHierarchy: {} }
     },
     github: {
       ownershipModel: 'organization', ownerName: '', enterpriseSlug: '', repositoryName: '',
@@ -188,6 +188,7 @@ function defaultConfig() {
     },
     backend: {
       type: 'azurerm',
+      hcpTerraform: { organization: '', workspacePrefix: '', acknowledgedResourceLimit: false },
       azurerm: {
         resourceGroupName: '', storageAccountName: '', containerName: 'tfstate',
         subscriptionId: '', useAzureAdAuth: true,
@@ -197,6 +198,10 @@ function defaultConfig() {
     deploymentStrategy: {
       mode: 'greenfield',
       brownfield: {
+        // Working shape for the repeater. buildConfig turns it into the
+        // schema's dispositions map and strips it; adoptConfig turns the map
+        // back into rows, the same round trip defaultTagRows makes.
+        dispositionRows: [],
         excludedSubscriptionIds: [], inventoryExistingPolicies: true
       }
     },
@@ -362,6 +367,8 @@ const RE = {
   region: /^[a-z0-9]+$/,
   regionCode: /^[a-z]{2,5}$/,
   email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/,
+  // Azure's own management-group name rule, mirrored from the schema pattern.
+  mgId: /^[A-Za-z0-9._()-]{1,90}$/,
   ghLogin: /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/,
   repoName: /^[A-Za-z0-9._-]{1,100}$/,
   storageAccount: /^[a-z0-9]{3,24}$/,
@@ -443,16 +450,66 @@ function validate() {
     warn('azure', 'The same subscription ID is used for more than one role. This is valid but collapses the isolation boundary between those planes.');
   }
   if (!a.managementGroups.rootId.trim()) err('azure', 'Root management group ID is required.');
+  // Said out loud rather than left for the client to discover in the rendered
+  // output: caf-minimal and caf-standard emit byte-identical Terraform today,
+  // because the architecture is the pinned library's `alz` in both cases.
+  if (a.managementGroups.strategy === 'caf-minimal') {
+    warn('azure', 'CAF minimal currently deploys the same management groups as CAF standard: the hierarchy comes from the pinned Azure Landing Zones library architecture, which includes Corp, Online, Sandbox and Decommissioned. Trimming it needs a decision about where the sandbox subscription lands (REVIEW §23).');
+  }
   if (a.managementGroups.strategy === 'custom') {
-    const h = a.managementGroups.customHierarchy || [];
-    if (!h.length) err('azure', 'Custom hierarchy selected but no management groups defined.');
-    const ids = new Set(h.map((x) => x.id));
-    for (const mg of h) {
-      if (!mg.id || !mg.displayName || !mg.parentId) { err('azure', 'Every custom management group needs an ID, display name and parent.'); break; }
-      if (mg.parentId !== a.managementGroups.rootId && !ids.has(mg.parentId)) {
-        err('azure', `Management group "${mg.id}" has parent "${mg.parentId}", which is neither the root nor another entry.`);
+    const renames = a.managementGroups.customHierarchy || {};
+    const library = new Map(POLICY_CATALOG.managementGroups.map((g) => [g.id, g]));
+    const claimed = new Map();
+    let changed = 0;
+    // Without the catalog there is nothing to rename FROM: every key is
+    // unverifiable and every collision invisible. Skipping the checks and
+    // exporting anyway would produce an architecture definition full of groups
+    // no archetype governs, which is the failure the checks below exist to
+    // prevent — so the absence of the catalog is itself the blocker.
+    if (library.size === 0) {
+      err('azure', 'The generated policy catalog did not load, so the management groups this estate would rename cannot be checked. Reload the wizard, or choose a standard hierarchy strategy.');
+    }
+    for (const [libraryId, rename] of Object.entries(renames)) {
+      // A key the pinned library does not define would emit a management group
+      // no archetype claims: created, governed by nothing, and immutable.
+      if (library.size && !library.has(libraryId)) {
+        err('azure', `"${libraryId}" is not a management group the pinned Azure Landing Zones library defines, so renaming it would create a group no archetype governs.`);
+        continue;
       }
-      if (mg.id === mg.parentId) err('azure', `Management group "${mg.id}" is its own parent.`);
+      const id = (rename.id || '').trim();
+      const displayName = (rename.displayName || '').trim();
+      if (id && !RE.mgId.test(id)) {
+        err('azure', `"${id}" is not a valid management group ID: 1-90 characters, letters, digits, and . _ ( ) - only.`);
+      }
+      // "Changed" means the effective value DIFFERS from the library's, not
+      // that a field was filled in. Restating a library name is not a rename,
+      // and counting it as one would let a config emit a local architecture
+      // identical to the pinned library — pinning the estate to a copy that a
+      // library bump can no longer update.
+      const group = library.get(libraryId);
+      if ((id && (!group || id !== group.id)) || (displayName && (!group || displayName !== group.displayName))) changed++;
+      if (id) {
+        if (claimed.has(id)) {
+          err('azure', `Two management groups would both be created as "${id}". IDs must be unique across the hierarchy.`);
+        }
+        claimed.set(id, libraryId);
+      }
+    }
+    // A rename that collides with a group keeping its library name is the same
+    // collision, one step less obvious.
+    for (const group of library.values()) {
+      const own = renames[group.id];
+      if (own && (own.id || '').trim()) continue;
+      if (claimed.has(group.id)) {
+        err('azure', `"${group.id}" is both the library name of one management group and the chosen ID of another. Rename both, or neither.`);
+      }
+    }
+    if (!changed) {
+      err('azure', 'Custom hierarchy selected but every management group still carries its library name. Rename at least one, or choose a standard strategy.');
+    }
+    const root = a.managementGroups.rootId.trim();
+    if (root && claimed.has(root)) {
+      err('azure', 'A management group cannot take the ID of the root the hierarchy is parented under.');
     }
   }
   if (a.managementGroups.rootId === a.tenantId) {
@@ -481,8 +538,23 @@ function validate() {
 
   // --- Backend
   const b = config.backend;
-  if (b.type !== 'azurerm') {
-    err('backend', 'azurerm is the only supported state backend (ADR 0015).');
+  if (b.type === 'hcp-terraform') {
+    if (!b.hcpTerraform.organization.trim()) {
+      err('backend', 'HCP Terraform organization is required. Workspaces are created as {prefix}-{layer} inside it.');
+    }
+    // The free tier caps resources UNDER MANAGEMENT, and holding state
+    // elsewhere does not change that — the resources are in the state HCP
+    // Terraform stores. A landing zone commonly exceeds it.
+    const estimate = estimateRum();
+    if (estimate > 500 && !b.hcpTerraform.acknowledgedResourceLimit) {
+      err('backend', `This configuration estimates ${estimate} managed resources, above the HCP Terraform free tier's 500. Confirm the plan covers it, or choose the Azure Storage backend.`);
+    }
+    if (b.azurerm.privateEndpoint && b.azurerm.privateEndpoint.enabled) {
+      err('backend', 'The state private-endpoint overlay hardens an Azure Storage account this backend does not create. Clear it, or choose the Azure Storage backend.');
+    }
+    warn('backend', 'HCP Terraform adds one static credential the Azure Storage path does not have: TF_API_TOKEN, set as a repository secret so the Terraform CLI can reach the workspace. Azure authentication is unchanged — GitHub OIDC, no stored Azure credential.');
+  } else if (b.type !== 'azurerm') {
+    err('backend', `"${b.type}" is not a supported state backend. Choose Azure Storage or HCP Terraform.`);
   } else {
     if (!b.azurerm.resourceGroupName.trim()) err('backend', 'State resource group name is required.');
     if (!RE.storageAccount.test(b.azurerm.storageAccountName || '')) {
@@ -511,6 +583,23 @@ function validate() {
   // --- Deployment strategy
   const ds = config.deploymentStrategy;
   if (ds.mode === 'brownfield') {
+    const rows = brownfieldDispositionRows();
+    const seen = new Set();
+    for (const row of rows) {
+      const id = (row.id || '').trim();
+      if (!id) { err('deploymentStrategy', 'Every brownfield disposition needs a subscription ID.'); continue; }
+      if (!RE.guid.test(id)) { err('deploymentStrategy', `"${id}" is not a subscription ID.`); continue; }
+      if (seen.has(id)) err('deploymentStrategy', `Subscription ${id} has more than one disposition. It can only have one.`);
+      seen.add(id);
+      if (row.action === 'place-now') {
+        if ((row.acknowledgement || '').trim() !== placementAcknowledgement(id)) {
+          err('deploymentStrategy', `Placing ${id} needs the acknowledgement typed exactly. Placing an existing subscription starts every policy assignment above it evaluating the resources already in it — Deny assignments will refuse the next change to them, and DeployIfNotExists assignments will create and change things. Choose Defer if that is not what you want.`);
+        }
+        if ((ds.brownfield.excludedSubscriptionIds || []).includes(id)) {
+          err('deploymentStrategy', `Subscription ${id} is both excluded and set to be placed. It cannot be both.`);
+        }
+      }
+    }
     const excluded = ds.brownfield.excludedSubscriptionIds || [];
     for (const id of excluded) {
       if (!RE.guid.test(id)) err('deploymentStrategy', `Excluded subscription ID "${id}" is not a valid GUID.`);
@@ -826,11 +915,11 @@ function estimateRum() {
 
   const regions = 1 + (c.azure.drRegion ? 1 : 0);
 
+  // Custom is a rename of the standard shape, not a different one: the group
+  // count is the pinned library's either way.
   n += c.azure.managementGroups.strategy === 'caf-minimal'
     ? w.managementGroupsCafMinimal
-    : c.azure.managementGroups.strategy === 'custom'
-      ? (c.azure.managementGroups.customHierarchy || []).length
-      : w.managementGroupsCafStandard;
+    : w.managementGroupsCafStandard;
 
   // Scaled by what the client actually selected: a disabled group is an
   // assignment that is never created, not one created and ignored.
@@ -967,17 +1056,39 @@ function renderRepeater(host) {
       lbl.htmlFor = `rep_${path.replace(/\W/g, '_')}_${idx}_${f.key}`;
       wrap.appendChild(lbl);
 
-      const input = document.createElement('input');
-      input.type = f.type === 'float' ? 'number' : 'text';
-      if (f.type === 'float') input.step = 'any';
+      // A repeater column can be a closed set. Without this a field whose
+      // legal values are an enum is a free-text box that fails at the schema
+      // instead of at the point of entry.
+      const isSelect = f.type === 'select' && Array.isArray(f.options);
+      const input = document.createElement(isSelect ? 'select' : 'input');
+      if (isSelect) {
+        for (const option of f.options) {
+          const opt = document.createElement('option');
+          opt.value = typeof option === 'string' ? option : option.value;
+          opt.textContent = typeof option === 'string' ? option : option.label;
+          input.appendChild(opt);
+        }
+      }
+      else {
+        input.type = f.type === 'float' ? 'number' : 'text';
+        if (f.type === 'float') input.step = 'any';
+        input.placeholder = f.placeholder || '';
+        input.spellcheck = false;
+      }
       input.id = lbl.htmlFor;
-      input.placeholder = f.placeholder || '';
-      input.spellcheck = false;
 
       const v = row[f.key];
-      input.value = Array.isArray(v) ? v.join(', ') : (v === undefined || v === null ? '' : v);
+      if (isSelect) {
+        const first = typeof f.options[0] === 'string' ? f.options[0] : f.options[0].value;
+        input.value = (v === undefined || v === null || v === '') ? first : v;
+        // Seed the row so an untouched select still exports the value it shows.
+        row[f.key] = input.value;
+      }
+      else {
+        input.value = Array.isArray(v) ? v.join(', ') : (v === undefined || v === null ? '' : v);
+      }
 
-      input.addEventListener('input', () => {
+      input.addEventListener(isSelect ? 'change' : 'input', () => {
         const raw = input.value;
         if (f.type === 'csv') row[f.key] = csv(raw);
         else if (f.type === 'csvint') row[f.key] = csv(raw).map((x) => parseInt(x, 10)).filter((x) => !Number.isNaN(x));
@@ -1283,6 +1394,177 @@ function renderPolicyAdvanced() {
     row.appendChild(enforce);
     host.appendChild(row);
   }
+}
+
+/** The exact sentence a client must type to place an existing subscription
+ *  into the hierarchy. Composed here the same way Get-LzPlacementAcknowledgement
+ *  composes it in the renderer — the wizard blocking export on one sentence
+ *  while guard G30 expects another would export a configuration that then
+ *  refuses to render. It names the subscription on purpose: a sentence that is
+ *  the same for every estate is one a client can paste without reading, and
+ *  reading it is the entire control. */
+function placementAcknowledgement(subscriptionId) {
+  return `I accept that ${subscriptionId} will be governed by the landing zone policy set, including its existing resources.`;
+}
+
+function brownfieldDispositionRows() {
+  const bf = config.deploymentStrategy.brownfield;
+  if (!Array.isArray(bf.dispositionRows)) bf.dispositionRows = [];
+  return bf.dispositionRows;
+}
+
+/** One acknowledgement box per subscription the client wants placed. Rendered
+ *  rather than declared, because the required sentence depends on the row. */
+function renderDispositionAcknowledgements() {
+  const host = $('#dispositionAckHost');
+  if (!host) return;
+  host.innerHTML = '';
+  for (const row of brownfieldDispositionRows()) {
+    if (row.action !== 'place-now' || !(row.id || '').trim()) continue;
+    const expected = placementAcknowledgement(row.id.trim());
+
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const lbl = document.createElement('label');
+    lbl.htmlFor = 'ack_' + row.id.trim();
+    lbl.textContent = 'Type this to confirm placing ' + row.id.trim();
+    wrap.appendChild(lbl);
+
+    const sentence = document.createElement('p');
+    sentence.className = 'hint';
+    const code = document.createElement('code');
+    code.textContent = expected;
+    sentence.appendChild(code);
+    wrap.appendChild(sentence);
+
+    const input = document.createElement('input');
+    input.id = lbl.htmlFor;
+    input.type = 'text';
+    input.spellcheck = false;
+    input.value = row.acknowledgement || '';
+    input.addEventListener('input', () => { row.acknowledgement = input.value; onChange(input); });
+    wrap.appendChild(input);
+    host.appendChild(wrap);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Management-group names
+ *
+ * The library's shape, the client's names. Only ids and display names are
+ * editable: re-nesting a group changes which archetype it inherits, and so
+ * which policy set governs everything beneath it — a decision Azure will not
+ * let anyone take back, because management-group IDs are immutable.
+ * ------------------------------------------------------------------- */
+
+function managementGroupRenames() {
+  const mg = config.azure.managementGroups;
+  if (!mg.customHierarchy || Array.isArray(mg.customHierarchy)) mg.customHierarchy = {};
+  return mg.customHierarchy;
+}
+
+/** What this estate will actually create for a library group. */
+function effectiveManagementGroup(group) {
+  const rename = managementGroupRenames()[group.id] || {};
+  return {
+    id: (rename.id || '').trim() || group.id,
+    displayName: (rename.displayName || '').trim() || group.displayName
+  };
+}
+
+function setManagementGroupRename(libraryId, field, value) {
+  const renames = managementGroupRenames();
+  const entry = renames[libraryId] || (renames[libraryId] = {});
+  entry[field] = value;
+  // Keep the working config free of empty shells; buildConfig strips the
+  // no-op renames, but an empty object here would make the "did the client
+  // change anything" test lie.
+  if (!(entry.id || '').trim() && !(entry.displayName || '').trim()) delete renames[libraryId];
+}
+
+function renderManagementGroupNames() {
+  const host = $('#mgRenameHost');
+  if (!host) return;
+  host.innerHTML = '';
+
+  const groups = POLICY_CATALOG.managementGroups;
+  if (!groups.length) {
+    host.innerHTML = '<p class="hint">The generated policy catalog did not load, so the library’s management groups cannot be listed.</p>';
+    return;
+  }
+
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  for (const group of groups) {
+    const row = document.createElement('div');
+    row.className = 'mg-row';
+
+    const origin = document.createElement('div');
+    origin.className = 'mg-origin';
+    const code = document.createElement('code');
+    code.textContent = group.id;
+    origin.appendChild(code);
+    const parent = document.createElement('span');
+    parent.className = 'mg-parent';
+    // Show the parent as the client will see it, not as the library names it.
+    parent.textContent = group.parent
+      ? 'under ' + effectiveManagementGroup(byId.get(group.parent) || { id: group.parent, displayName: group.parent }).id
+      : 'top of the hierarchy';
+    origin.appendChild(parent);
+    row.appendChild(origin);
+
+    const rename = managementGroupRenames()[group.id] || {};
+
+    const idWrap = document.createElement('div');
+    idWrap.className = 'rep-field';
+    const idLabel = document.createElement('label');
+    idLabel.textContent = 'ID';
+    idLabel.htmlFor = 'mgid_' + group.id;
+    const idInput = document.createElement('input');
+    idInput.id = idLabel.htmlFor;
+    idInput.type = 'text';
+    idInput.spellcheck = false;
+    idInput.placeholder = group.id;
+    idInput.value = rename.id || '';
+    idInput.addEventListener('input', () => {
+      setManagementGroupRename(group.id, 'id', idInput.value);
+      onChange(idInput);
+    });
+    idWrap.appendChild(idLabel); idWrap.appendChild(idInput);
+    row.appendChild(idWrap);
+
+    const nameWrap = document.createElement('div');
+    nameWrap.className = 'rep-field';
+    const nameLabel = document.createElement('label');
+    nameLabel.textContent = 'Display name';
+    nameLabel.htmlFor = 'mgname_' + group.id;
+    const nameInput = document.createElement('input');
+    nameInput.id = nameLabel.htmlFor;
+    nameInput.type = 'text';
+    nameInput.placeholder = group.displayName;
+    nameInput.value = rename.displayName || '';
+    nameInput.addEventListener('input', () => {
+      setManagementGroupRename(group.id, 'displayName', nameInput.value);
+      onChange(nameInput);
+    });
+    nameWrap.appendChild(nameLabel); nameWrap.appendChild(nameInput);
+    row.appendChild(nameWrap);
+
+    host.appendChild(row);
+  }
+}
+
+function applyManagementGroupPrefix(prefix) {
+  const clean = (prefix || '').trim();
+  if (!clean) return;
+  for (const group of POLICY_CATALOG.managementGroups) {
+    setManagementGroupRename(group.id, 'id', clean + group.id);
+  }
+  renderManagementGroupNames();
+}
+
+function resetManagementGroupNames() {
+  config.azure.managementGroups.customHierarchy = {};
+  renderManagementGroupNames();
 }
 
 function renderPolicyStep() {
@@ -1653,6 +1935,7 @@ function onChange(changedEl) {
     renderApprovals();
     renderEnvAbbreviations();
     renderPlannedNames();
+    renderDispositionAcknowledgements();
     updateStepStatus();
     if (steps[currentStep] && steps[currentStep].key === 'review') renderReview();
   });
@@ -1713,13 +1996,51 @@ function buildConfig() {
   if (!out.backend.azurerm.subscriptionId) {
     out.backend.azurerm.subscriptionId = out.azure.subscriptions.management;
   }
-  if (out.azure.managementGroups.strategy !== 'custom') delete out.azure.managementGroups.customHierarchy;
+  if (out.azure.managementGroups.strategy !== 'custom') {
+    delete out.azure.managementGroups.customHierarchy;
+  } else {
+    // Only real renames travel. An entry that restates the library's own name
+    // would read as a decision nobody made, and would have to be re-verified
+    // against the library on every bump.
+    const renames = out.azure.managementGroups.customHierarchy || {};
+    const library = new Map(POLICY_CATALOG.managementGroups.map((g) => [g.id, g]));
+    for (const [libraryId, rename] of Object.entries(renames)) {
+      const group = library.get(libraryId);
+      const id = (rename.id || '').trim();
+      const displayName = (rename.displayName || '').trim();
+      const kept = {};
+      if (id && (!group || id !== group.id)) kept.id = id;
+      if (displayName && (!group || displayName !== group.displayName)) kept.displayName = displayName;
+      if (Object.keys(kept).length) renames[libraryId] = kept;
+      else delete renames[libraryId];
+    }
+  }
   if ((out.azure.subscriptions.mode || 'create') === 'create') {
     out.azure.subscriptions.plannedNames = plannedSubscriptionNames();
   } else {
     delete out.azure.subscriptions.plannedNames;
   }
-  if (out.deploymentStrategy.mode !== 'brownfield') delete out.deploymentStrategy.brownfield;
+  if (out.deploymentStrategy.mode !== 'brownfield') {
+    delete out.deploymentStrategy.brownfield;
+  } else {
+    // The repeater needs an array; the schema wants a map keyed by subscription
+    // so a disposition cannot be recorded twice for the same subscription.
+    const bf = out.deploymentStrategy.brownfield;
+    const dispositions = {};
+    for (const row of (bf.dispositionRows || [])) {
+      const id = (row.id || '').trim();
+      if (!id) continue;
+      const entry = { action: row.action === 'place-now' ? 'place-now' : 'defer' };
+      if (entry.action === 'place-now' && (row.acknowledgement || '').trim()) {
+        entry.acknowledgement = row.acknowledgement.trim();
+      }
+      if ((row.note || '').trim()) entry.note = row.note.trim();
+      dispositions[id] = entry;
+    }
+    delete bf.dispositionRows;
+    if (Object.keys(dispositions).length) bf.dispositions = dispositions;
+    else delete bf.dispositions;
+  }
   if (out.naming.standard !== 'custom') {
     delete out.naming.resourceGroupPattern;
     delete out.naming.resourcePattern;
@@ -1735,6 +2056,14 @@ function buildConfig() {
   if (!out.connectivity.expressRoute.enabled) out.connectivity.expressRoute = { enabled: false };
   if (!out.connectivity.vpn.enabled) out.connectivity.vpn = { enabled: false };
   if (!out.security.defender.securityContactEmail) delete out.security.defender.securityContactEmail;
+  // Only the chosen backend's block travels. The schema requires whichever one
+  // `type` names, and carrying the other would record coordinates for a state
+  // location this estate does not use.
+  if (out.backend.type === 'hcp-terraform') {
+    if (!out.backend.hcpTerraform.workspacePrefix) delete out.backend.hcpTerraform.workspacePrefix;
+  } else {
+    delete out.backend.hcpTerraform;
+  }
   // Policy selection travels only where it says something. A value for a
   // default nothing asks for any more would otherwise outlive the choice that
   // required it and be rendered into the layer regardless.
@@ -2704,6 +3033,17 @@ function adoptConfig(loaded, tagRows) {
     defaultTagRows = Object.entries(loaded.naming.defaultTags).map(([k, v]) => ({ k, v: String(v == null ? '' : v) }));
   }
 
+  // The dispositions map is the contract; the repeater needs rows. Rebuild them
+  // on adoption or a re-imported configuration shows an empty table beside a
+  // populated answer record.
+  const bf = config.deploymentStrategy.brownfield;
+  if (bf) {
+    const adopted = (loaded.deploymentStrategy && loaded.deploymentStrategy.brownfield || {}).dispositions;
+    bf.dispositionRows = Object.entries(adopted || {}).map(([id, entry]) => ({
+      id, action: entry.action || 'defer', acknowledgement: entry.acknowledgement || '', note: entry.note || ''
+    }));
+  }
+
   rebind();
   return warnings;
 }
@@ -2718,7 +3058,9 @@ function rebind() {
   buildCheckGroup('sentinelConnectors', SENTINEL_CONNECTORS, 'security.sentinel.dataConnectors');
   buildCheckGroup('complianceFrameworks', COMPLIANCE_FRAMEWORKS, 'governance.complianceFrameworks');
   renderPolicyStep();
+  renderManagementGroupNames();
   renderAllRepeaters();
+  renderDispositionAcknowledgements();
   onChange(null);
 }
 
@@ -2767,7 +3109,19 @@ function init() {
   buildCheckGroup('sentinelConnectors', SENTINEL_CONNECTORS, 'security.sentinel.dataConnectors');
   buildCheckGroup('complianceFrameworks', COMPLIANCE_FRAMEWORKS, 'governance.complianceFrameworks');
   renderPolicyStep();
+  renderManagementGroupNames();
   renderAllRepeaters();
+
+  // The prefix control is a convenience over the rename table, not a stored
+  // answer: it writes ids and is then forgotten.
+  $('#az_mg_applyPrefix')?.addEventListener('click', () => {
+    applyManagementGroupPrefix($('#az_mg_prefix').value);
+    onChange($('#az_mg_applyPrefix'));
+  });
+  $('#az_mg_resetNames')?.addEventListener('click', () => {
+    resetManagementGroupNames();
+    onChange($('#az_mg_resetNames'));
+  });
 
   // Track whether the user has hand-edited the repo name, so the derived
   // default stops overwriting it.

@@ -94,8 +94,8 @@
   },
   "properties": {
     "schemaVersion": {
-      "const": "2.2.0",
-      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement. 2.2.0: subscription vending (azure.subscriptions.mode=create with plannedNames, ADR 0020), brownfield redefined as exclude-and-create (ADR 0018), state-storage private-endpoint flag (ADR 0019)."
+      "const": "3.2.0",
+      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement. 3.2.0: per-subscription brownfield dispositions — an existing subscription is either placed into the new hierarchy now, against a typed acknowledgement, or deferred with onboarding instructions generated for it (ADR 0018 amended). Additive. 3.1.0: a second state backend — HCP Terraform for STATE ONLY, execution stays in GitHub Actions (decision 0023, partially reversing 0015). Additive: backend.type widens to an enum that still defaults to azurerm. 3.0.0 (BREAKING): azure.managementGroups.customHierarchy changed from a free-form flat list of {id, displayName, parentId} into a map of renames keyed by the pinned ALZ library's own management-group ids. The old shape let a client describe a tree the factory never built — it had zero readers — and re-nesting a group changes which archetype, and so which policy set, it inherits. Names are now honoured; structure is the library's. Also adds azure.managementGroups.workloadPlacement. 2.2.0: subscription vending (azure.subscriptions.mode=create with plannedNames, ADR 0020), brownfield redefined as exclude-and-create (ADR 0018), state-storage private-endpoint flag (ADR 0019)."
     },
     "factoryVersion": {
       "type": "string",
@@ -294,31 +294,33 @@
               "description": "caf-standard: Platform (Identity/Management/Connectivity) + Landing Zones (Corp/Online) + Sandbox + Decommissioned. caf-minimal: Platform + Landing Zones only. custom: hierarchy supplied in customHierarchy."
             },
             "customHierarchy": {
-              "type": "array",
-              "description": "Required when strategy=custom. Flat list; parentId references another entry's id or rootId.",
-              "items": {
+              "type": "object",
+              "description": "Required when strategy=custom. Renames of the management groups the pinned ALZ library architecture defines, keyed by the library's own id (alz, platform, landingzones, corp, online, sandbox, decommissioned, management, connectivity, identity, ...). Only names change. The parent edges and the archetype each group carries stay exactly as the library declares them, because re-nesting a group changes which archetype it inherits and therefore which policy set applies to everything beneath it — a decision that cannot be corrected later, since management-group IDs are immutable in Azure. An entry that renames nothing is stripped from the export. Keys are validated against the generated catalog by the wizard and by render guard G29, not by this schema, because the id set belongs to the pinned library rather than to the contract.",
+              "additionalProperties": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "id",
-                  "displayName",
-                  "parentId"
-                ],
                 "properties": {
                   "id": {
                     "type": "string",
-                    "pattern": "^[A-Za-z0-9._()-]{1,90}$"
+                    "pattern": "^[A-Za-z0-9._()-]{1,90}$",
+                    "description": "Management-group ID to create instead of the library id. Immutable once applied."
                   },
                   "displayName": {
                     "type": "string",
-                    "minLength": 1
-                  },
-                  "parentId": {
-                    "type": "string",
-                    "minLength": 1
+                    "minLength": 1,
+                    "description": "Display name to create instead of the library display name. Changeable later, unlike the ID."
                   }
                 }
               }
+            },
+            "workloadPlacement": {
+              "enum": [
+                "corp",
+                "online",
+                "landingzones"
+              ],
+              "default": "corp",
+              "description": "Which landing-zone management group the workload subscriptions are placed under. This does NOT change how many policy assignments they inherit, which is the usual misreading: online carries none of its own and inherits landingzones' plus the root's either way. What it buys is the ability to differentiate corp from online later without moving the subscription, since corp adds five deny-style assignments that online does not. Placing directly at landingzones forecloses that distinction."
             }
           },
           "allOf": [
@@ -447,10 +449,15 @@
     "backend": {
       "type": "object",
       "additionalProperties": false,
-      "description": "azurerm is the only backend (ADR 0015, superseding decision 0011's render-path scope-out). State authenticates with OIDC + Azure AD; values are emitted into per-layer backend.hcl files.",
+      "description": "Where Terraform state lives. Two backends are supported: azurerm (the default — a storage account this factory creates and hardens) and hcp-terraform (HCP Terraform holds the state; GitHub Actions still runs Terraform). Decision 0023 explains why HCP Terraform is state-only: the emitted destroy gates are built on a saved plan file, and TFC remote execution does not support terraform plan -out, so remote execution would silently delete that gate from both workflows.",
       "properties": {
         "type": {
-          "const": "azurerm"
+          "enum": [
+            "azurerm",
+            "hcp-terraform"
+          ],
+          "default": "azurerm",
+          "description": "Selects the state backend, and with it which broker steps run and which backend template is emitted."
         },
         "azurerm": {
           "type": "object",
@@ -492,11 +499,75 @@
               }
             }
           }
+        },
+        "hcpTerraform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "organization"
+          ],
+          "description": "HCP Terraform as a state backend only. Azure authentication is unchanged — GitHub OIDC, no stored Azure credential — so TFC never holds a credential to this tenant. It does mean one static credential the azurerm path does not have: TF_API_TOKEN, which the Terraform CLI needs to reach the workspace. Decision 0023 states that trade explicitly.",
+          "properties": {
+            "organization": {
+              "type": "string",
+              "minLength": 1,
+              "description": "HCP Terraform organization that owns the workspaces."
+            },
+            "workspacePrefix": {
+              "type": "string",
+              "description": "Workspaces are created as {prefix}-{layer}. Defaults to organization.companyShortName."
+            },
+            "executionMode": {
+              "const": "local",
+              "default": "local",
+              "description": "Fixed. State only: Terraform runs in GitHub Actions and TFC stores the state. Remote execution is not a configuration away — the emitted plan and apply workflows gate destroys on a saved plan file (terraform plan -out=tfplan, then terraform show -json tfplan), and TFC remote runs do not support -out. Allowing remote would delete that gate from both workflows without saying so, which is why this is a const rather than an enum with a default."
+            },
+            "acknowledgedResourceLimit": {
+              "type": "boolean",
+              "default": false,
+              "description": "The HCP Terraform free tier caps managed resources under management at 500, and state-only changes nothing about that — the resources are in the state TFC holds. A full landing zone commonly exceeds it. The wizard estimates the count and requires an explicit acknowledgement before allowing hcp-terraform when the estimate is over the cap."
+            }
+          }
         }
       },
       "required": [
-        "type",
-        "azurerm"
+        "type"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "hcp-terraform"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "hcpTerraform"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "azurerm"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "azurerm"
+            ]
+          }
+        }
       ]
     },
     "deploymentStrategy": {
@@ -530,6 +601,34 @@
               "type": "boolean",
               "default": true,
               "description": "Discovery records existing tenant-scope policy assignments into discovery-inventory.json and the generated governance doc, so overlap with the ALZ library is visible before first apply. Read-only."
+            },
+            "dispositions": {
+              "type": "object",
+              "description": "What happens to each pre-existing subscription, keyed by subscription ID. ADR 0018 made brownfield recognise-and-exclude; this is the amendment that lets a client say otherwise, per subscription, and records what they were told when they did. Governance only — no resource is ever imported into Terraform state. A subscription with no entry here is excluded, which is the safe default and the ADR 0018 behaviour.",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "action"
+                ],
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "place-now",
+                      "defer"
+                    ],
+                    "description": "place-now: the subscription is placed into the new management-group hierarchy on the first apply, so every ALZ policy assignment above it begins evaluating its EXISTING resources immediately. defer: the subscription stays outside the hierarchy and the factory generates written instructions for onboarding it later."
+                  },
+                  "acknowledgement": {
+                    "type": "string",
+                    "description": "Required for place-now, and checked against an exact expected sentence naming this subscription — render guard G30 refuses the configuration otherwise. It is deliberately not a boolean: the point is that somebody read what placing an existing subscription does to the resources already in it, and a checkbox records only that somebody clicked."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "Free text carried into the generated onboarding document, for whatever the client needs to remember about this subscription."
+                  }
+                }
+              }
             }
           }
         }

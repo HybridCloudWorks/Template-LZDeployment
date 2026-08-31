@@ -1210,68 +1210,220 @@ every emitted backend sets `use_azuread_auth = true`, so answering "no"
 produced a configuration that could not reach its own state. Now an export
 blocker.
 
-### 6.4 Make the management-group hierarchy real — operator-directed 2026-08-30
+### 6.4 Make the management-group hierarchy real — `[CLOSED 2026-08-31]`
 
-`azure.managementGroups.customHierarchy` has a full UI and no readers, and
-management-group IDs are immutable. Confirmed buildable: the `alz` provider
-accepts a local directory in `library_references`, and the architecture
-definition is a **flat list carrying `parent_id`** (not a nested tree — see the
-test in `Test-CI.ps1`), so emitting a client-specific
-`<org>.alz_architecture_definition.json` into the generated repo alongside the
-pinned remote ref is a contained change.
+Operator-directed 2026-08-30, shipped 2026-08-31 as **schema 3.0.0** and
+[decision 0022](docs/decisions/0022-management-group-names-not-shape.md).
 
-Scope decision taken: client-named groups in the standard ALZ shape first;
-arbitrary structure deferred, because re-nesting changes which archetype — and
-so which policy set — each group inherits. Trim the `customHierarchy` editor to
-match rather than leaving it promising more than it delivers.
+`customHierarchy` had a repeater UI, a referential-integrity validator and a
+schema conditional-`required`, and zero readers. It is now a **rename map** over
+the pinned library's own management groups, keyed by the library's id, carrying
+only `id` and `displayName`.
 
-### 6.5 Second state backend (HCP Terraform) — operator-directed 2026-08-30
+The reshape is the decision, not a simplification of it. An archetype is bound
+to a management group *by the architecture definition*, so re-nesting a group
+changes which policy set governs everything beneath it — silently, and
+irreversibly, since management-group IDs are immutable in Azure. Offering
+arbitrary structure meant offering a client that outcome by accident.
 
-Reverses [ADR 0015](docs/decisions/0015-azurerm-only-emitted-backend.md), so it
-opens with a superseding ADR and a schema major bump (`backend.type` is a
-`const` under `additionalProperties: false`). TFC uses **dynamic provider
-credentials** so no Azure credential is stored; the TFC token itself is the one
-static credential the azurerm path does not have, and the ADR must say so.
-Touches: schema, wizard, `_layer/backend.tf.tmpl`, the `terraform_remote_state`
-block in `global/main.tf.tmpl` (which hard-codes `backend = "azurerm"`), guard
-G17, the broker, and the emitted workflows. `state-hardening` is meaningless
-under TFC and must be refused.
+- Under `strategy = custom` the renderer emits
+  `lib/architecture_definitions/<org>.alz_architecture_definition.json` and
+  appends a local `custom_url` entry to the `alz` provider's
+  `library_references`, **composing** with the pinned remote reference rather
+  than replacing it. Parent edges travel renamed, or a renamed parent leaves
+  orphans no archetype governs.
+- `provider "alz"`'s `library_references` was a hardcoded literal with no
+  tokens. Templated now, so the pin is stated once in `factory-version.json`.
+- The five `*_management_group_id` placement targets are emitted from the same
+  resolution rather than defaulted in `variables.tf` — a renamed hierarchy whose
+  placement targets still said the library names would place every subscription
+  into groups that do not exist.
+- New `azure.managementGroups.workloadPlacement` (`corp`/`online`/
+  `landingzones`), replacing `landing_zones_management_group_id` with
+  `workload_management_group_id`.
+- Render guard **G29**: an unknown rename key, two groups resolving to one id,
+  or a custom strategy that renames nothing.
+- Answer-coverage budget 44 → 41: `customHierarchy` has a real reader now.
 
-### 6.6 Client-repo ingest — operator-directed 2026-08-30
+**Left deferred, deliberately**: arbitrary nesting. The mechanism now exists —
+the local library is emitted and composed — but what is missing is a decision
+about which archetype a client-invented group inherits, and that is precisely
+the decision this scope declines to make on their behalf by accident.
 
-The client copy runs the wizard from its own Pages, commits `lz-config.json`,
-and a workflow picks it up. Render and validate need no credentials and run on
-every commit of the config. Discovery, the broker and the scaffold do need
-Azure access — and the broker is what creates the OIDC identities, so there is
-nothing to authenticate with on the first run. That half sits behind a
-protected environment holding a client-created bootstrap principal, opt-in;
-clients who prefer ADR 0004's run-it-locally motion never create it.
+### 6.4a `caf-minimal` deploys the same hierarchy as `caf-standard` — `[OPEN]`
 
-Pages cannot be enabled by a workflow (`administration:write`, which
-`deploy-pages.yml` already documents at lines 22-25), so that stays a manual
-step in the client-copy checklist.
+Found while closing 6.4. Rendering the same config under both strategies
+produces byte-for-byte identical Terraform: the emitted architecture is the
+library's `alz` either way, Corp, Online, Sandbox and Decommissioned included.
 
-### 6.7 Per-subscription brownfield disposition — operator-directed 2026-08-30
+Not fixed in passing, because trimming a hierarchy is not a rename: dropping
+Sandbox leaves `azure.subscriptions.sandbox` with nowhere to be placed, and
+dropping Corp and Online makes `workloadPlacement` meaningless. Either make it
+real — a second emitted architecture definition, plus a decision about the
+orphaned slots — or retire the option. The wizard says so in the option text
+and in a warning until then. See REVIEW §23.
 
-Narrower than first reported: `workloadProd` is **not** a render blocker — the
-schema requires the key, not a value, and G09's own comment says workload slots
-are placement-only. Only `management` (always) and `connectivity` (unless
-`model = none`) block. `-Manual` in `New-LzSubscriptions.ps1` already covers
-CSP / pay-as-you-go / sponsorship tenants.
+### 6.5 Second state backend (HCP Terraform) — `[CLOSED 2026-08-31]`
 
-Build: a per-subscription choice between **place now** — with explicit
-consequence warnings, a typed acknowledgment recorded in `lz-config.json`, and
-a render guard that refuses without it — and **defer**, which generates an
-onboarding runbook for bringing the subscription in later. Plus an R11 billing
-readiness check so "this tenant cannot create subscriptions" is known on day
-one rather than at vending time, and one guard that names the deadlock instead
-of two that do not mention each other.
+Operator-directed 2026-08-30 ("there should be two options for the state, TFC
+and Azure Storage"), shipped 2026-08-31 as **schema 3.1.0** and
+[decision 0023](docs/decisions/0023-hcp-terraform-for-state-only.md), which
+partially reverses ADR 0015.
 
-Governance only; no resource import.
-[ADR 0018](docs/decisions/0018-brownfield-exclude-and-create.md) needs
-amending, since it currently rules subscription placement out of scope.
+**State only. Terraform still runs in GitHub Actions**, and `executionMode` is a
+schema `const` rather than an enum with a default. The reason is specific and
+worth keeping in front of anyone who wants to "just enable remote": the emitted
+plan and apply workflows refuse an unreviewed destroy by inspecting a saved plan
+file (`terraform plan -out=tfplan`, then `terraform show -json tfplan`), and HCP
+Terraform remote runs do not support `-out`. Switching a workspace to remote
+does not weaken that gate, it deletes it — from both workflows, with no error.
 
----
+- `backend.type` widens to `azurerm | hcp-terraform`, still defaulting to
+  `azurerm`, so every existing configuration is unaffected. Additive, hence a
+  minor rather than a major.
+- The `cloud` block is a **second manifest-selected template**
+  (`_layer/backend-cloud.tf.tmpl`) rather than a branch inside the existing
+  `backend.tf.tmpl`. The manifest's own `$comment` says inclusion belongs in the
+  manifest so a template stays valid HCL on its own and CI can `fmt`-check the
+  raw corpus; the recovered dual-branch file would have violated that.
+  `backend.hcl`'s `perLayerFiles` entry is now conditional too — it was
+  `"always"`.
+- One workspace per layer, `{prefix}-{layer}`, created by the broker with
+  `execution-mode: local`. An existing workspace is left alone rather than
+  reconfigured — the broker does not take execution away from an operator who
+  set it deliberately — but a non-local mode becomes a pending user activity.
+- **The credential trade, stated rather than buried**: Azure auth is unchanged
+  (GitHub OIDC, no stored Azure credential, so TFC holds nothing pointing at the
+  tenant), but `TF_API_TOKEN` is one static credential the azurerm path does not
+  have. The wizard warns on every export, the ADR says it plainly, and the
+  generated state documentation says it again.
+- The **state-hardening layer is azurerm-only, structurally**: it reads the
+  state storage account as a data source. `Get-LzActiveLayers` drops it and G17
+  refuses the combination.
+- The **free-tier cap returns to scope**. It counts resources under management,
+  which holding state elsewhere does not change, so the wizard blocks export
+  above 500 without an explicit acknowledgement.
+- `Set-LzHcpBackend` recovered from `e961cd5^` **with its bug fixed**: the
+  no-token path returned a bare string array while the caller read `.pending`
+  off it, throwing under StrictMode — the one path nobody had run.
+- Call-site position is not symmetric and is now commented as such.
+  `Set-LzAzurermBackend` runs *before* the identities because their data-plane
+  grants are scoped to the storage account; HCP needs the repository, not an
+  Azure scope, so it runs with the other repository configuration.
+
+23 renderer assertions and 16 wizard assertions.
+
+### 6.6 Client-repo ingest — `[PARTIALLY CLOSED 2026-08-31]`
+
+**Shipped: the uncredentialed half.** `.github/workflows/client-config-check.yml`
+renders the client's committed answer record and runs every validation gate on
+each push and pull request touching it, uploads the rendered tree and the
+evidence, and posts the gate table back to the pull request. It holds **no
+credentials at all** — render and validate shell only `terraform`, `tflint` and
+a scanner, and validation's `terraform init -backend=false` is what keeps it
+authentication-free.
+
+`-Phase` is a single-valued `ValidateSet`, so this is two calls rather than one;
+`all` would pull in every credentialed phase the job exists to stay out of. A
+`skipped` gate is reported as SKIPPED, not FAIL: a gate whose tool is missing
+from the runner has not judged the configuration either way, and calling that a
+failure would train the client to ignore the table.
+
+**The committed path is `client/lz-config.json`, decided rather than defaulted.**
+The root `/lz-config.json` ignore is anchored, so a subpath is committable
+without weakening the rule that stops tenant identifiers reaching an upstream
+commit. `client-rendered/` and `client-evidence/` are newly ignored — they carry
+the same tenant detail and nothing should ever commit them. `client/README.md`
+records the split.
+
+### 6.6a The credentialed job — `[OPEN, needs an operator decision]`
+
+The plan called for a second, opt-in job running discovery → broker → scaffold
+behind a protected environment holding a client-created bootstrap principal.
+**Not built**, because it contradicts a ratified operator decision rather than
+merely extending it.
+
+CLAUDE.md §0 records, operator-ratified 2026-08-06: *"The client runs it, on
+their own machine, so the tenant-confirmation step is load-bearing: it is the
+client's own `gh` and `az` sessions that create the estate."* A CI job replaces
+an interactive session the client is sitting in front of with a stored principal
+they are not — on exactly the run that creates the estate. That is a security-
+model change, not a convenience, and it is the operator's call.
+
+(The plan's own stated reason it cannot be *automatic* still holds and is
+independent: the broker creates the OIDC identities later workflows federate
+with, so on the first run there is nothing to authenticate as.)
+
+Either ratify the CI path explicitly — with the protected environment, the
+client-created bootstrap principal, and an amendment to CLAUDE.md §0 — or close
+this as deliberately-not-done. The workflow documents the absence and why, so
+nothing is silently missing in the meantime.
+
+Also unchanged: GitHub Pages cannot be enabled by a workflow. It needs
+`administration:write`, which a job token structurally cannot hold, so manual
+enablement stays in the client checklist and `deploy-pages.yml` documents both
+routes.
+
+### 6.7 Per-subscription brownfield disposition — `[CLOSED 2026-08-31]`
+
+Operator-directed 2026-08-30, shipped as **schema 3.2.0** and an amendment to
+[decision 0018](docs/decisions/0018-brownfield-exclude-and-create.md).
+
+`deploymentStrategy.brownfield.dispositions` maps a subscription ID to
+`place-now` or `defer`. A subscription with no entry is excluded — the ADR 0018
+behaviour, unchanged, and still the answer for anything nobody thought about.
+A flat exclusion list could say what the landing zone must never touch and had
+no way to say the opposite, so a client who genuinely wanted an existing
+subscription governed had to either leave it out of the list, which records no
+decision, or not use the factory.
+
+**place-now requires a typed acknowledgement**, checked against an exact
+sentence naming that subscription — by the wizard at export and by render guard
+**G30** at render, composed in one place (`Get-LzPlacementAcknowledgement`) so
+the two cannot disagree and produce a config that exports and then refuses to
+render. Not a boolean, on the state-access-flip precedent: a checkbox records
+that somebody clicked, and what needs recording is that somebody read what
+placing an existing subscription does to the resources already in it. The wizard
+spells out all three consequences, and the third — DeployIfNotExists and Modify
+assignments *create and change things* — is the one people miss.
+
+**defer generates `docs/subscription-onboarding.md`** into the generated
+repository, listing the deferred subscriptions with the client's own notes and
+the procedure for onboarding one later. The client-config-check workflow
+converts it to PDF, best-effort. Emitted only when something is deferred.
+
+**R11 billing readiness** joins the readiness checks: under
+`azure.subscriptions.mode = create`, an operator with no visible EA or MCA
+billing scope discovers it at `az account alias create` rather than before the
+engagement starts. A Fail blocks the broker's `-Apply` with no further wiring.
+It mirrors `Get-UsableBillingScopes` rather than calling it —
+`Resolve-BillingScope` closes over a script parameter and contains an
+interactive `Read-Host`, neither of which belongs in a readiness check.
+
+**Governance only. No resource is imported into Terraform state.** Placing a
+subscription applies policy to it; it does not bring its resources under
+Terraform management, and there is still no import path.
+
+### Two live defects found while closing 6.7
+
+**The discovery subscription sweep probed things that were not subscriptions.**
+`Invoke-LzDiscovery.ps1` swept *every* property value of `azure.subscriptions`
+into the probe list. That was correct when the object held nothing but six role
+slots; subscription vending (ADR 0020) added `mode` and `plannedNames`, and
+since then **every default export has probed the literal string `create` and the
+plannedNames object as though they were subscriptions**, reporting both as
+inaccessible with "the deployment will fail at plan time". An operator resolving
+discovery findings before `-Apply` was being sent after a subscription that does
+not exist. Now filtered on shape rather than by naming the six slots, so it
+stays correct when a slot is added.
+
+**`inventoryExistingPolicies` was a switch for something that happened anyway.**
+The schema said discovery inventories existing policy assignments when the flag
+is set; discovery inventoried them unconditionally and never read the flag.
+Wired through now, and a declined inventory is recorded as declined rather than
+as "no policy assignments found" — those are very different statements. The
+answer-coverage budget drops 41 → 40.
+
 
 ## Phase 5 — Release-time items
 

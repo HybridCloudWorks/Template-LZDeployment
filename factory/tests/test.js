@@ -400,5 +400,199 @@ console.log('\n== 16. Answers that reach nothing are declared, not discovered ==
   ok('the fixture is exportable throughout', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
 }
 
+console.log('\n== 17. Management-group names are the client’s; the shape is not ==');
+{
+  const mg = c.azure.managementGroups;
+  const libraryIds = A.POLICY_CATALOG.managementGroups.map((g) => g.id);
+  ok('the library groups reached the wizard', libraryIds.length > 0);
+
+  mg.strategy = 'custom';
+  mg.customHierarchy = {};
+  ok('custom with no rename blocks export',
+    A.validate().errors.some((e) => /still carries its library name/.test(e.message)));
+
+  // A key that restates the library's own name is not a rename. Counting it as
+  // one would let a config emit a local architecture identical to the pinned
+  // library, pinning the estate to a copy a bump can no longer update.
+  const libraryRoot = A.POLICY_CATALOG.managementGroups[0];
+  mg.customHierarchy = { [libraryRoot.id]: { id: libraryRoot.id, displayName: libraryRoot.displayName } };
+  ok('restating a library name is not a rename',
+    A.validate().errors.some((e) => /still carries its library name/.test(e.message)));
+  mg.customHierarchy = { [libraryRoot.id]: {} };
+  ok('an empty rename entry is not a rename',
+    A.validate().errors.some((e) => /still carries its library name/.test(e.message)));
+
+  mg.customHierarchy = { alz: { id: 'contoso-alz', displayName: 'Contoso Landing Zones' } };
+  ok('one rename is enough', !A.validate().errors.some((e) => /still carries its library name/.test(e.message)));
+
+  // A key outside the library would create a group no archetype governs, and
+  // management-group IDs are immutable once applied.
+  mg.customHierarchy['not-a-library-group'] = { id: 'x' };
+  ok('an unknown library id blocks export',
+    A.validate().errors.some((e) => /not a management group the pinned Azure Landing Zones library defines/.test(e.message)));
+  delete mg.customHierarchy['not-a-library-group'];
+
+  mg.customHierarchy.platform = { id: 'contoso-alz' };
+  ok('two groups claiming one id blocks export',
+    A.validate().errors.some((e) => /would both be created as/.test(e.message)));
+  mg.customHierarchy.platform = { id: 'contoso-platform' };
+
+  // Colliding with a group that kept its library name is the same collision.
+  mg.customHierarchy.platform = { id: 'corp' };
+  ok('colliding with an unrenamed group blocks export',
+    A.validate().errors.some((e) => /both the library name of one management group and the chosen ID of another/.test(e.message)));
+  mg.customHierarchy.platform = { id: 'contoso-platform' };
+
+  mg.customHierarchy.landingzones = { id: 'not a valid mg id!' };
+  ok('an invalid id blocks export',
+    A.validate().errors.some((e) => /is not a valid management group ID/.test(e.message)));
+  delete mg.customHierarchy.landingzones;
+
+  // A "rename" that restates the library's own name is not a decision, and
+  // must not travel into the answer record as though it were.
+  mg.customHierarchy.sandbox = { id: 'sandbox' };
+  const exported = A.buildConfig().azure.managementGroups.customHierarchy;
+  ok('a no-op rename is stripped from the export', !('sandbox' in exported), JSON.stringify(exported));
+  ok('a real rename survives', exported.alz && exported.alz.id === 'contoso-alz');
+  delete mg.customHierarchy.sandbox;
+
+  ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+
+  // Without the catalog there is nothing to rename FROM. Every key becomes
+  // unverifiable and every collision invisible, so exporting anyway would emit
+  // an architecture full of groups no archetype governs — the exact failure the
+  // other checks exist to prevent.
+  const savedGroups = A.POLICY_CATALOG.managementGroups;
+  A.POLICY_CATALOG.managementGroups = [];
+  mg.customHierarchy = { 'anything-at-all': { id: 'whatever' } };
+  ok('a missing catalog blocks a custom hierarchy',
+    A.validate().errors.some((e) => /generated policy catalog did not load/.test(e.message)));
+  A.POLICY_CATALOG.managementGroups = savedGroups;
+  mg.customHierarchy = { alz: { id: 'contoso-alz' } };
+  ok('and the catalog returning clears it',
+    !A.validate().errors.some((e) => /generated policy catalog did not load/.test(e.message)));
+
+  mg.strategy = 'caf-standard';
+  ok('a standard strategy drops the renames entirely',
+    !('customHierarchy' in A.buildConfig().azure.managementGroups));
+}
+
+console.log('\n== 18. HCP Terraform is a state backend, not an execution model ==');
+{
+  const b = c.backend;
+  b.type = 'hcp-terraform';
+  b.hcpTerraform = { organization: '', workspacePrefix: '', acknowledgedResourceLimit: true };
+  ok('a missing organization blocks export',
+    A.validate().errors.some((e) => /HCP Terraform organization is required/.test(e.message)));
+  b.hcpTerraform.organization = 'contoso-tf';
+  ok('an organization clears it', !A.validate().errors.some((e) => /organization is required/.test(e.message)));
+
+  // The one honest cost of this backend, said out loud rather than buried.
+  ok('the static credential is called out',
+    A.validate().warnings.some((e) => /TF_API_TOKEN/.test(e.message)));
+
+  // The free tier caps resources UNDER MANAGEMENT. Holding state elsewhere
+  // does not change that — the resources are in the state TFC stores.
+  b.hcpTerraform.acknowledgedResourceLimit = false;
+  const baseEstimate = A.estimateRum();
+  ok('a modest estate is under the free tier', baseEstimate <= 500, String(baseEstimate));
+  ok('and raises no cap gate', !A.validate().errors.some((e) => /free tier/.test(e.message)));
+
+  // Push it over by declaring compliance frameworks, each of which fans out
+  // into its own policy set.
+  const savedFrameworks = c.governance.complianceFrameworks.slice();
+  c.governance.complianceFrameworks = ['nist-800-53-r5', 'pci-dss-v4', 'iso-27001', 'cis-azure-2', 'hipaa-hitrust',
+    'fedramp-moderate', 'soc2-type2', 'nist-csf', 'ukofficial', 'canada-pbmm',
+    'irs-1075', 'cmmc-l3', 'azure-security-benchmark', 'rmit-malaysia', 'rbi-itf-banks',
+    'new-zealand-ism', 'spain-ens'];
+  const bigEstimate = A.estimateRum();
+  ok('a large estate exceeds the free tier', bigEstimate > 500, String(bigEstimate));
+  ok('an unacknowledged resource cap blocks export',
+    A.validate().errors.some((e) => /above the HCP Terraform free tier/.test(e.message)));
+  b.hcpTerraform.acknowledgedResourceLimit = true;
+  ok('acknowledging it clears the block',
+    !A.validate().errors.some((e) => /free tier/.test(e.message)));
+  c.governance.complianceFrameworks = savedFrameworks;
+
+  // The state-hardening overlay hardens a storage account this backend never
+  // creates, so the two cannot both be selected.
+  c.backend.azurerm.privateEndpoint = { enabled: true };
+  ok('the private-endpoint overlay blocks export under TFC',
+    A.validate().errors.some((e) => /Azure Storage account this backend does not create/.test(e.message)));
+  c.backend.azurerm.privateEndpoint = { enabled: false };
+
+  const hcpExport = A.buildConfig();
+  ok('the export carries the HCP block', hcpExport.backend.hcpTerraform.organization === 'contoso-tf');
+  ok('an empty workspace prefix is stripped', !('workspacePrefix' in hcpExport.backend.hcpTerraform));
+  ok('the fixture exports under TFC', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+
+  b.type = 'azurerm';
+  ok('the azurerm export drops the HCP block entirely', !('hcpTerraform' in A.buildConfig().backend));
+  ok('and no free-tier gate fires on azurerm', !A.validate().errors.some((e) => /free tier/.test(e.message)));
+  ok('and no token warning fires on azurerm', !A.validate().warnings.some((e) => /TF_API_TOKEN/.test(e.message)));
+  ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+}
+
+console.log('\n== 19. Placing an existing subscription is a decision, not a default ==');
+{
+  const ds = c.deploymentStrategy;
+  ds.mode = 'brownfield';
+  ds.brownfield = { excludedSubscriptionIds: [], inventoryExistingPolicies: true, dispositionRows: [] };
+  ok('brownfield with no dispositions exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+
+  const target = 'aaaaaaaa-0000-0000-0000-00000000000a';
+  ds.brownfield.dispositionRows.push({ id: target, action: 'defer', note: 'Legacy billing platform.' });
+  ok('deferring needs no acknowledgement', A.validate().errors.length === 0);
+  ok('a deferred row exports as defer',
+    A.buildConfig().deploymentStrategy.brownfield.dispositions[target].action === 'defer');
+  ok('and carries the note through',
+    A.buildConfig().deploymentStrategy.brownfield.dispositions[target].note === 'Legacy billing platform.');
+
+  // The whole point: place-now is refused until somebody types the sentence.
+  ds.brownfield.dispositionRows[0].action = 'place-now';
+  ok('placing without the acknowledgement blocks export',
+    A.validate().errors.some((e) => /needs the acknowledgement typed exactly/.test(e.message)));
+  ds.brownfield.dispositionRows[0].acknowledgement = 'yes I agree';
+  ok('a paraphrase does not count',
+    A.validate().errors.some((e) => /needs the acknowledgement typed exactly/.test(e.message)));
+  // Naming the subscription is what stops one sentence being pasted for all.
+  ds.brownfield.dispositionRows[0].acknowledgement =
+    'I accept that aaaaaaaa-0000-0000-0000-0000000000ff will be governed by the landing zone policy set, including its existing resources.';
+  ok('another subscription’s sentence does not count',
+    A.validate().errors.some((e) => /needs the acknowledgement typed exactly/.test(e.message)));
+  ds.brownfield.dispositionRows[0].acknowledgement =
+    `I accept that ${target} will be governed by the landing zone policy set, including its existing resources.`;
+  ok('the exact sentence clears it', !A.validate().errors.some((e) => /acknowledgement/.test(e.message)),
+    JSON.stringify(A.validate().errors, null, 1));
+
+  // Excluded and placed are opposite instructions about one subscription.
+  ds.brownfield.excludedSubscriptionIds = [target];
+  ok('excluded and placed cannot both be true',
+    A.validate().errors.some((e) => /both excluded and set to be placed/.test(e.message)));
+  ds.brownfield.excludedSubscriptionIds = [];
+
+  ds.brownfield.dispositionRows.push({ id: target, action: 'defer' });
+  ok('one subscription cannot have two dispositions',
+    A.validate().errors.some((e) => /more than one disposition/.test(e.message)));
+  ds.brownfield.dispositionRows.pop();
+
+  ds.brownfield.dispositionRows.push({ id: 'not-a-guid', action: 'defer' });
+  ok('a malformed subscription ID blocks export',
+    A.validate().errors.some((e) => /is not a subscription ID/.test(e.message)));
+  ds.brownfield.dispositionRows.pop();
+
+  // The repeater's working array must not reach the answer record: the schema
+  // is additionalProperties:false and would reject it.
+  const exported = A.buildConfig().deploymentStrategy.brownfield;
+  ok('the working rows are stripped from the export', !('dispositionRows' in exported), JSON.stringify(Object.keys(exported)));
+  ok('the export is keyed by subscription', exported.dispositions[target].action === 'place-now');
+  ok('and carries the acknowledgement', /^I accept that/.test(exported.dispositions[target].acknowledgement));
+
+  ds.mode = 'greenfield';
+  ok('greenfield drops the brownfield block entirely',
+    !('brownfield' in A.buildConfig().deploymentStrategy));
+  ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

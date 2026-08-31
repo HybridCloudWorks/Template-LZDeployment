@@ -209,16 +209,33 @@
         <label for="az_mg_strategy">Hierarchy strategy <span class="req">*</span></label>
         <select id="az_mg_strategy" data-path="azure.managementGroups.strategy">
           <option value="caf-standard">CAF standard &mdash; Platform (Identity/Management/Connectivity) + Landing Zones (Corp/Online) + Sandbox + Decommissioned</option>
-          <option value="caf-minimal">CAF minimal &mdash; Platform + Landing Zones only</option>
+          <option value="caf-minimal">CAF minimal &mdash; Platform + Landing Zones only (not yet distinct from CAF standard)</option>
           <option value="custom">Custom hierarchy</option>
         </select>
       </div>
 
+      <div class="field">
+        <label for="az_mg_workloadPlacement">Workload subscription placement <span class="req">*</span></label>
+        <select id="az_mg_workloadPlacement" data-path="azure.managementGroups.workloadPlacement">
+          <option value="corp">Corp &mdash; workloads with corporate connectivity</option>
+          <option value="online">Online &mdash; internet-facing workloads, no corporate connectivity</option>
+          <option value="landingzones">Landing zones directly &mdash; no Corp/Online distinction</option>
+        </select>
+        <p class="hint">This does <strong>not</strong> change how many policies the subscriptions inherit &mdash; Online carries none of its own and inherits the same set either way. What it buys is the ability to tell Corp and Online apart <em>later</em> without moving the subscription, since Corp adds five deny-style assignments Online does not. Placing directly at Landing zones forecloses that.</p>
+      </div>
+
       <div class="field" data-visible-when="azure.managementGroups.strategy=custom">
-        <label>Custom hierarchy</label>
-        <p class="hint">Flat list. Each parent must reference another entry&rsquo;s ID or the root MG ID above.</p>
-        <div class="repeater" data-repeater="azure.managementGroups.customHierarchy"
-             data-fields='[{"key":"id","label":"MG ID","placeholder":"mg-contoso-platform"},{"key":"displayName","label":"Display name","placeholder":"Platform"},{"key":"parentId","label":"Parent ID","placeholder":"mg-contoso"}]'></div>
+        <label>Management group names</label>
+        <p class="hint">The groups the pinned Azure Landing Zones library defines, with the IDs and display names this estate will create. <strong>Only the names are yours</strong> &mdash; the shape is the library&rsquo;s, because re-nesting a group changes which archetype, and so which policy set, everything beneath it inherits. Leave a row alone to keep the library&rsquo;s name. <strong>Management group IDs are immutable in Azure</strong>: changing one after apply means creating a new group and moving everything into it.</p>
+        <div class="rep-row">
+          <div class="rep-field">
+            <label for="az_mg_prefix">Apply a prefix to every ID</label>
+            <input id="az_mg_prefix" type="text" spellcheck="false" placeholder="contoso-">
+          </div>
+          <button type="button" id="az_mg_applyPrefix" class="btn btn-ghost btn-sm">Apply</button>
+          <button type="button" id="az_mg_resetNames" class="btn btn-ghost btn-sm">Reset to library names</button>
+        </div>
+        <div id="mgRenameHost" class="mg-renames"></div>
       </div>
     </section>
 
@@ -290,15 +307,16 @@
     <section class="step" data-step="backend" data-title="State backend">
       <header class="step-head">
         <h2>Terraform state backend</h2>
-        <p>State lives in Azure Storage (<code>azurerm</code> backend) with OIDC and Entra&nbsp;ID authentication &mdash; no storage keys, no third-party state service (ADR&nbsp;0015). The values below are emitted into a per-layer <code>backend.hcl</code>; the committed backend block stays empty.</p>
+        <p>Where Terraform state lives. Azure Storage is the default: OIDC and Entra&nbsp;ID authentication, no storage keys, and the broker creates and hardens the account before the first layer initialises. HCP&nbsp;Terraform is offered for state <em>only</em> &mdash; Terraform still runs in GitHub&nbsp;Actions (decision&nbsp;0023). Each layer keeps its own state, never a shared one.</p>
       </header>
 
       <div class="field">
         <label for="be_type">Backend</label>
         <select id="be_type" data-path="backend.type">
           <option value="azurerm">Azure Storage (azurerm)</option>
+          <option value="hcp-terraform">HCP Terraform &mdash; state only</option>
         </select>
-        <p class="hint">azurerm is the only backend the generator emits.</p>
+        <p class="hint">Both run Terraform in GitHub Actions. The choice is only where the state file lives.</p>
       </div>
 
       <div data-visible-when="backend.type=azurerm">
@@ -331,6 +349,29 @@
         </div>
         <p class="hint">Day-0 state posture is a public endpoint with Entra-only auth, versioning, soft delete, and a delete lock (ADR&nbsp;0019) &mdash; an IP allowlist cannot admit same-region GitHub-hosted runners, so it would be theatre. The private-endpoint overlay requires hub-and-spoke, centralized private DNS, and self-hosted runners inside the VNet; self-hosted runners are not supported in v1, so this stays unavailable until they are.</p>
       </div>
+
+      <div data-visible-when="backend.type=hcp-terraform">
+        <div class="callout">
+          <h4>State only &mdash; Terraform still runs in GitHub Actions</h4>
+          <p>This is not a preference that can be changed in the workspace later without losing something. The generated plan and apply workflows refuse a destroy by reading a <em>saved plan file</em> (<code>terraform plan -out=tfplan</code>, then <code>terraform show -json tfplan</code>), and HCP&nbsp;Terraform remote runs do not support <code>-out</code>. Switching a workspace to remote execution deletes that gate from both workflows with no error.</p>
+          <p>Azure authentication is unchanged: GitHub OIDC, no stored Azure credential, so HCP&nbsp;Terraform holds no credential to your tenant. It does add <strong>one static credential the Azure Storage path does not have</strong> &mdash; <code>TF_API_TOKEN</code>, which the Terraform CLI needs to reach the workspace. The broker sets it as a repository secret from your <code>TFE_TOKEN</code>.</p>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="be_hcp_org">HCP Terraform organization <span class="req">*</span></label>
+            <input id="be_hcp_org" data-path="backend.hcpTerraform.organization" type="text" spellcheck="false" placeholder="contoso">
+          </div>
+          <div class="field">
+            <label for="be_hcp_prefix">Workspace prefix</label>
+            <input id="be_hcp_prefix" data-path="backend.hcpTerraform.workspacePrefix" type="text" spellcheck="false" placeholder="(defaults to the company short name)">
+            <p class="hint">Workspaces are created as <code>{prefix}-{layer}</code>, one per layer.</p>
+          </div>
+        </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" data-path="backend.hcpTerraform.acknowledgedResourceLimit"> I have checked that this estate fits the HCP&nbsp;Terraform plan&rsquo;s resource limit</label>
+        </div>
+        <p class="hint">The free tier caps resources under management at 500, and holding state elsewhere does not change that &mdash; the resources are in the state HCP&nbsp;Terraform stores. The estimate for this configuration is shown on the review step.</p>
+      </div>
     </section>
 
     <!-- 5. DEPLOYMENT STRATEGY -->
@@ -360,6 +401,24 @@
         </div>
         <div class="checks">
           <label class="check"><input type="checkbox" data-path="deploymentStrategy.brownfield.inventoryExistingPolicies" checked> Inventory existing tenant-scope policy assignments during discovery (read-only)</label>
+        </div>
+
+        <div class="field">
+          <label>Existing subscriptions you want governed anyway</label>
+          <p class="hint">Excluding is the default and the safe answer. If an existing subscription <em>should</em> come under this landing zone, say so here &mdash; per subscription, with your eyes open. Anything you leave out of both lists is simply excluded.</p>
+          <div class="callout callout-warn">
+            <h4>Read this before choosing &ldquo;Place now&rdquo;</h4>
+            <p>The moment a subscription moves under a management group, <strong>every policy assignment above it starts evaluating the resources already inside it</strong>. Nothing is deleted by the move, but:</p>
+            <ul>
+              <li><strong>Audit</strong> assignments will report a large number of findings on the first evaluation cycle. That is information, not damage.</li>
+              <li><strong>Deny</strong> assignments will not touch what exists &mdash; but they will refuse the next <em>change</em> to it. A pipeline that has worked for years can start failing on its next run. This is the one that surprises people.</li>
+              <li><strong>DeployIfNotExists and Modify</strong> assignments <em>will create and change things</em>: diagnostic settings, agent extensions, tags, private DNS records. On a schedule, or on the next resource write.</li>
+            </ul>
+            <p>Choose this only if you understand and accept all three. If you are not sure, choose <strong>Defer</strong>: it changes nothing today and the factory writes you a document explaining exactly how to onboard the subscription later.</p>
+          </div>
+          <div class="repeater" data-repeater="deploymentStrategy.brownfield.dispositionRows"
+               data-fields='[{"key":"id","label":"Subscription ID","placeholder":"GUID"},{"key":"action","label":"Disposition","type":"select","options":["defer","place-now"]},{"key":"note","label":"Note (carried into the onboarding document)","placeholder":"optional"}]'></div>
+          <div id="dispositionAckHost"></div>
         </div>
       </div>
     </section>

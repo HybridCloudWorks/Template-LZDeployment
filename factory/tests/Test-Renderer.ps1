@@ -269,7 +269,8 @@ ok '.gitignore covers .alzlib/'     ($gitignore -match '\.alzlib/')
 $stamp = Get-Content (Join-Path $out 'factory-version.json') -Raw | ConvertFrom-Json
 ok 'version stamp carries factory version' ("$($stamp.factoryVersion)" -eq "$($fv.factoryVersion)")
 $answerRecord = Get-Content (Join-Path $out 'lz-config.json') -Raw | ConvertFrom-Json -Depth 30
-ok 'answer record round-trips'      ("$($answerRecord.schemaVersion)" -eq '2.2.0')
+$schemaVersion = (Get-Content "$repo/factory/schema/lz-config.schema.json" -Raw | ConvertFrom-Json -Depth 40).properties.schemaVersion.const
+ok 'answer record round-trips'      ("$($answerRecord.schemaVersion)" -eq $schemaVersion) "record: $($answerRecord.schemaVersion); schema: $schemaVersion"
 $renovate = Get-Content (Join-Path $out 'renovate.json') -Raw | ConvertFrom-Json -Depth 10
 ok 'renovate targets terraform manager' (@($renovate.packageRules[0].matchManagers) -contains 'terraform')
 
@@ -434,6 +435,157 @@ ok 'rejects an AVM creation downgrade'    ($guard -match 'creation_enabled\[\[:s
 ok 'exempts a regeneration, not a header' ($guard -match 'record_changed' -and $guard -match 'lz-config\.json')
 ok 'the exemption needs the stamp to move' ($guard -match [regex]::Escape('[0-9]+\.[0-9]+\.[0-9]+ on '))
 ok 'the job id stays the required check'  ($guard -match '(?m)^  policy:$')
+
+Write-Host "`n== 12d. Client-named management groups ==" -ForegroundColor Cyan
+# The custom strategy renames the pinned library's groups; it does not re-shape
+# them. Moving a group under a different parent would change which archetype —
+# and so which policy set — governs everything beneath it, and management-group
+# IDs are immutable in Azure, so that is a one-way mistake per client.
+$mgPath = Join-Path ([IO.Path]::GetTempPath()) "lz-mg-$([guid]::NewGuid().ToString('n').Substring(0,8)).json"
+$outMg = Join-Path ([IO.Path]::GetTempPath()) "lz-render-test-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+try {
+    $mgConfig = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+    $mgConfig.azure.managementGroups.strategy = 'custom'
+    $mgConfig.azure.managementGroups.workloadPlacement = 'online'
+    $mgConfig.azure.managementGroups | Add-Member -NotePropertyName customHierarchy -NotePropertyValue ([pscustomobject]@{
+            alz          = [pscustomobject]@{ id = 'contoso-alz'; displayName = 'Contoso Landing Zones' }
+            platform     = [pscustomobject]@{ id = 'contoso-platform' }
+            landingzones = [pscustomobject]@{ id = 'contoso-lz' }
+            online       = [pscustomobject]@{ id = 'contoso-online' }
+            management   = [pscustomobject]@{ id = 'contoso-mgmt' }
+        }) -Force
+    $mgConfig | ConvertTo-Json -Depth 40 | Set-Content $mgPath -Encoding utf8
+
+    $null = Invoke-LzRender -ConfigPath $mgPath -OutputDirectory $outMg -Quiet
+    $archPath = Join-Path $outMg "terraform/live/global/lib/architecture_definitions/$($mgConfig.organization.companyShortName.ToLowerInvariant()).alz_architecture_definition.json"
+    ok 'a custom strategy emits a local architecture definition' (Test-Path $archPath) $archPath
+    $arch = Get-Content $archPath -Raw | ConvertFrom-Json -Depth 20
+    $archById = @{}
+    foreach ($g in $arch.management_groups) { $archById[$g.id] = $g }
+
+    $catalog = Get-Content "$repo/site/alz-policy-catalog.json" -Raw | ConvertFrom-Json -Depth 30
+    ok 'every library group is carried over' ($arch.management_groups.Count -eq @($catalog.managementGroups).Count) `
+        "emitted $($arch.management_groups.Count), library $(@($catalog.managementGroups).Count)"
+    ok 'renamed groups take the client id' ($archById.ContainsKey('contoso-alz') -and $archById.ContainsKey('contoso-mgmt'))
+    ok 'unrenamed groups keep the library id' ($archById.ContainsKey('corp') -and $archById.ContainsKey('sandbox'))
+    # The edge is the part that breaks silently: a renamed parent whose children
+    # still point at the library name creates orphans no archetype governs.
+    ok 'parent edges follow the rename' ($archById['contoso-platform'].parent_id -eq 'contoso-alz')
+    ok 'an unrenamed child follows a renamed parent' ($archById['corp'].parent_id -eq 'contoso-lz')
+    ok 'the root has no parent' ($null -eq $archById['contoso-alz'].parent_id)
+    ok 'archetypes are never rewritten' ((@($archById['contoso-alz'].archetypes) -join ',') -eq 'root')
+    ok 'nothing is marked pre-existing' (@($arch.management_groups | Where-Object { $_.exists }).Count -eq 0)
+    # Every parent must resolve to a group in the same file, or the apply
+    # creates a hierarchy with a dangling edge.
+    $dangling = @($arch.management_groups | Where-Object { $_.parent_id -and -not $archById.ContainsKey($_.parent_id) })
+    ok 'no parent edge dangles' ($dangling.Count -eq 0) (($dangling | ForEach-Object { "$($_.id) -> $($_.parent_id)" }) -join ', ')
+
+    $mgMain = Get-Content (Join-Path $outMg 'terraform/live/global/main.tf') -Raw
+    ok 'the local library composes with the pinned one' `
+    ($mgMain -match '(?s)library_references\s*=\s*\[.*?path\s*=\s*"platform/alz".*?custom_url\s*=\s*"\$\{path\.root\}/lib"')
+    $mgTfvars = Get-Content (Join-Path $outMg 'terraform/live/global/terraform.auto.tfvars') -Raw
+    ok 'architecture_name selects the client architecture' ($mgTfvars -match "architecture_name\s+=\s+`"$($mgConfig.organization.companyShortName.ToLowerInvariant())`"")
+    # Placement targets must follow the renames or every subscription is placed
+    # into a management group that was never created.
+    ok 'placement follows the rename' ($mgTfvars -match 'management_management_group_id\s+=\s+"contoso-mgmt"')
+    ok 'an unrenamed placement target stays the library id' ($mgTfvars -match 'identity_management_group_id\s+=\s+"identity"')
+    ok 'workloadPlacement chooses the group' ($mgTfvars -match 'workload_management_group_id\s+=\s+"contoso-online"')
+}
+finally {
+    Remove-Item -Recurse -Force $outMg -ErrorAction SilentlyContinue
+    Remove-Item -Force $mgPath -ErrorAction SilentlyContinue
+}
+
+# G29's "renames nothing" must mean the effective names are the library's, not
+# that the map is empty: a non-empty map that changes nothing still emits a
+# local architecture definition, pinning the estate to a copy of the library
+# that a bump can no longer update.
+$g29Catalog = Get-Content "$repo/site/alz-policy-catalog.json" -Raw | ConvertFrom-Json -Depth 30
+$g29Root = $g29Catalog.managementGroups[0]
+foreach ($shape in @(
+        @{ label = 'an empty rename map'; value = [pscustomobject]@{} },
+        @{ label = 'an empty rename entry'; value = [pscustomobject]@{ "$($g29Root.id)" = [pscustomobject]@{} } },
+        @{ label = 'a rename restating the library name'; value = [pscustomobject]@{ "$($g29Root.id)" = [pscustomobject]@{ id = $g29Root.id; displayName = $g29Root.displayName } } }
+    )) {
+    $g29Config = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+    $g29Config.azure.managementGroups.strategy = 'custom'
+    $g29Config.azure.managementGroups | Add-Member -NotePropertyName customHierarchy -NotePropertyValue $shape.value -Force
+    $hits = @((Test-LzRenderGuards -Config $g29Config).Violations |
+        Where-Object { $_.Id -eq 'G29' -and $_.Message -match 'resolves to its library name' })
+    ok "G29 refuses $($shape.label)" ($hits.Count -eq 1)
+}
+
+# The standard strategy must stay exactly as it was: the pinned library's own
+# architecture, no local library, no emitted file.
+$stdMain = Get-Content (Join-Path $out 'terraform/live/global/main.tf') -Raw
+ok 'a standard strategy emits no local library' ($stdMain -notmatch 'custom_url')
+ok 'and selects the library architecture' ((Get-Content (Join-Path $out 'terraform/live/global/terraform.auto.tfvars') -Raw) -match 'architecture_name\s+=\s+"alz"')
+ok 'and no architecture definition is written' (-not (Test-Path (Join-Path $out 'terraform/live/global/lib')))
+
+Write-Host "`n== 12e. HCP Terraform: state only ==" -ForegroundColor Cyan
+# Decision 0023 partially reverses 0015. The whole point of "state only" is the
+# destroy gate: both emitted workflows refuse a destroy by reading a SAVED PLAN
+# FILE, and TFC remote runs cannot produce one. If remote execution ever became
+# reachable, that gate would disappear from both workflows with no error.
+$hcpPath = Join-Path ([IO.Path]::GetTempPath()) "lz-hcp-$([guid]::NewGuid().ToString('n').Substring(0,8)).json"
+$outHcp = Join-Path ([IO.Path]::GetTempPath()) "lz-render-test-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+try {
+    $hcpConfig = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+    $hcpConfig.backend.type = 'hcp-terraform'
+    $hcpConfig.backend | Add-Member -NotePropertyName hcpTerraform -NotePropertyValue ([pscustomobject]@{
+            organization = 'contoso-tf'; workspacePrefix = 'contoso'
+        }) -Force
+    $hcpConfig | ConvertTo-Json -Depth 40 | Set-Content $hcpPath -Encoding utf8
+    $null = Invoke-LzRender -ConfigPath $hcpPath -OutputDirectory $outHcp -Quiet
+
+    $hcpLayers = @(Get-ChildItem (Join-Path $outHcp 'terraform/live') -Directory)
+    foreach ($layerDir in $hcpLayers) {
+        $backend = Get-Content (Join-Path $layerDir.FullName 'backend.tf') -Raw
+        ok "$($layerDir.Name) uses the cloud block" ($backend -match '(?s)terraform\s*\{\s*cloud\s*\{')
+        ok "$($layerDir.Name) gets its own workspace" ($backend -match "name\s*=\s*`"contoso-$($layerDir.Name)`"")
+        # Sharing one workspace across layers is the failure this asserts against.
+        ok "$($layerDir.Name) has no azurerm partial config" (-not (Test-Path (Join-Path $layerDir.FullName 'backend.hcl')))
+    }
+    ok 'the organization is emitted once per layer' `
+    (@($hcpLayers | Where-Object { (Get-Content (Join-Path $_.FullName 'backend.tf') -Raw) -match 'organization\s*=\s*"contoso-tf"' }).Count -eq $hcpLayers.Count)
+
+    $hcpPlan = Get-Content (Join-Path $outHcp '.github/workflows/terraform-plan.yml') -Raw
+    $hcpApply = Get-Content (Join-Path $outHcp '.github/workflows/terraform-apply.yml') -Raw
+    ok 'init drops the azurerm partial config' ($hcpPlan -notmatch 'backend-config=backend\.hcl')
+    ok 'the CLI gets a workspace token' ($hcpPlan -match 'cli_config_credentials_token:\s*\$\{\{\s*secrets\.TF_API_TOKEN\s*\}\}')
+    # The reason state-only is a const and not a preference.
+    ok 'the plan destroy gate survives' ($hcpPlan -match 'terraform plan -input=false -no-color -out=tfplan' -and $hcpPlan -match 'terraform show -json tfplan')
+    ok 'the apply destroy gate survives' ($hcpApply -match '-out=tfplan' -and $hcpApply -match 'terraform show -json tfplan')
+    # Azure auth is untouched: TFC never holds a credential to the tenant.
+    ok 'azure login is still OIDC' ($hcpPlan -match 'azure/login' -and $hcpPlan -match 'id-token:\s*write')
+    ok 'no azure credential is emitted' ($hcpPlan -notmatch 'client-secret|AZURE_CLIENT_SECRET')
+    # state-hardening hardens a storage account this backend does not create.
+    ok 'state-hardening is not emitted under TFC' (-not (Test-Path (Join-Path $outHcp 'terraform/live/state-hardening')))
+}
+finally {
+    Remove-Item -Recurse -Force $outHcp -ErrorAction SilentlyContinue
+    Remove-Item -Force $hcpPath -ErrorAction SilentlyContinue
+}
+
+# The azurerm path must be untouched by any of this.
+ok 'azurerm still emits an empty backend block' ((Get-Content (Join-Path $out 'terraform/live/global/backend.tf') -Raw) -match 'backend "azurerm" \{\}')
+ok 'azurerm still emits backend.hcl'            (Test-Path (Join-Path $out 'terraform/live/global/backend.hcl'))
+ok 'azurerm init still supplies it'             ((Get-Content (Join-Path $out '.github/workflows/terraform-plan.yml') -Raw) -match 'backend-config=backend\.hcl')
+ok 'azurerm carries no workspace token'         ((Get-Content (Join-Path $out '.github/workflows/terraform-plan.yml') -Raw) -notmatch 'cli_config_credentials_token')
+
+# Guards: the combinations that cannot work.
+$hcpGuard = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+$hcpGuard.backend.type = 'hcp-terraform'
+$hcpGuard.backend | Add-Member -NotePropertyName hcpTerraform -NotePropertyValue ([pscustomobject]@{ organization = '' }) -Force
+$g = @((Test-LzRenderGuards -Config $hcpGuard).Violations | Where-Object { $_.Id -eq 'G17' })
+ok 'G17 catches a missing organization' (@($g | Where-Object { $_.Message -match 'no organization' }).Count -eq 1)
+$hcpGuard.backend.hcpTerraform = [pscustomobject]@{ organization = 'contoso-tf'; executionMode = 'remote' }
+$g = @((Test-LzRenderGuards -Config $hcpGuard).Violations | Where-Object { $_.Id -eq 'G17' })
+ok 'G17 refuses remote execution' (@($g | Where-Object { $_.Message -match 'execution mode' }).Count -eq 1)
+$hcpGuard.backend.hcpTerraform = [pscustomobject]@{ organization = 'contoso-tf' }
+$hcpGuard.backend.azurerm | Add-Member -NotePropertyName privateEndpoint -NotePropertyValue ([pscustomobject]@{ enabled = $true }) -Force
+$g = @((Test-LzRenderGuards -Config $hcpGuard).Violations | Where-Object { $_.Id -eq 'G17' })
+ok 'G17 refuses state hardening under TFC' (@($g | Where-Object { $_.Message -match 'privateEndpoint' }).Count -eq 1)
 
 Write-Host "`n== 13. Schema drift check ==" -ForegroundColor Cyan
 $drift = Test-LzSchemaDrift -SchemaPath "$repo/factory/schema/lz-config.schema.json" -MappingPath "$repo/factory/renderer/variable-map.json" -TemplateRoot "$repo/factory/templates"

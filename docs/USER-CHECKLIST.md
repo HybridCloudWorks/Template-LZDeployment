@@ -58,6 +58,19 @@ code; no customer render was validated or published while building it.
   check, the only generated check that reports on every pull request with no
   path filter.
 
+## Check the answers before anything is created
+
+- [ ] Commit the wizard's export as `client/lz-config.json` — not at the
+  repository root, where it is gitignored so tenant identifiers cannot reach an
+  upstream commit. `client/README.md` explains the split.
+- [ ] Open a pull request for it and read the gate table
+  `.github/workflows/client-config-check.yml` posts back. That run renders the
+  configuration and runs every validation gate **with no credentials at all**:
+  it never signs in to Azure and never reads the tenant. A red gate here is a
+  configuration to fix, not a deployment to retry.
+- [ ] Treat a `SKIPPED` gate as unjudged rather than passed. V07 (lint) and V08
+  (security scan) skip when their tool is absent from the runner.
+
 ## Review before mutation
 
 - [ ] Resolve all blocking discovery findings. Use
@@ -81,6 +94,15 @@ code; no customer render was validated or published while building it.
   record lists one `environment:<name>` subject per environment).
 - [ ] Confirm backend names, HCP organization/workspace prefix, environments,
   and branch-protection settings.
+- [ ] For the HCP Terraform backend (decision 0023): export `TFE_TOKEN` before
+  the broker apply, or the workspaces are not created and the run records a
+  pending user activity instead. The broker writes it to the generated
+  repository as the `TF_API_TOKEN` secret — the one static credential the
+  azurerm backend does not have.
+- [ ] For the HCP Terraform backend: confirm every workspace is in **local**
+  execution mode. Remote execution silently removes the destroy gate from the
+  emitted plan and apply workflows, which read a saved plan file that remote
+  runs cannot produce.
 
 ## Apply and verify
 

@@ -172,5 +172,28 @@ ok 'inventory records failCount'       ($inv.readiness.failCount -eq 1)
 ok 'forbidden probe not conclusive'    ($inv.domains.GitHub.probes.'Organization runners'.conclusive -eq $false)
 ok 'ok probe is conclusive'            ($inv.domains.GitHub.probes.'Authenticated identity'.conclusive -eq $true)
 
+Write-Host "`n== Subscription sweep: only subscription IDs ==" -ForegroundColor Cyan
+# azure.subscriptions stopped being six role slots when subscription vending
+# (ADR 0020) added `mode` and `plannedNames`. A sweep of every property value
+# then probed the literal string "create" and the plannedNames object as though
+# they were subscriptions, and reported both as inaccessible with "the
+# deployment will fail at plan time" — on every default export.
+$sweepConfig = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+$sweepConfig.azure.subscriptions | Add-Member -NotePropertyName mode -NotePropertyValue 'create' -Force
+$sweepConfig.azure.subscriptions | Add-Member -NotePropertyName plannedNames -NotePropertyValue ([pscustomobject]@{
+        management = 'sub-contoso-management'; connectivity = 'sub-contoso-connectivity'
+    }) -Force
+
+$sweepSource = Get-Content "$PSScriptRoot/../discovery/public/Invoke-LzDiscovery.ps1" -Raw
+$sweepMatch = [regex]::Match($sweepSource,
+    '(?s)\$subs = @\(\s*(?<expr>\$config\.azure\.subscriptions\.PSObject\.Properties.*?\})\s*\)')
+ok 'the sweep expression is still where the test thinks it is' $sweepMatch.Success
+$swept = @(& ([scriptblock]::Create("param(`$config) @($($sweepMatch.Groups['expr'].Value))")) $sweepConfig)
+
+ok 'only the role slots are swept' ($swept.Count -eq 3) ($swept -join ', ')
+ok 'every swept value is a GUID' (@($swept | Where-Object { $_ -notmatch '^[0-9a-fA-F-]{36}$' }).Count -eq 0)
+ok 'the vending mode is not probed' ($swept -notcontains 'create')
+ok 'the planned-names object is not probed' (@($swept | Where-Object { $_ -isnot [string] }).Count -eq 0)
+
 Write-Host "`n$script:pass passed, $script:fail failed`n" -ForegroundColor $(if($script:fail){'Red'}else{'Green'})
 exit $(if ($script:fail) { 1 } else { 0 })

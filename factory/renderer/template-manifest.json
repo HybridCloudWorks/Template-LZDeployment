@@ -1,8 +1,8 @@
 {
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||. This manifest is the OUTPUT CONTRACT (docs/refactor/OUTPUT-CONTRACT.md): generation fails if a produced file is not listed here or a listed file is missing (validation gate V01). No generator machinery is ever listed.",
   "manifestVersion": "2.1.0",
-  "targetSchemaVersion": "2.2.0",
-  "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored \u2014 the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
+  "targetSchemaVersion": "3.2.0",
+  "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored — the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
   "files": [
     {
       "source": "README.md.tmpl",
@@ -37,7 +37,7 @@
       "destination": "lz-config.json",
       "mode": "config-snapshot",
       "when": "always",
-      "description": "The answer record \u2014 the validated configuration that produced this repository, secrets excluded by construction. Committed so provenance survives the factory copy's deletion."
+      "description": "The answer record — the validated configuration that produced this repository, secrets excluded by construction. Committed so provenance survives the factory copy's deletion."
     },
     {
       "source": "$factory-version",
@@ -51,21 +51,21 @@
       "destination": "terraform/live/platform-management/variables.tf",
       "mode": "copy",
       "when": "always",
-      "description": "Management variable declarations. Copied verbatim \u2014 this file is the contract the schema-drift check validates against, so it must never be templated."
+      "description": "Management variable declarations. Copied verbatim — this file is the contract the schema-drift check validates against, so it must never be templated."
     },
     {
       "source": "terraform/live/platform-management/main.tf.tmpl",
       "destination": "terraform/live/platform-management/main.tf",
       "mode": "render",
       "when": "always",
-      "description": "Root module referencing Azure/avm-ptn-alz-management by pinned registry version. Deployed first \u2014 the global layer reads its state."
+      "description": "Root module referencing Azure/avm-ptn-alz-management by pinned registry version. Deployed first — the global layer reads its state."
     },
     {
       "source": "terraform/live/platform-management/outputs.tf.tmpl",
       "destination": "terraform/live/platform-management/outputs.tf",
       "mode": "render",
       "when": "always",
-      "description": "Workspace and automation identifiers \u2014 the remote-state contract the global layer reads."
+      "description": "Workspace and automation identifiers — the remote-state contract the global layer reads."
     },
     {
       "source": "terraform/live/platform-management/terraform.auto.tfvars.tmpl",
@@ -80,6 +80,13 @@
       "mode": "copy",
       "when": "always",
       "description": "Global (ALZ core) variable declarations. Drift-checked against the schema."
+    },
+    {
+      "source": "$alz-architecture",
+      "destination": "terraform/live/global/lib/architecture_definitions/{{FACTORY-RAW:computed.architectureName}}.alz_architecture_definition.json",
+      "mode": "alz-architecture",
+      "when": "azure.managementGroups.strategy == 'custom'",
+      "description": "Client-named ALZ architecture definition. Composed with the pinned remote library through the alz provider's library_references, so the estate's management groups carry the client's names while the shape and archetypes stay the library's. Emitted only for the custom strategy; a $-prefixed source has no template file, like $config and $factory-version."
     },
     {
       "source": "terraform/live/global/main.tf.tmpl",
@@ -114,7 +121,7 @@
       "destination": "terraform/live/platform-connectivity/main.tf",
       "mode": "render",
       "when": "connectivity.model != 'none'",
-      "description": "Root module referencing the hub-and-spoke OR Virtual WAN AVM pattern module by pinned registry version \u2014 one topology per estate, never both."
+      "description": "Root module referencing the hub-and-spoke OR Virtual WAN AVM pattern module by pinned registry version — one topology per estate, never both."
     },
     {
       "source": "terraform/live/platform-connectivity/outputs.tf.tmpl",
@@ -135,14 +142,14 @@
       "destination": "terraform/live/state-hardening/variables.tf",
       "mode": "copy",
       "when": "defined backend.azurerm.privateEndpoint.enabled && backend.azurerm.privateEndpoint.enabled",
-      "description": "State-hardening variable declarations. Copied verbatim \u2014 this file is the contract the schema-drift check validates against, so it must never be templated."
+      "description": "State-hardening variable declarations. Copied verbatim — this file is the contract the schema-drift check validates against, so it must never be templated."
     },
     {
       "source": "terraform/live/state-hardening/main.tf.tmpl",
       "destination": "terraform/live/state-hardening/main.tf",
       "mode": "render",
       "when": "defined backend.azurerm.privateEndpoint.enabled && backend.azurerm.privateEndpoint.enabled",
-      "description": "Stage-2 state hardening (ADR 0019): private endpoint + privatelink.blob zone group for the state account. Never manages the storage account itself. Deployed LAST \u2014 needs the hub applied first."
+      "description": "Stage-2 state hardening (ADR 0019): private endpoint + privatelink.blob zone group for the state account. Never manages the storage account itself. Deployed LAST — needs the hub applied first."
     },
     {
       "source": "terraform/live/state-hardening/outputs.tf.tmpl",
@@ -229,6 +236,13 @@
       "description": "Ownership, decision rights, service boundaries, operating cadence, and incident escalation."
     },
     {
+      "source": "docs/SUBSCRIPTION-ONBOARDING.md.tmpl",
+      "destination": "docs/subscription-onboarding.md",
+      "mode": "render",
+      "when": "computed.hasDeferredSubscriptions",
+      "description": "How to move a deferred brownfield subscription into the hierarchy later, and what starts evaluating its existing resources when you do. Emitted only when a subscription is actually deferred — a document about a decision nobody took is noise."
+    },
+    {
       "source": "docs/GOVERNANCE.md.tmpl",
       "destination": "docs/governance.md",
       "mode": "render",
@@ -275,7 +289,7 @@
       "destination": "docs/upgrade-guide.md",
       "mode": "render",
       "when": "always",
-      "description": "Module-pin and library-reference upgrade procedure \u2014 Renovate-driven, with no dependency on the factory."
+      "description": "Module-pin and library-reference upgrade procedure — Renovate-driven, with no dependency on the factory."
     },
     {
       "source": "docs/PHASE-MODEL.md.tmpl",
@@ -289,14 +303,20 @@
     {
       "source": "terraform/live/_layer/backend.tf.tmpl",
       "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.tf",
-      "when": "always",
-      "description": "Empty azurerm backend block, rendered once per active layer. Values live in backend.hcl (control AR3: layers are never merged)."
+      "when": "computed.backendIsAzurerm",
+      "description": "Empty azurerm backend block, rendered once per active layer. Values live in backend.hcl (control AR3: layers are never merged). Selected here rather than branched inside the template so each backend file stays valid HCL on its own and CI can fmt-check the raw corpus."
     },
     {
       "source": "terraform/live/_layer/backend.hcl.tmpl",
       "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.hcl",
-      "when": "always",
-      "description": "Per-layer backend partial configuration: state coordinates plus use_oidc and use_azuread_auth. Supplied via terraform init -backend-config=backend.hcl."
+      "when": "computed.backendIsAzurerm",
+      "description": "Per-layer azurerm backend partial configuration: state coordinates plus use_oidc and use_azuread_auth. Supplied via terraform init -backend-config=backend.hcl. The HCP Terraform backend needs no partial configuration, so this is emitted only for azurerm."
+    },
+    {
+      "source": "terraform/live/_layer/backend-cloud.tf.tmpl",
+      "destination": "terraform/live/{{FACTORY-RAW:layer}}/backend.tf",
+      "when": "computed.backendIsHcp",
+      "description": "HCP Terraform cloud block, one workspace per layer, state only (decision 0023). Emits to the same destination as the azurerm backend block; the two are mutually exclusive by their when conditions."
     }
   ]
 }

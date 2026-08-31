@@ -308,17 +308,44 @@ function Test-LzRenderGuards {
     }
 
     # ── Backend coherence ────────────────────────────────────────────────────
-    # The emitted backend is azurerm-only (ADR 0015). G17/G19 (HCP organization
-    # and Sentinel-requires-HCP) retired with the dual-backend feature.
-    if ($Config.backend.type -ne 'azurerm') {
-        $v += New-LzGuardViolation -Id 'G17' `
-            -Message "Backend type '$($Config.backend.type)' is not supported: the generator emits the azurerm backend only (ADR 0015)." `
-            -Remediation 'Set backend.type to azurerm and supply the state storage coordinates.'
+    # Two backends again (decision 0023, partially reversing 0015). G17 was a
+    # const-refusal of everything but azurerm while there was only one backend;
+    # it now carries the coherence checks that belong to each.
+    $backendType = [string](Get-LzGuardConfigValue -Object $Config -Path 'backend.type' -Default 'azurerm')
+    if ($backendType -eq 'hcp-terraform') {
+        # backend.hcpTerraform may exist without .organization; the nested read
+        # must not crash where G17 is supposed to report the gap.
+        if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.hcpTerraform.organization' -Default ''))) {
+            $v += New-LzGuardViolation -Id 'G17' `
+                -Message 'Backend is hcp-terraform but no organization is configured.' `
+                -Remediation 'Supply backend.hcpTerraform.organization. Workspaces are created as {prefix}-{layer} inside it.'
+        }
+        $executionMode = [string](Get-LzGuardConfigValue -Object $Config -Path 'backend.hcpTerraform.executionMode' -Default 'local')
+        if ($executionMode -and $executionMode -ne 'local') {
+            $v += New-LzGuardViolation -Id 'G17' `
+                -Message "HCP Terraform execution mode '$executionMode' is not supported: this factory uses HCP Terraform for state only." `
+                -Remediation 'Set backend.hcpTerraform.executionMode to local, or omit it. The emitted plan and apply workflows gate destroys on a saved plan file, and TFC remote runs do not support terraform plan -out — remote execution would delete that gate without saying so.'
+        }
+        # The state-hardening layer puts a private endpoint in front of a state
+        # storage account this backend does not create.
+        $peEnabled = [bool](Get-LzGuardConfigValue -Object $Config -Path 'backend.azurerm.privateEndpoint.enabled' -Default $false)
+        if ($peEnabled) {
+            $v += New-LzGuardViolation -Id 'G17' `
+                -Message 'backend.azurerm.privateEndpoint.enabled is set while the backend is hcp-terraform.' `
+                -Remediation 'Clear the flag, or switch the backend to azurerm. The state-hardening layer reads the state storage account as a data source and puts a private endpoint in front of it; under HCP Terraform there is no such account, so the layer would point at nothing.'
+        }
     }
-    if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.azurerm.storageAccountName' -Default ''))) {
-        $v += New-LzGuardViolation -Id 'G18' `
-            -Message 'No state storage account is configured.' `
-            -Remediation 'Supply backend.azurerm.storageAccountName and resourceGroupName.'
+    elseif ($backendType -eq 'azurerm') {
+        if ([string]::IsNullOrWhiteSpace([string](Get-LzGuardConfigValue -Object $Config -Path 'backend.azurerm.storageAccountName' -Default ''))) {
+            $v += New-LzGuardViolation -Id 'G18' `
+                -Message 'No state storage account is configured.' `
+                -Remediation 'Supply backend.azurerm.storageAccountName and resourceGroupName.'
+        }
+    }
+    else {
+        $v += New-LzGuardViolation -Id 'G17' `
+            -Message "Backend type '$backendType' is not supported: this factory emits azurerm or hcp-terraform." `
+            -Remediation 'Set backend.type to azurerm or hcp-terraform.'
     }
 
     # ── Repository visibility ────────────────────────────────────────────────
@@ -387,6 +414,47 @@ function Test-LzRenderGuards {
         }
     }
 
+    # ── Brownfield dispositions ──────────────────────────────────────────────
+    # ADR 0018 made brownfield recognise-and-exclude. The amendment lets a
+    # client say otherwise per subscription, and G30 is what makes that a
+    # decision rather than a default: placing an existing subscription into the
+    # new hierarchy starts every ALZ assignment above it evaluating resources
+    # that were built under different rules, on the first apply, with no
+    # separate confirmation step anywhere else in the motion.
+    #
+    # The acknowledgement is a sentence naming the subscription rather than a
+    # boolean, on the same reasoning as the state-access-flip workflow's typed
+    # confirmation: the expected string is composed here from the configuration,
+    # so it cannot be satisfied by copying a value from a template.
+    $dispositions = Get-LzGuardConfigValue -Object $Config -Path 'deploymentStrategy.brownfield.dispositions' -Default $null
+    $excludedForDisposition = @(Get-LzGuardConfigValue -Object $Config -Path 'deploymentStrategy.brownfield.excludedSubscriptionIds' -Default @())
+    foreach ($subscriptionId in @(Get-LzPropertyNames $dispositions)) {
+        $entry = $dispositions.$subscriptionId
+        $action = [string](Get-LzGuardConfigValue -Object $entry -Path 'action' -Default '')
+
+        if ($action -eq 'place-now') {
+            $expected = Get-LzPlacementAcknowledgement -SubscriptionId $subscriptionId
+            $supplied = ([string](Get-LzGuardConfigValue -Object $entry -Path 'acknowledgement' -Default '')).Trim()
+            if ($supplied -ne $expected) {
+                $v += New-LzGuardViolation -Id 'G30' `
+                    -Message "Subscription $subscriptionId is set to place-now without a matching acknowledgement." `
+                    -Remediation "Placing an existing subscription applies the landing zone policy set to the resources already in it, on the first apply. Set deploymentStrategy.brownfield.dispositions.'$subscriptionId'.acknowledgement to exactly: $expected — or set action to defer, which leaves the subscription outside the hierarchy and generates written onboarding instructions for it."
+            }
+            # place-now and excluded are opposite instructions about the same
+            # subscription. G26 catches the slot case; this catches the pair.
+            if ($excludedForDisposition -contains $subscriptionId) {
+                $v += New-LzGuardViolation -Id 'G30' `
+                    -Message "Subscription $subscriptionId is on the brownfield exclusion list and also set to place-now." `
+                    -Remediation 'A subscription cannot be both kept out of the landing zone and placed into it. Remove it from excludedSubscriptionIds, or change the disposition to defer.'
+            }
+        }
+        elseif ($action -ne 'defer') {
+            $v += New-LzGuardViolation -Id 'G30' `
+                -Message "Subscription $subscriptionId carries an unrecognised disposition '$action'." `
+                -Remediation 'Use place-now or defer.'
+        }
+    }
+
     # ── State private-endpoint prerequisites ─────────────────────────────────
     # Day-0 state posture is public endpoint + Entra-only auth (ADR 0019); the
     # hardening overlay moves state behind a private endpoint and is only
@@ -440,6 +508,60 @@ function Test-LzRenderGuards {
             -Remediation "Supply the value, or turn the assignment off in the wizard's Policies step. Created without it, the assignment carries the library's own placeholder, which either fails ARM validation or is accepted and then remediates against something that does not exist."
     }
 
+    # ── G29: a management-group rename the pinned library cannot honour ───────
+    # Renames are keyed by the library's own management-group id. A key the
+    # library does not define emits a group into the architecture definition
+    # that no archetype claims: created, governed by nothing, and — because
+    # management-group IDs are immutable in Azure — not correctable by a later
+    # apply. Two groups resolving to the same id is the same failure with a
+    # collision on top. The wizard blocks both at export; this is what stops a
+    # hand-edited answer record.
+    if ($Config.azure.managementGroups.strategy -eq 'custom') {
+        $mgCatalog = Get-LzPolicyCatalog
+        $libraryIds = @($mgCatalog.managementGroups | ForEach-Object { $_.id })
+        $renames = if (Test-LzHasProperty $Config.azure.managementGroups 'customHierarchy') {
+            $Config.azure.managementGroups.customHierarchy
+        }
+        else { $null }
+
+        foreach ($name in @(Get-LzPropertyNames $renames)) {
+            if ($name -notin $libraryIds) {
+                $v += New-LzGuardViolation -Id 'G29' `
+                    -Message "azure.managementGroups.customHierarchy renames '$name', which the ALZ library at $($mgCatalog.library.ref) does not define." `
+                    -Remediation "Rename one of: $($libraryIds -join ', '). A key outside that set would create a management group no archetype governs, and management-group IDs are immutable once applied."
+            }
+        }
+
+        $resolved = Resolve-LzManagementGroups -Config $Config
+        $seen = @{}
+        foreach ($libraryId in $libraryIds) {
+            $id = $resolved.Effective[$libraryId].id
+            if ($seen.ContainsKey($id)) {
+                $v += New-LzGuardViolation -Id 'G29' `
+                    -Message "Management groups '$($seen[$id])' and '$libraryId' both resolve to the id '$id'." `
+                    -Remediation 'Give each management group a distinct id. Two groups cannot share one, and the apply would fail after creating the first.'
+            }
+            $seen[$id] = $libraryId
+        }
+
+        # "Renames nothing" has to mean the effective names are the library's,
+        # not that the map is empty. { "alz": {} } and { "alz": { "id": "alz" } }
+        # are both non-empty and both change nothing — and both would still emit
+        # a local architecture definition, pinning the estate to a copy of the
+        # library that a bump can no longer update. The wizard strips no-op
+        # renames on export; this is what catches a hand-edited record.
+        $changed = 0
+        foreach ($group in @($mgCatalog.managementGroups)) {
+            $current = $resolved.Effective[$group.id]
+            if ($current.id -ne $group.id -or $current.displayName -ne $group.displayName) { $changed++ }
+        }
+        if ($changed -eq 0) {
+            $v += New-LzGuardViolation -Id 'G29' `
+                -Message 'The custom hierarchy strategy is selected but every management group still resolves to its library name.' `
+                -Remediation "Rename at least one group so its id or display name differs from the pinned library's, or set azure.managementGroups.strategy to caf-standard. Emitting a custom architecture identical to the library's would pin this estate to a local copy that a library bump can no longer update."
+        }
+    }
+
     $blocks = @($v | Where-Object { $_.Severity -eq 'Block' })
     $warns = @($v | Where-Object { $_.Severity -eq 'Warn' })
 
@@ -449,6 +571,24 @@ function Test-LzRenderGuards {
         WarnCount  = $warns.Count
         CanRender  = ($blocks.Count -eq 0)
     }
+}
+
+function Get-LzPlacementAcknowledgement {
+    <#
+    .SYNOPSIS
+        The exact sentence a client must type to place an existing subscription.
+    .DESCRIPTION
+        Composed in one place because three consumers compare against it — the
+        render guard, the wizard's own export block, and the generated
+        documentation. Two of them agreeing and one not would produce a
+        configuration that exports and then refuses to render.
+
+        It names the subscription deliberately: a sentence that is the same for
+        every estate is one a client can paste without reading, and reading it
+        is the entire control.
+    #>
+    param([Parameter(Mandatory)][string]$SubscriptionId)
+    return "I accept that $SubscriptionId will be governed by the landing zone policy set, including its existing resources."
 }
 
 function Test-LzRendererCidrOverlap {

@@ -1,0 +1,34 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Backend for the "{{FACTORY-RAW:layer}}" layer — HCP Terraform, state only.
+#
+# GENERATED FILE. Do not hand-edit.
+#
+# HCP Terraform holds the state; Terraform still RUNS in GitHub Actions.
+# That is not a default anyone should change casually: the emitted plan and
+# apply workflows gate destroys on a saved plan file
+# (`terraform plan -out=tfplan`, then `terraform show -json tfplan`), and TFC
+# remote runs do not support `-out`. Switching this workspace to remote
+# execution would delete that gate from both workflows without any error.
+# Decision 0023 records the trade.
+#
+# The organization and workspace name are literal here rather than supplied at
+# init time: unlike the azurerm backend, the `cloud` block does not accept a
+# partial configuration for the workspace name through -backend-config in the
+# same way, and the value is not a secret. TF_API_TOKEN is — it is set as a
+# repository secret by the bootstrap broker, and it is the one static
+# credential the azurerm path does not have.
+#
+# Each layer keeps its own workspace. Sharing one across layers is the single
+# most common way a landing zone becomes unrecoverable: a failure in one layer
+# then locks or corrupts every other layer's state.
+# ─────────────────────────────────────────────────────────────────────────────
+
+terraform {
+  cloud {
+    organization = "{{FACTORY-RAW:computed.hcpOrganization}}"
+
+    workspaces {
+      name = "{{FACTORY-RAW:computed.workspacePrefix}}-{{FACTORY-RAW:layer}}"
+    }
+  }
+}
