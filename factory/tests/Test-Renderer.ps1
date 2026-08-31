@@ -196,7 +196,10 @@ ok 'identity name is derived from its ID, not restated' ($mgmtOutputs -match 're
 
 $pdvBlock = if ($globalMain -match '(?s)policy_default_values\s*=\s*\{(.*?)\n  \}') { $Matches[1] } else { '' }
 $pdvKeys = @([regex]::Matches($pdvBlock, '(?m)^\s{4}([a-z0-9_]+)\s*=\s*jsonencode') | ForEach-Object { $_.Groups[1].Value })
-ok 'global supplies twelve policy default values' ($pdvKeys.Count -eq 12) ($pdvKeys -join ',')
+# All fourteen the pinned library declares. The count is asserted rather than
+# the names, because the names are already checked one by one below and a
+# library bump that adds a value must fail here rather than pass quietly.
+ok 'global supplies every policy default value' ($pdvKeys.Count -eq 14) ($pdvKeys -join ',')
 ok 'AMA defaults come from management remote state' (
     $pdvBlock -match 'ama_user_assigned_managed_identity_id[\s\S]*?terraform_remote_state\.management')
 # Composed from config on purpose: platform-connectivity applies AFTER this
@@ -324,6 +327,113 @@ $null = Invoke-LzRender -ConfigPath "$PSScriptRoot/fixtures/vwan-config.json" -O
 $connVwan = Get-Content (Join-Path $outVwan 'terraform/live/platform-connectivity/main.tf') -Raw
 ok 'vwan fixture emits virtual-wan module' ($connVwan -match 'avm-ptn-alz-connectivity-virtual-wan' -and $connVwan -match '0\.17\.1')
 ok 'vwan fixture omits hub-and-spoke'      ($connVwan -notmatch 'hub-and-spoke-vnet')
+
+Write-Host "`n== 12b. Policy selection reaches the layer ==" -ForegroundColor Cyan
+# policy_assignments_to_modify is keyed by MANAGEMENT GROUP while the client
+# answers per assignment, and most of the library's assignments are carried by
+# more than one group. Getting that fan-out wrong is the failure this section
+# exists to catch: a change that reaches one group and not the others leaves the
+# same policy enforced in half the estate.
+$catalog = Get-Content "$repo/site/alz-policy-catalog.json" -Raw | ConvertFrom-Json -Depth 30
+$selPath = Join-Path ([IO.Path]::GetTempPath()) "lz-policy-sel-$([guid]::NewGuid().ToString('n').Substring(0,8)).json"
+$outSel = Join-Path ([IO.Path]::GetTempPath()) "lz-render-test-$([guid]::NewGuid().ToString('n').Substring(0,8))"
+try {
+    $selConfig = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+    $selConfig.governance | Add-Member -NotePropertyName policySelection -NotePropertyValue ([pscustomobject]@{
+            groups      = [pscustomobject]@{ ddos = $false; 'aks-hardening' = $false }
+            assignments = [pscustomobject]@{
+                # Both halves set, but Default is what the library already says:
+                # only the real delta may travel.
+                'Deny-Public-IP' = [pscustomobject]@{ creationEnabled = $false; enforcementMode = 'Default' }
+            }
+            values      = [pscustomobject]@{ email_security_contact = 'secops@example.test' }
+        }) -Force
+    $selConfig.governance.policyBaseline.enforcementMode = 'deny'
+    $selConfig | ConvertTo-Json -Depth 40 | Set-Content $selPath -Encoding utf8
+
+    $null = Invoke-LzRender -ConfigPath $selPath -OutputDirectory $outSel -Quiet
+    $selTfvars = Get-Content (Join-Path $outSel 'terraform/live/global/terraform.auto.tfvars') -Raw
+
+    $aks = @($catalog.groups | Where-Object { $_.id -eq 'aks-hardening' }).assignments
+    ok 'a disabled group turns off every assignment it carries' `
+    (@($aks | Where-Object { $selTfvars -match "(?s)`"$([regex]::Escape($_))`"\s*=\s*\{[^}]*creation_enabled\s*=\s*false" }).Count -eq @($aks).Count) `
+    ($aks -join ', ')
+    ok 'a disabled group turns off nothing else' ($selTfvars -notmatch '"Deny-Storage-http"')
+    ok 'the DDoS assignment follows its group' ($selTfvars -match '"Enable-DDoS-VNET"\s*=')
+    ok 'a per-assignment override reaches the layer' `
+    ($selTfvars -match '(?s)"Deny-Public-IP"\s*=\s*\{[^}]*creation_enabled\s*=\s*false')
+    # Only deltas: an enforcement mode the library already has is not a change.
+    ok 'an enforcement mode equal to the library is not emitted' `
+    ($selTfvars -notmatch '(?s)"Deny-Public-IP"\s*=\s*\{[^}]*enforcement_mode')
+    ok 'deny leaves the library enforcement alone' ($selTfvars -notmatch 'DoNotEnforce')
+
+    # Every changed assignment must carry its management groups, or the layer's
+    # inversion silently drops the change.
+    $changed = [regex]::Match($selTfvars, '(?s)policy_assignment_changes\s*=\s*\{(?<body>.*?)\n\}').Groups['body'].Value
+    $names = @([regex]::Matches($changed, '(?m)^\s{2}"(?<n>[^"]+)"\s*=') | ForEach-Object { $_.Groups['n'].Value })
+    $scopeBody = [regex]::Match($selTfvars, '(?s)policy_assignment_management_groups\s*=\s*\{(?<body>.*?)\n\}').Groups['body'].Value
+    $scoped = @([regex]::Matches($scopeBody, '(?m)^\s{2}"(?<n>[^"]+)"\s*=') | ForEach-Object { $_.Groups['n'].Value })
+    ok 'every changed assignment carries its management groups' `
+    (@($names | Where-Object { $_ -notin $scoped }).Count -eq 0) `
+    (($names | Where-Object { $_ -notin $scoped }) -join ', ')
+    ok 'and nothing is scoped that was not changed' `
+    (@($scoped | Where-Object { $_ -notin $names }).Count -eq 0)
+    # The multi-group case is the one worth naming explicitly.
+    $multi = @($names | Where-Object { @($catalog.assignments.$_.managementGroups).Count -gt 1 })
+    foreach ($name in $multi) {
+        $expected = @($catalog.assignments.$name.managementGroups)
+        $line = [regex]::Match($scopeBody, "(?m)^\s{2}`"$([regex]::Escape($name))`"\s*=\s*(?<v>\[.*\])$").Groups['v'].Value
+        ok "$name names all $($expected.Count) of its management groups" `
+        (@($expected | Where-Object { $line -notmatch [regex]::Escape("`"$_`"") }).Count -eq 0) $line
+    }
+
+    # The audit baseline is the wizard default, and it must reach exactly the
+    # deny-class assignments — never a DeployIfNotExists one, whose remediation
+    # DoNotEnforce would silently stop.
+    $selConfig.governance.policyBaseline.enforcementMode = 'audit'
+    $selConfig | ConvertTo-Json -Depth 40 | Set-Content $selPath -Encoding utf8
+    Remove-Item -Recurse -Force $outSel -ErrorAction SilentlyContinue
+    $null = Invoke-LzRender -ConfigPath $selPath -OutputDirectory $outSel -Quiet
+    $auditTfvars = Get-Content (Join-Path $outSel 'terraform/live/global/terraform.auto.tfvars') -Raw
+    $downgraded = @([regex]::Matches($auditTfvars, '(?m)^\s{2}"(?<n>[^"]+)"\s*=\s*\{\r?\n\s+enforcement_mode\s*=\s*"DoNotEnforce"') |
+        ForEach-Object { $_.Groups['n'].Value })
+    # An assignment the client turned off is not downgraded — it is not created
+    # at all, so it has no enforcement mode to state.
+    $turnedOff = @($aks) + @('Enable-DDoS-VNET', 'Deny-Public-IP')
+    $expectedDeny = @($catalog.assignments.PSObject.Properties |
+        Where-Object { $_.Value.denyClass -and $_.Value.libraryEnforcementMode -eq 'Default' -and $_.Name -notin $turnedOff } |
+        ForEach-Object { $_.Name })
+    ok 'an assignment that is never created carries no enforcement mode' `
+    ($auditTfvars -notmatch '(?s)"Deny-Priv-Esc-AKS"\s*=\s*\{[^}]*enforcement_mode')
+    ok 'audit downgrades every deny-class assignment' `
+    (@($expectedDeny | Where-Object { $_ -notin $downgraded }).Count -eq 0) `
+    (($expectedDeny | Where-Object { $_ -notin $downgraded }) -join ', ')
+    ok 'audit downgrades nothing else' `
+    (@($downgraded | Where-Object { $_ -notin $expectedDeny }).Count -eq 0) `
+    (($downgraded | Where-Object { $_ -notin $expectedDeny }) -join ', ')
+    ok 'no remediation policy is downgraded' `
+    (@($downgraded | Where-Object { $_ -like 'Deploy-*' -or $_ -like 'Enable-*' }).Count -eq 0)
+}
+finally {
+    Remove-Item -Recurse -Force $outSel -ErrorAction SilentlyContinue
+    Remove-Item -Force $selPath -ErrorAction SilentlyContinue
+}
+
+Write-Host "`n== 12c. The policy guardrail speaks the AVM idiom ==" -ForegroundColor Cyan
+# The generated repository's required `policy` status check rejected added
+# lines matching the bespoke corpus's `effect = "Audit"`. The AVM ALZ pattern
+# says enforcement_mode and creation_enabled instead, so against the corpus
+# this repository actually emits, the check read as a control and enforced
+# nothing.
+$guard = Get-Content (Join-Path $out '.github/workflows/policy-diff-guardrails.yml') -Raw
+ok 'still rejects the bespoke spelling' ($guard -match 'effect\[\[:space:\]\]\*=\[\[:space:\]\]\*"\(Disabled\|Audit\)"')
+ok 'rejects an AVM enforcement downgrade' ($guard -match 'enforcement_mode\[\[:space:\]\]\*=\[\[:space:\]\]\*"DoNotEnforce"')
+ok 'rejects an AVM creation downgrade'    ($guard -match 'creation_enabled\[\[:space:\]\]\*=\[\[:space:\]\]\*false')
+# The exemption has to be narrow, or the check is decorative in the other
+# direction: every generated .tf would carry a blanket pass.
+ok 'exempts a regeneration, not a header' ($guard -match 'record_changed' -and $guard -match 'lz-config\.json')
+ok 'the exemption needs the stamp to move' ($guard -match [regex]::Escape('[0-9]+\.[0-9]+\.[0-9]+ on '))
+ok 'the job id stays the required check'  ($guard -match '(?m)^  policy:$')
 
 Write-Host "`n== 13. Schema drift check ==" -ForegroundColor Cyan
 $drift = Test-LzSchemaDrift -SchemaPath "$repo/factory/schema/lz-config.schema.json" -MappingPath "$repo/factory/renderer/variable-map.json" -TemplateRoot "$repo/factory/templates"

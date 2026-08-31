@@ -35,6 +35,7 @@ ok 'pinning policy requires forty hex characters' ($pins -match '\{40\}')
 ok 'operator checklist names required status' ($checklist -match 'Factory CI')
 ok 'runner verifies the ALZ policy catalog' ($runner -match 'New-AlzPolicyCatalog\.ps1')
 ok 'runner checks ALZ policy defaults' ($runner -match 'Test-AlzPolicyDefaults\.ps1')
+ok 'runner checks schema answer coverage' ($runner -match 'Test-SchemaCoverage\.ps1')
 
 Write-Host "`n== ALZ policy catalog generation ==" -ForegroundColor Cyan
 # Driven from a tiny local stand-in so the transformation is tested without

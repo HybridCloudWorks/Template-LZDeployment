@@ -1,4 +1,13 @@
-{
+// GENERATED FILE. Do not hand-edit — regenerate with
+// factory/ci/New-AlzPolicyCatalog.ps1, which emits this alongside
+// alz-policy-catalog.json from the ALZ library ref pinned in
+// factory-version.json.
+//
+// This exists because the wizard is zero-network by contract: the page's
+// Content-Security-Policy sets connect-src 'none', so the .json sibling cannot
+// be fetched at runtime. A same-origin script is allowed, so the catalog
+// arrives as a global instead.
+globalThis.ALZ_POLICY_CATALOG = {
   "$comment": "GENERATED FILE. Do not hand-edit. Produced by factory/ci/New-AlzPolicyCatalog.ps1 from the Azure Landing Zones library at the ref pinned in factory-version.json. The wizard reads this as a static asset because site/ makes zero network requests by contract.",
   "catalogVersion": "1.0.0",
   "library": {
@@ -1828,4 +1837,4 @@
     }
   ],
   "ungrouped": []
-}
+};

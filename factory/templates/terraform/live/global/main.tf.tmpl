@@ -110,6 +110,30 @@ locals {
     for slot, placement in local.subscription_placements :
     slot => placement if placement.subscription_id != ""
   }
+
+  # policy_assignments_to_modify is keyed by MANAGEMENT GROUP, not by
+  # assignment, and most of the library's assignments are carried by more than
+  # one group — so the same change has to be repeated under every group that
+  # carries it. Inverting here rather than spelling the map out keeps the
+  # rendered layer readable and keeps the assignment -> group edge in exactly
+  # one place: the generated policy catalog the wizard also reads.
+  policy_assignment_scopes = distinct(flatten(values(var.policy_assignment_management_groups)))
+
+  policy_assignments_to_modify = {
+    for management_group in local.policy_assignment_scopes : management_group => {
+      policy_assignments = {
+        for name, change in var.policy_assignment_changes :
+        # A null attribute is not "set to null": the module's own
+        # optional(bool, true) / optional(string, null) defaults apply, so an
+        # unset half of a change leaves the library's value alone.
+        name => {
+          creation_enabled = change.creation_enabled
+          enforcement_mode = change.enforcement_mode
+        }
+        if contains(lookup(var.policy_assignment_management_groups, name, []), management_group)
+      }
+    }
+  }
 }
 
 module "alz" {
@@ -127,8 +151,14 @@ module "alz" {
   # plan or remediation time. factory/ci/Test-AlzPolicyDefaults.ps1 fails the
   # build for any declared value that is neither supplied here nor waived.
   #
-  # The two that remain waived need a client answer rather than a derivation:
-  # email_security_contact and ddos_protection_plan_id.
+  # Every one of the fourteen is supplied. Twelve are derived from platform
+  # facts; ddos_protection_plan_id and email_security_contact are client
+  # answers, carried here from the wizard's Policies step.
+  # Only what the client changed. An assignment with no entry here is created
+  # exactly as the pinned library declares it, which is what keeps a library
+  # bump from being silently narrowed by an older answer record.
+  policy_assignments_to_modify = local.policy_assignments_to_modify
+
   policy_default_values = {
     log_analytics_workspace_id = jsonencode({
       value = data.terraform_remote_state.management.outputs.log_analytics_workspace_id
@@ -179,6 +209,17 @@ module "alz" {
     })
     resource_group_name_mdfc = jsonencode({
       value = "rg-${var.org_prefix}-mdfc-${var.primary_region_code}"
+    })
+
+    # The two the client answers rather than the factory derives. Both are
+    # empty when no selected assignment consumes them — render guard G28
+    # refuses the configuration when one is selected and unanswered, which is
+    # the only place this is visible before apply.
+    ddos_protection_plan_id = jsonencode({
+      value = var.ddos_protection_plan_id
+    })
+    email_security_contact = jsonencode({
+      value = var.email_security_contact
     })
   }
 

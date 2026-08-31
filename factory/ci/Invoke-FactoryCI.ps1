@@ -166,6 +166,14 @@ if (-not $result.InSync) { exit 1 }
     # value is invisible everywhere until a client's first plan. Needs no
     # network and no credentials: it reads the committed catalog.
     Invoke-LzFactoryCheck 'ALZ policy defaults' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-AlzPolicyDefaults.ps1') -Category 'contract' | Out-Null
+    # The silent-answer class, made structural. Four defects of the same shape
+    # were found by hand one at a time — the Log Analytics daily quota, whether
+    # to deploy a firewall, the policy baseline's enforcement mode, and the ALZ
+    # policy surface itself — each a question whose answer reached nothing and
+    # whose absence failed no gate. This check requires every schema leaf to
+    # reach a Terraform variable, a template, a factory script or a generated
+    # document, or to be recorded as not-deployed under a ratcheting budget.
+    Invoke-LzFactoryCheck 'Schema answer coverage' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-SchemaCoverage.ps1') -Category 'contract' | Out-Null
     # Corpus-vs-broker resource-provider drift (decision 0006): a template
     # module adding an azurerm type whose namespace the broker does not
     # register must fail here, not at a client site mid-first-apply.

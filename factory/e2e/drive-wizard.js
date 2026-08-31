@@ -113,6 +113,40 @@ async function main() {
   };
   for (const [p, v] of Object.entries(answers)) await setValue(p, v);
 
+  // The policies step renders its own controls from the generated catalog, so
+  // there is no data-path to drive. Go through the rendered DOM anyway — the
+  // point of this driver is that the real UI produces the answer record.
+  const setPolicyGroup = async (groupId, enabled) => {
+    const changed = await page.evaluate(([id, on]) => {
+      /* global POLICY_CATALOG */
+      const index = POLICY_CATALOG.groups.findIndex((g) => g.id === id);
+      if (index < 0) return false;
+      const box = document.querySelectorAll('#policyGroups .policy-group input[type=checkbox]')[index];
+      if (!box) return false;
+      box.checked = Boolean(on);
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }, [groupId, enabled]);
+    if (!changed) throw new Error(`The policies step renders no group "${groupId}"`);
+  };
+  const setPolicyValue = async (name, value) => {
+    const changed = await page.evaluate(([n, v]) => {
+      const el = document.querySelector(`#pv_${n}`);
+      if (!el) return false;
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }, [name, value]);
+    if (!changed) throw new Error(`The policies step asks for no value "${name}"`);
+  };
+
+  // Defender policy is on by default and consumes email_security_contact;
+  // unanswered, the assignment would be created from the library's own
+  // security_contact@replace_me. Turning one group off exercises the
+  // creation_enabled = false path through to the rendered layer.
+  await setPolicyValue('email_security_contact', 'secops@example.test');
+  await setPolicyGroup('aks-hardening', false);
+
   // Repeater/list answers that have no single bound input go through the
   // page's own state objects, then a UI refresh — still the app's own code.
   await page.evaluate(() => {

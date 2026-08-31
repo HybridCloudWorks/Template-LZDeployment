@@ -1,0 +1,11 @@
+{
+  "type": "Microsoft.Authorization/policyAssignments",
+  "name": "Some-Unmapped-Policy",
+  "properties": {
+    "displayName": "An assignment the curated group map does not claim",
+    "enforcementMode": "Default",
+    "parameters": {
+      "effect": { "value": "Deny" }
+    }
+  }
+}

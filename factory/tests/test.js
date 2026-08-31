@@ -47,6 +47,11 @@ c.environments.approvals = { prod: { requiredReviewers: ['@platform'], waitTimer
 // say. A config that has not answered them is not a valid config.
 c.connectivity.firewall.enabled = true;
 c.connectivity.bastion.enabled = false;
+// The Defender policy group is on by default and Deploy-MDFC-Config-H224
+// consumes email_security_contact. Unsupplied, the assignment is created from
+// the library's own security_contact@replace_me — which is exactly what the
+// policies step exists to stop, so it is an export blocker, not a warning.
+c.governance.policySelection.values.email_security_contact = 'secops@contoso.com';
 A.config = c;
 A.defaultTagRows = [
   { k: 'owner', v: 'platform' }, { k: 'application', v: 'alz' },
@@ -284,6 +289,116 @@ c.connectivity.firewall.type = 'none';
 ok('imported firewall type "none" blocks export', A.validate().errors.some(e => /only type the generator composes/.test(e.message)));
 c.connectivity.firewall.type = 'azfw';
 ok('azfw clears the firewall-type block', !A.validate().errors.some(e => /only type the generator composes/.test(e.message)));
+
+console.log('\n== 15. Policy selection is read from the pinned library ==');
+{
+  const catalog = A.POLICY_CATALOG;
+  ok('the catalog reached the wizard', catalog.groups.length > 0 && Object.keys(catalog.assignments).length > 0,
+    'harness.js must load site/alz-policy-catalog.js before app.js');
+
+  // Every group in the catalog names assignments the catalog also declares —
+  // otherwise a toggle in the UI governs nothing.
+  const orphans = catalog.groups.flatMap(g => g.assignments.filter(a2 => !catalog.assignments[a2]));
+  ok('every grouped assignment exists', orphans.length === 0, orphans.join(', '));
+
+  // Absence means enabled: a config written before a library bump must keep the
+  // ALZ baseline rather than silently dropping whatever the bump added.
+  delete c.governance.policySelection.groups['aks-hardening'];
+  ok('an unmentioned group is enabled', A.policyGroupEnabled('aks-hardening'));
+  c.governance.policySelection.groups['aks-hardening'] = false;
+  ok('an explicitly disabled group is off', !A.policyGroupEnabled('aks-hardening'));
+  const aks = catalog.groups.find(g => g.id === 'aks-hardening');
+  ok('its assignments follow the group', aks.assignments.every(n => !A.policyAssignmentEnabled(n)));
+
+  // The per-assignment override beats its group, in both directions.
+  const one = aks.assignments[0];
+  c.governance.policySelection.assignments[one] = { creationEnabled: true };
+  ok('a per-assignment override wins over the group', A.policyAssignmentEnabled(one));
+  delete c.governance.policySelection.assignments[one];
+  c.governance.policySelection.groups['aks-hardening'] = true;
+
+  // The values the client owes are derived from what is selected, and only for
+  // defaults the factory does not already compute.
+  const owed = () => A.requiredPolicyValues().map(([n]) => n);
+  ok('a factory-computed default is never asked for', !owed().includes('log_analytics_workspace_id'),
+    'the global layer composes it from remote state');
+  ok('DDoS is off by default, so no plan ID is owed', !owed().includes('ddos_protection_plan_id'));
+  c.governance.policySelection.groups.ddos = true;
+  ok('enabling DDoS asks for the plan ID', owed().includes('ddos_protection_plan_id'));
+  ok('an unanswered plan ID blocks export',
+    A.validate().errors.some(e => /DDoS protection plan resource ID is required/.test(e.message)));
+  c.governance.policySelection.values.ddos_protection_plan_id = 'ddos-plan-1';
+  ok('a bare name is rejected — the policy needs a resource ID',
+    A.validate().errors.some(e => /must be a full resource ID/.test(e.message)));
+  c.governance.policySelection.values.ddos_protection_plan_id =
+    '/subscriptions/aaaaaaaa-0000-0000-0000-000000000002/resourceGroups/rg-contoso-connectivity-scus/providers/Microsoft.Network/ddosProtectionPlans/ddos-contoso';
+  ok('a full resource ID clears it', !A.validate().errors.some(e => /DDoS/.test(e.message)));
+
+  // Turning the assignment off retires its question, rather than leaving a
+  // required value the client can no longer see a reason for.
+  c.governance.policySelection.groups.ddos = false;
+  ok('disabling the group retires the question', !owed().includes('ddos_protection_plan_id'));
+  ok('and the stale answer does not travel', !('ddos_protection_plan_id' in (A.buildConfig().governance.policySelection.values || {})),
+    'buildConfig must drop values nothing asks for any more');
+
+  // The security contact is one fact asked once.
+  const supplied = c.governance.policySelection.values.email_security_contact;
+  delete c.governance.policySelection.values.email_security_contact;
+  ok('an unanswered security contact blocks export',
+    A.validate().errors.some(e => /Defender for Cloud security contact is required/.test(e.message)));
+  c.governance.policySelection.values.email_security_contact = 'not-an-email';
+  ok('a malformed security contact blocks export',
+    A.validate().errors.some(e => /not a valid email address/.test(e.message)));
+  c.governance.policySelection.values.email_security_contact = supplied;
+
+  // Turning everything off is a configuration the wizard refuses to export.
+  const saved = JSON.parse(JSON.stringify(c.governance.policySelection.groups));
+  for (const g of catalog.groups) c.governance.policySelection.groups[g.id] = false;
+  ok('an ungoverned landing zone blocks export',
+    A.validate().errors.some(e => /no Azure Policy governance at all/.test(e.message)));
+  c.governance.policySelection.groups = saved;
+  ok('the fixture is exportable again', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+}
+
+console.log('\n== 16. Answers that reach nothing are declared, not discovered ==');
+{
+  ok('the ledger reached the wizard', A.RECORDED_NOT_DEPLOYED.length > 0,
+    'harness.js must load site/schema-coverage.js before app.js');
+  ok('every ledger entry is showable', A.RECORDED_NOT_DEPLOYED.every(
+    (e) => e.label && e.module && e.impact && Array.isArray(e.paths) && e.paths.length));
+
+  // An untouched default is not an answer, and warning about one would train
+  // the client to ignore the whole table.
+  const clean = A.buildConfig();
+  const untouched = A.unmetDependencies(clean).filter((u) => u.feature === 'FinOps budgets and cost exports');
+  ok('an untouched default raises nothing', untouched.length === 0, JSON.stringify(untouched));
+
+  // A real answer does raise one, naming the path so the client can see which
+  // of their answers is the one going nowhere.
+  c.finops.budgets = [{ scope: 'management', amountUsd: 5000, timeGrain: 'Monthly', alertThresholdPercents: [80], contactEmails: ['fin@contoso.com'] }];
+  const withBudget = A.unmetDependencies(A.buildConfig()).filter((u) => u.feature === 'FinOps budgets and cost exports');
+  ok('a real answer raises a recorded-not-deployed row', withBudget.length === 1, JSON.stringify(withBudget));
+  ok('the row names the answered path', withBudget.length === 1 && /finops\.budgets\.amountUsd/.test(withBudget[0].impact));
+  ok('and it is not reported as deployed', withBudget.length === 1 && withBudget[0].status === 'recorded-not-deployed');
+  c.finops.budgets = [];
+
+  // The four hand-written entries survive — they are conditions on a feature
+  // being switched on, not on a path carrying a value.
+  c.security.sentinel.enabled = true;
+  ok('Sentinel is still called out', A.unmetDependencies(A.buildConfig()).some((u) => u.feature === 'Microsoft Sentinel'));
+  c.security.sentinel.enabled = false;
+
+  // Found by this check on its first run: the wizard warned about storage-key
+  // state auth and delivered Entra-only regardless, because the broker creates
+  // the account with shared-key access disabled. An answer the factory cannot
+  // honour is an export blocker, not a warning.
+  c.backend.azurerm.useAzureAdAuth = false;
+  ok('an unhonourable state-auth answer blocks export',
+    A.validate().errors.some((e) => /Entra ID authentication to state is a contract/.test(e.message)));
+  c.backend.azurerm.useAzureAdAuth = true;
+
+  ok('the fixture is exportable throughout', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+}
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

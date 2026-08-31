@@ -184,6 +184,14 @@
     "resourceLocks": {
       "lockPlatformResourceGroups": true,
       "lockLevel": "CanNotDelete"
+    },
+    "policySelection": {
+      "groups": {
+        "ddos": false
+      },
+      "values": {
+        "email_security_contact": "secops@example.test"
+      }
     }
   },
   "observability": {

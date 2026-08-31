@@ -34,9 +34,17 @@ global.URL = { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} };
 global.FileReader = class {};
 global.setInterval = () => 0;
 
+// The browser gets these from separate <script> tags. There is no such chain
+// here, so load them explicitly — otherwise app.js falls back to its empty
+// catalog and its empty ledger, and every assertion about either passes
+// against nothing.
+for (const asset of ['alz-policy-catalog.js', 'schema-coverage.js']) {
+  new Function('globalThis', fs.readFileSync(path.join(SITE, asset), 'utf8'))(global);
+}
+
 const src = fs.readFileSync(path.join(SITE, 'app.js'), 'utf8');
 // Expose internals for testing.
-const wrapped = src + '\n;module.exports = { validate, estimateRum, buildConfig, tfvarsGlobal, tfvarsConnectivity, backendHcl, environmentDefinitions, deploymentMetadata, configurationMarkdown, nextStepsMarkdown, defaultConfig, cidrsOverlap, cicdIdentityCount, get config(){return config;}, set config(v){config=v;}, get defaultTagRows(){return defaultTagRows;}, set defaultTagRows(v){defaultTagRows=v;} };';
+const wrapped = src + '\n;module.exports = { validate, estimateRum, buildConfig, tfvarsGlobal, tfvarsConnectivity, backendHcl, environmentDefinitions, deploymentMetadata, configurationMarkdown, nextStepsMarkdown, defaultConfig, cidrsOverlap, cicdIdentityCount, unmetDependencies, RECORDED_NOT_DEPLOYED, POLICY_CATALOG, policyGroupEnabled, policyAssignmentEnabled, requiredPolicyValues, policyCounts, get config(){return config;}, set config(v){config=v;}, get defaultTagRows(){return defaultTagRows;}, set defaultTagRows(v){defaultTagRows=v;} };';
 const mod = { exports: {} };
 new Function('module', 'exports', 'require', wrapped)(mod, mod.exports, require);
 module.exports = mod.exports;

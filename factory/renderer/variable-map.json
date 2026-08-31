@@ -23,7 +23,7 @@
     },
     "global": {
       "variablesFile": "terraform/live/global/variables.tf",
-      "$comment": "architecture_name and the five *_management_group_id placement targets default in variables.tf to the id set the pinned ALZ library architecture defines; they are operator-overridable alongside a custom architecture, so no wizard question feeds them (ADR 0017). The state_* trio feeds the remote-state read of platform-management.",
+      "$comment": "architecture_name and the five *_management_group_id placement targets default in variables.tf to the id set the pinned ALZ library architecture defines; they are operator-overridable alongside a custom architecture, so no wizard question feeds them (ADR 0017). The state_* trio feeds the remote-state read of platform-management. The two policy_assignment_* maps are computed rather than mapped to a config path: the wizard's governance.policySelection answers carry no management-group edge, and resolving them against site/alz-policy-catalog.json is what supplies it — see Resolve-LzPolicySelection.",
       "variables": {
         "root_parent_management_group_id": "azure.managementGroups.rootId",
         "org_prefix": "organization.companyShortName",
@@ -43,12 +43,16 @@
         "sandbox_management_group_id": "literal:defaulted-library-id",
         "state_resource_group_name": "backend.azurerm.resourceGroupName",
         "state_storage_account_name": "backend.azurerm.storageAccountName",
-        "state_container_name": "backend.azurerm.containerName"
+        "state_container_name": "backend.azurerm.containerName",
+        "policy_assignment_changes": "computed.policyAssignmentChanges",
+        "policy_assignment_management_groups": "computed.policyAssignmentManagementGroups",
+        "ddos_protection_plan_id": "governance.policySelection.values.ddos_protection_plan_id",
+        "email_security_contact": "governance.policySelection.values.email_security_contact"
       }
     },
     "platform-connectivity": {
       "variablesFile": "terraform/live/platform-connectivity/variables.tf",
-      "$comment": "The rendered main.tf contains exactly one topology (connectivity.model). Firewall TYPE is narrowed to Azure Firewall by ADR 0017 \u2014 a third-party NVA is per-estate work in the generated repository. Whether to deploy one is a different question, and as of the 2026-08-30 amendment it is a required answer with no default: firewall_enabled maps to connectivity.firewall.enabled, not to a literal. It and deploy_bastion also carry no variables.tf default, because the renderer always emits both \u2014 an absent value means a hand-edited tfvars, which should fail loudly rather than quietly spend roughly USD 900-950 a month per hub. deploy_vpn_gateway and deploy_expressroute_gateway likewise consume answers that were once recorded but unwired. hub_and_spoke_networks_settings is a pass-through escape hatch that defaults empty, fed by no question by design.",
+      "$comment": "The rendered main.tf contains exactly one topology (connectivity.model). Firewall TYPE is narrowed to Azure Firewall by ADR 0017 — a third-party NVA is per-estate work in the generated repository. Whether to deploy one is a different question, and as of the 2026-08-30 amendment it is a required answer with no default: firewall_enabled maps to connectivity.firewall.enabled, not to a literal. It and deploy_bastion also carry no variables.tf default, because the renderer always emits both — an absent value means a hand-edited tfvars, which should fail loudly rather than quietly spend roughly USD 900-950 a month per hub. deploy_vpn_gateway and deploy_expressroute_gateway likewise consume answers that were once recorded but unwired. hub_and_spoke_networks_settings is a pass-through escape hatch that defaults empty, fed by no question by design.",
       "variables": {
         "connectivity_subscription_id": "azure.subscriptions.connectivity",
         "org_prefix": "organization.companyShortName",
@@ -72,7 +76,7 @@
     },
     "state-hardening": {
       "variablesFile": "terraform/live/state-hardening/variables.tf",
-      "$comment": "Stage-2 state hardening (ADR 0019). hub_pe_subnet_id and blob_private_dns_zone_id are deliberate operator placeholders owned by the platform-connectivity layer's outputs \u2014 same loop-back pattern as the connectivity workspace ID.",
+      "$comment": "Stage-2 state hardening (ADR 0019). hub_pe_subnet_id and blob_private_dns_zone_id are deliberate operator placeholders owned by the platform-connectivity layer's outputs — same loop-back pattern as the connectivity workspace ID.",
       "variables": {
         "state_subscription_id": "computed.stateSubscriptionId",
         "state_resource_group_name": "backend.azurerm.resourceGroupName",
@@ -80,14 +84,14 @@
         "org_prefix": "organization.companyShortName",
         "primary_region": "azure.primaryRegion",
         "primary_region_code": "azure.primaryRegionCode",
-        "hub_pe_subnet_id": "literal:operator placeholder \u2014 platform-connectivity hub PE subnet output",
-        "blob_private_dns_zone_id": "literal:operator placeholder \u2014 platform-connectivity privatelink.blob zone output",
+        "hub_pe_subnet_id": "literal:operator placeholder — platform-connectivity hub PE subnet output",
+        "blob_private_dns_zone_id": "literal:operator placeholder — platform-connectivity privatelink.blob zone output",
         "default_tags": "naming.defaultTags"
       }
     }
   },
   "$pendingLayers": {
-    "$comment": "No pending layers. Workload spokes and sandbox estates are built inside the generated repository against the connectivity layer's outputs \u2014 per-estate work, not generator architecture (ADR 0017).",
+    "$comment": "No pending layers. Workload spokes and sandbox estates are built inside the generated repository against the connectivity layer's outputs — per-estate work, not generator architecture (ADR 0017).",
     "pending": []
   }
 }

@@ -30,3 +30,18 @@ sandbox_subscription_id = {{FACTORY:azure.subscriptions.sandbox}}
 state_resource_group_name  = {{FACTORY:backend.azurerm.resourceGroupName}}
 state_storage_account_name = {{FACTORY:backend.azurerm.storageAccountName}}
 state_container_name       = {{FACTORY:backend.azurerm.containerName}}
+
+# Client policy selection, resolved against the ALZ policy catalog generated
+# from the pinned library ref. Only deltas from the library's own baseline
+# appear: an assignment named here is one the client changed, and every other
+# assignment is created exactly as the library declares it.
+policy_assignment_changes = {{FACTORY-RAW:computed.policyAssignmentChanges}}
+
+# Assignment -> the management groups carrying it, read from the same catalog.
+# policy_assignments_to_modify is keyed by management group, so the layer needs
+# this edge to apply one change to every group that carries the assignment.
+policy_assignment_management_groups = {{FACTORY-RAW:computed.policyAssignmentManagementGroups}}
+
+# The two policy default values the client owns rather than the factory derives.
+ddos_protection_plan_id = {{FACTORY:computed.policyValueDdosPlanId}}
+email_security_contact  = {{FACTORY:computed.policyValueSecurityContact}}

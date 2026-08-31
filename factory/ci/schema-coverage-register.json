@@ -1,0 +1,166 @@
+{
+  "$comment": "Answer-coverage ledger for factory/ci/Test-SchemaCoverage.ps1. Two lists, and the difference between them matters. consumedIndirectly names answers that DO reach a delivered artifact through a consumer that reads them structurally rather than by dotted name — the coverage scan cannot see them, but the client gets what they answered. recordedNotDeployed names answers that reach nothing but lz-config.json: the client is asked, the answer is preserved, and no estate is built from it. That second list is debt, it carries a budget that only ratchets down, and every entry owes a reason and a way out.",
+  "budget": 44,
+  "consumedIndirectly": [
+    {
+      "consumer": "scripts/New-LzSubscriptions.ps1",
+      "note": "Reads the plannedNames map whole ($subs['plannedNames']) and iterates its slots, so no slot is ever named in source. The wizard derives these from organization.companyShortName; they become the display names of the subscriptions the vending run creates.",
+      "paths": [
+        "azure.subscriptions.plannedNames.management",
+        "azure.subscriptions.plannedNames.connectivity",
+        "azure.subscriptions.plannedNames.identity",
+        "azure.subscriptions.plannedNames.workloadProd",
+        "azure.subscriptions.plannedNames.workloadNonProd",
+        "azure.subscriptions.plannedNames.sandbox"
+      ]
+    },
+    {
+      "consumer": "factory/bootstrap/LZFactory.Bootstrap.psm1",
+      "note": "Read through Get-LzConfigValue against the branchProtection object rather than by path, and applied to the generated repository as required_linear_history.",
+      "paths": [
+        "github.branchProtection.requireLinearHistory"
+      ]
+    },
+    {
+      "consumer": "factory/renderer/private/TokenEngine.ps1",
+      "note": "Resolve-LzPolicySelection walks the policySelection object by key to build policy_assignment_changes, so the group ids and assignment names — which come from the generated ALZ catalog, not from the schema — are never spelled in source.",
+      "paths": [
+        "governance.policySelection.groups",
+        "governance.policySelection.assignments"
+      ]
+    },
+    {
+      "consumer": "site/app.js",
+      "note": "The wizard blocks export when it is false, because it can only be true: the broker creates the state account with --allow-shared-key-access false, and every emitted backend.hcl and remote-state block sets use_azuread_auth = true unconditionally. Read as b.azurerm.useAzureAdAuth in validate(), which is why the dotted path appears nowhere. It stays in the schema so an imported configuration that says otherwise is caught rather than silently corrected; retiring it is a schema major.",
+      "paths": [
+        "backend.azurerm.useAzureAdAuth"
+      ]
+    }
+  ],
+  "recordedNotDeployed": [
+    {
+      "label": "Custom management-group hierarchy",
+      "module": "(pinned ALZ library)",
+      "reason": "A full repeater UI, a referential-integrity validator and a schema conditional-required, with zero readers. The management-group IDs actually created come from the pinned ALZ library architecture. Management-group IDs are immutable in Azure, so this is a one-shot mistake per client.",
+      "resolution": "TODO 6.4 — emit a client-specific architecture definition into a local ALZ library directory and append it to library_references.",
+      "paths": [
+        "azure.managementGroups.customHierarchy.id",
+        "azure.managementGroups.customHierarchy.displayName",
+        "azure.managementGroups.customHierarchy.parentId"
+      ]
+    },
+    {
+      "label": "Non-prod spoke address spaces",
+      "module": "(per-estate)",
+      "reason": "Workload spokes are per-estate work built inside the generated repository against the connectivity layer's outputs (ADR 0017), so no layer renders these. The wizard does validate them for overlap against the hub ranges, which is why they are collected at all.",
+      "resolution": "Either render them into the generated repository's connectivity documentation so the addressing decision travels with the estate, or drop them from the schema and let the estate choose its own.",
+      "paths": [
+        "connectivity.hubSpoke.nonProdSpokeAddressSpaces.dev.primary",
+        "connectivity.hubSpoke.nonProdSpokeAddressSpaces.dev.dr",
+        "connectivity.hubSpoke.nonProdSpokeAddressSpaces.test.primary",
+        "connectivity.hubSpoke.nonProdSpokeAddressSpaces.test.dr",
+        "connectivity.hubSpoke.nonProdSpokeAddressSpaces.uat.primary",
+        "connectivity.hubSpoke.nonProdSpokeAddressSpaces.uat.dr"
+      ]
+    },
+    {
+      "label": "ExpressRoute circuit detail",
+      "module": "(carrier order)",
+      "reason": "The connectivity layer deploys an ExpressRoute gateway from connectivity.expressRoute.enabled. The circuit itself is ordered from a carrier outside Terraform, and these four describe that order rather than anything the factory can create.",
+      "resolution": "Render them into the generated repository's connectivity runbook, where the person placing the carrier order will look, rather than leaving them only in the answer record.",
+      "paths": [
+        "connectivity.expressRoute.circuitName",
+        "connectivity.expressRoute.peeringLocation",
+        "connectivity.expressRoute.bandwidthMbps",
+        "connectivity.expressRoute.serviceProvider"
+      ]
+    },
+    {
+      "label": "VPN and Bastion SKUs",
+      "module": "(AVM connectivity module)",
+      "reason": "The layer deploys the VPN gateway and Bastion host from their enabled booleans; the AVM connectivity module owns the SKU, and these three answers select something the module does not take.",
+      "resolution": "Either pass them through to the module's hub settings, or stop asking — an answer the client can give and the estate cannot honour is worse than no question.",
+      "paths": [
+        "connectivity.vpn.sku",
+        "connectivity.vpn.activeActive",
+        "connectivity.bastion.sku"
+      ]
+    },
+    {
+      "label": "Identity strategy",
+      "module": "(per-estate)",
+      "reason": "The identity subscription is placed under its management group by the global layer from azure.subscriptions.identity. This answer describes an intended identity architecture that no layer builds.",
+      "resolution": "Render it into the generated repository's identity documentation, or retire it.",
+      "paths": [
+        "identity.strategy"
+      ]
+    },
+    {
+      "label": "Security retention and hardening detail",
+      "module": "(per-estate)",
+      "reason": "Per-estate work under ADR 0017: the factory deploys neither Sentinel, nor the estate's key vaults, nor NSG flow logs, so their retention and hardening detail configures nothing. The wizard already marks Sentinel and customer-managed keys recorded-not-deployed; these are the same decision at a finer grain.",
+      "resolution": "Carry them into the generated repository's security documentation so the estate team implements what the client actually answered, rather than rediscovering the question.",
+      "paths": [
+        "security.sentinel.retentionDays",
+        "security.keyVault.enablePurgeProtection",
+        "security.keyVault.softDeleteRetentionDays",
+        "security.keyVault.enableRbacAuthorization",
+        "security.nsgFlowLogs.retentionDays",
+        "security.nsgFlowLogs.trafficAnalytics"
+      ]
+    },
+    {
+      "label": "Bespoke policy-baseline toggles",
+      "module": "(superseded by the Policies step)",
+      "reason": "Superseded rather than merely unwired. These six booleans predate the ALZ policy surface: allowed locations, TLS minimums, NSGs on subnets, public IPs on NICs, diagnostic settings and encryption at rest are all enforced by assignments the pinned library ships, and the client now chooses those in the wizard's Policies step. Leaving them collected offers the same decision twice, in two places, with only one of them connected to anything.",
+      "resolution": "Retire them in a schema major, or map each to the catalog assignment it duplicates so the two controls cannot disagree.",
+      "paths": [
+        "governance.policyBaseline.enforceAllowedLocations",
+        "governance.policyBaseline.enforceTlsMinimum",
+        "governance.policyBaseline.enforceNsgOnSubnets",
+        "governance.policyBaseline.denyPublicIpOnNics",
+        "governance.policyBaseline.enforceDiagnosticSettings",
+        "governance.policyBaseline.enforceEncryptionAtRest"
+      ]
+    },
+    {
+      "label": "Operating-model contacts and approvals",
+      "module": "(docs)",
+      "reason": "Collected and rendered nowhere. OPERATING-MODEL.md.tmpl references none of them, so a client who records a support-hours window, an escalation URL, an approval chain and a break-glass contact list finds none of it in the repository they are handed.",
+      "resolution": "Render them into docs/operating-model.md — this is the cheapest entry in the ledger to close, and the one whose absence is most visible to the client.",
+      "paths": [
+        "operations.platformTeam.githubTeamSlug",
+        "operations.platformTeam.supportHours",
+        "operations.platformTeam.escalationUrl",
+        "operations.approvalChain.stage",
+        "operations.approvalChain.approvers",
+        "operations.approvalChain.appliesToEnvironments",
+        "operations.breakGlassContacts"
+      ]
+    },
+    {
+      "label": "FinOps budgets and cost exports",
+      "module": "(docs)",
+      "reason": "FINOPS.md.tmpl names finops.budgets in prose and renders no field of it, and no Azure Consumption budget or cost export is created by any layer. A client who sets a USD amount and alert thresholds gets neither the budget nor a document saying what they asked for.",
+      "resolution": "Render the budget and export tables into docs/finops.md, and decide separately whether the platform-management layer should create the budgets — Microsoft.Consumption budgets are a small, well-bounded addition.",
+      "paths": [
+        "finops.budgets.scope",
+        "finops.budgets.amountUsd",
+        "finops.budgets.timeGrain",
+        "finops.budgets.alertThresholdPercents",
+        "finops.budgets.contactEmails",
+        "finops.costExports.storageAccountName",
+        "finops.costExports.frequency"
+      ]
+    },
+    {
+      "label": "Brownfield policy inventory",
+      "module": "(discovery)",
+      "reason": "Part of the brownfield surface that has no disposition mechanism yet: nothing inventories existing policy assignments in a tenant being adopted.",
+      "resolution": "TODO 6.7 — per-subscription brownfield disposition.",
+      "paths": [
+        "deploymentStrategy.brownfield.inventoryExistingPolicies"
+      ]
+    }
+  ]
+}

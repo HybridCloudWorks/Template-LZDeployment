@@ -26,8 +26,61 @@ jobs:
       - name: Reject disabled policy enforcement
         shell: bash
         run: |
-          if git diff --unified=0 origin/{{FACTORY-RAW:computed.defaultBranch}}...HEAD -- terraform/ | grep -E '^\+.*effect[[:space:]]*=[[:space:]]*"(Disabled|Audit)"'; then
-            echo "::error::Policy enforcement downgrade requires explicit architecture review."
+          set -euo pipefail
+          # Three spellings, because this repository carries two policy
+          # corpora. `effect = "Audit"` is the bespoke one. The Azure Verified
+          # Modules ALZ pattern says `enforcement_mode = "DoNotEnforce"` (the
+          # assignment is created but does not act) and `creation_enabled =
+          # false` (it is never created at all) — until this step learned them,
+          # it read as a control over the ALZ baseline and enforced nothing.
+          downgrade='effect[[:space:]]*=[[:space:]]*"(Disabled|Audit)"'
+          downgrade="$downgrade"'|enforcement_mode[[:space:]]*=[[:space:]]*"DoNotEnforce"'
+          downgrade="$downgrade"'|creation_enabled[[:space:]]*=[[:space:]]*false'
+
+          base="origin/{{FACTORY-RAW:computed.defaultBranch}}"
+          failed=0
+
+          # Every stamp in a rendered file is derived from lz-config.json — the
+          # factory version and the export timestamp both come out of the answer
+          # record, so re-rendering an unchanged record is byte-identical. A
+          # moved stamp with an unchanged record therefore means the stamp was
+          # hand-edited, and the regeneration exemption below requires both.
+          record_changed=0
+          if git diff --name-only "$base...HEAD" -- lz-config.json | grep -q .; then
+            record_changed=1
+          fi
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            hits=$(git diff --unified=0 "$base...HEAD" -- "$file" | grep -E "^\+.*($downgrade)" || true)
+            [ -n "$hits" ] || continue
+
+            # A regeneration is not a hand-edit. Every file the factory renders
+            # carries its own version-and-timestamp stamp, so a re-export always
+            # moves that line and a hand-edit never does — which is why the
+            # exemption keys on the stamp moving rather than on the "GENERATED
+            # FILE" header merely being present. Editing a generated file in a
+            # pull request that does not also re-export the answer record is
+            # still caught.
+            #
+            # Known limit, stated rather than papered over: a pull request that
+            # BOTH regenerates a file and hand-edits the same file is not
+            # distinguished here. Nothing short of re-running the factory can
+            # separate those, and the factory does not run in this repository.
+            # Review the lz-config.json diff — it is the reviewable artifact.
+            if [ "$record_changed" -eq 1 ] &&
+               git diff --unified=0 "$base...HEAD" -- "$file" |
+               grep -qE '^\+#[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+ on '; then
+              echo "::notice file=$file::Policy downgrade accepted: this file was regenerated, and the wizard's Policies step is where that choice is reviewed."
+              continue
+            fi
+
+            echo "::error file=$file::Policy enforcement downgrade requires explicit architecture review."
+            echo "$hits"
+            failed=1
+          done < <(git diff --name-only "$base...HEAD" -- terraform/)
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::Turn the assignment off in the wizard and regenerate, or record the exception with the platform owner. Hand-editing a generated layer is undone by the next render."
             exit 1
           fi
       - name: Reject floating module sources
