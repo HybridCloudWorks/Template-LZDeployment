@@ -203,6 +203,8 @@ ok 'AMA defaults come from management remote state' (
 # layer, so reading these back would invert the deploy order.
 ok 'private DNS RG name matches the connectivity layer naming' (
     $pdvBlock -match 'rg-\$\{var\.org_prefix\}-connectivity-\$\{var\.primary_region_code\}')
+
+
 ok 'global tfvars carries the naming inputs' (
     $globalTfvars -match 'org_prefix\s+=' -and $globalTfvars -match 'primary_region_code\s+=')
 
@@ -228,6 +230,23 @@ ok 'hub-spoke fixture emits hub-and-spoke module' ($connMain -match 'avm-ptn-alz
 $connTfvars = Get-Content (Join-Path $out 'terraform/live/platform-connectivity/terraform.auto.tfvars') -Raw
 ok 'connectivity tfvars carries the firewall answer' ($connTfvars -match 'firewall_enabled\s+=\s+true')
 ok 'connectivity tfvars carries the bastion answer'  ($connTfvars -match 'deploy_bastion\s+=\s+(true|false)')
+
+# The two layers agree on a resource-group name by convention, not by reference:
+# global composes the name it hands Deploy-Private-DNS-Zones, and connectivity is
+# what actually creates the group. Nothing links them, and they apply in that
+# order, so a rename on either side would send the DINE policy's records to a
+# resource group that does not exist — with no gate noticing, because both files
+# stay valid HCL. Compare the literal skeletons with the interpolations masked:
+# the region interpolation differs by design (global uses the primary region,
+# connectivity iterates hubs), so only the fixed segments can be compared.
+$connRgName = if ($connMain -match '(?s)resource "azurerm_resource_group" "connectivity"\s*\{.*?\n\s*name\s*=\s*"([^"]+)"') { $Matches[1] } else { '' }
+$globalDnsRg = if ($pdvBlock -match '(?s)private_dns_zone_resource_group_name\s*=\s*jsonencode\(\{\s*\n\s*value\s*=\s*"([^"]+)"') { $Matches[1] } else { '' }
+$maskInterp = { param($t) ($t -replace '\$\{[^}]+\}', '<>') }
+ok 'both layers name the connectivity resource group' ($connRgName -and $globalDnsRg) "conn='$connRgName' global='$globalDnsRg'"
+ok 'the private-DNS resource group contract holds across layers' (
+    (& $maskInterp $connRgName) -eq (& $maskInterp $globalDnsRg)) `
+    "connectivity creates '$connRgName' but global tells the policy '$globalDnsRg'"
+
 ok 'hub-spoke fixture omits virtual-wan module'   ($connMain -notmatch 'avm-ptn-alz-connectivity-virtual-wan')
 
 $vendored = @(Get-ChildItem -Path $out -Recurse -Directory | Where-Object { $_.Name -eq 'modules' })

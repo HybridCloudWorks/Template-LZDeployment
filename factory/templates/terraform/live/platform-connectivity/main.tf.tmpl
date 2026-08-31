@@ -75,6 +75,13 @@ locals {
 
 # The pattern modules require existing resource groups (parent IDs); one per
 # hub region, owned by this root module.
+#
+# The name below is a cross-layer contract, not just a local choice: the global
+# layer hands the same string to Deploy-Private-DNS-Zones as
+# private_dns_zone_resource_group_name, and it applies BEFORE this layer, so it
+# composes the name from config rather than reading it back. Rename this and the
+# policy writes its records into a resource group that does not exist. A renderer
+# test compares both skeletons; keep them in step.
 resource "azurerm_resource_group" "connectivity" {
   for_each = local.hub_definitions
 

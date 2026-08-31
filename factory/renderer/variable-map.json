@@ -48,7 +48,7 @@
     },
     "platform-connectivity": {
       "variablesFile": "terraform/live/platform-connectivity/variables.tf",
-      "$comment": "The rendered main.tf contains exactly one topology (connectivity.model). Firewall type narrowed to Azure Firewall by ADR 0017 \u2014 the AVM connectivity patterns deploy Azure Firewall, so firewall_enabled maps to literal:true and the wizard's tier answer flows through. deploy_vpn_gateway and deploy_expressroute_gateway newly consume answers that were previously recorded but unwired. hub_and_spoke_networks_settings is a pass-through escape hatch that defaults empty, fed by no question by design.",
+      "$comment": "The rendered main.tf contains exactly one topology (connectivity.model). Firewall TYPE is narrowed to Azure Firewall by ADR 0017 \u2014 a third-party NVA is per-estate work in the generated repository. Whether to deploy one is a different question, and as of the 2026-08-30 amendment it is a required answer with no default: firewall_enabled maps to connectivity.firewall.enabled, not to a literal. It and deploy_bastion also carry no variables.tf default, because the renderer always emits both \u2014 an absent value means a hand-edited tfvars, which should fail loudly rather than quietly spend roughly USD 900-950 a month per hub. deploy_vpn_gateway and deploy_expressroute_gateway likewise consume answers that were once recorded but unwired. hub_and_spoke_networks_settings is a pass-through escape hatch that defaults empty, fed by no question by design.",
       "variables": {
         "connectivity_subscription_id": "azure.subscriptions.connectivity",
         "org_prefix": "organization.companyShortName",
