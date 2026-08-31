@@ -458,13 +458,21 @@ function validate() {
   }
   if (a.managementGroups.strategy === 'custom') {
     const renames = a.managementGroups.customHierarchy || {};
-    const known = new Set(POLICY_CATALOG.managementGroups.map((g) => g.id));
+    const library = new Map(POLICY_CATALOG.managementGroups.map((g) => [g.id, g]));
     const claimed = new Map();
     let changed = 0;
+    // Without the catalog there is nothing to rename FROM: every key is
+    // unverifiable and every collision invisible. Skipping the checks and
+    // exporting anyway would produce an architecture definition full of groups
+    // no archetype governs, which is the failure the checks below exist to
+    // prevent — so the absence of the catalog is itself the blocker.
+    if (library.size === 0) {
+      err('azure', 'The generated policy catalog did not load, so the management groups this estate would rename cannot be checked. Reload the wizard, or choose a standard hierarchy strategy.');
+    }
     for (const [libraryId, rename] of Object.entries(renames)) {
       // A key the pinned library does not define would emit a management group
       // no archetype claims: created, governed by nothing, and immutable.
-      if (known.size && !known.has(libraryId)) {
+      if (library.size && !library.has(libraryId)) {
         err('azure', `"${libraryId}" is not a management group the pinned Azure Landing Zones library defines, so renaming it would create a group no archetype governs.`);
         continue;
       }
@@ -473,7 +481,13 @@ function validate() {
       if (id && !RE.mgId.test(id)) {
         err('azure', `"${id}" is not a valid management group ID: 1-90 characters, letters, digits, and . _ ( ) - only.`);
       }
-      if (id || displayName) changed++;
+      // "Changed" means the effective value DIFFERS from the library's, not
+      // that a field was filled in. Restating a library name is not a rename,
+      // and counting it as one would let a config emit a local architecture
+      // identical to the pinned library — pinning the estate to a copy that a
+      // library bump can no longer update.
+      const group = library.get(libraryId);
+      if ((id && (!group || id !== group.id)) || (displayName && (!group || displayName !== group.displayName))) changed++;
       if (id) {
         if (claimed.has(id)) {
           err('azure', `Two management groups would both be created as "${id}". IDs must be unique across the hierarchy.`);
@@ -483,7 +497,7 @@ function validate() {
     }
     // A rename that collides with a group keeping its library name is the same
     // collision, one step less obvious.
-    for (const group of POLICY_CATALOG.managementGroups) {
+    for (const group of library.values()) {
       const own = renames[group.id];
       if (own && (own.id || '').trim()) continue;
       if (claimed.has(group.id)) {

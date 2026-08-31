@@ -496,6 +496,25 @@ finally {
     Remove-Item -Force $mgPath -ErrorAction SilentlyContinue
 }
 
+# G29's "renames nothing" must mean the effective names are the library's, not
+# that the map is empty: a non-empty map that changes nothing still emits a
+# local architecture definition, pinning the estate to a copy of the library
+# that a bump can no longer update.
+$g29Catalog = Get-Content "$repo/site/alz-policy-catalog.json" -Raw | ConvertFrom-Json -Depth 30
+$g29Root = $g29Catalog.managementGroups[0]
+foreach ($shape in @(
+        @{ label = 'an empty rename map'; value = [pscustomobject]@{} },
+        @{ label = 'an empty rename entry'; value = [pscustomobject]@{ "$($g29Root.id)" = [pscustomobject]@{} } },
+        @{ label = 'a rename restating the library name'; value = [pscustomobject]@{ "$($g29Root.id)" = [pscustomobject]@{ id = $g29Root.id; displayName = $g29Root.displayName } } }
+    )) {
+    $g29Config = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+    $g29Config.azure.managementGroups.strategy = 'custom'
+    $g29Config.azure.managementGroups | Add-Member -NotePropertyName customHierarchy -NotePropertyValue $shape.value -Force
+    $hits = @((Test-LzRenderGuards -Config $g29Config).Violations |
+        Where-Object { $_.Id -eq 'G29' -and $_.Message -match 'resolves to its library name' })
+    ok "G29 refuses $($shape.label)" ($hits.Count -eq 1)
+}
+
 # The standard strategy must stay exactly as it was: the pinned library's own
 # architecture, no local library, no emitted file.
 $stdMain = Get-Content (Join-Path $out 'terraform/live/global/main.tf') -Raw

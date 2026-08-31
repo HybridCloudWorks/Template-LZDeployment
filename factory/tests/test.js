@@ -411,6 +411,17 @@ console.log('\n== 17. Management-group names are the client’s; the shape is no
   ok('custom with no rename blocks export',
     A.validate().errors.some((e) => /still carries its library name/.test(e.message)));
 
+  // A key that restates the library's own name is not a rename. Counting it as
+  // one would let a config emit a local architecture identical to the pinned
+  // library, pinning the estate to a copy a bump can no longer update.
+  const libraryRoot = A.POLICY_CATALOG.managementGroups[0];
+  mg.customHierarchy = { [libraryRoot.id]: { id: libraryRoot.id, displayName: libraryRoot.displayName } };
+  ok('restating a library name is not a rename',
+    A.validate().errors.some((e) => /still carries its library name/.test(e.message)));
+  mg.customHierarchy = { [libraryRoot.id]: {} };
+  ok('an empty rename entry is not a rename',
+    A.validate().errors.some((e) => /still carries its library name/.test(e.message)));
+
   mg.customHierarchy = { alz: { id: 'contoso-alz', displayName: 'Contoso Landing Zones' } };
   ok('one rename is enough', !A.validate().errors.some((e) => /still carries its library name/.test(e.message)));
 
@@ -446,6 +457,20 @@ console.log('\n== 17. Management-group names are the client’s; the shape is no
   delete mg.customHierarchy.sandbox;
 
   ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+
+  // Without the catalog there is nothing to rename FROM. Every key becomes
+  // unverifiable and every collision invisible, so exporting anyway would emit
+  // an architecture full of groups no archetype governs — the exact failure the
+  // other checks exist to prevent.
+  const savedGroups = A.POLICY_CATALOG.managementGroups;
+  A.POLICY_CATALOG.managementGroups = [];
+  mg.customHierarchy = { 'anything-at-all': { id: 'whatever' } };
+  ok('a missing catalog blocks a custom hierarchy',
+    A.validate().errors.some((e) => /generated policy catalog did not load/.test(e.message)));
+  A.POLICY_CATALOG.managementGroups = savedGroups;
+  mg.customHierarchy = { alz: { id: 'contoso-alz' } };
+  ok('and the catalog returning clears it',
+    !A.validate().errors.some((e) => /generated policy catalog did not load/.test(e.message)));
 
   mg.strategy = 'caf-standard';
   ok('a standard strategy drops the renames entirely',

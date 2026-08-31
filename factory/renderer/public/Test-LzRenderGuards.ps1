@@ -544,10 +544,21 @@ function Test-LzRenderGuards {
             $seen[$id] = $libraryId
         }
 
-        if (@(Get-LzPropertyNames $renames).Count -eq 0) {
+        # "Renames nothing" has to mean the effective names are the library's,
+        # not that the map is empty. { "alz": {} } and { "alz": { "id": "alz" } }
+        # are both non-empty and both change nothing — and both would still emit
+        # a local architecture definition, pinning the estate to a copy of the
+        # library that a bump can no longer update. The wizard strips no-op
+        # renames on export; this is what catches a hand-edited record.
+        $changed = 0
+        foreach ($group in @($mgCatalog.managementGroups)) {
+            $current = $resolved.Effective[$group.id]
+            if ($current.id -ne $group.id -or $current.displayName -ne $group.displayName) { $changed++ }
+        }
+        if ($changed -eq 0) {
             $v += New-LzGuardViolation -Id 'G29' `
-                -Message 'The custom hierarchy strategy is selected but no management group is renamed.' `
-                -Remediation "Rename at least one group, or set azure.managementGroups.strategy to caf-standard. Emitting a custom architecture identical to the library's would pin this estate to a local copy that a library bump can no longer update."
+                -Message 'The custom hierarchy strategy is selected but every management group still resolves to its library name.' `
+                -Remediation "Rename at least one group so its id or display name differs from the pinned library's, or set azure.managementGroups.strategy to caf-standard. Emitting a custom architecture identical to the library's would pin this estate to a local copy that a library bump can no longer update."
         }
     }
 
