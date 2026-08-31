@@ -419,6 +419,22 @@ finally {
     Remove-Item -Force $selPath -ErrorAction SilentlyContinue
 }
 
+Write-Host "`n== 12c. The policy guardrail speaks the AVM idiom ==" -ForegroundColor Cyan
+# The generated repository's required `policy` status check rejected added
+# lines matching the bespoke corpus's `effect = "Audit"`. The AVM ALZ pattern
+# says enforcement_mode and creation_enabled instead, so against the corpus
+# this repository actually emits, the check read as a control and enforced
+# nothing.
+$guard = Get-Content (Join-Path $out '.github/workflows/policy-diff-guardrails.yml') -Raw
+ok 'still rejects the bespoke spelling' ($guard -match 'effect\[\[:space:\]\]\*=\[\[:space:\]\]\*"\(Disabled\|Audit\)"')
+ok 'rejects an AVM enforcement downgrade' ($guard -match 'enforcement_mode\[\[:space:\]\]\*=\[\[:space:\]\]\*"DoNotEnforce"')
+ok 'rejects an AVM creation downgrade'    ($guard -match 'creation_enabled\[\[:space:\]\]\*=\[\[:space:\]\]\*false')
+# The exemption has to be narrow, or the check is decorative in the other
+# direction: every generated .tf would carry a blanket pass.
+ok 'exempts a regeneration, not a header' ($guard -match 'record_changed' -and $guard -match 'lz-config\.json')
+ok 'the exemption needs the stamp to move' ($guard -match [regex]::Escape('[0-9]+\.[0-9]+\.[0-9]+ on '))
+ok 'the job id stays the required check'  ($guard -match '(?m)^  policy:$')
+
 Write-Host "`n== 13. Schema drift check ==" -ForegroundColor Cyan
 $drift = Test-LzSchemaDrift -SchemaPath "$repo/factory/schema/lz-config.schema.json" -MappingPath "$repo/factory/renderer/variable-map.json" -TemplateRoot "$repo/factory/templates"
 ok 'wizard and corpus in sync'      ($drift.InSync) (($drift.Findings | Select-Object -First 3 | ForEach-Object { $_.Detail }) -join '; ')
