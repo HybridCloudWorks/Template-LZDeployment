@@ -360,5 +360,45 @@ console.log('\n== 15. Policy selection is read from the pinned library ==');
   ok('the fixture is exportable again', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
 }
 
+console.log('\n== 16. Answers that reach nothing are declared, not discovered ==');
+{
+  ok('the ledger reached the wizard', A.RECORDED_NOT_DEPLOYED.length > 0,
+    'harness.js must load site/schema-coverage.js before app.js');
+  ok('every ledger entry is showable', A.RECORDED_NOT_DEPLOYED.every(
+    (e) => e.label && e.module && e.impact && Array.isArray(e.paths) && e.paths.length));
+
+  // An untouched default is not an answer, and warning about one would train
+  // the client to ignore the whole table.
+  const clean = A.buildConfig();
+  const untouched = A.unmetDependencies(clean).filter((u) => u.feature === 'FinOps budgets and cost exports');
+  ok('an untouched default raises nothing', untouched.length === 0, JSON.stringify(untouched));
+
+  // A real answer does raise one, naming the path so the client can see which
+  // of their answers is the one going nowhere.
+  c.finops.budgets = [{ scope: 'management', amountUsd: 5000, timeGrain: 'Monthly', alertThresholdPercents: [80], contactEmails: ['fin@contoso.com'] }];
+  const withBudget = A.unmetDependencies(A.buildConfig()).filter((u) => u.feature === 'FinOps budgets and cost exports');
+  ok('a real answer raises a recorded-not-deployed row', withBudget.length === 1, JSON.stringify(withBudget));
+  ok('the row names the answered path', withBudget.length === 1 && /finops\.budgets\.amountUsd/.test(withBudget[0].impact));
+  ok('and it is not reported as deployed', withBudget.length === 1 && withBudget[0].status === 'recorded-not-deployed');
+  c.finops.budgets = [];
+
+  // The four hand-written entries survive — they are conditions on a feature
+  // being switched on, not on a path carrying a value.
+  c.security.sentinel.enabled = true;
+  ok('Sentinel is still called out', A.unmetDependencies(A.buildConfig()).some((u) => u.feature === 'Microsoft Sentinel'));
+  c.security.sentinel.enabled = false;
+
+  // Found by this check on its first run: the wizard warned about storage-key
+  // state auth and delivered Entra-only regardless, because the broker creates
+  // the account with shared-key access disabled. An answer the factory cannot
+  // honour is an export blocker, not a warning.
+  c.backend.azurerm.useAzureAdAuth = false;
+  ok('an unhonourable state-auth answer blocks export',
+    A.validate().errors.some((e) => /Entra ID authentication to state is a contract/.test(e.message)));
+  c.backend.azurerm.useAzureAdAuth = true;
+
+  ok('the fixture is exportable throughout', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

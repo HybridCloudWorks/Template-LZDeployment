@@ -38,6 +38,15 @@ const DRAFT_KEY = 'alz-factory-draft-v1';
  * The harness loads the catalog explicitly, so the fallback should never be the
  * thing under test — but an empty catalog degrades to "no policies offered"
  * rather than a blank page. */
+/* The answers that reach nothing but lz-config.json, generated from
+ * factory/ci/schema-coverage-register.json by the same CI check that decides
+ * an answer is not-deployed. Reading it here rather than restating the list is
+ * the point: a UI marker and a CI gate that disagree are worse than either
+ * alone. Empty fallback for the test harness and for a site served without it. */
+const RECORDED_NOT_DEPLOYED = (typeof globalThis !== 'undefined' && Array.isArray(globalThis.LZ_RECORDED_NOT_DEPLOYED))
+  ? globalThis.LZ_RECORDED_NOT_DEPLOYED
+  : [];
+
 const POLICY_CATALOG = (typeof globalThis !== 'undefined' && globalThis.ALZ_POLICY_CATALOG)
   ? globalThis.ALZ_POLICY_CATALOG
   : { groups: [], assignments: {}, defaults: {}, managementGroups: [], ungrouped: [] };
@@ -479,8 +488,13 @@ function validate() {
     if (!RE.storageAccount.test(b.azurerm.storageAccountName || '')) {
       err('backend', 'State storage account must be 3–24 lowercase alphanumeric characters.');
     }
+    // Not a preference: the broker creates the state account with
+    // --allow-shared-key-access false, and every emitted backend.hcl and
+    // remote-state block sets use_azuread_auth = true unconditionally. Answering
+    // "no" produced a configuration that could not authenticate to its own
+    // state, and the wizard only warned about it.
     if (!b.azurerm.useAzureAdAuth) {
-      warn('backend', 'Storage-key authentication to state means a long-lived shared secret. Entra ID auth is strongly preferred.');
+      err('backend', 'Entra ID authentication to state is a contract, not a preference: the state storage account is created with shared-key access disabled, and every emitted backend sets use_azuread_auth = true. Storage-key auth would not be able to reach the account at all.');
     }
     if (b.azurerm.privateEndpoint && b.azurerm.privateEndpoint.enabled) {
       if (config.connectivity.model !== 'hub-spoke') {
@@ -2180,19 +2194,63 @@ function deploymentMetadata(cfg) {
 }
 
 /** Features the configuration asks for that the module corpus cannot yet deliver. */
+/** Every value a schema path addresses, descending through arrays.
+ *  The schema addresses an array-of-objects field as `path.field`, which is
+ *  what the coverage register records, so a plain getPath() would read
+ *  `finops.budgets.amountUsd` as undefined on a config that has three budgets. */
+function readAnswerPath(node, segments) {
+  if (Array.isArray(node)) return node.flatMap((item) => readAnswerPath(item, segments));
+  if (!segments.length) return node === undefined ? [] : [node];
+  if (node === null || typeof node !== 'object') return [];
+  if (!Object.prototype.hasOwnProperty.call(node, segments[0])) return [];
+  return readAnswerPath(node[segments[0]], segments.slice(1));
+}
+
+/** True when the client actually gave this path a value — one that differs from
+ *  what defaultConfig() would have exported anyway. An untouched default is not
+ *  an answer anyone is owed a warning about, and warning about it would teach
+ *  the client to ignore the whole table. */
+function pathWasAnswered(cfg, path, defaults) {
+  const segments = path.split('.');
+  const actual = readAnswerPath(cfg, segments).filter(
+    (v) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && !v.length)
+  );
+  if (!actual.length) return false;
+  return JSON.stringify(actual) !== JSON.stringify(readAnswerPath(defaults, segments));
+}
+
+/** Everything the client answered that the deployment will not act on.
+ *
+ *  The first three entries used to be a hand-written list of four features,
+ *  which is how the factory ended up shipping a dozen more of the same thing
+ *  unnoticed. The rest is read from the generated ledger, so an answer cannot
+ *  become unwired without the client being told, and cannot be wired up
+ *  without the warning disappearing on its own. */
 function unmetDependencies(cfg) {
   const out = [];
+  if (cfg.github.useSelfHostedRunners) {
+    out.push({ feature: 'Self-hosted runners', module: '(workflows)', status: 'unsupported', impact: 'v1 emits GitHub-hosted workflows only.' });
+  }
+  if (cfg.security.defender.enabled) {
+    out.push({ feature: 'Defender for Cloud plans', module: '(per-estate)', status: 'recorded-not-deployed', impact: 'ALZ policy archetypes govern Defender configuration; plan-level enablement is per-estate work recorded in lz-config.json (ADR 0017).' });
+  }
   if (cfg.security.sentinel && cfg.security.sentinel.enabled) {
     out.push({ feature: 'Microsoft Sentinel', module: '(per-estate)', status: 'recorded-not-deployed', impact: 'Preserved in lz-config.json; onboard inside the generated repository against the management workspace (ADR 0017).' });
   }
   if (cfg.security.keyVault.customerManagedKeys) {
     out.push({ feature: 'Customer-managed keys', module: '(per-estate)', status: 'recorded-not-deployed', impact: 'Preserved in lz-config.json; implement inside the generated repository (ADR 0017).' });
   }
-  if (cfg.security.defender.enabled) {
-    out.push({ feature: 'Defender for Cloud plans', module: '(per-estate)', status: 'recorded-not-deployed', impact: 'ALZ policy archetypes govern Defender configuration; plan-level enablement is per-estate work recorded in lz-config.json (ADR 0017).' });
-  }
-  if (cfg.github.useSelfHostedRunners) {
-    out.push({ feature: 'Self-hosted runners', module: '(workflows)', status: 'unsupported', impact: 'v1 emits GitHub-hosted workflows only.' });
+
+  const defaults = defaultConfig();
+  for (const entry of RECORDED_NOT_DEPLOYED) {
+    const answered = (entry.paths || []).filter((p) => pathWasAnswered(cfg, p, defaults));
+    if (!answered.length) continue;
+    out.push({
+      feature: entry.label,
+      module: entry.module,
+      status: 'recorded-not-deployed',
+      impact: `${answered.join(', ')} — ${entry.impact}`
+    });
   }
   return out;
 }
