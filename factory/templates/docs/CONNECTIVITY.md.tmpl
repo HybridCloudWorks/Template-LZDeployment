@@ -1,0 +1,67 @@
+# Connectivity — {{FACTORY-RAW:organization.companyName}}
+
+GENERATED FILE. Factory v{{FACTORY-RAW:computed.factoryVersion}};
+rendered {{FACTORY-RAW:computed.generatedAt}}.
+
+This document carries the connectivity decisions this client made that **no
+layer builds**. Everything the factory does deploy — the hub, the firewall,
+Bastion, the gateways, private DNS — is in `terraform/live/platform-connectivity`
+and needs no prose here. What follows is the part someone has to act on.
+
+## Topology
+
+| Field | Value |
+|---|---|
+| Model | {{FACTORY-RAW:connectivity.model}} |
+| Primary hub | {{FACTORY-RAW:computed.docPrimaryHubAddressSpace}} |
+
+## Workload spoke addressing
+
+Per ADR 0017 the factory builds no workload spokes: they are per-estate work
+inside this repository,
+against the connectivity layer's outputs. The ranges below were chosen during
+the engagement and validated for overlap against the hub, and they are recorded
+here because an addressing decision that lives only in an answer record gets
+made twice.
+
+#{{IF computed.hasNonProdSpokes}}
+| Environment | Primary | DR |
+|---|---|---|
+#{{FOREACH spoke IN computed.nonProdSpokes}}
+| {{FACTORY-RAW:spoke.environment}} | `{{FACTORY-RAW:spoke.primary}}` | `{{FACTORY-RAW:spoke.dr}}` |
+#{{ENDFOREACH}}
+
+Reserve these before allocating anything else out of the same supernet. Nothing
+in this repository holds them: another team peering a spoke into the same hub
+will not be warned.
+#{{ELSE}}
+No non-production spoke ranges were recorded. Allocate them from a supernet that
+does not overlap the hub before building the first spoke.
+#{{ENDIF}}
+
+#{{IF connectivity.expressRoute.enabled}}
+## ExpressRoute circuit
+
+The connectivity layer deploys an ExpressRoute **gateway**. It does not — and
+cannot — order the **circuit**: that is a commercial transaction with a carrier,
+placed outside Terraform, and the gateway is useless until it completes.
+
+| Field | Value |
+|---|---|
+| Circuit name | {{FACTORY-RAW:computed.docErCircuitName}} |
+| Service provider | {{FACTORY-RAW:computed.docErServiceProvider}} |
+| Peering location | {{FACTORY-RAW:computed.docErPeeringLocation}} |
+| Bandwidth | {{FACTORY-RAW:computed.docErBandwidthMbps}} Mbps |
+
+Place the order with these values, then connect the resulting circuit to the
+gateway. The peering location is the carrier's meet-me facility, not an Azure
+region, and getting it wrong is expensive to unwind — it is the field most worth
+re-reading before the order goes in.
+#{{ENDIF}}
+
+## What this document is not
+
+It is not a design. It records answers the wizard collected that reach no
+Terraform, so the estate team implements what the client actually chose rather
+than rediscovering the question. Everything the factory deploys is described by
+the rendered configuration itself.

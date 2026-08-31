@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/HybridCloudWorks/Template-LZDeployment/factory/schema/lz-config.schema.json",
-  "title": "Azure Landing Zone Factory — Configuration Contract",
+  "title": "Azure Landing Zone Factory \u2014 Configuration Contract",
   "description": "The single contract read by the wizard (site/), the renderer (factory/renderer/), the bootstrap broker, the scaffold builder, and every generated Terraform layer. Any key emitted by the wizard that is not declared here is a build-breaking error; any Terraform variable in factory/templates/**/variables.tf with no corresponding key here is likewise an error. This bidirectional check is what prevents the wizard/Terraform drift recorded in TODO.md.",
   "type": "object",
   "additionalProperties": false,
@@ -94,8 +94,8 @@
   },
   "properties": {
     "schemaVersion": {
-      "const": "3.2.0",
-      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement. 3.2.0: per-subscription brownfield dispositions — an existing subscription is either placed into the new hierarchy now, against a typed acknowledgement, or deferred with onboarding instructions generated for it (ADR 0018 amended). Additive. 3.1.0: a second state backend — HCP Terraform for STATE ONLY, execution stays in GitHub Actions (decision 0023, partially reversing 0015). Additive: backend.type widens to an enum that still defaults to azurerm. 3.0.0 (BREAKING): azure.managementGroups.customHierarchy changed from a free-form flat list of {id, displayName, parentId} into a map of renames keyed by the pinned ALZ library's own management-group ids. The old shape let a client describe a tree the factory never built — it had zero readers — and re-nesting a group changes which archetype, and so which policy set, it inherits. Names are now honoured; structure is the library's. Also adds azure.managementGroups.workloadPlacement. 2.2.0: subscription vending (azure.subscriptions.mode=create with plannedNames, ADR 0020), brownfield redefined as exclude-and-create (ADR 0018), state-storage private-endpoint flag (ADR 0019)."
+      "const": "4.0.0",
+      "description": "Version of THIS schema. The renderer refuses configs whose schemaVersion it does not implement. 4.0.0 (BREAKING), two changes that both had to be majors and so land together: (1) azure.managementGroups.strategy 'caf-minimal' now deploys a DIFFERENT hierarchy from 'caf-standard' instead of the identical one \u2014 it drops Sandbox and Decommissioned, emits its own architecture definition, and refuses a config that also sets azure.subscriptions.sandbox, because that subscription would have nowhere to be placed (guard G31). A 3.x config selecting caf-minimal deployed the full hierarchy and will now deploy ten groups rather than twelve. (2) The six governance.policyBaseline booleans (enforceAllowedLocations, enforceTlsMinimum, enforceNsgOnSubnets, denyPublicIpOnNics, enforceDiagnosticSettings, enforceEncryptionAtRest) are REMOVED. They predate the ALZ policy surface and asked the same questions as the Policies step, with only the Policies step connected to anything. enforcementMode and requiredTags are unaffected and still consumed. 3.2.0: per-subscription brownfield dispositions \u2014 an existing subscription is either placed into the new hierarchy now, against a typed acknowledgement, or deferred with onboarding instructions generated for it (ADR 0018 amended). Additive. 3.1.0: a second state backend \u2014 HCP Terraform for STATE ONLY, execution stays in GitHub Actions (decision 0023, partially reversing 0015). Additive: backend.type widens to an enum that still defaults to azurerm. 3.0.0 (BREAKING): azure.managementGroups.customHierarchy changed from a free-form flat list of {id, displayName, parentId} into a map of renames keyed by the pinned ALZ library's own management-group ids. The old shape let a client describe a tree the factory never built \u2014 it had zero readers \u2014 and re-nesting a group changes which archetype, and so which policy set, it inherits. Names are now honoured; structure is the library's. Also adds azure.managementGroups.workloadPlacement. 2.2.0: subscription vending (azure.subscriptions.mode=create with plannedNames, ADR 0020), brownfield redefined as exclude-and-create (ADR 0018), state-storage private-endpoint flag (ADR 0019)."
     },
     "factoryVersion": {
       "type": "string",
@@ -295,7 +295,7 @@
             },
             "customHierarchy": {
               "type": "object",
-              "description": "Required when strategy=custom. Renames of the management groups the pinned ALZ library architecture defines, keyed by the library's own id (alz, platform, landingzones, corp, online, sandbox, decommissioned, management, connectivity, identity, ...). Only names change. The parent edges and the archetype each group carries stay exactly as the library declares them, because re-nesting a group changes which archetype it inherits and therefore which policy set applies to everything beneath it — a decision that cannot be corrected later, since management-group IDs are immutable in Azure. An entry that renames nothing is stripped from the export. Keys are validated against the generated catalog by the wizard and by render guard G29, not by this schema, because the id set belongs to the pinned library rather than to the contract.",
+              "description": "Required when strategy=custom. Renames of the management groups the pinned ALZ library architecture defines, keyed by the library's own id (alz, platform, landingzones, corp, online, sandbox, decommissioned, management, connectivity, identity, ...). Only names change. The parent edges and the archetype each group carries stay exactly as the library declares them, because re-nesting a group changes which archetype it inherits and therefore which policy set applies to everything beneath it \u2014 a decision that cannot be corrected later, since management-group IDs are immutable in Azure. An entry that renames nothing is stripped from the export. Keys are validated against the generated catalog by the wizard and by render guard G29, not by this schema, because the id set belongs to the pinned library rather than to the contract.",
               "additionalProperties": {
                 "type": "object",
                 "additionalProperties": false,
@@ -449,7 +449,7 @@
     "backend": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Where Terraform state lives. Two backends are supported: azurerm (the default — a storage account this factory creates and hardens) and hcp-terraform (HCP Terraform holds the state; GitHub Actions still runs Terraform). Decision 0023 explains why HCP Terraform is state-only: the emitted destroy gates are built on a saved plan file, and TFC remote execution does not support terraform plan -out, so remote execution would silently delete that gate from both workflows.",
+      "description": "Where Terraform state lives. Two backends are supported: azurerm (the default \u2014 a storage account this factory creates and hardens) and hcp-terraform (HCP Terraform holds the state; GitHub Actions still runs Terraform). Decision 0023 explains why HCP Terraform is state-only: the emitted destroy gates are built on a saved plan file, and TFC remote execution does not support terraform plan -out, so remote execution would silently delete that gate from both workflows.",
       "properties": {
         "type": {
           "enum": [
@@ -506,7 +506,7 @@
           "required": [
             "organization"
           ],
-          "description": "HCP Terraform as a state backend only. Azure authentication is unchanged — GitHub OIDC, no stored Azure credential — so TFC never holds a credential to this tenant. It does mean one static credential the azurerm path does not have: TF_API_TOKEN, which the Terraform CLI needs to reach the workspace. Decision 0023 states that trade explicitly.",
+          "description": "HCP Terraform as a state backend only. Azure authentication is unchanged \u2014 GitHub OIDC, no stored Azure credential \u2014 so TFC never holds a credential to this tenant. It does mean one static credential the azurerm path does not have: TF_API_TOKEN, which the Terraform CLI needs to reach the workspace. Decision 0023 states that trade explicitly.",
           "properties": {
             "organization": {
               "type": "string",
@@ -520,12 +520,12 @@
             "executionMode": {
               "const": "local",
               "default": "local",
-              "description": "Fixed. State only: Terraform runs in GitHub Actions and TFC stores the state. Remote execution is not a configuration away — the emitted plan and apply workflows gate destroys on a saved plan file (terraform plan -out=tfplan, then terraform show -json tfplan), and TFC remote runs do not support -out. Allowing remote would delete that gate from both workflows without saying so, which is why this is a const rather than an enum with a default."
+              "description": "Fixed. State only: Terraform runs in GitHub Actions and TFC stores the state. Remote execution is not a configuration away \u2014 the emitted plan and apply workflows gate destroys on a saved plan file (terraform plan -out=tfplan, then terraform show -json tfplan), and TFC remote runs do not support -out. Allowing remote would delete that gate from both workflows without saying so, which is why this is a const rather than an enum with a default."
             },
             "acknowledgedResourceLimit": {
               "type": "boolean",
               "default": false,
-              "description": "The HCP Terraform free tier caps managed resources under management at 500, and state-only changes nothing about that — the resources are in the state TFC holds. A full landing zone commonly exceeds it. The wizard estimates the count and requires an explicit acknowledgement before allowing hcp-terraform when the estimate is over the cap."
+              "description": "The HCP Terraform free tier caps managed resources under management at 500, and state-only changes nothing about that \u2014 the resources are in the state TFC holds. A full landing zone commonly exceeds it. The wizard estimates the count and requires an explicit acknowledgement before allowing hcp-terraform when the estimate is over the cap."
             }
           }
         }
@@ -582,7 +582,7 @@
             "greenfield",
             "brownfield"
           ],
-          "description": "greenfield: an empty-tenant assumption — new subscriptions, nothing pre-existing to consider. brownfield: pre-existing estate is RECOGNIZED and EXCLUDED, never touched (ADR 0018): new subscriptions are still created for all new deployments, excluded subscription IDs are structurally kept out of the hierarchy, and discovery inventories existing policy assignments for awareness. Integration of existing deployments is out of scope."
+          "description": "greenfield: an empty-tenant assumption \u2014 new subscriptions, nothing pre-existing to consider. brownfield: pre-existing estate is RECOGNIZED and EXCLUDED, never touched (ADR 0018): new subscriptions are still created for all new deployments, excluded subscription IDs are structurally kept out of the hierarchy, and discovery inventories existing policy assignments for awareness. Integration of existing deployments is out of scope."
         },
         "brownfield": {
           "type": "object",
@@ -604,7 +604,7 @@
             },
             "dispositions": {
               "type": "object",
-              "description": "What happens to each pre-existing subscription, keyed by subscription ID. ADR 0018 made brownfield recognise-and-exclude; this is the amendment that lets a client say otherwise, per subscription, and records what they were told when they did. Governance only — no resource is ever imported into Terraform state. A subscription with no entry here is excluded, which is the safe default and the ADR 0018 behaviour.",
+              "description": "What happens to each pre-existing subscription, keyed by subscription ID. ADR 0018 made brownfield recognise-and-exclude; this is the amendment that lets a client say otherwise, per subscription, and records what they were told when they did. Governance only \u2014 no resource is ever imported into Terraform state. A subscription with no entry here is excluded, which is the safe default and the ADR 0018 behaviour.",
               "additionalProperties": {
                 "type": "object",
                 "additionalProperties": false,
@@ -621,7 +621,7 @@
                   },
                   "acknowledgement": {
                     "type": "string",
-                    "description": "Required for place-now, and checked against an exact expected sentence naming this subscription — render guard G30 refuses the configuration otherwise. It is deliberately not a boolean: the point is that somebody read what placing an existing subscription does to the resources already in it, and a checkbox records only that somebody clicked."
+                    "description": "Required for place-now, and checked against an exact expected sentence naming this subscription \u2014 render guard G30 refuses the configuration otherwise. It is deliberately not a boolean: the point is that somebody read what placing an existing subscription does to the resources already in it, and a checkbox records only that somebody clicked."
                   },
                   "note": {
                     "type": "string",
@@ -728,7 +728,7 @@
             "virtual-wan",
             "none"
           ],
-          "description": "hub-spoke renders terraform/live/platform-connectivity using the hub-network module. virtual-wan is declared here but is NOT implemented in the current module corpus — the renderer rejects it until the module exists rather than emitting a broken layer."
+          "description": "hub-spoke renders terraform/live/platform-connectivity using the hub-network module. virtual-wan is declared here but is NOT implemented in the current module corpus \u2014 the renderer rejects it until the module exists rather than emitting a broken layer."
         },
         "hubSpoke": {
           "type": "object",
@@ -823,8 +823,8 @@
               "enum": [
                 "azfw"
               ],
-              "description": "Azure Firewall — the only firewall type the AVM connectivity patterns deploy (ADR 0017). This says WHICH firewall, not WHETHER: connectivity.firewall.enabled is a separate required answer that accepts false.",
-              "$comment": "The `none` value was retired from this enum on 2026-08-30, and it did not become the `enabled` answer — it was replaced by it. Choosing not to deploy a firewall is `enabled: false`, which the AVM connectivity patterns accept; this enum only narrows the type, and palo/fortinet NVA options retired with the bespoke hub-network module (ADR 0017) because third-party NVAs are per-estate work inside the generated repository. An imported configuration still carrying type `none` is blocked by the wizard rather than silently read as `enabled: false`, since the two meant different things."
+              "description": "Azure Firewall \u2014 the only firewall type the AVM connectivity patterns deploy (ADR 0017). This says WHICH firewall, not WHETHER: connectivity.firewall.enabled is a separate required answer that accepts false.",
+              "$comment": "The `none` value was retired from this enum on 2026-08-30, and it did not become the `enabled` answer \u2014 it was replaced by it. Choosing not to deploy a firewall is `enabled: false`, which the AVM connectivity patterns accept; this enum only narrows the type, and palo/fortinet NVA options retired with the bespoke hub-network module (ADR 0017) because third-party NVAs are per-estate work inside the generated repository. An imported configuration still carrying type `none` is blocked by the wizard rather than silently read as `enabled: false`, since the two meant different things."
             },
             "azfwTier": {
               "enum": [
@@ -933,7 +933,7 @@
                 "maxLength": 253,
                 "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
               },
-              "description": "Private DNS zones to create in the connectivity subscription and link to every hub, e.g. privatelink.blob.core.windows.net. Empty means privatelink.blob.core.windows.net alone — there is no CAF default set behind this field."
+              "description": "Private DNS zones to create in the connectivity subscription and link to every hub, e.g. privatelink.blob.core.windows.net. Empty means privatelink.blob.core.windows.net alone \u2014 there is no CAF default set behind this field."
             }
           }
         },
@@ -944,7 +944,7 @@
             "enabled": {
               "type": "boolean",
               "default": true,
-              "description": "Create private endpoints for PaaS resources. ANDs with the connectivity layer's private DNS zone — an endpoint without a matching zone resolves to nothing."
+              "description": "Create private endpoints for PaaS resources. ANDs with the connectivity layer's private DNS zone \u2014 an endpoint without a matching zone resolves to nothing."
             },
             "denyPublicNetworkAccessPolicy": {
               "type": "boolean",
@@ -977,7 +977,7 @@
             "per-environment"
           ],
           "default": "minimal",
-          "description": "Broker-only (like github.*): consumed by factory/bootstrap, never mapped to a Terraform variable, deliberately absent from factory/renderer/variable-map.json. 'minimal' (default) creates 2 Entra identities total — one shared plan identity and one shared apply identity carrying one federated credential per environment. 'per-environment' creates a plan/apply pair per unique environment (2 × N)."
+          "description": "Broker-only (like github.*): consumed by factory/bootstrap, never mapped to a Terraform variable, deliberately absent from factory/renderer/variable-map.json. 'minimal' (default) creates 2 Entra identities total \u2014 one shared plan identity and one shared apply identity carrying one federated credential per environment. 'per-environment' creates a plan/apply pair per unique environment (2 \u00d7 N)."
         },
         "privilegedAccessModel": {
           "enum": [
@@ -993,7 +993,7 @@
           "items": {
             "$ref": "#/$defs/contact"
           },
-          "description": "At least two, per Microsoft guidance. Names/emails only — never credentials (see risk SR7; the schema forbids secret-typed fields entirely)."
+          "description": "At least two, per Microsoft guidance. Names/emails only \u2014 never credentials (see risk SR7; the schema forbids secret-typed fields entirely)."
         }
       }
     },
@@ -1170,30 +1170,6 @@
                 "cost_center"
               ],
               "description": "Enforced by the require-tag policies in the policy-baseline module."
-            },
-            "enforceAllowedLocations": {
-              "type": "boolean",
-              "default": true
-            },
-            "enforceTlsMinimum": {
-              "type": "boolean",
-              "default": true
-            },
-            "enforceNsgOnSubnets": {
-              "type": "boolean",
-              "default": true
-            },
-            "denyPublicIpOnNics": {
-              "type": "boolean",
-              "default": false
-            },
-            "enforceDiagnosticSettings": {
-              "type": "boolean",
-              "default": true
-            },
-            "enforceEncryptionAtRest": {
-              "type": "boolean",
-              "default": true
             }
           }
         },
@@ -1265,7 +1241,7 @@
         "policySelection": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Which Azure Landing Zones policy assignments this estate creates, and what they are configured with. Choices are made against site/alz-policy-catalog.json, generated from the library ref pinned in factory-version.json — so the wizard can only offer policies the deployment will actually produce. Unselected assignments are emitted as creation_enabled = false into the global layer's policy_assignments_to_modify, keyed by every management group that carries them (many are carried by more than one).",
+          "description": "Which Azure Landing Zones policy assignments this estate creates, and what they are configured with. Choices are made against site/alz-policy-catalog.json, generated from the library ref pinned in factory-version.json \u2014 so the wizard can only offer policies the deployment will actually produce. Unselected assignments are emitted as creation_enabled = false into the global layer's policy_assignments_to_modify, keyed by every management group that carries them (many are carried by more than one).",
           "properties": {
             "groups": {
               "type": "object",
@@ -1311,7 +1287,7 @@
               "additionalProperties": {
                 "type": "string"
               },
-              "description": "Policy default values that a selection obliges the client to supply, keyed by the library's default name — for example ddos_protection_plan_id when DDoS protection is enabled, or email_security_contact when any Defender assignment is. Unsupplied, the assignment would be created from the library's own placeholder (an all-zeroes subscription, or security_contact@replace_me), which is why the wizard refuses to export with an enabled group's required value blank. The two named here are the ones the emitted global layer consumes today; the open shape is what lets a library bump add another without a schema major."
+              "description": "Policy default values that a selection obliges the client to supply, keyed by the library's default name \u2014 for example ddos_protection_plan_id when DDoS protection is enabled, or email_security_contact when any Defender assignment is. Unsupplied, the assignment would be created from the library's own placeholder (an all-zeroes subscription, or security_contact@replace_me), which is why the wizard refuses to export with an enabled group's required value blank. The two named here are the ones the emitted global layer consumes today; the open shape is what lets a library bump add another without a schema major."
             }
           }
         }
@@ -1640,7 +1616,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Merged into the default_tags variable of every live layer. Keys listed in governance.policyBaseline.requiredTags must all be present here or the renderer fails — otherwise the generated deployment would be denied by its own policy on first apply."
+          "description": "Merged into the default_tags variable of every live layer. Keys listed in governance.policyBaseline.requiredTags must all be present here or the renderer fails \u2014 otherwise the generated deployment would be denied by its own policy on first apply."
         }
       },
       "allOf": [

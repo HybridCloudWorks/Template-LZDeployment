@@ -209,7 +209,7 @@
         <label for="az_mg_strategy">Hierarchy strategy <span class="req">*</span></label>
         <select id="az_mg_strategy" data-path="azure.managementGroups.strategy">
           <option value="caf-standard">CAF standard &mdash; Platform (Identity/Management/Connectivity) + Landing Zones (Corp/Online) + Sandbox + Decommissioned</option>
-          <option value="caf-minimal">CAF minimal &mdash; Platform + Landing Zones only (not yet distinct from CAF standard)</option>
+          <option value="caf-minimal">CAF minimal &mdash; Platform + Landing Zones only (no Sandbox, no Decommissioned)</option>
           <option value="custom">Custom hierarchy</option>
         </select>
       </div>
@@ -789,14 +789,7 @@
         <p class="hint">Every tag listed here must also have a value in the Naming step&rsquo;s default tags, otherwise the landing zone&rsquo;s own policy denies its first apply. The wizard checks this for you.</p>
       </div>
 
-      <div class="checks">
-        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.enforceAllowedLocations" checked> Restrict deployments to allowed locations</label>
-        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.enforceTlsMinimum" checked> Enforce TLS 1.2 minimum</label>
-        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.enforceNsgOnSubnets" checked> Require an NSG on every subnet</label>
-        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.enforceDiagnosticSettings" checked> Require diagnostic settings</label>
-        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.enforceEncryptionAtRest" checked> Require encryption at rest</label>
-        <label class="check"><input type="checkbox" data-path="governance.policyBaseline.denyPublicIpOnNics"> Deny public IPs on network interfaces</label>
-      </div>
+      <p class="hint">Allowed locations, TLS minimums, NSGs on subnets, public IPs on NICs, diagnostic settings and encryption at rest are chosen in the <strong>Policies</strong> step, against the assignments the pinned Azure Landing Zones library actually ships. Six checkboxes here used to ask the same questions a second time and reached nothing; they were removed in schema 4.0.0.</p>
       <p class="hint">The TLS 1.2 initiative in the current <code>policy-baseline</code> module covers Storage, App Service, Function Apps, MySQL and PostgreSQL. API Management is documented as covered but is not yet implemented &mdash; the generated compliance doc states the real coverage, not the claimed coverage.</p>
 
       <div class="field">

@@ -195,5 +195,84 @@ ok 'every swept value is a GUID' (@($swept | Where-Object { $_ -notmatch '^[0-9a
 ok 'the vending mode is not probed' ($swept -notcontains 'create')
 ok 'the planned-names object is not probed' (@($swept | Where-Object { $_ -isnot [string] }).Count -eq 0)
 
+Write-Host "`n== 12. R12 — the wrong-tenant gate actually gates ==" -ForegroundColor Cyan
+# TenantMatches has been computed onto the inventory since Get-LzEntraInventory
+# was written, for the reason its own parameter doc gives. Nothing read it, so
+# a run signed in to the wrong tenant reported ready and continued to the
+# broker. These assertions are about the WIRING as much as the verdict: a test
+# that only checked R12's own return value would still have passed with the
+# check unregistered, which is the exact failure being fixed.
+$r12Config = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+$expectedTenant = [string]$r12Config.azure.tenantId
+
+function New-LzTestEntra([string]$SignedInTenant, [string]$Expected) {
+    [pscustomobject]@{
+        Domain = 'Entra'; TenantId = $Expected
+        Probes = [ordered]@{
+            'Signed-in context' = New-LzProbeResult -Name 'Signed-in context' -Status Ok -Items @(
+                [pscustomobject]@{
+                    TenantId = $SignedInTenant; SubscriptionId = 'sub'; User = 'operator'; UserType = 'user'
+                    TenantMatches = ($SignedInTenant -eq $Expected); ExpectedTenant = $Expected
+                })
+        }
+        Capabilities = [pscustomobject]@{
+            RolesReadable = $true; CanManageApplications = $true
+            HeldDirectoryRoles = @('Application Administrator'); AppsNearFederatedCredLimit = @()
+        }
+    }
+}
+
+$wrong = Test-LzTenantReadiness -Config $r12Config -EntraInventory (New-LzTestEntra '99999999-9999-9999-9999-999999999999' $expectedTenant) 6>$null
+$wrongR12 = @($wrong.Checks | Where-Object { $_.Id -eq 'R12' })
+ok 'R12 is registered in the readiness run'  ($wrongR12.Count -eq 1)
+ok 'a wrong tenant FAILS, not warns'         ($wrongR12[0].Status -eq 'Fail') $wrongR12[0].Status
+ok 'the detail names both tenants'           ($wrongR12[0].Detail -match '99999999' -and $wrongR12[0].Detail -match [regex]::Escape($expectedTenant))
+# The assertion that matters: Ready is what -FailOnNotReady reads, so this is
+# the difference between a check that reports and a check that stops the run.
+ok 'a wrong tenant makes the tenant NOT ready' (-not $wrong.Ready)
+
+$right = Test-LzTenantReadiness -Config $r12Config -EntraInventory (New-LzTestEntra $expectedTenant $expectedTenant) 6>$null
+ok 'the right tenant passes R12' (@($right.Checks | Where-Object { $_.Id -eq 'R12' })[0].Status -eq 'Pass')
+
+$noEntra = Test-LzTenantReadiness -Config $r12Config 6>$null
+$noEntraR12 = @($noEntra.Checks | Where-Object { $_.Id -eq 'R12' })[0]
+# "I could not check" and "it is fine" must never render identically — the
+# three-state contract this file's header sets out.
+ok 'an unreadable session warns rather than passing' ($noEntraR12.Status -eq 'Warning') $noEntraR12.Status
+
+$blindConfig = Get-Content "$PSScriptRoot/fixtures/sample-config.json" -Raw | ConvertFrom-Json -Depth 40
+$blindConfig.azure.tenantId = ''
+$blind = Test-LzTenantReadiness -Config $blindConfig -EntraInventory (New-LzTestEntra 'anything' '') 6>$null
+ok 'no declared tenant warns rather than passing' (@($blind.Checks | Where-Object { $_.Id -eq 'R12' })[0].Status -eq 'Warning')
+
+Write-Host "`n== 13. Discovery follows the declared state backend ==" -ForegroundColor Cyan
+# decision 0023 added HCP Terraform for state; Get-LzTerraformInventory kept
+# ValidateSet('azurerm') and Invoke-LzDiscovery kept reaching for
+# backend.azurerm unconditionally. The schema requires only backend.type, so
+# that reach THROWS on a config that legitimately omits the block.
+$hcpConfig = Get-Content "$PSScriptRoot/fixtures/hcp-config.json" -Raw | ConvertFrom-Json -Depth 40
+$hcpInv = Get-LzTerraformInventory -BackendType 'hcp-terraform' 6>$null
+ok 'the inventory reports the backend it was given' ($hcpInv.BackendType -eq 'hcp-terraform') $hcpInv.BackendType
+ok 'no Azure storage account is probed for HCP'     ($hcpInv.Probes.Count -eq 0)
+
+$hcpReady = Test-LzTenantReadiness -Config $hcpConfig -TerraformInventory $hcpInv 6>$null
+$r10 = @($hcpReady.Checks | Where-Object { $_.Id -eq 'R10' })[0]
+# Silence about an Azure storage account is not evidence about an HCP workspace.
+ok 'R10 does not pass on an unreachable backend' ($r10.Status -eq 'Warning') $r10.Status
+ok 'R10 says where the state actually lives'     ($r10.Detail -match 'HCP Terraform')
+
+$azInv = Get-LzTerraformInventory -BackendType 'azurerm' -StorageAccountName '' 6>$null
+ok 'azurerm still reports azurerm' ($azInv.BackendType -eq 'azurerm')
+
+# The reach that threw. Reproduced against the source expression rather than a
+# paraphrase of it, so the test fails if the guard is ever removed.
+$backendSource = Get-Content "$PSScriptRoot/../discovery/public/Invoke-LzDiscovery.ps1" -Raw
+ok 'discovery no longer hardcodes the backend type' ($backendSource -notmatch "BackendType\s*=\s*'azurerm'\s*$")
+$bareHcp = Get-Content "$PSScriptRoot/fixtures/hcp-config.json" -Raw | ConvertFrom-Json -Depth 40
+$bareHcp.backend.PSObject.Properties.Remove('azurerm')
+$threw = $false
+try { $null = $bareHcp.backend.azurerm } catch { $threw = $true }
+ok 'the fixture really has no azurerm block (StrictMode throws on it)' $threw
+
 Write-Host "`n$script:pass passed, $script:fail failed`n" -ForegroundColor $(if($script:fail){'Red'}else{'Green'})
 exit $(if ($script:fail) { 1 } else { 0 })

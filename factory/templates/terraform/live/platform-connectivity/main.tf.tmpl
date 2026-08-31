@@ -133,11 +133,22 @@ module "hub_and_spoke_vnet" {
       bastion = {
         name                  = "bas-hub-${hub.region_code}"
         subnet_address_prefix = hub.bastion_snet
+        sku                   = var.bastion_sku
         tags                  = var.default_tags
       }
 
       virtual_network_gateways = {
         subnet_address_prefix = hub.gateway_snet
+#{{IF connectivity.vpn.enabled}}
+        # Only when a VPN gateway is actually deployed. The enabled_resources
+        # flag above governs creation; this object governs configuration, and
+        # supplying it for a gateway that is not created would describe a
+        # resource this estate does not have.
+        vpn = {
+          sku                       = var.vpn_gateway_sku
+          vpn_active_active_enabled = var.vpn_gateway_active_active
+        }
+#{{ENDIF}}
       }
     }
   }

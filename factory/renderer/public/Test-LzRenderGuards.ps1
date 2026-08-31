@@ -562,6 +562,25 @@ function Test-LzRenderGuards {
         }
     }
 
+    # G31 — caf-minimal creates no Sandbox management group, so a sandbox
+    # subscription has nowhere to be placed.
+    #
+    # This has to be an error rather than a silent drop or a quiet re-placement.
+    # The global layer's active_placements filters slots whose subscription id
+    # is EMPTY, not slots whose management group is missing, so a populated
+    # sandbox slot under caf-minimal reaches the apply and fails there — after
+    # the rest of the hierarchy has been created, with management-group ids that
+    # are immutable. Placing it somewhere else instead would put a sandbox
+    # subscription under a governed archetype without anyone choosing that.
+    if ($Config.azure.managementGroups.strategy -eq 'caf-minimal') {
+        $sandboxSubscription = [string](Get-LzGuardConfigValue -Object $Config -Path 'azure.subscriptions.sandbox' -Default '')
+        if (-not [string]::IsNullOrWhiteSpace($sandboxSubscription)) {
+            $v += New-LzGuardViolation -Id 'G31' `
+                -Message 'azure.subscriptions.sandbox is set while azure.managementGroups.strategy is caf-minimal, which creates no Sandbox management group.' `
+                -Remediation 'Either set azure.managementGroups.strategy to caf-standard, which creates Sandbox and Decommissioned, or clear azure.subscriptions.sandbox. The subscription would otherwise be placed under a management group this estate never creates, and the failure would land mid-apply.'
+        }
+    }
+
     $blocks = @($v | Where-Object { $_.Severity -eq 'Block' })
     $warns = @($v | Where-Object { $_.Severity -eq 'Warn' })
 

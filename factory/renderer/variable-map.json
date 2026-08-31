@@ -1,7 +1,7 @@
 {
   "$comment": "Declares the correspondence between configuration keys and the Terraform variables each layer consumes. Test-LzSchemaDrift validates this in both directions: a mapped config key with no matching Terraform variable would silently do nothing, and a required Terraform variable that nothing feeds would stall apply waiting for input. Together with docs/refactor/COVERAGE.md this is the placeholder/question coverage gate.",
   "mapVersion": "2.1.0",
-  "targetSchemaVersion": "3.2.0",
+  "targetSchemaVersion": "4.0.0",
   "$pathConventions": {
     "plain": "A dotted path into lz-config.json, e.g. azure.primaryRegion.",
     "computed.*": "A value derived by the renderer rather than stored in the config. Exempt from the schema-existence check.",
@@ -23,7 +23,7 @@
     },
     "global": {
       "variablesFile": "terraform/live/global/variables.tf",
-      "$comment": "The state_* trio feeds the remote-state read of platform-management. The two policy_assignment_* maps and the six architecture/placement ids are computed rather than mapped to a config path: the wizard's answers carry no management-group edge and no library id set, and resolving them against site/alz-policy-catalog.json is what supplies both — see Resolve-LzPolicySelection and Resolve-LzManagementGroups. The placement ids are emitted always, not left to variables.tf defaults: under the custom strategy the hierarchy carries the client's names, and a placement target still spelling the library's would put every subscription into a management group that does not exist.",
+      "$comment": "The state_* trio feeds the remote-state read of platform-management. The two policy_assignment_* maps and the six architecture/placement ids are computed rather than mapped to a config path: the wizard's answers carry no management-group edge and no library id set, and resolving them against site/alz-policy-catalog.json is what supplies both \u2014 see Resolve-LzPolicySelection and Resolve-LzManagementGroups. The placement ids are emitted always, not left to variables.tf defaults: under the custom strategy the hierarchy carries the client's names, and a placement target still spelling the library's would put every subscription into a management group that does not exist.",
       "variables": {
         "root_parent_management_group_id": "azure.managementGroups.rootId",
         "org_prefix": "organization.companyShortName",
@@ -52,7 +52,7 @@
     },
     "platform-connectivity": {
       "variablesFile": "terraform/live/platform-connectivity/variables.tf",
-      "$comment": "The rendered main.tf contains exactly one topology (connectivity.model). Firewall TYPE is narrowed to Azure Firewall by ADR 0017 — a third-party NVA is per-estate work in the generated repository. Whether to deploy one is a different question, and as of the 2026-08-30 amendment it is a required answer with no default: firewall_enabled maps to connectivity.firewall.enabled, not to a literal. It and deploy_bastion also carry no variables.tf default, because the renderer always emits both — an absent value means a hand-edited tfvars, which should fail loudly rather than quietly spend roughly USD 900-950 a month per hub. deploy_vpn_gateway and deploy_expressroute_gateway likewise consume answers that were once recorded but unwired. hub_and_spoke_networks_settings is a pass-through escape hatch that defaults empty, fed by no question by design.",
+      "$comment": "The rendered main.tf contains exactly one topology (connectivity.model). Firewall TYPE is narrowed to Azure Firewall by ADR 0017 \u2014 a third-party NVA is per-estate work in the generated repository. Whether to deploy one is a different question, and as of the 2026-08-30 amendment it is a required answer with no default: firewall_enabled maps to connectivity.firewall.enabled, not to a literal. It and deploy_bastion also carry no variables.tf default, because the renderer always emits both \u2014 an absent value means a hand-edited tfvars, which should fail loudly rather than quietly spend roughly USD 900-950 a month per hub. deploy_vpn_gateway and deploy_expressroute_gateway likewise consume answers that were once recorded but unwired. hub_and_spoke_networks_settings is a pass-through escape hatch that defaults empty, fed by no question by design.",
       "variables": {
         "connectivity_subscription_id": "azure.subscriptions.connectivity",
         "org_prefix": "organization.companyShortName",
@@ -65,7 +65,10 @@
         "firewall_enabled": "connectivity.firewall.enabled",
         "azfw_tier": "connectivity.firewall.azfwTier",
         "deploy_bastion": "connectivity.bastion.enabled",
+        "bastion_sku": "connectivity.bastion.sku",
         "deploy_vpn_gateway": "connectivity.vpn.enabled",
+        "vpn_gateway_sku": "connectivity.vpn.sku",
+        "vpn_gateway_active_active": "connectivity.vpn.activeActive",
         "deploy_expressroute_gateway": "connectivity.expressRoute.enabled",
         "deploy_private_dns": "connectivity.privateDns.enabled",
         "private_dns_zones": "connectivity.privateDns.zones",
@@ -76,7 +79,7 @@
     },
     "state-hardening": {
       "variablesFile": "terraform/live/state-hardening/variables.tf",
-      "$comment": "Stage-2 state hardening (ADR 0019). hub_pe_subnet_id and blob_private_dns_zone_id are deliberate operator placeholders owned by the platform-connectivity layer's outputs — same loop-back pattern as the connectivity workspace ID.",
+      "$comment": "Stage-2 state hardening (ADR 0019). hub_pe_subnet_id and blob_private_dns_zone_id are deliberate operator placeholders owned by the platform-connectivity layer's outputs \u2014 same loop-back pattern as the connectivity workspace ID.",
       "variables": {
         "state_subscription_id": "computed.stateSubscriptionId",
         "state_resource_group_name": "backend.azurerm.resourceGroupName",
@@ -84,14 +87,14 @@
         "org_prefix": "organization.companyShortName",
         "primary_region": "azure.primaryRegion",
         "primary_region_code": "azure.primaryRegionCode",
-        "hub_pe_subnet_id": "literal:operator placeholder — platform-connectivity hub PE subnet output",
-        "blob_private_dns_zone_id": "literal:operator placeholder — platform-connectivity privatelink.blob zone output",
+        "hub_pe_subnet_id": "literal:operator placeholder \u2014 platform-connectivity hub PE subnet output",
+        "blob_private_dns_zone_id": "literal:operator placeholder \u2014 platform-connectivity privatelink.blob zone output",
         "default_tags": "naming.defaultTags"
       }
     }
   },
   "$pendingLayers": {
-    "$comment": "No pending layers. Workload spokes and sandbox estates are built inside the generated repository against the connectivity layer's outputs — per-estate work, not generator architecture (ADR 0017).",
+    "$comment": "No pending layers. Workload spokes and sandbox estates are built inside the generated repository against the connectivity layer's outputs \u2014 per-estate work, not generator architecture (ADR 0017).",
     "pending": []
   }
 }

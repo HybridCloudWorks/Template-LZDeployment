@@ -104,6 +104,32 @@ this is the sanctioned alternative
   mismatch between it and the answer record fails the run even when what you
   typed was right.
 
+## If you want the ALZ plan proof (optional, upstream-only)
+
+Optional, and not part of a client run — this verifies the FACTORY, not your
+estate. Skip it entirely unless you maintain this repository.
+
+`terraform validate` does not resolve data sources, so the ALZ provider's
+resolution of policy defaults and per-management-group assignment changes is
+unverified by every other check here. The `ALZ Plan Proof` workflow is the only
+thing that plans it.
+
+- [ ] Create an `alz-plan-proof` environment on the upstream repository.
+- [ ] Create a service principal, federate it to that environment, and give it
+  **`Reader` on any one subscription — nothing else**. The provider reads
+  built-in policy definitions and makes no other Azure call, so this identity
+  needs no management-group role and no write of any kind. If you are being
+  asked for more than Reader, something is wrong.
+- [ ] Set environment **variables** `LZ_PLAN_PROOF_CLIENT_ID`,
+  `LZ_PLAN_PROOF_TENANT_ID`, `LZ_PLAN_PROOF_SUBSCRIPTION_ID`. There is no
+  secret to set — the identity is federated.
+- [ ] Run `ALZ Plan Proof` with `fixture: all` after any change to the pinned
+  ALZ library ref, the policy catalog, or the global layer's provider block.
+- [ ] Read what it does **not** cover: it plans the ALZ provider's resolution
+  and nothing else. No Azure resource is planned, so no permission, quota,
+  naming or region failure is caught, and it is dispatch-only, so it gates no
+  pull request.
+
 ## Review before mutation
 
 - [ ] Resolve all blocking discovery findings. Use

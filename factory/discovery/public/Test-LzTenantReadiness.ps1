@@ -2,7 +2,7 @@
 <#
     Tenant readiness validation.
 
-    Answers ten capability questions with Pass / Warning / Fail, every one of
+    Answers twelve readiness questions with Pass / Warning / Fail, every one of
     them WITHOUT mutating anything. Capability is proven by reading the
     operator's effective permissions and directory role memberships, never by
     attempting a create and rolling it back — a rollback that fails halfway
@@ -39,7 +39,7 @@ function New-LzReadinessCheck {
 function Test-LzTenantReadiness {
     <#
     .SYNOPSIS
-        Run the ten readiness checks against the discovered inventory.
+        Run the twelve readiness checks against the discovered inventory.
     .PARAMETER Config
         The parsed lz-config.json object.
     .PARAMETER GitHubInventory
@@ -71,6 +71,10 @@ function Test-LzTenantReadiness {
     $checks += Test-LzGitHubAccess -Config $Config -GitHub $GitHubInventory
     $checks += Test-LzTerraformBackendAccess -Config $Config -Terraform $TerraformInventory
     $checks += Test-LzBillingScopeAvailable -Config $Config
+    # Last in the list, first in importance: every check above asks whether
+    # the operator CAN do something. This one asks whether they are pointed
+    # at the right tenant to do it in.
+    $checks += Test-LzTenantConfirmed -Config $Config -Entra $EntraInventory
 
     foreach ($c in $checks) {
         switch ($c.Status) {
@@ -130,7 +134,7 @@ function Get-LzPrimarySubscriptionScope {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  The ten checks
+#  The checks
 # ══════════════════════════════════════════════════════════════════════════════
 
 function Test-LzCanCreateAppRegistrations {
@@ -459,7 +463,16 @@ function Test-LzTerraformBackendAccess {
 
     $cap = $Terraform.Capabilities
 
-    # azurerm is the only backend (ADR 0015).
+    # Two backends since decision 0023, and only one of them has anything in
+    # THIS tenant to check. Reporting an HCP estate's silence about an Azure
+    # storage account as a Pass would be the same class of mistake as the
+    # inventory probing for one: an answer about the wrong object.
+    if ($Terraform.BackendType -eq 'hcp-terraform') {
+        return New-LzReadinessCheck -Id 'R10' -Category 'Terraform' -Name 'Terraform backend access' -Status 'Warning' `
+            -Detail 'State lives in HCP Terraform, which this tenant-scoped discovery cannot reach. Nothing here confirms or denies access to it.' `
+            -Remediation 'Confirm out of band that the TFE_TOKEN in use can write the workspaces named in backend.hcpTerraform, and that the organization exists.'
+    }
+
     if ($cap.Findings.Count -gt 0) {
         $isSecurityFinding = @($cap.Findings | Where-Object { $_ -match 'public' }).Count -gt 0
         return New-LzReadinessCheck -Id 'R10' -Category 'Terraform' -Name 'Terraform backend access' `
@@ -469,4 +482,61 @@ function Test-LzTerraformBackendAccess {
     }
     return New-LzReadinessCheck -Id 'R10' -Category 'Terraform' -Name 'Terraform backend access' -Status 'Pass' `
         -Detail 'State storage account is present and not publicly exposed.'
+}
+
+function Test-LzTenantConfirmed {
+    <#
+    .SYNOPSIS
+        R12 — is the signed-in session actually in the tenant this config deploys to?
+    .DESCRIPTION
+        Get-LzEntraInventory has computed this comparison since it was written,
+        for exactly the reason its own parameter documentation gives: "to catch
+        the common error of running discovery against the wrong tenant". It wrote
+        TenantMatches onto the inventory and nothing read it — so a run signed in
+        to the wrong tenant recorded the mismatch, reported ready, and continued
+        to the broker, which is the step that creates Entra applications,
+        federated credentials and RBAC.
+
+        This is the check that acts on it. It is deliberately a Fail rather than
+        a Warning: every other Fail in this file means "bootstrap will not
+        succeed", and this one means something worse — bootstrap succeeds,
+        somewhere else.
+
+        The CI path added its own equivalent before `azure/login` (decision
+        0024), which stops a wrong-tenant run without issuing a credential at
+        all. That covers only CI; this covers the client-local motion, which is
+        the default and until now had nothing.
+    #>
+    param([object]$Config, [object]$Entra)
+
+    $expected = [string]$Config.azure.tenantId
+
+    if (-not $expected) {
+        return New-LzReadinessCheck -Id 'R12' -Category 'Identity' -Name 'Target tenant confirmed' -Status 'Warning' `
+            -Detail 'The configuration declares no azure.tenantId, so there is nothing to compare the signed-in session against.' `
+            -Remediation 'Set azure.tenantId in lz-config.json to the tenant this estate deploys to.'
+    }
+
+    if (-not $Entra) {
+        return New-LzReadinessCheck -Id 'R12' -Category 'Identity' -Name 'Target tenant confirmed' -Status 'Warning' `
+            -Detail 'Entra discovery did not run, so the signed-in tenant is unknown.' `
+            -Remediation "Re-run discovery without -SkipDomain Entra, and confirm the session is signed in to $expected."
+    }
+
+    $probe = $Entra.Probes['Signed-in context']
+    if (-not $probe -or $probe.Status -ne 'Ok' -or $probe.Items.Count -eq 0) {
+        return New-LzReadinessCheck -Id 'R12' -Category 'Identity' -Name 'Target tenant confirmed' -Status 'Warning' `
+            -Detail 'The signed-in context could not be read, so the tenant is unconfirmed.' `
+            -Remediation "Run: az login --tenant $expected"
+    }
+
+    $context = $probe.Items[0]
+    if ($context.TenantMatches) {
+        return New-LzReadinessCheck -Id 'R12' -Category 'Identity' -Name 'Target tenant confirmed' -Status 'Pass' `
+            -Detail "Signed in to $expected, the tenant this configuration deploys to."
+    }
+
+    return New-LzReadinessCheck -Id 'R12' -Category 'Identity' -Name 'Target tenant confirmed' -Status 'Fail' `
+        -Detail ("Signed in to tenant {0}, but this configuration deploys to {1}. Every object the broker creates would land in the wrong tenant." -f $context.TenantId, $expected) `
+        -Remediation "Run: az login --tenant $expected  — or, if the session is right and the configuration is wrong, correct azure.tenantId before re-running."
 }

@@ -43,6 +43,16 @@ convention reviewers have to remember to enforce.
 > branch or pull request assume the apply identity, defeating the environment
 > gate entirely. This is risk SR1 in the factory design.
 
+## Recorded identity strategy
+
+**{{FACTORY-RAW:computed.docIdentityStrategy}}**
+
+The global layer places the identity subscription under its management group
+from `azure.subscriptions.identity`. It builds nothing else here: no domain
+controllers, no Entra Domain Services, no hybrid sync. This answer describes the
+architecture the estate team is expected to build in that subscription, and it
+is written down so the intent survives the handover.
+
 ## Recovery
 
 Federation failures surface as `AADSTS700213` or *no matching federated identity

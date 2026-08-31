@@ -15,19 +15,29 @@ function Get-LzTerraformInventory {
     .SYNOPSIS
         Probe the Terraform state backend declared in lz-config.json.
     .PARAMETER BackendType
-        azurerm — the only supported value (ADR 0015). The parameter survives
-        so older callers fail with a clear message rather than a binding error.
+        azurerm or hcp-terraform. Decision 0023 added the second backend for
+        STATE ONLY; this parameter was still ValidateSet('azurerm') afterwards,
+        so the two shipped out of step and every HCP client was inventoried as
+        though their state lived in Azure.
     .PARAMETER StorageAccountName
-        Declared state storage account name from backend.azurerm.
+        Declared state storage account name from backend.azurerm. Not supplied,
+        and not meaningful, under hcp-terraform.
     #>
     [CmdletBinding()]
     param(
-        [ValidateSet('azurerm')][string]$BackendType = 'azurerm',
+        [ValidateSet('azurerm', 'hcp-terraform')][string]$BackendType = 'azurerm',
         [string]$StorageAccountName = '',
         [string]$StateResourceGroupName = ''
     )
 
     $probes = [ordered]@{}
+
+    # There is nothing in THIS tenant to probe for an HCP Terraform backend:
+    # the state lives in HCP, reachable with TF_TOKEN rather than with the az
+    # session discovery is running under. Probing anyway would report an
+    # Azure storage account that is not the state store, which is worse than
+    # reporting nothing — R10 would then pass or fail on the wrong object.
+    if ($BackendType -eq 'hcp-terraform') { $StorageAccountName = '' }
 
     if ($StorageAccountName) {
         $probes['State storage account'] = Invoke-LzProbe -Name 'State storage account' -Probe {
@@ -52,7 +62,7 @@ function Get-LzTerraformInventory {
 
     [pscustomobject]@{
         Domain       = 'Terraform'
-        BackendType  = 'azurerm'
+        BackendType  = $BackendType
         Probes       = $probes
         Capabilities = Get-LzTerraformCapabilities -Probes $probes
     }

@@ -1124,17 +1124,54 @@ layer may read management state but must not read connectivity state; the
 private-DNS values are therefore derived from config, which is sound because
 the policies consume them as strings, not as references to existing resources.
 
-### 6.1a `terraform plan` against a throwaway tenant — `[STILL OPEN]`
+### 6.1a Plan-verification — `[NARROWED 2026-08-31, still open]`
 
-The half of 6.1 that static analysis cannot reach. CI renders and runs
-`init + validate` on the output (`terraform-policy-checks.yml`), which resolves
-the AVM pins but never reaches the ALZ provider's policy-default resolution —
-that happens at PLAN time, and no plan runs anywhere in this repository.
+**A harness now exists and plans.** `factory/ci/Test-AlzArchitecturePlan.ps1`
+plus the dispatch-only `alz-plan-proof` workflow. This is the first thing in the
+repository that runs `terraform plan`.
 
-Everything 6.1 and 6.2 shipped is syntax-verified and contract-verified; none
-of it is plan-verified. `Test-AlzPolicyDefaults.ps1` and guard G28 exist
-precisely because this gap does, and they are a substitute for the plan, not a
-replacement. See REVIEW §19.
+**The premise of this item was wrong in two ways, both worth recording.**
+
+*It cannot be done by planning the rendered layer.* The global layer reads six
+of its fourteen `policy_default_values` out of
+`data.terraform_remote_state.management`, so planning it needs the
+platform-management layer **already applied** in a real tenant — a deployment,
+not a check. The harness instead assembles a standalone module around
+`data "alz_architecture"`, the point at which the provider resolves policy
+defaults against the pinned library and applies `policy_assignments_to_modify`
+per management group. Every input is **extracted from the rendered output**, not
+authored: a harness supplied with its own inputs proves only that it agrees
+with itself.
+
+*It does not need a throwaway tenant.* The ALZ provider needs a credential —
+`alzlib` calls `armpolicy.ClientFactory` to fetch **built-in** policy
+definitions, so that it can check each assigned definition is assignable and
+compute the role assignments `DeployIfNotExists` and `Modify` require — but
+that is all it reads. **`Reader` on any one subscription is enough.** No
+management group, no write, no landing zone, nothing created. (An earlier
+expectation that it would need no credential at all was wrong; the provider
+documentation says so outright, and `cache_file_name` exists precisely to avoid
+that fetch.)
+
+**What is checked on every run, uncredentialed:** `-AssembleOnly` renders,
+extracts and substitutes, then asserts no `terraform_remote_state` or
+`azurerm_client_config` reference survives. Registered in Factory CI across all
+four fixtures. This is the half that rots — a truncated block or a missed
+substitution still yields a module that plans, just not the one the estate
+rendered — and `Test-CI.ps1` additionally fails if the global layer gains a
+management-layer output the harness has no stand-in for.
+
+**Why this stays open.** Two residues:
+
+1. It plans the ALZ provider's resolution **and nothing else**. No Azure
+   resource is planned, so no permission, quota, naming or region failure is
+   caught. The AVM module's own resources are outside it.
+2. It is **dispatch-only, so it gates nothing.** A pull request can still merge
+   a defect of exactly the class it exists to catch — 6.6c is one that did —
+   and CI will be green. Closing that needs either a credential on
+   `pull_request`, which is not a casual decision on a forkable repository, or a
+   committed built-ins cache, which trades staleness for coverage. Neither has
+   been chosen.
 
 ### 6.2 Client-facing ALZ policy selection — `[CLOSED 2026-08-31]`
 
@@ -1162,10 +1199,26 @@ and enforcement.
 `governance.policyBaseline.enforcementMode` is no longer inert, but it does
 **not** blanket-write every selected assignment, which is what this entry
 originally proposed. Audit emits `DoNotEnforce` for the fourteen assignments
-the catalog identifies as deny-class and nothing else. `DoNotEnforce` also
-stops DeployIfNotExists and Modify remediation, so blanket-downgrading would
-leave Defender configuration, the Azure Monitor Agent, diagnostic settings and
-private-DNS registration deployed but never converging. Operator-ratified
+the catalog identifies as deny-class and nothing else.
+
+**Corrected 2026-08-31**, against Microsoft's own assignment-structure
+reference: the reason recorded here originally said `DoNotEnforce` "stops
+DeployIfNotExists and Modify remediation". It does not. It suspends the effect
+during resource *creation and update*, and remediation tasks can still be
+started by hand — Azure's docs say so explicitly, and mark DoNotEnforce
+"Remediate manually: Yes". The conclusion is unchanged and the narrower scope
+still stands: under a blanket downgrade, Defender configuration, the Azure
+Monitor Agent, diagnostic settings and private-DNS registration would stop
+converging as resources appear, and would drift until someone ran remediation
+deliberately. That is a weaker claim than the one first written, and the
+original overstated it.
+
+The mechanism itself is what ALZ recommends: its policy FAQ "strongly suggests
+that the enforcement mode be utilized over the audit effect" for deny and DINE
+policies, and calls changing the enforcement mode to do-not-enforce "highly
+recommended" for deactivating them. Changing the effect to `audit` — which is
+what this factory does NOT do — is the thing it warns against as a perpetual
+solution. Operator-ratified
 2026-08-31, along with keeping `audit` as the default.
 
 Also closed here: `policy-diff-guardrails.yml`, the generated repository's
@@ -1250,18 +1303,44 @@ the local library is emitted and composed — but what is missing is a decision
 about which archetype a client-invented group inherits, and that is precisely
 the decision this scope declines to make on their behalf by accident.
 
-### 6.4a `caf-minimal` deploys the same hierarchy as `caf-standard` — `[OPEN]`
+### 6.4a `caf-minimal` deploys the same hierarchy as `caf-standard` — `[CLOSED 2026-08-31]`
 
-Found while closing 6.4. Rendering the same config under both strategies
-produces byte-for-byte identical Terraform: the emitted architecture is the
-library's `alz` either way, Corp, Online, Sandbox and Decommissioned included.
+Operator-directed: **make it real** rather than retire the option. Shipped as
+**schema 4.0.0** and
+[decision 0025](docs/decisions/0025-schema-4-caf-minimal-real-and-policy-baseline-retired.md).
 
-Not fixed in passing, because trimming a hierarchy is not a rename: dropping
-Sandbox leaves `azure.subscriptions.sandbox` with nowhere to be placed, and
-dropping Corp and Online makes `workloadPlacement` meaningless. Either make it
-real — a second emitted architecture definition, plus a decision about the
-orphaned slots — or retire the option. The wizard says so in the option text
-and in a warning until then. See REVIEW §23.
+`caf-minimal` now emits its own architecture definition —
+`<companyShortName>-minimal`, ten management groups — dropping **exactly
+`sandbox` and `decommissioned`**.
+
+**The objection this item was left open for does not apply to those two.** It
+said trimming would strand `workloadPlacement`. It would, for Corp or Online.
+But both dropped groups are direct children of the root **with no children of
+their own**, so nothing re-parents, and every other library group is Platform,
+Landing Zones, or a child of one. The trim the schema always described happens
+to be the one trim that is safe.
+
+**The sandbox subscription is refused, not re-homed.** Guard **G31** and the
+wizard both block `caf-minimal` with a non-empty `azure.subscriptions.sandbox`.
+Silently dropping the placement would hand the client a subscription outside the
+hierarchy without saying so; placing it under Landing Zones would put a sandbox
+subscription under a governed archetype nobody chose. It is an **error** rather
+than a warning because `active_placements` filters *empty* subscription ids, not
+missing management groups — so the failure would otherwise land mid-apply,
+against management-group ids that are immutable.
+
+**Three artefacts were describing a hierarchy nobody deployed**, and all three
+are corrected: the schema's `strategy` description, the option label, and the
+wizard's resource estimator — which costed `caf-minimal` at 4 groups and
+`caf-standard` at 9 when **the pinned library defines 12**. Both weights were
+wrong, and that estimate has gated HCP Terraform export above the 500-resource
+free tier since #125.
+
+The test this item asked for is that the two strategies now render
+**differently**, and that the minimal one omits exactly those two groups while
+keeping the landing-zone groups `workloadPlacement` targets. A test asserting
+only that each renders something would have passed for the whole year this was
+broken.
 
 ### 6.5 Second state backend (HCP Terraform) — `[CLOSED 2026-08-31]`
 
@@ -1383,32 +1462,99 @@ committable, carrying tenant, subscription and identity detail. That is the same
 gap recorded in `.gitignore` on 2026-08-19, one directory over. Now ignored,
 with `client/lz-config.json` verified still committable.
 
-### 6.6b The wrong-tenant signal nothing reads — `[OPEN]`
+### 6.6b The wrong-tenant signal nothing reads — `[CLOSED 2026-08-31]`
 
-Found while fixing Copilot's finding on #126, and **not fixed there**, because
-it is not specific to the CI path: it weakens the *local* motion too.
+Closed as **R12, "Target tenant confirmed"**, in
+`factory/discovery/public/Test-LzTenantReadiness.ps1`.
 
-`Get-LzEntraInventory.ps1:51` computes
-`TenantMatches = ($acct.tenantId -eq $TenantId)` — the signed-in tenant against
-`azure.tenantId` from the answer record — and writes it onto the inventory
-alongside `ExpectedTenant`. Its own parameter documentation says it exists "to
-catch the common error of running discovery against the wrong tenant."
+`Get-LzEntraInventory.ps1:51` computed
+`TenantMatches = ($acct.tenantId -eq $TenantId)` and wrote it onto the
+inventory. Grepping the tree, the name appeared exactly once — at the
+assignment. No readiness check gated on it, so a run signed in to the wrong
+tenant recorded the mismatch, reported ready, and continued to the broker,
+which is the step that creates Entra applications, federated credentials and
+RBAC.
 
-**Nothing reads it.** Grepping the tree, `TenantMatches` appears exactly once,
-at the line that assigns it. No readiness check R01–R11 gates on it, so a run
-authenticated to the wrong tenant records the mismatch in the inventory and
-proceeds to the broker — the step that creates Entra applications, federated
-credentials and RBAC. The signal is computed, serialized, and ignored.
+R12 is deliberately a **Fail** rather than a Warning. Every other Fail in that
+file means "bootstrap will not succeed"; this one means something worse —
+bootstrap succeeds, somewhere else. Fail sets `Ready = $false`, which is what
+`-FailOnNotReady` already acts on and what the engagement wrapper turns into a
+stopped run under `-Apply`.
 
-This is the same shape as the guardrail that enforced nothing and the
-storage-key auth that was warned-but-never-honoured: a check that exists,
-looks like a control, and gates nothing.
+The three-state contract is kept: an unreadable session, a skipped Entra
+domain, or a config with no `azure.tenantId` all Warn. "I could not check" and
+"it is fine" still do not render identically.
 
-The fix is a readiness check — R12, `Fail` on a mismatch — so the existing
-`-FailOnNotReady` path stops the engagement. That gate then covers both
-motions: the CI job's pre-`azure/login` check (#126) stops it earlier and
-without a credential, and R12 stops a laptop run signed in to the wrong
-tenant, which today nothing does.
+This gates the **default** motion. #126's confirmation runs before
+`azure/login` and stops a wrong-tenant CI run without issuing a credential at
+all — but that covered only CI, and the client-local motion, which decision
+0004 ratified as the default, had nothing.
+
+While here: the file's header said "ten capability questions" and eleven were
+registered. Twelve now, and it says so.
+
+### 6.6c The HCP backend did not survive contact with discovery — `[CLOSED 2026-08-31]`
+
+Three defects, all shipped by 6.5 in #125, none previously recorded. Decision
+0023 added HCP Terraform for state; three places kept believing decision 0015's
+"azurerm is the only backend".
+
+1. **The cross-layer state read pointed at the wrong store.** The global layer's
+   `data "terraform_remote_state" "management"` was unconditionally
+   `backend = "azurerm"`, reading `state_*` variables from `backend.azurerm.*`.
+   An HCP estate wrote every layer's state to HCP and then came here to read
+   the management layer's state out of an Azure storage account it had never
+   written to. **This is the serious one: the HCP option did not work
+   end-to-end.** It is now conditional — `remote`, naming
+   `<workspacePrefix>-platform-management`, the same name
+   `_layer/backend-cloud.tf.tmpl` writes into that layer's own `cloud` block.
+   `remote` rather than `cloud` is required: `cloud` configures where *this*
+   layer's state goes, and `terraform_remote_state` does not accept it.
+
+   **`terraform validate` cannot catch this** — it does not resolve data
+   sources — so the `hcp-config` leg added in #126 passed while the estate
+   could not have planned. That is a live instance of exactly the gap TODO 6.1a
+   describes, found by reading rather than by any check.
+
+2. **Discovery threw on a schema-valid config.** `Invoke-LzDiscovery.ps1` read
+   `$config.backend.azurerm.storageAccountName` unguarded. The schema requires
+   only `backend.type`, so an HCP config that omits the block is valid — and
+   under StrictMode that read throws. Reproduced before fixing: the render
+   failed with `Unknown configuration path 'backend.azurerm.resourceGroupName'`.
+   Masked in practice only because the wizard never pruned the block, which its
+   own comment claimed it did. The comment was wrong, not the code — the
+   generated repo's `state-access-flip` workflow and the global layer's tfvars
+   both read `backend.azurerm.*` on the azurerm path — and the comment now says
+   so.
+
+3. **R10 reported on the wrong object.** `Get-LzTerraformInventory` still
+   carried `[ValidateSet('azurerm')]` and hardcoded `BackendType = 'azurerm'`
+   in its output, so every HCP client had an Azure storage account probed as
+   though it were their state store. R10 now returns Warning for
+   `hcp-terraform`, saying the state is in HCP and outside this tenant-scoped
+   discovery's reach. Silence about a storage account is not evidence about a
+   workspace.
+
+### 6.6d The e2e proof's own output was committable — `[CLOSED 2026-08-31]`
+
+Found by running `factory/e2e/Invoke-E2EGenerationProof.ps1`, which is a
+documented command, and then reading `git status`.
+
+It writes a complete engagement to `e2e-output/` at the repository root — the
+answer record, the rendered tree and the evidence — and **no ignore rule
+reached it**. `e2e-output/answers/lz-config.json`,
+`deployment-metadata.json` and `rendered/lz-config.json` all carry `tenantId`
+and `subscriptionId`.
+
+Survivable rather than a live leak, because the wizard driver uses synthetic
+identities and the proof asserts as much (`zeroGuids — all synthetic driver
+identities`). But the shape is the third instance of one pattern: a documented
+command whose output lands somewhere unignored. The first was recorded in
+`.gitignore` on 2026-08-19; the second was `client/` in #126.
+
+`/e2e-output/` and `/node_modules/` are now ignored. The latter is plain
+hygiene — `playwright-core` is installed on demand to drive the wizard, and
+`--no-save` keeps it out of `package.json` but not out of the working tree.
 
 ### 6.7 Per-subscription brownfield disposition — `[CLOSED 2026-08-31]`
 
@@ -1470,6 +1616,82 @@ Wired through now, and a declined inventory is recorded as declined rather than
 as "no policy assignments found" — those are very different statements. The
 answer-coverage budget drops 41 → 40.
 
+
+### 6.8 The bespoke policy baseline, retired — `[CLOSED 2026-08-31]`
+
+Six of the forty recorded-not-deployed answers, closed by removal rather than by
+wiring, in the same schema 4.0.0 as 6.4a (decision 0025).
+
+`governance.policyBaseline.{enforceAllowedLocations, enforceTlsMinimum,
+enforceNsgOnSubnets, denyPublicIpOnNics, enforceDiagnosticSettings,
+enforceEncryptionAtRest}` predate the ALZ policy surface. Every control they
+name is enforced by an assignment the pinned library ships, and since #123 the
+client chooses those in the wizard's Policies step against the real assignment
+names. The wizard was asking the same six questions twice, with only one side
+connected to anything.
+
+Removed rather than mapped to the catalog: mapping keeps two controls that can
+disagree, and only the Policies step has a generated catalog behind it that CI
+validates against the pinned library.
+
+**`enforcementMode` and `requiredTags` survive.** They sit under the same object
+and both are consumed — `requiredTags` reaches `FINOPS.md`, `enforcementMode`
+reaches the assignments. Removing the parent wholesale would have taken them
+with it, which is the mistake this entry exists to have not made.
+
+Ledger budget **40 → 34**.
+
+### 6.9 The recorded-not-deployed ledger reaches zero — `[CLOSED 2026-08-31]`
+
+Operator-directed: close **all** of them. The ledger was 40 when Phase 6 opened
+and is now **0** — every answer the wizard collects reaches a delivered
+artifact.
+
+Three dispositions, and the largest was not "wire it to Terraform":
+
+**Six groups (31 answers) now render into the generated repository's
+documentation.** Non-prod spoke addressing and the ExpressRoute circuit detail
+into a new `docs/connectivity.md`; the operating-model contacts, approval chain
+and break-glass table into `docs/operating-model.md`; the budgets and cost
+exports into `docs/finops.md`, which previously named `finops.budgets` in prose
+and rendered no field of it; the security retention detail into
+`docs/threat-model.md`; the identity strategy into
+`docs/identity-trust-matrix.md`.
+
+**This is delivery, not a consolation prize.** A spoke address range is
+per-estate work under ADR 0017 and an ExpressRoute circuit is a carrier order
+placed outside Terraform — neither is a resource this factory can create, so
+the deliverable for those decisions *is* the decision, written where the person
+acting on it will look. Each document says plainly that nothing deploys it.
+
+**Three answers were wired to real Terraform.** `connectivity.bastion.sku`,
+`connectivity.vpn.sku` and `connectivity.vpn.activeActive` now reach the AVM
+connectivity module as `bastion.sku`, `virtual_network_gateways.vpn.sku` and
+`vpn_active_active_enabled`. Verified against the pinned module's own
+`variables.tf` before wiring rather than assumed — the register's alternative
+was to stop asking, and that would have been the answer if the module had not
+accepted them. The `vpn` object is emitted only when a VPN gateway is deployed:
+the enable flag governs creation, this object governs configuration, and
+supplying it for a gateway that is not created would describe a resource the
+estate does not have.
+
+**Six were removed** — see 6.8.
+
+**Fourteen moved to `consumedIndirectly`, not closed by sleight of hand.** The
+spoke ranges, budget fields and approval-chain fields are walked structurally
+into `computed.*` lists and rendered as tables, so no dotted path appears in
+source and the coverage scan cannot see them. They reach the client; the
+scanner's blind spot is not the client's problem, and the register records
+exactly which consumer reads each.
+
+**A latent defect in the checker itself, found by emptying it.** The asset
+emitter serialised the ledger with a piped `ConvertTo-Json`, which emits
+**nothing** for an empty collection — producing
+`globalThis.LZ_RECORDED_NOT_DEPLOYED = ;`, a syntax error that takes the whole
+wizard down at load. A single entry would have serialised as a bare object and
+made `unmetDependencies()` iterate the characters of a string. Neither case was
+reachable while the ledger held two or more groups. Both are handled explicitly
+now, and the wizard tests assert the shape rather than the contents.
 
 ## Phase 5 — Release-time items
 

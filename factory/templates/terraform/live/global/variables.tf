@@ -119,18 +119,21 @@ variable "sandbox_management_group_id" {
 # Remote-state read of the platform-management layer.
 
 variable "state_resource_group_name" {
-  description = "Resource group of the state storage account."
+  description = "Resource group of the state storage account. Empty under the HCP Terraform backend, where the management layer's state is read as a workspace rather than a blob."
   type        = string
+  default     = ""
 }
 
 variable "state_storage_account_name" {
-  description = "State storage account."
+  description = "State storage account. Empty under the HCP Terraform backend."
   type        = string
+  default     = ""
 }
 
 variable "state_container_name" {
-  description = "State container."
+  description = "State container. Empty under the HCP Terraform backend."
   type        = string
+  default     = ""
 }
 
 # Client policy selection. These two travel together and are rendered from the

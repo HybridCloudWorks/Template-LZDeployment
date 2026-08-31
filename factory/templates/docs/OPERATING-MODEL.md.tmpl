@@ -93,6 +93,53 @@ teams must not bypass module interfaces or edit state directly.
 Contacts and approval chains are sourced from `lz-config.json`. Empty contact
 lists are an onboarding blocker that operators must resolve before production.
 
+## Platform team and escalation
+
+| Field | Value |
+|---|---|
+| Platform team | {{FACTORY-RAW:operations.platformTeam.name}} |
+| GitHub team | `{{FACTORY-RAW:computed.docPlatformTeamSlug}}` |
+| Support hours | {{FACTORY-RAW:computed.docSupportHours}} |
+| Escalation | {{FACTORY-RAW:computed.docEscalationUrl}} |
+
+Support hours are the window in which the platform team answers; outside it,
+escalate through the link above rather than to individuals.
+
+## Approval chain
+
+#{{IF computed.hasApprovalChain}}
+Applies to the environment gates the generated workflows already enforce. The
+approvers below are the people; GitHub environment protection rules are the
+mechanism, and the two must be kept in step by hand — nothing here configures
+them.
+
+| Stage | Approvers | Environments |
+|---|---|---|
+#{{FOREACH stage IN computed.approvalChain}}
+| {{FACTORY-RAW:stage.stage}} | {{FACTORY-RAW:stage.approvers}} | {{FACTORY-RAW:stage.environments}} |
+#{{ENDFOREACH}}
+#{{ELSE}}
+No approval chain was recorded. The environment protection rules the bootstrap
+broker configures still apply; this table would say who is expected to act on
+them.
+#{{ENDIF}}
+
+## Break-glass contacts
+
+#{{IF computed.hasBreakGlassContacts}}
+| Name | Role | Email | Phone |
+|---|---|---|---|
+#{{FOREACH contact IN computed.breakGlassContacts}}
+| {{FACTORY-RAW:contact.name}} | {{FACTORY-RAW:contact.role}} | {{FACTORY-RAW:contact.email}} | {{FACTORY-RAW:contact.phone}} |
+#{{ENDFOREACH}}
+
+Reachable when the escalation path above is not. These are people, not the
+break-glass *accounts* — those are in `docs/identity-trust-matrix.md`, and the accounts are
+useless if nobody knows who may authorise their use.
+#{{ELSE}}
+None recorded.
+#{{ENDIF}}
+
 ## Related documents
 
 - [Governance](governance.md)

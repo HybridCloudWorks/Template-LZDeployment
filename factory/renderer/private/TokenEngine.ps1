@@ -263,7 +263,29 @@ function New-LzRenderContext {
     # about what a group is called — and management-group IDs are immutable, so
     # a disagreement is not something a later apply corrects.
     $groups = Resolve-LzManagementGroups -Config $Config
-    $map['computed.hasCustomArchitecture'] = [bool]$groups.IsCustom
+    # Deliberately three tokens, not one. hasCustomArchitecture answers "is a
+    # local architecture definition emitted", which is what main.tf's
+    # library_references and the template manifest need — and it is true for
+    # both strategies that depart from the library. But the two depart in
+    # OPPOSITE ways: `custom` renames the groups and keeps all twelve,
+    # `caf-minimal` keeps the library's names and drops two. A document that
+    # gates a "your groups are renamed" narrative on the emit flag tells a
+    # caf-minimal client something untrue about their own estate.
+    $map['computed.hasCustomArchitecture'] = [bool]$groups.HasCustomArchitecture
+    $map['computed.hasRenamedGroups'] = [bool]$groups.IsCustom
+    $map['computed.hasTrimmedGroups'] = [bool]$groups.IsMinimal
+    $map['computed.droppedGroupIds'] = @($groups.DroppedGroupIds)
+    # Prose, not a JSON array: this lands mid-sentence in a document a client
+    # reads. FACTORY-LIST would render ["sandbox", "decommissioned"].
+    $droppedLabels = @($groups.DroppedGroupIds | ForEach-Object { $groups.Effective[$_].displayName })
+    $map['computed.droppedGroupNames'] = if ($droppedLabels.Count -eq 0) { '' }
+    elseif ($droppedLabels.Count -eq 1) { $droppedLabels[0] }
+    else { ($droppedLabels[0..($droppedLabels.Count - 2)] -join ', ') + ' and ' + $droppedLabels[-1] }
+    # Whether the sandbox management group is one this estate creates. Under
+    # caf-minimal it is not, so the global layer must not be handed a placement
+    # target that will never exist. Guard G31 refuses the combination that would
+    # need one anyway.
+    $map['computed.hasSandboxGroup'] = ('sandbox' -in $groups.EmittedGroupIds)
     $map['computed.architectureName'] = $groups.ArchitectureName
     $map['computed.managementGroupId'] = $groups.Effective['management'].id
     $map['computed.connectivityManagementGroupId'] = $groups.Effective['connectivity'].id
@@ -272,6 +294,126 @@ function New-LzRenderContext {
     $map['computed.workloadManagementGroupId'] = $groups.WorkloadGroupId
     $map['computed.alzLibraryPath'] = $groups.LibraryPath
     $map['computed.alzLibraryRef'] = $groups.LibraryRef
+
+    # ── Answers that reach a document rather than a resource ─────────────────
+    # These were collected, recorded in lz-config.json, and rendered nowhere:
+    # the client answered and the repository they were handed said nothing about
+    # it. Flattened into FOREACH-ready lists here, in the same idiom as the
+    # brownfield dispositions above, because a template cannot join an array of
+    # objects into a table on its own.
+    #
+    # Always present, empty rather than absent: an unknown token path THROWS at
+    # render time, so a list that exists only when the client answered would
+    # turn every #{{FOREACH}} over it into a render failure for everyone else.
+    $approvals = [System.Collections.Generic.List[object]]::new()
+    if ((Test-LzHasProperty $Config 'operations') -and (Test-LzHasProperty $Config.operations 'approvalChain')) {
+        foreach ($stage in @($Config.operations.approvalChain)) {
+            $approvals.Add([pscustomobject]@{
+                stage        = [string]$stage.stage
+                approvers    = (@($stage.approvers) -join ', ')
+                environments = (@($stage.appliesToEnvironments) -join ', ')
+            })
+        }
+    }
+    $map['computed.approvalChain'] = @($approvals)
+    $map['computed.hasApprovalChain'] = ($approvals.Count -gt 0)
+
+    $budgets = [System.Collections.Generic.List[object]]::new()
+    if ((Test-LzHasProperty $Config 'finops') -and (Test-LzHasProperty $Config.finops 'budgets')) {
+        foreach ($budget in @($Config.finops.budgets)) {
+            $budgets.Add([pscustomobject]@{
+                scope      = [string]$budget.scope
+                amount     = [string]$budget.amountUsd
+                timeGrain  = [string]$budget.timeGrain
+                # Rendered as percentages because that is how they are set and
+                # how an alert reads; the raw integers would need explaining.
+                thresholds = ((@($budget.alertThresholdPercents) | ForEach-Object { "$_%" }) -join ', ')
+                contacts   = (@($budget.contactEmails) -join ', ')
+            })
+        }
+    }
+    $map['computed.finopsBudgets'] = @($budgets)
+    $map['computed.hasFinopsBudgets'] = ($budgets.Count -gt 0)
+
+    # $defs/contact objects, not strings — a FACTORY-LIST over the raw array
+    # would render PSCustomObject type names into the handed-over document.
+    # Phone is optional and deliberately included: the schema says it is used
+    # only in generated contact tables and never transmitted, and this is that
+    # table.
+    $breakGlass = [System.Collections.Generic.List[object]]::new()
+    if ((Test-LzHasProperty $Config 'operations') -and (Test-LzHasProperty $Config.operations 'breakGlassContacts')) {
+        foreach ($contact in @($Config.operations.breakGlassContacts)) {
+            $breakGlass.Add([pscustomobject]@{
+                name  = [string]$contact.name
+                email = [string]$contact.email
+                role  = if (Test-LzHasProperty $contact 'role') { [string]$contact.role } else { '—' }
+                phone = if (Test-LzHasProperty $contact 'phone') { [string]$contact.phone } else { '—' }
+            })
+        }
+    }
+    $map['computed.breakGlassContacts'] = @($breakGlass)
+    $map['computed.hasBreakGlassContacts'] = ($breakGlass.Count -gt 0)
+
+    # The non-prod spokes, as rows. Per ADR 0017 no layer builds a workload
+    # spoke, so these describe an addressing decision the estate team implements
+    # — which is exactly why writing them down is the whole of the fix.
+    $spokes = [System.Collections.Generic.List[object]]::new()
+    if ((Test-LzHasProperty $Config.connectivity 'hubSpoke') -and
+        (Test-LzHasProperty $Config.connectivity.hubSpoke 'nonProdSpokeAddressSpaces')) {
+        $spokeConfig = $Config.connectivity.hubSpoke.nonProdSpokeAddressSpaces
+        foreach ($environment in @('dev', 'test', 'uat')) {
+            if (-not (Test-LzHasProperty $spokeConfig $environment)) { continue }
+            $entry = $spokeConfig.$environment
+            $primary = if (Test-LzHasProperty $entry 'primary') { [string]$entry.primary } else { '' }
+            $dr = if (Test-LzHasProperty $entry 'dr') { [string]$entry.dr } else { '' }
+            if (-not $primary -and -not $dr) { continue }
+            $spokes.Add([pscustomobject]@{
+                environment = $environment
+                primary     = if ($primary) { $primary } else { '—' }
+                dr          = if ($dr) { $dr } else { '—' }
+            })
+        }
+    }
+    $map['computed.nonProdSpokes'] = @($spokes)
+    $map['computed.hasNonProdSpokes'] = ($spokes.Count -gt 0)
+
+    # Scalar answers that reach a document, resolved to a readable value here
+    # rather than guarded at seventeen call sites in the templates.
+    #
+    # Every one of these keys is OPTIONAL, and an exported configuration STRIPS
+    # an optional key rather than emitting it empty — so a bare {{FACTORY:...}}
+    # throws "Unknown configuration path" for any client who left it blank. The
+    # documented alternative is `#{{IF defined path}}` around each, which would
+    # turn six readable tables into forty lines of conditionals. Resolving once
+    # here keeps the templates flat and renders "not recorded" instead of a
+    # blank cell, which is what the reader actually needs to know.
+    $documented = [ordered]@{
+        'docCostExportAccount'       = 'finops.costExports.storageAccountName'
+        'docCostExportFrequency'     = 'finops.costExports.frequency'
+        'docPlatformTeamSlug'        = 'operations.platformTeam.githubTeamSlug'
+        'docSupportHours'            = 'operations.platformTeam.supportHours'
+        'docEscalationUrl'           = 'operations.platformTeam.escalationUrl'
+        'docIdentityStrategy'        = 'identity.strategy'
+        'docSentinelRetention'       = 'security.sentinel.retentionDays'
+        'docKeyVaultPurgeProtection' = 'security.keyVault.enablePurgeProtection'
+        'docKeyVaultSoftDelete'      = 'security.keyVault.softDeleteRetentionDays'
+        'docKeyVaultRbac'            = 'security.keyVault.enableRbacAuthorization'
+        'docFlowLogRetention'        = 'security.nsgFlowLogs.retentionDays'
+        'docTrafficAnalytics'        = 'security.nsgFlowLogs.trafficAnalytics'
+        'docErCircuitName'           = 'connectivity.expressRoute.circuitName'
+        'docErPeeringLocation'       = 'connectivity.expressRoute.peeringLocation'
+        'docErBandwidthMbps'         = 'connectivity.expressRoute.bandwidthMbps'
+        'docErServiceProvider'       = 'connectivity.expressRoute.serviceProvider'
+        'docPrimaryHubAddressSpace'  = 'connectivity.hubSpoke.primaryHubAddressSpace'
+    }
+    foreach ($token in $documented.Keys) {
+        $value = if ($map.Contains($documented[$token])) { $map[$documented[$token]] } else { $null }
+        # A boolean false is a recorded answer, not an absent one, so only null
+        # and empty string fall back.
+        $map["computed.$token"] = if ($value -is [bool]) { if ($value) { 'yes' } else { 'no' } }
+        elseif ($null -eq $value -or [string]::IsNullOrWhiteSpace([string]$value)) { 'not recorded' }
+        else { [string]$value }
+    }
 
     if ($Discovery) { $map['computed.discoveryAvailable'] = $true }
     else { $map['computed.discoveryAvailable'] = $false }
@@ -433,16 +575,34 @@ function Resolve-LzManagementGroups {
         IDs are immutable in Azure, which makes that a one-way mistake per
         client — the reason 6.4's scope is names first.
 
-        Returns the effective id and display name for every library group, the
-        architecture name to select, and the group the workload subscriptions
-        land in.
+        `caf-minimal` is the one strategy that changes the SHAPE rather than the
+        names: it drops the two groups the standard hierarchy carries outside
+        Platform and Landing Zones. It emits its own architecture definition for
+        the same reason `custom` does — the pinned library has no trimmed
+        architecture to select.
+
+        Returns the effective id and display name for every library group, which
+        of them are actually emitted, the architecture name to select, and the
+        group the workload subscriptions land in.
     #>
     param([Parameter(Mandatory)][object]$Config)
 
     $catalog = Get-LzPolicyCatalog
     $mg = $Config.azure.managementGroups
     $isCustom = ($mg.strategy -eq 'custom')
+    $isMinimal = ($mg.strategy -eq 'caf-minimal')
     $renames = if ($isCustom -and (Test-LzHasProperty $mg 'customHierarchy')) { $mg.customHierarchy } else { $null }
+
+    # "Platform + Landing Zones only" — the schema's own description of
+    # caf-minimal, which until 2026-08-31 described nothing the factory did.
+    #
+    # These two and no others, and the choice is forced rather than a matter of
+    # taste. Both are direct children of the root with NO CHILDREN OF THEIR OWN,
+    # so dropping them re-parents nothing; every other library group is either
+    # Platform, Landing Zones, or a child of one of those two. Dropping Corp or
+    # Online instead would strand azure.managementGroups.workloadPlacement,
+    # which is exactly why 6.4a was left open rather than guessed at.
+    $dropped = if ($isMinimal) { @('sandbox', 'decommissioned') } else { @() }
 
     $effective = @{}
     foreach ($group in @($catalog.managementGroups)) {
@@ -467,12 +627,25 @@ function Resolve-LzManagementGroups {
     $factoryVersionPath = Join-Path $PSScriptRoot '../../../factory-version.json'
     $pinned = Get-Content $factoryVersionPath -Raw | ConvertFrom-Json -Depth 20
 
+    $short = ([string]$Config.organization.companyShortName).ToLowerInvariant()
+
     [pscustomobject]@{
         IsCustom         = $isCustom
+        IsMinimal        = $isMinimal
+        # Both strategies that depart from the pinned library's own architecture
+        # need a local definition emitted and library_references pointed at it.
+        # Renaming groups and dropping groups are the same problem to the
+        # provider: the architecture it is asked for is not one the library has.
+        HasCustomArchitecture = ($isCustom -or $isMinimal)
         # The architecture name doubles as the emitted library file's basename,
         # so it has to be a safe identifier rather than a display string.
-        ArchitectureName = if ($isCustom) { ([string]$Config.organization.companyShortName).ToLowerInvariant() } else { $catalog.library.architecture }
+        ArchitectureName = if ($isCustom) { $short } elseif ($isMinimal) { "$short-minimal" } else { $catalog.library.architecture }
         Effective        = $effective
+        # Every library group keeps an entry in Effective so the computed.*
+        # tokens that name one still resolve; EmittedGroupIds is what decides
+        # which are actually created.
+        EmittedGroupIds  = @(@($catalog.managementGroups | ForEach-Object { [string]$_.id }) | Where-Object { $_ -notin $dropped })
+        DroppedGroupIds  = @($dropped)
         WorkloadGroupId  = $effective[$placement].id
         WorkloadLibraryId = $placement
         LibraryPath      = [string]$pinned.avm.alzLibrary.path
@@ -496,6 +669,10 @@ function New-LzAlzArchitectureDefinition {
     $catalog = Get-LzPolicyCatalog
 
     $managementGroups = foreach ($group in @($catalog.managementGroups)) {
+        # caf-minimal drops groups; a dropped group must not be emitted, and
+        # nothing under the standard hierarchy parents to one, so no child is
+        # orphaned by the omission.
+        if ([string]$group.id -notin $groups.EmittedGroupIds) { continue }
         $current = $groups.Effective[$group.id]
         # The parent edge travels renamed too, or a renamed parent would leave
         # its children pointing at a group that is never created.

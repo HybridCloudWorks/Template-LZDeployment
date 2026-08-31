@@ -166,6 +166,18 @@ if (-not $result.InSync) { exit 1 }
     # value is invisible everywhere until a client's first plan. Needs no
     # network and no credentials: it reads the committed catalog.
     Invoke-LzFactoryCheck 'ALZ policy defaults' pwsh @('-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-AlzPolicyDefaults.ps1') -Category 'contract' | Out-Null
+    # The assembly half of the plan proof (TODO 6.1a). The plan itself needs an
+    # Azure credential — the ALZ provider fetches built-in policy definitions —
+    # so it lives in the dispatch-only alz-plan-proof workflow. Everything
+    # BEFORE that point (render, extract, substitute) needs neither a
+    # credential nor the registry, and that is the half that rots: a truncated
+    # block or a missed substitution still yields a module that plans, just not
+    # the one this estate rendered. Checked on every fixture, on every run.
+    foreach ($planFixture in @('azurerm-config', 'vwan-config', 'hcp-config', 'custom-hierarchy-config', 'caf-minimal-config')) {
+        Invoke-LzFactoryCheck "ALZ plan harness assembles ($planFixture)" pwsh @(
+            '-NoLogo', '-NoProfile', '-File', 'factory/ci/Test-AlzArchitecturePlan.ps1',
+            '-Fixture', $planFixture, '-AssembleOnly') -Category 'contract' | Out-Null
+    }
     # The silent-answer class, made structural. Four defects of the same shape
     # were found by hand one at a time — the Log Analytics daily quota, whether
     # to deploy a firewall, the policy baseline's enforcement mode, and the ALZ
