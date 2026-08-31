@@ -99,7 +99,10 @@ this is the sanctioned alternative
 - [ ] When you do apply, you must type the tenant ID from
   `client/lz-config.json` into the confirmation input. It is checked before
   `azure/login`, so a run aimed at the wrong tenant fails before anything
-  authenticates.
+  authenticates. `LZ_BOOTSTRAP_TENANT_ID` is checked against the same file in
+  the same step — the credential authenticates to *that* variable, so a
+  mismatch between it and the answer record fails the run even when what you
+  typed was right.
 
 ## Review before mutation
 

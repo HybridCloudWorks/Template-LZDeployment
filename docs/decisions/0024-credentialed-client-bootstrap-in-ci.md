@@ -40,7 +40,7 @@ something the local motion had for free:
 |---|---|
 | A human choosing to run it | `workflow_dispatch` only. Never `push`, never `pull_request`. |
 | A human present at the moment of creation | A **protected environment** with required reviewers. An environment with no reviewers configured makes this job strictly weaker than the motion it replaces. |
-| The operator seeing which tenant they were signed in to | A **typed tenant confirmation**, checked against `azure.tenantId` in the committed answer record, **before `azure/login`** — a run aimed at the wrong tenant fails while it is still harmless. |
+| The operator seeing which tenant they were signed in to | A **typed tenant confirmation**, checked against `azure.tenantId` in the committed answer record, **before `azure/login`** — a run aimed at the wrong tenant fails while it is still harmless. The environment's own `LZ_BOOTSTRAP_TENANT_ID` is checked against the same record in the same step, because that variable — not the typed input — is what `azure/login` authenticates to. |
 | `-Apply` being something you type | An explicit `apply` input, default `false`. Without it the run is plan-only and mutates nothing. |
 
 **`-AllowNotReady` is deliberately not exposed.** Under `-Apply` the engagement

@@ -12,7 +12,9 @@
 #     credential is issued to it; and
 #   * a TYPED TENANT CONFIRMATION checked against the committed answer record,
 #     BEFORE `azure/login`, so a run aimed at the wrong tenant fails while it is
-#     still harmless.
+#     still harmless. It checks the environment's own configured tenant too, not
+#     just what was typed: the credential authenticates to the environment
+#     variable, so confirming only the input would confirm the wrong thing.
 #
 # It is also plan-first. Without `apply: true` this produces the same evidence a
 # local plan run produces and mutates nothing.
@@ -65,10 +67,19 @@ jobs:
       # from the committed answer record, not supplied alongside the input, so
       # confirming requires having looked at the configuration this run would
       # deploy. Same shape as the generated state-access-flip workflow.
+      #
+      # It checks TWO things against that record, because confirming only the
+      # typed input would confirm something that does not govern the outcome:
+      # `azure/login` below authenticates to vars.LZ_BOOTSTRAP_TENANT_ID, not to
+      # what was typed here. An environment whose variable points somewhere else
+      # would take a correct confirmation and then run against a different
+      # tenant. Nothing downstream would catch it — discovery records a
+      # TenantMatches flag on the inventory that no readiness check reads.
       - name: Confirm the target tenant
         shell: pwsh
         env:
           CONFIRM: ${{ inputs.confirm_tenant }}
+          ENVIRONMENT_TENANT: ${{ vars.LZ_BOOTSTRAP_TENANT_ID }}
         run: |
           $configPath = 'client/lz-config.json'
           if (-not (Test-Path $configPath)) {
@@ -83,6 +94,17 @@ jobs:
           }
           if ($env:CONFIRM.Trim() -ne $expected) {
             Write-Host "::error::The tenant you confirmed is not the tenant this configuration deploys to. Nothing has been authenticated; re-run and confirm the tenant named in $configPath."
+            exit 1
+          }
+          # The credential's own target, checked against the same record. This is
+          # the tenant that actually gets authenticated to.
+          $environmentTenant = [string]$env:ENVIRONMENT_TENANT
+          if (-not $environmentTenant) {
+            Write-Host "::error::The client-bootstrap environment sets no LZ_BOOTSTRAP_TENANT_ID, so azure/login has no tenant to authenticate to. See docs/USER-CHECKLIST.md."
+            exit 1
+          }
+          if ($environmentTenant.Trim() -ne $expected) {
+            Write-Host "::error::The client-bootstrap environment's LZ_BOOTSTRAP_TENANT_ID is not the tenant $configPath deploys to. The confirmation you typed is correct, but the credential targets a different tenant, so this run would create the estate in the wrong place. Nothing has been authenticated; fix the environment variable."
             exit 1
           }
           Write-Host "Confirmed: $expected"
