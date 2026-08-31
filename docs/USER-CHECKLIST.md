@@ -71,6 +71,39 @@ code; no customer render was validated or published while building it.
 - [ ] Treat a `SKIPPED` gate as unjudged rather than passed. V07 (lint) and V08
   (security scan) skip when their tool is absent from the runner.
 
+## If you are bootstrapping from CI instead of your own machine
+
+Optional. Running the engagement locally is the default and needs none of this
+([decision 0004](decisions/0004-factory-copy-is-a-disposable-installer.md));
+this is the sanctioned alternative
+([decision 0024](decisions/0024-credentialed-client-bootstrap-in-ci.md)).
+
+- [ ] Create a `client-bootstrap` environment on the client copy **with required
+  reviewers**. This is the control that replaces the human who would otherwise
+  be at the keyboard when the estate is created — an environment with no
+  reviewers makes the CI path strictly weaker than running it yourself.
+- [ ] Create the bootstrap service principal **by hand** and federate it to that
+  environment. It needs the same Azure permissions the local motion needs
+  (app-registration, federated-credential, RBAC, backend). It is not something
+  the broker creates: the broker creates the identities the *generated*
+  repository uses, so on the first run there is nothing to authenticate as.
+- [ ] Set environment **variables** `LZ_BOOTSTRAP_CLIENT_ID`,
+  `LZ_BOOTSTRAP_TENANT_ID`, `LZ_BOOTSTRAP_SUBSCRIPTION_ID`,
+  `LZ_GITHUB_APP_ID`, `LZ_GITHUB_APP_INSTALLATION_ID`.
+- [ ] Set environment **secrets** `LZ_GITHUB_APP_PRIVATE_KEY` (the PEM body —
+  the workflow writes it to a file, because
+  `LZ_GITHUB_APP_PRIVATE_KEY_PATH` takes a path) and, for the HCP Terraform
+  backend only, `TFE_TOKEN`.
+- [ ] Run `Client Bootstrap` with `apply: false` first and read the evidence
+  artifact. The plan-only run is the same evidence a local plan run produces.
+- [ ] When you do apply, you must type the tenant ID from
+  `client/lz-config.json` into the confirmation input. It is checked before
+  `azure/login`, so a run aimed at the wrong tenant fails before anything
+  authenticates. `LZ_BOOTSTRAP_TENANT_ID` is checked against the same file in
+  the same step — the credential authenticates to *that* variable, so a
+  mismatch between it and the answer record fails the run even when what you
+  typed was right.
+
 ## Review before mutation
 
 - [ ] Resolve all blocking discovery findings. Use

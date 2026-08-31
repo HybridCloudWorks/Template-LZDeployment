@@ -2,8 +2,10 @@ name: Terraform Policy Checks
 
 # The repository carries no working Terraform tree (generator-only model,
 # ADR 0013). This workflow is the execution-time verification of the emitted
-# corpus: it renders both topology fixtures and runs fmt/init/validate on the
-# RENDERED output. `terraform init` here is what re-verifies every AVM module
+# corpus: it renders each fixture and runs fmt/init/validate on the RENDERED
+# output — two topologies, plus the HCP state backend and the client-named
+# management-group hierarchy, whose emitted shapes are validated by the
+# provider at init and by nothing else. `terraform init` here is what re-verifies every AVM module
 # pin and provider constraint against the live Terraform Registry — the gate
 # the pins document requires before delivery.
 
@@ -29,7 +31,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fixture: [azurerm-config, vwan-config]
+        # azurerm-config and vwan-config cover the two topologies. The other
+        # two cover the two shapes whose validity is decided by the PROVIDER
+        # at init rather than by the renderer: the HCP `cloud` block, and the
+        # library_references list composed from a pinned remote {path, ref}
+        # plus a local {custom_url}. Both were text-asserted only until this
+        # matrix grew — and `terraform init` is the only thing that reads them.
+        fixture: [azurerm-config, vwan-config, hcp-config, custom-hierarchy-config]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

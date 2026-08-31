@@ -32,9 +32,9 @@ $CANONICAL_PINS = [ordered]@{
     'azure/login'                       = @{ sha = 'f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca'; version = 'v3.0.1' }
     'hashicorp/setup-terraform'         = @{ sha = 'dfe3c3f87815947d99a8997f908cb6525fc44e9e'; version = 'v4.0.1' }
     'terraform-linters/setup-tflint'    = @{ sha = '6e1e0642c0289bd619021bf6b34e3c08ed1e005a'; version = 'v6.3.0' }
-    # v3.97.0 tag SHA verified against the upstream repo (git ls-remote) after
-    # the Dependabot bump in #100.
-    'trufflesecurity/trufflehog'        = @{ sha = 'bcfcf73aaf4759d4dadc2783177c245a02792318'; version = 'v3.97.0' }
+    # v3.97.1 tag SHA verified against the upstream repo (git ls-remote) after
+    # the Dependabot bump in #124, which superseded the #100 bump to v3.97.0.
+    'trufflesecurity/trufflehog'        = @{ sha = '20652fbbdefffcdaa493a5bf57ab2ac6b1db715b'; version = 'v3.97.1' }
 }
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -93,6 +93,27 @@ foreach ($root in $roots) {
 }
 if ($findings.Count -gt 0) {
     $findings | Format-List | Out-String | Write-Host
+
+    # A Dependabot bump changes the workflow and never the registry, so this
+    # check fails on every one of them and the remediation is the same two
+    # steps each time. Spelling them out is the difference between a five-minute
+    # fix and a rediscovery — #100 and #124 both cost the latter.
+    $stale = @($findings | Where-Object { $_.problem -eq 'SHA differs from the canonical registry entry' })
+    if ($stale.Count -gt 0) {
+        Write-Host 'This is the shape a Dependabot action bump leaves behind: the workflow moved, the registry did not.'
+        Write-Host 'Update BOTH IN ONE COMMIT — a registry change ahead of the workflow change fails this check on main itself.'
+        Write-Host ''
+        foreach ($reference in @($stale | ForEach-Object { $_.reference } | Sort-Object -Unique)) {
+            $action = ($reference -split '@')[0]
+            $sha = ($reference -split '@')[1]
+            Write-Host "  1. Verify the new SHA is the tag it claims:"
+            Write-Host "       git ls-remote --tags https://github.com/$action | grep $sha"
+            Write-Host "  2. Set it in the `$CANONICAL_PINS entry for '$action' in $(Split-Path $PSCommandPath -Leaf):"
+            Write-Host "       '$action' = @{ sha = '$sha'; version = '<the tag from step 1>' }"
+            Write-Host ''
+        }
+    }
+
     throw 'Action references that violate the canonical-SHA registry detected.'
 }
 Write-Host ("Action pinning policy passed: every reference matches the canonical registry ({0} actions)." -f $CANONICAL_PINS.Count)

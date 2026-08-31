@@ -29,9 +29,9 @@ creates anything.
 
 ## What it does not do
 
-It does not run discovery, the bootstrap broker, or scaffold. Those need Azure
-and GitHub credentials, and you run them yourself, on your own machine, under
-your own `az` and `gh` sessions:
+The check workflow does not run discovery, the bootstrap broker, or scaffold.
+Those need Azure and GitHub credentials, and by default you run them yourself,
+on your own machine, under your own `az` and `gh` sessions:
 
 ```
 ./scripts/Invoke-CustomerEngagement.ps1 -ConfigPath ./client/lz-config.json -Phase all
@@ -44,6 +44,22 @@ of them is the last chance to notice you are pointed at the wrong tenant.
 It also could not be automatic even if that were wanted — the broker *creates*
 the OIDC identities that later workflows federate with, so on the first run
 there is nothing to authenticate as.
+
+## Running it from CI instead
+
+There is a sanctioned alternative if you would rather not run it from a laptop:
+`.github/workflows/client-bootstrap.yml`, ratified by
+[decision 0024](../docs/decisions/0024-credentialed-client-bootstrap-in-ci.md).
+It runs the same engagement, but only on a manual dispatch, only behind a
+protected environment with required reviewers, only after you type the tenant ID
+from this directory's `lz-config.json` into a confirmation box that is checked
+before anything authenticates, and plan-only unless you explicitly ask it to
+apply.
+
+Read the ADR before turning it on. What makes it acceptable is the reviewer
+gate, not the automation — and it does mean a privileged principal exists that
+you are not watching, which the local motion avoids entirely.
+`docs/USER-CHECKLIST.md` lists the setup.
 
 ## Outputs
 

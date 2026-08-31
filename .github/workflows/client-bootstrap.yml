@@ -1,0 +1,202 @@
+# Runs the credentialed half of a client engagement: discovery -> broker ->
+# render -> validate -> scaffold.
+#
+# This is the OPT-IN path, ratified by decision 0024. The default remains what
+# decision 0004 ratified and decision 0024 does not repeal: the client runs the
+# engagement on their own machine, under their own `az` and `gh` sessions. That
+# model's safety came from a human being present at the moment the estate was
+# created — so moving it into CI has to replace that presence with something,
+# not simply drop it. Two things stand in for it here, and both are load-bearing:
+#
+#   * a PROTECTED ENVIRONMENT, so a named reviewer approves the run before any
+#     credential is issued to it; and
+#   * a TYPED TENANT CONFIRMATION checked against the committed answer record,
+#     BEFORE `azure/login`, so a run aimed at the wrong tenant fails while it is
+#     still harmless. It checks the environment's own configured tenant too, not
+#     just what was typed: the credential authenticates to the environment
+#     variable, so confirming only the input would confirm the wrong thing.
+#
+# It is also plan-first. Without `apply: true` this produces the same evidence a
+# local plan run produces and mutates nothing.
+#
+# What this job is NOT: automatic. The bootstrap broker CREATES the OIDC
+# identities the generated repository's workflows federate with, so on the first
+# run there is nothing to authenticate as. The principal used here is one the
+# CLIENT creates by hand, once, and it is not the same identity as anything the
+# broker produces. docs/USER-CHECKLIST.md lists the permissions it needs.
+name: Client Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_tenant:
+        description: 'Type the Azure tenant ID from client/lz-config.json to confirm'
+        required: true
+        type: string
+      apply:
+        description: 'Apply (create the estate). Leave false for a plan-only run.'
+        required: true
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: client-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  engage:
+    name: ${{ inputs.apply && 'Apply' || 'Plan' }} the client engagement
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # The reviewer gate. This is what replaces the human who used to be at the
+    # keyboard, so the environment must carry required reviewers — an
+    # environment with none is a rubber stamp and leaves this job weaker than
+    # the local motion it is standing in for.
+    environment: client-bootstrap
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ── The confirmation, before any credential ─────────────────────────────
+      # Deliberately the first step after checkout. The expected value is read
+      # from the committed answer record, not supplied alongside the input, so
+      # confirming requires having looked at the configuration this run would
+      # deploy. Same shape as the generated state-access-flip workflow.
+      #
+      # It checks TWO things against that record, because confirming only the
+      # typed input would confirm something that does not govern the outcome:
+      # `azure/login` below authenticates to vars.LZ_BOOTSTRAP_TENANT_ID, not to
+      # what was typed here. An environment whose variable points somewhere else
+      # would take a correct confirmation and then run against a different
+      # tenant. Nothing downstream would catch it — discovery records a
+      # TenantMatches flag on the inventory that no readiness check reads.
+      - name: Confirm the target tenant
+        shell: pwsh
+        env:
+          CONFIRM: ${{ inputs.confirm_tenant }}
+          ENVIRONMENT_TENANT: ${{ vars.LZ_BOOTSTRAP_TENANT_ID }}
+        run: |
+          $configPath = 'client/lz-config.json'
+          if (-not (Test-Path $configPath)) {
+            Write-Host "::error::No $configPath in this repository. Export one from the wizard and commit it before bootstrapping."
+            exit 1
+          }
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json -Depth 40
+          $expected = [string]$config.azure.tenantId
+          if (-not $expected) {
+            Write-Host "::error::$configPath declares no azure.tenantId, so there is nothing to confirm against."
+            exit 1
+          }
+          if ($env:CONFIRM.Trim() -ne $expected) {
+            Write-Host "::error::The tenant you confirmed is not the tenant this configuration deploys to. Nothing has been authenticated; re-run and confirm the tenant named in $configPath."
+            exit 1
+          }
+          # The credential's own target, checked against the same record. This is
+          # the tenant that actually gets authenticated to.
+          $environmentTenant = [string]$env:ENVIRONMENT_TENANT
+          if (-not $environmentTenant) {
+            Write-Host "::error::The client-bootstrap environment sets no LZ_BOOTSTRAP_TENANT_ID, so azure/login has no tenant to authenticate to. See docs/USER-CHECKLIST.md."
+            exit 1
+          }
+          if ($environmentTenant.Trim() -ne $expected) {
+            Write-Host "::error::The client-bootstrap environment's LZ_BOOTSTRAP_TENANT_ID is not the tenant $configPath deploys to. The confirmation you typed is correct, but the credential targets a different tenant, so this run would create the estate in the wrong place. Nothing has been authenticated; fix the environment variable."
+            exit 1
+          }
+          Write-Host "Confirmed: $expected"
+          Write-Host "Company: $($config.organization.companyName)"
+          Write-Host "Backend: $($config.backend.type)"
+          Write-Host "Mode   : $(if ('${{ inputs.apply }}' -eq 'true') { 'APPLY — this run creates the estate' } else { 'plan only — nothing is mutated' })"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+
+      # ── Azure ───────────────────────────────────────────────────────────────
+      # Federated, not a stored secret: the bootstrap principal trusts this
+      # repository's environment rather than holding a password. It still needs
+      # real privilege — app registration, federated credentials, RBAC, and the
+      # state backend — which is why the environment's reviewer gate above is
+      # the control that matters.
+      - name: Azure login
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
+        with:
+          client-id: ${{ vars.LZ_BOOTSTRAP_CLIENT_ID }}
+          tenant-id: ${{ vars.LZ_BOOTSTRAP_TENANT_ID }}
+          subscription-id: ${{ vars.LZ_BOOTSTRAP_SUBSCRIPTION_ID }}
+
+      # ── GitHub ──────────────────────────────────────────────────────────────
+      # Decision 0014's App path, which already supports non-interactive
+      # delivery. LZ_GITHUB_APP_PRIVATE_KEY_PATH is a PATH, not a key: handing
+      # it a PEM body fails inside Initialize-LzDeliveryAuth with a misleading
+      # "does not exist". So the key is written to a file under RUNNER_TEMP,
+      # which is why the removal step below is `always()`.
+      - name: Stage the GitHub App key
+        id: ghapp
+        shell: bash
+        env:
+          APP_KEY: ${{ secrets.LZ_GITHUB_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_KEY:-}" ]; then
+            echo "::error::LZ_GITHUB_APP_PRIVATE_KEY is not set on the client-bootstrap environment. The broker and scaffold cannot reach GitHub without it — see the delivery-auth paths in docs/USER-CHECKLIST.md."
+            exit 1
+          fi
+          key_path="$RUNNER_TEMP/lz-github-app.pem"
+          printf '%s\n' "$APP_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          echo "key_path=$key_path" >> "$GITHUB_OUTPUT"
+
+      # ── The engagement ──────────────────────────────────────────────────────
+      # One call, not five. Invoke-CustomerEngagement.ps1 already sequences
+      # discovery -> broker -> render -> validate -> scaffold with per-phase
+      # gating, stops on the first failure naming the phase, and under -Apply
+      # runs discovery with -FailOnNotReady so a tenant with blocking findings
+      # stops the engagement before the broker touches anything.
+      #
+      # -AllowNotReady is deliberately NOT exposed. It is the one input that
+      # would get clicked past, and skipping the readiness gate is exactly the
+      # thing the gate exists for.
+      - name: Run the engagement
+        id: engage
+        shell: pwsh
+        env:
+          LZ_GITHUB_APP_ID: ${{ vars.LZ_GITHUB_APP_ID }}
+          LZ_GITHUB_APP_INSTALLATION_ID: ${{ vars.LZ_GITHUB_APP_INSTALLATION_ID }}
+          LZ_GITHUB_APP_PRIVATE_KEY_PATH: ${{ steps.ghapp.outputs.key_path }}
+          TFE_TOKEN: ${{ secrets.TFE_TOKEN }}
+          LZ_BOOTSTRAP_OUTPUT: ${{ github.workspace }}/client-bootstrap-output
+          LZ_RENDERED_PATH: ${{ github.workspace }}/client-rendered
+          LZ_VALIDATE_EVIDENCE: ${{ github.workspace }}/client-evidence
+          LZ_SCAFFOLD_TARGET: ${{ github.workspace }}/client-scaffold-output
+          LZ_SCAFFOLD_EVIDENCE: ${{ github.workspace }}/client-scaffold-evidence
+        run: |
+          $splat = @{ ConfigPath = './client/lz-config.json'; Phase = 'all' }
+          if ('${{ inputs.apply }}' -eq 'true') { $splat.Apply = $true }
+          ./scripts/Invoke-CustomerEngagement.ps1 @splat
+
+      # Evidence travels even when a phase failed — the phase that failed is
+      # the one whose evidence is worth reading.
+      - name: Upload the engagement evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: client-engagement-${{ github.run_id }}
+          path: |
+            client-bootstrap-output/
+            client-rendered/
+            client-evidence/
+            client-scaffold-output/
+            client-scaffold-evidence/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Remove the GitHub App key
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/lz-github-app.pem"
