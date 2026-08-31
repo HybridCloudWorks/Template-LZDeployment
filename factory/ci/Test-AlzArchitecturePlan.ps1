@@ -129,6 +129,86 @@ function Get-LzBalancedBlock {
     throw "Unbalanced braces while extracting a block matching /$OpenPattern/."
 }
 
+function Test-LzEmittedLibrary {
+    <#
+    .SYNOPSIS
+        Structural checks on the local ALZ library, before any plan.
+    .DESCRIPTION
+        These run with no credential and no network, which is what makes them
+        worth having: the plan that would catch the same faults is dispatch-only
+        and needs a Reader identity, so without this a PR can merge a library
+        the provider cannot read and every check stays green.
+
+        Each check exists because the failure it catches is silent or
+        misattributed:
+
+        * `archetypes` is a REQUIRED ARRAY in the library's own schema. Emitting
+          a bare string is easy in PowerShell — the pipeline unrolls a
+          single-element array — and it has already happened once. terraform
+          validate never resolves the data source that reads this file.
+
+        * The provider indexes a policy assignment by its `name` field and finds
+          the file by basename. A mismatch is not an error anywhere: the
+          assignment is simply never found, and the estate deploys without a
+          control the client was told it had.
+
+        * An override naming a base archetype nothing defines, or an
+          architecture binding an archetype name nothing emits, fails at plan
+          time with a message about archetypes rather than about the answer that
+          produced it.
+    #>
+    param([Parameter(Mandatory)][string]$LibraryRoot)
+
+    $architectures = @(Get-ChildItem (Join-Path $LibraryRoot 'architecture_definitions') -Filter '*.alz_architecture_definition.json' -ErrorAction SilentlyContinue)
+    if ($architectures.Count -eq 0) { throw "A local library was emitted at $LibraryRoot with no architecture definition in it." }
+
+    # Archetype names this library defines locally. A base_archetype naming one
+    # of the PINNED library's archetypes is correct and unresolvable from here,
+    # so only locally-defined names are cross-checked.
+    $localArchetypes = @(Get-ChildItem (Join-Path $LibraryRoot 'archetype_definitions') -Filter '*.alz_archetype_override.yaml' -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.Name -replace '\.alz_archetype_override\.yaml$', '' })
+
+    foreach ($file in $architectures) {
+        $raw = Get-Content $file.FullName -Raw
+        if ($raw -match '"archetypes"\s*:\s*"') {
+            throw "$($file.Name) emits `"archetypes`" as a string. The library schema requires an array on every management group; a single-element array unrolled somewhere in the renderer."
+        }
+        $architecture = $raw | ConvertFrom-Json -Depth 20
+        foreach ($group in @($architecture.management_groups)) {
+            if (@($group.archetypes).Count -eq 0) {
+                throw "$($file.Name): management group '$($group.id)' carries no archetype, so nothing governs it."
+            }
+        }
+    }
+
+    foreach ($file in @(Get-ChildItem (Join-Path $LibraryRoot 'policy_assignments') -Filter '*.alz_policy_assignment.json' -ErrorAction SilentlyContinue)) {
+        $assignment = Get-Content $file.FullName -Raw | ConvertFrom-Json -Depth 20
+        $expected = $file.Name -replace '\.alz_policy_assignment\.json$', ''
+        if ([string]$assignment.name -ne $expected) {
+            throw "$($file.Name) declares name '$($assignment.name)'. The provider finds assignments by basename, so a mismatch means this assignment is never applied and nothing reports it."
+        }
+        if (-not $assignment.properties.policyDefinitionId) {
+            throw "$($file.Name) has no policyDefinitionId."
+        }
+        # Every archetype that adds this assignment must be one the architecture
+        # actually binds to a group, or the assignment reaches nothing.
+        $carriers = @($localArchetypes | Where-Object {
+                (Get-Content (Join-Path $LibraryRoot "archetype_definitions/$_.alz_archetype_override.yaml") -Raw) -match [regex]::Escape("`"$expected`"")
+            })
+        if ($carriers.Count -eq 0) { continue }
+        $bound = $false
+        foreach ($file2 in $architectures) {
+            $architecture = Get-Content $file2.FullName -Raw | ConvertFrom-Json -Depth 20
+            foreach ($group in @($architecture.management_groups)) {
+                if (@($group.archetypes | Where-Object { $_ -in $carriers }).Count -gt 0) { $bound = $true }
+            }
+        }
+        if (-not $bound) {
+            throw "$($file.Name) is added by archetype(s) $($carriers -join ', '), but no emitted architecture definition binds any of those to a management group. The assignment would reach nothing."
+        }
+    }
+}
+
 function Convert-LzRemoteStateReference {
     <#
     .SYNOPSIS
@@ -269,7 +349,10 @@ output "management_group_ids" {
 
     # A client-named hierarchy points library_references at ${path.root}/lib.
     $libDir = Join-Path $globalDir 'lib'
-    if (Test-Path $libDir) { Copy-Item $libDir $harness -Recurse }
+    if (Test-Path $libDir) {
+        Copy-Item $libDir $harness -Recurse
+        Test-LzEmittedLibrary -LibraryRoot (Join-Path $harness 'lib')
+    }
 
     # ── Plan ─────────────────────────────────────────────────────────────────
     Write-Host "Harness module: $harness"

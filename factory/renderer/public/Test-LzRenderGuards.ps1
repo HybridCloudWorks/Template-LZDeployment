@@ -581,6 +581,38 @@ function Test-LzRenderGuards {
         }
     }
 
+    # G32 / G33 — the default subscription budget.
+    #
+    # Deploy-Budget reaches subscriptions through a management group, so the
+    # group has to be one this estate actually creates. caf-minimal creates ten
+    # of the library's twelve, and the schema's enum lists all twelve — it
+    # cannot know the strategy. Left unguarded, the render emits an architecture
+    # definition binding an override archetype to a group that is not in it, and
+    # the provider fails at plan time with a message about an unknown archetype
+    # rather than about a budget.
+    $budgetEnabled = [bool](Get-LzGuardConfigValue -Object $Config -Path 'finops.defaultSubscriptionBudget.enabled' -Default $false)
+    if ($budgetEnabled) {
+        $budgetGroup = [string](Get-LzGuardConfigValue -Object $Config -Path 'finops.defaultSubscriptionBudget.managementGroup' -Default 'alz')
+        $emitted = @((Resolve-LzManagementGroups -Config $Config).EmittedGroupIds)
+        if ($budgetGroup -notin $emitted) {
+            $v += New-LzGuardViolation -Id 'G32' `
+                -Message ("finops.defaultSubscriptionBudget.managementGroup is '{0}', which the '{1}' hierarchy strategy does not create." -f $budgetGroup, $Config.azure.managementGroups.strategy) `
+                -Remediation ("Choose one of the management groups this estate creates ({0}), or change azure.managementGroups.strategy to one that creates '{1}'." -f (($emitted | Sort-Object) -join ', '), $budgetGroup)
+        }
+
+        # Two thresholds that are equal produce two identical notifications at
+        # the same moment, and a warning above the cap fires after it. Neither
+        # is rejected by Azure, which is why it has to be rejected here: the
+        # client would get a budget that works and tells them nothing useful.
+        $warning = [int](Get-LzGuardConfigValue -Object $Config -Path 'finops.defaultSubscriptionBudget.warningThresholdPercent' -Default 90)
+        $cap = [int](Get-LzGuardConfigValue -Object $Config -Path 'finops.defaultSubscriptionBudget.capThresholdPercent' -Default 100)
+        if ($warning -ge $cap) {
+            $v += New-LzGuardViolation -Id 'G33' `
+                -Message ("finops.defaultSubscriptionBudget.warningThresholdPercent ({0}) is not below capThresholdPercent ({1})." -f $warning, $cap) `
+                -Remediation 'Set the warning threshold below the cap. Deploy-Budget notifies at both and stops spend at neither, so an equal pair sends two identical alerts and an inverted pair warns after the cap has already been passed.'
+        }
+    }
+
     $blocks = @($v | Where-Object { $_.Severity -eq 'Block' })
     $warns = @($v | Where-Object { $_.Severity -eq 'Warn' })
 

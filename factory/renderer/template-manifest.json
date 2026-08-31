@@ -1,7 +1,7 @@
 {
   "$comment": "Declares what the renderer emits and under what conditions. Inclusion is decided HERE rather than inside templates, so a template file stays valid HCL/YAML/Markdown on its own and factory CI can run `terraform fmt -check` and `terraform validate` against the raw corpus. Conditions use the same tiny expression grammar as the #{{IF}} directives: path, !path, defined path, path == 'v', path != 'v', path contains 'v', joined by && and ||. This manifest is the OUTPUT CONTRACT (docs/refactor/OUTPUT-CONTRACT.md): generation fails if a produced file is not listed here or a listed file is missing (validation gate V01). No generator machinery is ever listed.",
   "manifestVersion": "2.1.0",
-  "targetSchemaVersion": "4.0.0",
+  "targetSchemaVersion": "4.1.0",
   "$statusComment": "Generator-only model (ADR 0013): the emitted Terraform is three root-module layers that reference Azure Verified Modules by pinned registry source+version. Nothing is vendored \u2014 the former `directories` module-copy mechanism is retired. Renovate keeps the pins current inside the generated repository with no dependency on this factory.",
   "files": [
     {
@@ -87,6 +87,20 @@
       "mode": "alz-architecture",
       "when": "computed.hasCustomArchitecture",
       "description": "Local ALZ architecture definition. Composed with the pinned remote library through the alz provider's library_references. Emitted for any strategy the pinned library cannot supply an architecture for: 'custom' renames the groups, 'caf-minimal' drops Sandbox and Decommissioned. Gated on the computed flag rather than a literal strategy name so this and main.tf's library_references block cannot disagree about whether a local library exists. A $-prefixed source has no template file, like $config and $factory-version."
+    },
+    {
+      "source": "$alz-budget-assignment",
+      "destination": "terraform/live/global/lib/policy_assignments/Deploy-Budget.alz_policy_assignment.json",
+      "mode": "alz-policy-assignment",
+      "when": "computed.defaultBudgetEnabled",
+      "description": "Assigns the pinned library's Deploy-Budget policy, giving every subscription beneath one management group a default budget. The library ships this DEFINITION and assigns it nowhere; the definition is created at the tenant root by the root archetype, so the placeholder form resolves from any descendant. The basename must equal the assignment's name field \u2014 the ALZ provider indexes by it."
+    },
+    {
+      "source": "$alz-budget-archetype",
+      "destination": "terraform/live/global/lib/archetype_definitions/{{FACTORY-RAW:computed.defaultBudgetArchetype}}.alz_archetype_override.yaml",
+      "mode": "alz-archetype-override",
+      "when": "computed.defaultBudgetEnabled",
+      "description": "A copy of the target group's library archetype with the budget assignment added. The architecture definition binds this name to the group \u2014 which is why enabling the budget forces a local architecture definition even under caf-standard (decision 0026)."
     },
     {
       "source": "terraform/live/global/main.tf.tmpl",

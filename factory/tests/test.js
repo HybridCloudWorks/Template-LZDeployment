@@ -651,5 +651,156 @@ console.log('\n== 20. caf-minimal trims the hierarchy, so the sandbox slot must 
   ok('the fixture still exports', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
 }
 
+// ---------------------------------------------------------------------------
+// 21. The default subscription budget (schema 4.1.0)
+// ---------------------------------------------------------------------------
+console.log('\n== 21. The default subscription budget (schema 4.1.0) ==');
+{
+  // Absent by default, and absent from the export rather than exported as
+  // enabled:false. A half-filled disabled block in the answer record invites
+  // someone to flip one boolean later without re-reading what it turns on.
+  ok('a fresh config exports no budget block',
+    !('defaultSubscriptionBudget' in A.buildConfig().finops));
+
+  const dsb = c.finops.defaultSubscriptionBudget;
+  dsb.enabled = true;
+  dsb.amountUsd = 2500;
+  dsb.managementGroup = 'alz';
+  dsb.contactEmails = ['finops@contoso.com'];
+  ok('enabling it exports the block', 'defaultSubscriptionBudget' in A.buildConfig().finops);
+  ok('with the amount the client entered',
+    A.buildConfig().finops.defaultSubscriptionBudget.amountUsd === 2500);
+  ok('and the client exports cleanly', A.validate().errors.length === 0,
+    JSON.stringify(A.validate().errors, null, 1));
+
+  // An enabled budget with no amount is the one field that cannot be defaulted:
+  // there is no sensible number to pick on a client's behalf.
+  dsb.amountUsd = null;
+  ok('an enabled budget with no amount is refused',
+    A.validate().errors.some((e) => /amount greater than zero/.test(e.message)));
+  dsb.amountUsd = 2500;
+
+  // Mirrors render guard G33 — both directions.
+  dsb.warningThresholdPercent = 100;
+  dsb.capThresholdPercent = 100;
+  ok('equal thresholds are refused',
+    A.validate().errors.some((e) => /must be below its second threshold/.test(e.message)));
+  dsb.warningThresholdPercent = 100;
+  dsb.capThresholdPercent = 80;
+  ok('an inverted pair is refused',
+    A.validate().errors.some((e) => /must be below its second threshold/.test(e.message)));
+  dsb.warningThresholdPercent = 80;
+  dsb.capThresholdPercent = 100;
+  ok('a sane pair is accepted', A.validate().errors.length === 0,
+    JSON.stringify(A.validate().errors, null, 1));
+
+  // Mirrors render guard G32. The wizard has to catch this too: the schema's
+  // enum lists all twelve library groups and cannot know the strategy.
+  c.azure.managementGroups.strategy = 'caf-minimal';
+  c.azure.subscriptions.sandbox = '';
+  dsb.managementGroup = 'sandbox';
+  ok('a budget on a group caf-minimal drops is refused',
+    A.validate().errors.some((e) => /caf-minimal hierarchy does not create/.test(e.message)));
+  dsb.managementGroup = 'landingzones';
+  ok('and accepted once it targets a group caf-minimal creates',
+    !A.validate().errors.some((e) => /caf-minimal hierarchy does not create/.test(e.message)));
+  dsb.managementGroup = 'alz';
+  ok('the tenant root is fine under caf-minimal too',
+    !A.validate().errors.some((e) => /caf-minimal hierarchy does not create/.test(e.message)));
+  c.azure.managementGroups.strategy = 'caf-standard';
+
+  dsb.contactEmails = ['not-an-email'];
+  ok('an invalid alert email is refused',
+    A.validate().errors.some((e) => /alert email/.test(e.message)));
+  dsb.contactEmails = ['finops@contoso.com'];
+
+  // The "no budgets" warning must not fire as a gap when the deployed budget
+  // covers every subscription — and must still fire when nothing does.
+  c.finops.budgets = [];
+  ok('an enabled default budget is not reported as an unbudgeted estate',
+    !A.validate().warnings.some((w) => /Nothing will alert on cost overrun/.test(w.message)));
+  dsb.enabled = false;
+  ok('and with nothing enabled the gap is reported again',
+    A.validate().warnings.some((w) => /Nothing will alert on cost overrun/.test(w.message)));
+
+  // The estimator has to move, because enabling the budget adds an assignment,
+  // its role assignment, and the local architecture definition it forces —
+  // and the estimate gates HCP Terraform's 500-resource free tier.
+  const before = A.estimateRum();
+  dsb.enabled = true;
+  const after = A.estimateRum();
+  ok('enabling the budget raises the resource estimate', after > before);
+}
+
+// ---------------------------------------------------------------------------
+// 22. Wizard defaults must agree with the schema's declared defaults
+// ---------------------------------------------------------------------------
+// Added after a Copilot finding on #128: the wizard defaulted
+// finops.defaultSubscriptionBudget.warningThresholdPercent to 80 while the
+// schema, the renderer fallback and guard G33 all said 90. Because the wizard
+// always emits the field, that gave the SAME SETTING two different defaults
+// decided by where the config came from — wizard-exported got 80, hand-authored
+// omitting the field got 90.
+//
+// Nothing else in the factory would have caught it: both values are valid, both
+// render, and both pass every guard. So the class is gated here rather than the
+// one instance being fixed and forgotten.
+console.log('\n== 22. Wizard defaults agree with the schema ==');
+{
+  const schema = JSON.parse(
+    require('fs').readFileSync(require('path').join(__dirname, '../schema/lz-config.schema.json'), 'utf8'));
+
+  // Every `default` the schema declares, keyed by its dotted path.
+  const declared = {};
+  (function walk(node, prefix) {
+    if (!node || typeof node !== 'object') return;
+    if (node.properties) {
+      for (const [key, child] of Object.entries(node.properties)) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (Object.prototype.hasOwnProperty.call(child, 'default')) declared[path] = child.default;
+        walk(child, path);
+      }
+    }
+  })(schema, '');
+
+  // KNOWN EXCEPTION, one entry, and it is the SCHEMA that is wrong rather than
+  // the wizard. governance.complianceFrameworks declares default ["none"], but
+  // the wizard's [] is the correct behaviour: it is a checkbox group where
+  // selecting nothing genuinely means [], estimateRum() costs the list as
+  // `.length * policyPerFramework` (so ["none"] bills a framework's worth of
+  // policy for having chosen none, against the HCP 500-resource cap), and the
+  // compliance document renders the list literally, so ["none"] would print the
+  // string "none" instead of taking its "_none declared_" branch.
+  //
+  // Left as an exception rather than fixed here because changing a schema
+  // default is a contract change, not a review fix, and it predates #128.
+  // Tracked separately. Do not add entries to this list to silence new drift.
+  const knownSchemaDefectPaths = new Set(['governance.complianceFrameworks']);
+
+  const cfg = A.defaultConfig();
+  const read = (obj, path) => path.split('.').reduce((o, k) => (o === undefined || o === null ? undefined : o[k]), obj);
+  const drifted = [];
+  let compared = 0;
+  for (const [path, schemaDefault] of Object.entries(declared)) {
+    if (knownSchemaDefectPaths.has(path)) continue;
+    const wizardDefault = read(cfg, path);
+    // A path the wizard does not pre-create is not drift: optional nested slots
+    // are stripped from the export and the renderer applies the schema default.
+    if (wizardDefault === undefined) continue;
+    compared++;
+    if (JSON.stringify(wizardDefault) !== JSON.stringify(schemaDefault)) {
+      drifted.push(`${path}: schema=${JSON.stringify(schemaDefault)} wizard=${JSON.stringify(wizardDefault)}`);
+    }
+  }
+
+  ok('no wizard default contradicts the schema', drifted.length === 0, drifted.join(' | '));
+  // Guards the guard: if the walk stops finding defaults — a schema restructure,
+  // a renamed `properties` key — the assertion above passes vacuously.
+  ok('and the comparison actually covered the contract', compared > 50, `compared ${compared}`);
+  ok('the budget threshold specifically agrees', 
+    A.defaultConfig().finops.defaultSubscriptionBudget.warningThresholdPercent ===
+    declared['finops.defaultSubscriptionBudget.warningThresholdPercent']);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

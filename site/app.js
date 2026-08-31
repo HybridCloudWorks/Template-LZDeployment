@@ -19,7 +19,7 @@
  * Constants
  * ------------------------------------------------------------------- */
 
-const SCHEMA_VERSION = '4.0.0';
+const SCHEMA_VERSION = '4.1.0';
 
 /* Kept in sync with factory-version.json. This page cannot read that file
  * (a file:// fetch is both blocked by CSP and unreliable across browsers),
@@ -145,6 +145,12 @@ const RUM_WEIGHTS = {
   sentinel: 16,
   keyVaultPerScope: 6,
   budgetEach: 1,
+  // One policy assignment plus the role assignment its DeployIfNotExists needs,
+  // and the local library the assignment forces: an architecture definition
+  // pinning the group list. The budgets the policy then creates are NOT counted
+  // — they are made by Azure Policy remediation and never enter Terraform state,
+  // which is the whole point of assigning the policy instead of writing them.
+  defaultSubscriptionBudget: 2,
   costExports: 2,
   locksPlatform: 6,
   rbacPerEnvironment: 4,
@@ -286,6 +292,16 @@ function defaultConfig() {
       costCenter: '',
       businessOwner: { name: '', email: '', role: 'Business Owner' },
       budgets: [],
+      defaultSubscriptionBudget: {
+        enabled: false,
+        managementGroup: 'alz',
+        amountUsd: null,
+        warningThresholdPercent: 90,
+        capThresholdPercent: 100,
+        timeGrain: 'Monthly',
+        contactEmails: [],
+        contactRoles: ['Owner', 'Contributor']
+      },
       chargebackModel: 'showback',
       costExports: { enabled: false, storageAccountName: '', frequency: 'Daily' }
     },
@@ -840,7 +856,41 @@ function validate() {
     if (!bud.scope) err('finops', 'Every budget needs a scope.');
     if (!(Number(bud.amountUsd) > 0)) err('finops', `Budget for "${bud.scope || 'unnamed'}" needs an amount greater than zero.`);
   }
-  if (!f.budgets.length) warn('finops', 'No budgets defined. Nothing will alert on cost overrun.');
+  const dsb = f.defaultSubscriptionBudget || {};
+  if (dsb.enabled) {
+    if (!(Number(dsb.amountUsd) > 0)) {
+      err('finops', 'The default subscription budget needs an amount greater than zero.');
+    }
+    // Mirrors render guard G33. Both directions are wrong and neither is
+    // rejected by Azure: an equal pair sends two identical alerts at the same
+    // moment, and an inverted pair warns only after the second threshold has
+    // already been passed.
+    const warnPct = Number(dsb.warningThresholdPercent);
+    const capPct = Number(dsb.capThresholdPercent);
+    if (warnPct >= capPct) {
+      err('finops', `The default budget's warning threshold (${warnPct}%) must be below its second threshold (${capPct}%).`);
+    }
+    // Mirrors render guard G32. caf-minimal creates ten of the library's twelve
+    // groups, so a budget aimed at Sandbox or Decommissioned there would bind an
+    // archetype to a group the estate never creates — a plan-time failure whose
+    // message says nothing about budgets.
+    const droppedByMinimal = ['sandbox', 'decommissioned'];
+    if (config.azure.managementGroups.strategy === 'caf-minimal' &&
+        droppedByMinimal.includes(dsb.managementGroup)) {
+      err('finops', `The default budget targets the ${dsb.managementGroup} management group, which the caf-minimal hierarchy does not create. Choose another group, or switch to caf-standard.`);
+    }
+    for (const email of dsb.contactEmails || []) {
+      if (!RE.email.test(email)) err('finops', `Default budget alert email "${email}" is not valid.`);
+    }
+  }
+  else if (!f.budgets.length) {
+    warn('finops', 'No budgets defined, and no default subscription budget. Nothing will alert on cost overrun.');
+  }
+  if (!f.budgets.length && dsb.enabled) {
+    // Not a gap: the deployed budget covers every subscription under its group.
+    // Said explicitly so the absence of the recorded table does not read as one.
+    warn('finops', 'No per-scope budgets recorded. The default subscription budget covers every subscription under its management group; add recorded budgets only where a scope needs different terms.');
+  }
   if (f.costExports.enabled && !RE.storageAccount.test(f.costExports.storageAccountName || '')) {
     err('finops', 'Cost exports are enabled but the export storage account name is invalid.');
   }
@@ -960,6 +1010,9 @@ function estimateRum() {
   n += kvScopes * w.keyVaultPerScope;
 
   n += (c.finops.budgets || []).length * w.budgetEach;
+  if (c.finops.defaultSubscriptionBudget && c.finops.defaultSubscriptionBudget.enabled) {
+    n += w.defaultSubscriptionBudget;
+  }
   if (c.finops.costExports.enabled) n += w.costExports;
   if (c.governance.resourceLocks.lockPlatformResourceGroups) n += w.locksPlatform;
   n += (c.environments.platform.length + c.environments.application.length) * w.rbacPerEnvironment;
@@ -2089,6 +2142,13 @@ function buildConfig() {
       if (sel[key] && !Object.keys(sel[key]).length) delete sel[key];
     }
     if (!Object.keys(sel).length) delete out.governance.policySelection;
+  }
+  // A budget nobody asked for travels as nothing rather than as enabled:false.
+  // The renderer treats an absent block and a disabled one identically, and an
+  // answer record that carries a half-filled budget invites someone to flip the
+  // one boolean later without re-reading what it does.
+  if (!out.finops.defaultSubscriptionBudget.enabled) {
+    delete out.finops.defaultSubscriptionBudget;
   }
   if (!out.github.enterpriseSlug) delete out.github.enterpriseSlug;
   if (!out.azure.drRegion) { delete out.azure.drRegion; delete out.azure.drRegionCode; }

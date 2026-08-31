@@ -1693,6 +1693,52 @@ made `unmetDependencies()` iterate the characters of a string. Neither case was
 reachable while the ledger held two or more groups. Both are handled explicitly
 now, and the wizard tests assert the shape rather than the contents.
 
+### 6.10 The default subscription budget is deployed — DONE 2026-08-31
+
+**Schema 4.1.0, additive.** `finops.defaultSubscriptionBudget` assigns the
+pinned ALZ library's own `Deploy-Budget` policy at one management group, giving
+every subscription beneath it a `Microsoft.Consumption` budget — including
+subscriptions vended after the estate is built, which is the property a
+Terraform budget resource cannot have. Record:
+[decision 0026](docs/decisions/0026-default-subscription-budget-by-policy.md).
+
+**This closes the largest remaining "recorded, not deployed" item for the
+common case.** `finops.budgets` deliberately stays documented-only: the policy
+takes exactly two thresholds and one management-group scope, where that list is
+per-scope with a free-text scope and a threshold array. `docs/finops.md` now
+names both mechanisms and says which is deployed, instead of describing one and
+disclaiming it.
+
+**The library already shipped the control and assigned it nowhere.** The
+`Deploy-Budget` definition is carried by the `root` archetype — created at the
+tenant root in every strategy — and appears in no archetype's assignments. The
+upstream policy FAQ names unassigned custom definitions as a category to review;
+this was one of them.
+
+**A defect introduced and caught in the same change, worth recording because
+nothing in CI would have caught it.** Binding the override archetype meant
+assigning `archetypes` from an `if` used as an expression, and PowerShell's
+pipeline **unrolls a single-element array** — so the emitted architecture
+definition carried `"archetypes": "root_budget"` where the library's schema
+requires `["root_budget"]`, on every group, for every strategy. `terraform
+validate` never resolves the data source that reads that file, and the plan
+proof that would catch it is dispatch-only and still unexercised. Fixed with a
+`[string[]]` declaration and locked by assertions on all three strategies.
+This is the second finding of the class TODO 6.1a exists for.
+
+### 6.11 Sovereign clouds — CLOSED by operator direction 2026-08-31
+
+The ALZ policy FAQ documents per-cloud policy availability differences (US Gov,
+China), and the factory exposes no cloud-environment answer at all: `azurerm`,
+`azapi` and `alz` all default to the public cloud, and every emitted region name
+and policy assumption follows. That gap was raised as unrecorded.
+
+**The operator's direction is public clouds only.** No `azure.cloudEnvironment`
+answer is added, and none is planned. The assumption is now deliberate rather
+than accidental, which is the whole of what needed fixing — a client on a
+sovereign cloud is out of scope for this factory, not silently mis-served by it.
+
+
 ## Phase 5 — Release-time items
 
 ### 5.1 Run Stage 14 release attestation and the release-gate PR
