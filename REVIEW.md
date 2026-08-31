@@ -473,9 +473,9 @@ and secrets. [TODO.md](TODO.md) item 4.6 closed.
 
 ## 🔨 Found by the first-customer pre-flight (2026-08-30)
 
-Three entries from a review of this factory against a candidate first
+Four entries from a review of this factory against a candidate first
 engagement, read as **overall** defects rather than ones specific to that
-tenant. The triage question throughout: does this stop the client copy from
+tenant. §21 was found while closing §18 and §20, not in the original review. The triage question throughout: does this stop the client copy from
 producing what the generated repo needs, or does it make the generated repo
 itself fail?
 
@@ -511,12 +511,18 @@ platform-connectivity, which applies *after* the global layer; that is sound
 because the policies consume them as strings they write into resources they
 create, not as references to resources that must already exist.
 
-**Still open — 2 waived**, and both need a client answer rather than a
-derivation, so both belong to the policy-selection step:
-`email_security_contact` (an empty string in place of
-`security_contact@replace_me` is no better than the placeholder) and
-`ddos_protection_plan_id` (whose assignment should be disabled rather than
-pointed at an invented ID).
+**Closed 2026-08-31 — 14 of 14, waiver budget 0.** The last two were the two
+that needed a client answer rather than a derivation, and the wizard's Policies
+step now asks for both: `email_security_contact` whenever a Defender assignment
+is selected, `ddos_protection_plan_id` only when the DDoS capability group is
+enabled, which it is not by default. Render guard **G28** refuses a
+configuration where a selected assignment's required value is blank, which is
+what stops a hand-edited answer record walking past the wizard's own block.
+
+`policy_assignments_to_modify` also exists now — the second half of this
+finding, and the reason there was no supported way to soften an assignment. It
+is emitted from the client's selection, keyed by management group, inverted in
+the layer's `locals` from two flat maps.
 
 ### 19. Two gates verify less than their names suggest
 **Class: meta — this is why §18 survived to a first customer.**
@@ -569,7 +575,20 @@ or `governance.*` at all. The sharpest cases:
 - **`governance.policyBaseline.enforcementMode`** — audit versus deny,
   arguably the most consequential answer in the wizard, reaches only
   `docs/GOVERNANCE.md.tmpl`. Guards G02 and G03 warn about Sentinel and CMK;
-  nothing warns about this one.
+  nothing warns about this one. **Closed 2026-08-31, but not the way this entry
+  proposed.** Making it a blanket default written into every selected
+  assignment — the original plan — is wrong, and the reason is worth recording
+  because it is easy to get backwards: ALZ's `enforcement_mode = "DoNotEnforce"`
+  is not "audit instead of deny", it is "evaluate but do not act", and *not
+  acting* stops DeployIfNotExists and Modify remediation as surely as it stops
+  a Deny. Applied to all 52 assignments the library ships enforcing, an audit
+  baseline would deploy Defender configuration, the Azure Monitor Agent,
+  diagnostic settings and private-DNS registration and then never converge any
+  of them. Audit therefore reaches exactly the 14 deny-class assignments and
+  nothing else. Deny-class is read from the assignment's declared effect at the
+  pinned ref, widened by the ALZ naming convention for the ones whose effect
+  lives in a built-in definition and so is not visible offline; erring that way
+  costs enforcement, never remediation. Operator-ratified 2026-08-31.
 - **`observability.logAnalytics.dailyQuotaGb`** — the only cost ceiling the
   wizard offers. **Closed 2026-08-30**: now mapped to the module's
   `log_analytics_workspace_daily_quota_gb`.
@@ -588,6 +607,40 @@ not.
 
 **Unblocked by**: a structural check that no schema key can be collected
 without being mapped, documented, or explicitly marked recorded-not-deployed.
+Still open — TODO 6.3. Four of this class have now been closed one at a time
+(`dailyQuotaGb`, `firewall`, `enforcementMode`, and the policy surface itself);
+`customHierarchy` is the one that remains, and closing them individually is
+exactly what the structural check exists to stop needing.
+
+### 21. The generated repo's policy guardrail enforced nothing
+**Class: the generated repo ships a control that is not one. Universal.**
+**Found and closed 2026-08-31.**
+
+`policy-diff-guardrails.yml` is a **required status check** on every generated
+repository — job id `policy`, carried in the broker's
+`LZ_REQUIRED_STATUS_CHECKS`. Its enforcement step rejected added lines matching
+`effect\s*=\s*"(Disabled|Audit)"`.
+
+That is the bespoke policy corpus's spelling. The corpus this factory emits is
+the Azure Verified Modules ALZ pattern, which says `enforcement_mode =
+"DoNotEnforce"` and `creation_enabled = false`. Against its own output the
+check matched nothing, and had matched nothing since the corpus moved to AVM.
+It read as a control over policy enforcement while being, in practice, a
+no-op — the same class of defect as §20, one layer further out.
+
+All three spellings are rejected now. The exemption is the part that needed
+care: keying it on the `GENERATED FILE` header would hand every emitted `.tf` a
+blanket pass, so it keys on the render stamp moving instead. Every stamp is
+derived from `lz-config.json` — the factory version and the export timestamp
+both come out of the answer record — which makes re-rendering an unchanged
+record byte-identical, so a regeneration always moves the stamp and a hand-edit
+never does. Faking the stamp does not work either: the exemption also requires
+`lz-config.json` itself to have changed in the same diff.
+
+One case is stated in the workflow rather than papered over: a pull request
+that both regenerates a file and hand-edits the same file is not
+distinguished. Nothing short of re-running the factory separates those, and
+the factory does not run in the generated repository.
 
 ## 🎯 Needs a decision
 

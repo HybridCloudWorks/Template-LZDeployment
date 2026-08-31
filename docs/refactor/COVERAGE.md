@@ -44,12 +44,22 @@ wizard question. Enforced automatically in both directions:
 | `state_resource_group_name` / `state_storage_account_name` / `state_container_name` (global) | `backend.azurerm.*` | State backend → RG / account / container | Yes |
 | Backend `backend.hcl` tokens (per layer) | `backend.azurerm.*`, `azure.tenantId` | State backend + Azure tenant steps | Yes |
 | Topology selection (`#{{IF computed.topologyIsHubSpoke}}`) | `connectivity.model` | Connectivity → Topology | Yes |
+| `log_daily_quota_gb` (mgmt) | `observability.logAnalytics.dailyQuotaGb` | Observability → Daily ingestion cap | Yes (default -1, uncapped) |
+| `firewall_enabled` (conn) | `connectivity.firewall.enabled` | Connectivity → Deploy an Azure Firewall | Yes — no default, the client must answer |
+| `policy_assignment_changes` (global) | `governance.policySelection.groups` / `.assignments` via `computed.policyAssignmentChanges` | Policies → Capability groups + advanced list | No (empty = the library's own baseline) |
+| `policy_assignment_management_groups` (global) | derived from `site/alz-policy-catalog.json` via `computed.policyAssignmentManagementGroups` | none — a library fact, not an answer | No |
+| `ddos_protection_plan_id` (global) | `governance.policySelection.values.ddos_protection_plan_id` | Policies → DDoS protection plan resource ID | Yes when the DDoS group is on (guard G28) |
+| `email_security_contact` (global) | `governance.policySelection.values.email_security_contact` | Policies → Defender for Cloud security contact | Yes when a Defender assignment is selected (guard G28) |
 
 Defaulted-in-`variables.tf`, deliberately question-free (`literal:*` in the
 map): `architecture_name` (`alz`), the five `*_management_group_id` placement
-targets (pinned-library ids), `firewall_enabled` (`true` — a landing zone
-requires a firewall, operator decision 2026-08-06), and
-`hub_and_spoke_networks_settings` (escape hatch, defaults `{}`).
+targets (pinned-library ids), and `hub_and_spoke_networks_settings` (escape
+hatch, defaults `{}`).
+
+`firewall_enabled` was on that list, as `literal:true`. It is not any more: it
+and `deploy_bastion` are the two largest recurring line items the connectivity
+layer can create, and neither carries a default in `variables.tf` or in the
+schema. An unanswered one blocks export.
 
 ## Documentation-consumed and record-only answers
 
@@ -64,7 +74,9 @@ wizard warns wherever an answer is recorded-not-deployed:
 | GitHub settings (`github.*`) | Broker (repo creation, branch protection, environments, OIDC identities) | Deployed by broker |
 | Identity model (`identity.cicdIdentityModel`) | Broker identity plan | Deployed by broker |
 | Environments + approvals | Broker environments; workflow matrix | Deployed by broker |
-| Governance (`policyBaseline.*`, frameworks, locks) | `docs/governance.md` + guard G06; policy surface itself now comes from the pinned ALZ library | Docs + library |
+| Governance (`policyBaseline.requiredTags`, frameworks, locks) | `docs/governance.md` + guard G06 | Docs |
+| `policyBaseline.enforcementMode` | `docs/governance.md`, **and** the deny-class assignments' `enforcement_mode` in the global layer | Deployed — audit emits `DoNotEnforce` for the 14 Deny/DenyAction assignments only; downgrading the DeployIfNotExists ones would stop remediation across the estate |
+| `governance.policySelection` | `policy_assignment_changes` in the global layer, `docs/governance.md`, guard G28 | Deployed |
 | Defender plans / Sentinel / Key Vault CMK | `docs/*, unmet-dependency report, answer record` | **Recorded-not-deployed (ADR 0017)** — wizard warns, guard G02/G03 warns |
 | FinOps (cost center, budgets, exports) | `docs/finops.md` | Docs |
 | Operations (team, escalation, break-glass) | `docs/operating-model.md`, identity matrix | Docs |

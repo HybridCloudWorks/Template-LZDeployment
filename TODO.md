@@ -1089,55 +1089,91 @@ Findings from reviewing this factory against a candidate first engagement,
 triaged as **overall** defects rather than tenant-specific ones. Record:
 [REVIEW.md](REVIEW.md) §§18-20.
 
-### 6.1 Supply the ALZ policy default values — `[BLOCKER for a first plan]`
+### 6.1 Supply the ALZ policy default values — `[CLOSED 2026-08-31]`
 
-**Largely done 2026-08-30 — waiver budget 13 -> 2.** The global layer now
-supplies 12 of the 14 values: the five Azure Monitor Agent values through the
+**Done — waiver budget 13 -> 2 -> 0.** All fourteen values the pinned library
+declares are supplied. The final two closed with 6.2: `ddos_protection_plan_id`
+and `email_security_contact` are client answers carried from the wizard's
+Policies step through `governance.policySelection.values`, and render guard G28
+refuses a configuration where a selected assignment's required value is blank.
+The waiver register is empty with its budget at zero.
+
+**Still open, and unchanged**: none of this is *plan*-verified. The validation
+criterion below asked for a `terraform plan` against a throwaway tenant, and
+that has still never run anywhere in this repository. It remains the single
+most valuable outstanding test — see 6.1a.
+
+The twelve derived values, for the record: the five Azure Monitor Agent values through the
 management layer's `user_assigned_identity_ids` and `data_collection_rule_ids`
 outputs (map keys read from `avm-ptn-alz-management` v0.9.0's variable *types*,
 so they cannot drift without a major bump), and six composed from config.
 
-The two that remain are the two that need a client answer rather than a
-derivation, and both are 6.2's to close:
+The two client-owned ones, closed 2026-08-31:
 
-1. `email_security_contact` — collected by the wizard as
-   `security.defender.securityContactEmail` and mapped nowhere. Not derivable:
-   an empty string in place of `security_contact@replace_me` is no better than
-   the placeholder, so this wants collecting *and requiring* at the point where
-   the client selects a Defender assignment.
-2. `ddos_protection_plan_id` — not supplied by design. Selecting DDoS
-   protection collects a real plan ID; not selecting it emits
-   `creation_enabled = false` for `Enable-DDoS-VNET`.
+1. `email_security_contact` — asked in the Policies step whenever a Defender
+   assignment is selected, seeded from `security.defender.securityContactEmail`
+   so the client answers it once but can still send policy notifications
+   somewhere other than the contact on the plan.
+2. `ddos_protection_plan_id` — asked only when the DDoS capability group is
+   enabled, which it is not by default. Leaving it off emits
+   `creation_enabled = false` for `Enable-DDoS-VNET`, so nothing is created
+   against a plan that does not exist.
 
 **Deploy-order constraint**: management → global → connectivity. The global
 layer may read management state but must not read connectivity state; the
 private-DNS values are therefore derived from config, which is sound because
 the policies consume them as strings, not as references to existing resources.
 
-**Validation criterion**: the waiver budget reaches 1 (DDoS only), and a
-`terraform plan` on a rendered `global` layer completes against a throwaway
-tenant. That plan has never been run anywhere in this repository — CI renders
-and runs `init + validate` on the output (`terraform-policy-checks.yml`), which
-resolves the AVM pins but never reaches the ALZ provider's policy-default
-resolution. See REVIEW §19.
+### 6.1a `terraform plan` against a throwaway tenant — `[STILL OPEN]`
 
-### 6.2 Client-facing ALZ policy selection — operator-directed 2026-08-30
+The half of 6.1 that static analysis cannot reach. CI renders and runs
+`init + validate` on the output (`terraform-policy-checks.yml`), which resolves
+the AVM pins but never reaches the ALZ provider's policy-default resolution —
+that happens at PLAN time, and no plan runs anywhere in this repository.
 
-The client picks policies in the wizard; selected assignments are created and
-prompt for whatever values they need, unselected ones emit
-`creation_enabled = false`. This is what decides DDoS rather than the factory
-inventing a plan ID.
+Everything 6.1 and 6.2 shipped is syntax-verified and contract-verified; none
+of it is plan-verified. `Test-AlzPolicyDefaults.ps1` and guard G28 exist
+precisely because this gap does, and they are a substitute for the plan, not a
+replacement. See REVIEW §19.
 
-`site/alz-policy-catalog.json` is the input and already exists: 12 capability
-groups over all 80 assignments, plus every assignment→required-value edge,
-generated from the pinned ref by `factory/ci/New-AlzPolicyCatalog.ps1`.
-Remaining: the wizard step (groups, with a collapsed advanced list),
-`governance.policySelection` in the schema, and
-`policy_assignments_to_modify` in `global/main.tf.tmpl`.
+### 6.2 Client-facing ALZ policy selection — `[CLOSED 2026-08-31]`
 
-`governance.policyBaseline.enforcementMode` becomes the global default written
-into every selected assignment, overridable per policy — closing the wizard's
-most consequential inert answer.
+Operator-directed 2026-08-30, shipped 2026-08-31. The wizard has a Policies
+step between Governance and Observability, rendered from
+`site/alz-policy-catalog.js`: twelve capability groups over all eighty
+assignments, plus a collapsed advanced list carrying every assignment with the
+management groups it attaches to and a per-assignment override of both creation
+and enforcement.
+
+- An absent group id means **enabled**, so a config written before a library
+  bump keeps the ALZ baseline rather than silently dropping what the bump
+  added. DDoS is the one group off by default.
+- The catalog classifies each library default value as supplied by the factory,
+  owed by the client, or supplied by nothing — read from the emitted layer and
+  from `variable-map.json` rather than restated in JavaScript, so an answer-fed
+  value stays a question after the template starts emitting it.
+- `policy_assignments_to_modify` is keyed by management group while the client
+  answers per assignment, and most assignments are carried by more than one
+  group. The layer takes two flat maps and inverts them in `locals` rather than
+  the renderer spelling out up to 123 entries.
+- Only deltas travel: an assignment with no entry is created exactly as the
+  library declares it.
+
+`governance.policyBaseline.enforcementMode` is no longer inert, but it does
+**not** blanket-write every selected assignment, which is what this entry
+originally proposed. Audit emits `DoNotEnforce` for the fourteen assignments
+the catalog identifies as deny-class and nothing else. `DoNotEnforce` also
+stops DeployIfNotExists and Modify remediation, so blanket-downgrading would
+leave Defender configuration, the Azure Monitor Agent, diagnostic settings and
+private-DNS registration deployed but never converging. Operator-ratified
+2026-08-31, along with keeping `audit` as the default.
+
+Also closed here: `policy-diff-guardrails.yml`, the generated repository's
+required `policy` status check, rejected only `effect = "Disabled"|"Audit"` —
+the bespoke corpus's spelling. Against the AVM corpus this factory actually
+emits it enforced nothing. It now rejects `enforcement_mode = "DoNotEnforce"`
+and `creation_enabled = false` too, exempting a regeneration by requiring both
+the render stamp and `lz-config.json` to have moved.
 
 ### 6.3 Close the silent-answer class structurally
 
