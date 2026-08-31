@@ -208,6 +208,39 @@ function New-LzPolicyCatalog {
         }
     }
 
+    # Who owes each value. The wizard prompts for a default only when the
+    # factory does not already compute it, so this classification has to be
+    # read from the emitted layer rather than restated in JavaScript:
+    #
+    #   factory  the global template composes it from platform facts (remote
+    #            state, the region, the org prefix) — no client answer exists
+    #            or is wanted.
+    #   client   the template emits it from a variable that variable-map.json
+    #            feeds out of governance.policySelection.values — the client
+    #            must answer, and the wizard is where they do.
+    #   none     nothing supplies it yet. Same prompt as 'client', so closing
+    #            the gap in the template cannot silently remove the question.
+    #
+    # Deriving 'client' from the variable map rather than from the template
+    # alone is what keeps this non-circular: an answer-fed value stays a
+    # question after the template starts emitting it.
+    $globalTemplate = Get-Content (Join-Path $repo 'factory/templates/terraform/live/global/main.tf.tmpl') -Raw
+    $emitted = @()
+    if ($globalTemplate -match '(?s)policy_default_values\s*=\s*\{(?<body>.*?)\n  \}') {
+        $emitted = @([regex]::Matches($Matches['body'], '(?m)^\s{4}(?<key>[a-z0-9_]+)\s*=') |
+            ForEach-Object { $_.Groups['key'].Value })
+    }
+    $variableMap = Get-Content (Join-Path $repo 'factory/renderer/variable-map.json') -Raw | ConvertFrom-Json -Depth 20
+    $clientFed = @($variableMap.layers.global.variables.PSObject.Properties |
+        Where-Object { "$($_.Value)".StartsWith('governance.policySelection.values.') } |
+        ForEach-Object { $_.Name })
+    foreach ($name in @($defaults.Keys)) {
+        $defaults[$name].supplied =
+        if ($clientFed -contains $name) { 'client' }
+        elseif ($emitted -contains $name) { 'factory' }
+        else { 'none' }
+    }
+
     # Assignment -> the archetypes that carry it and the defaults it needs.
     $allAssignments = @($archetypes.Values | ForEach-Object { $_ } | Sort-Object -Unique)
     $assignments = [ordered]@{}
@@ -286,9 +319,46 @@ catch {
 
 $json = ($catalog | ConvertTo-Json -Depth 20)
 
+# The wizard cannot read the JSON. site/index.html sets
+# `connect-src 'none'` and factory/ci/Test-SiteNoNetwork.ps1 bans fetch and
+# XMLHttpRequest, so there is no way to load a .json at runtime. `script-src
+# 'self'` does permit a second same-origin script, so the same catalog is also
+# emitted as a .js file that assigns a global. Both are generated, both are
+# verified; hand-editing either is what the -Verify mode exists to catch.
+$scriptPath = [IO.Path]::ChangeExtension($CatalogPath, 'js')
+$scriptBody = @"
+// GENERATED FILE. Do not hand-edit — regenerate with
+// factory/ci/New-AlzPolicyCatalog.ps1, which emits this alongside
+// alz-policy-catalog.json from the ALZ library ref pinned in
+// factory-version.json.
+//
+// This exists because the wizard is zero-network by contract: the page's
+// Content-Security-Policy sets connect-src 'none', so the .json sibling cannot
+// be fetched at runtime. A same-origin script is allowed, so the catalog
+// arrives as a global instead.
+globalThis.ALZ_POLICY_CATALOG = $json;
+"@
+
 if ($Verify) {
     if (-not (Test-Path $CatalogPath)) {
         Write-Error "No catalog at $CatalogPath. Run factory/ci/New-AlzPolicyCatalog.ps1 to generate it."
+        exit 1
+    }
+    if (-not (Test-Path $scriptPath)) {
+        Write-Error "No catalog script at $scriptPath. Run factory/ci/New-AlzPolicyCatalog.ps1 to generate it. The wizard loads this file, not the JSON."
+        exit 1
+    }
+    $committedScript = (Get-Content $scriptPath -Raw).Trim()
+    if ($committedScript -ne $scriptBody.Trim()) {
+        Write-Error @"
+The committed ALZ policy catalog SCRIPT ($scriptPath) does not match the
+library at the pinned ref ($libraryPath@$libraryRef).
+
+This is the file the wizard actually loads, so a stale one means the client is
+offered a policy set the deployment will not produce.
+
+Fix: pwsh factory/ci/New-AlzPolicyCatalog.ps1
+"@
         exit 1
     }
     $committed = (Get-Content $CatalogPath -Raw).Trim()
@@ -307,12 +377,14 @@ Fix: pwsh factory/ci/New-AlzPolicyCatalog.ps1
 "@
         exit 1
     }
-    Write-Host "OK: policy catalog matches $libraryPath@$libraryRef ($($catalog.assignments.Count) assignments, $($catalog.defaults.Count) default values)."
+    Write-Host "OK: policy catalog and script match $libraryPath@$libraryRef ($($catalog.assignments.Count) assignments, $($catalog.defaults.Count) default values)."
     exit 0
 }
 
 $json | Set-Content $CatalogPath -Encoding utf8
+$scriptBody | Set-Content $scriptPath -Encoding utf8
 Write-Host "Wrote $CatalogPath"
+Write-Host "Wrote $scriptPath (the file the wizard loads)"
 Write-Host "  library      : $libraryPath@$libraryRef"
 Write-Host "  archetypes   : $($catalog.archetypes.Count)"
 Write-Host "  assignments  : $($catalog.assignments.Count)"

@@ -47,6 +47,11 @@ c.environments.approvals = { prod: { requiredReviewers: ['@platform'], waitTimer
 // say. A config that has not answered them is not a valid config.
 c.connectivity.firewall.enabled = true;
 c.connectivity.bastion.enabled = false;
+// The Defender policy group is on by default and Deploy-MDFC-Config-H224
+// consumes email_security_contact. Unsupplied, the assignment is created from
+// the library's own security_contact@replace_me — which is exactly what the
+// policies step exists to stop, so it is an export blocker, not a warning.
+c.governance.policySelection.values.email_security_contact = 'secops@contoso.com';
 A.config = c;
 A.defaultTagRows = [
   { k: 'owner', v: 'platform' }, { k: 'application', v: 'alz' },
@@ -284,6 +289,76 @@ c.connectivity.firewall.type = 'none';
 ok('imported firewall type "none" blocks export', A.validate().errors.some(e => /only type the generator composes/.test(e.message)));
 c.connectivity.firewall.type = 'azfw';
 ok('azfw clears the firewall-type block', !A.validate().errors.some(e => /only type the generator composes/.test(e.message)));
+
+console.log('\n== 15. Policy selection is read from the pinned library ==');
+{
+  const catalog = A.POLICY_CATALOG;
+  ok('the catalog reached the wizard', catalog.groups.length > 0 && Object.keys(catalog.assignments).length > 0,
+    'harness.js must load site/alz-policy-catalog.js before app.js');
+
+  // Every group in the catalog names assignments the catalog also declares —
+  // otherwise a toggle in the UI governs nothing.
+  const orphans = catalog.groups.flatMap(g => g.assignments.filter(a2 => !catalog.assignments[a2]));
+  ok('every grouped assignment exists', orphans.length === 0, orphans.join(', '));
+
+  // Absence means enabled: a config written before a library bump must keep the
+  // ALZ baseline rather than silently dropping whatever the bump added.
+  delete c.governance.policySelection.groups['aks-hardening'];
+  ok('an unmentioned group is enabled', A.policyGroupEnabled('aks-hardening'));
+  c.governance.policySelection.groups['aks-hardening'] = false;
+  ok('an explicitly disabled group is off', !A.policyGroupEnabled('aks-hardening'));
+  const aks = catalog.groups.find(g => g.id === 'aks-hardening');
+  ok('its assignments follow the group', aks.assignments.every(n => !A.policyAssignmentEnabled(n)));
+
+  // The per-assignment override beats its group, in both directions.
+  const one = aks.assignments[0];
+  c.governance.policySelection.assignments[one] = { creationEnabled: true };
+  ok('a per-assignment override wins over the group', A.policyAssignmentEnabled(one));
+  delete c.governance.policySelection.assignments[one];
+  c.governance.policySelection.groups['aks-hardening'] = true;
+
+  // The values the client owes are derived from what is selected, and only for
+  // defaults the factory does not already compute.
+  const owed = () => A.requiredPolicyValues().map(([n]) => n);
+  ok('a factory-computed default is never asked for', !owed().includes('log_analytics_workspace_id'),
+    'the global layer composes it from remote state');
+  ok('DDoS is off by default, so no plan ID is owed', !owed().includes('ddos_protection_plan_id'));
+  c.governance.policySelection.groups.ddos = true;
+  ok('enabling DDoS asks for the plan ID', owed().includes('ddos_protection_plan_id'));
+  ok('an unanswered plan ID blocks export',
+    A.validate().errors.some(e => /DDoS protection plan resource ID is required/.test(e.message)));
+  c.governance.policySelection.values.ddos_protection_plan_id = 'ddos-plan-1';
+  ok('a bare name is rejected — the policy needs a resource ID',
+    A.validate().errors.some(e => /must be a full resource ID/.test(e.message)));
+  c.governance.policySelection.values.ddos_protection_plan_id =
+    '/subscriptions/aaaaaaaa-0000-0000-0000-000000000002/resourceGroups/rg-contoso-connectivity-scus/providers/Microsoft.Network/ddosProtectionPlans/ddos-contoso';
+  ok('a full resource ID clears it', !A.validate().errors.some(e => /DDoS/.test(e.message)));
+
+  // Turning the assignment off retires its question, rather than leaving a
+  // required value the client can no longer see a reason for.
+  c.governance.policySelection.groups.ddos = false;
+  ok('disabling the group retires the question', !owed().includes('ddos_protection_plan_id'));
+  ok('and the stale answer does not travel', !('ddos_protection_plan_id' in (A.buildConfig().governance.policySelection.values || {})),
+    'buildConfig must drop values nothing asks for any more');
+
+  // The security contact is one fact asked once.
+  const supplied = c.governance.policySelection.values.email_security_contact;
+  delete c.governance.policySelection.values.email_security_contact;
+  ok('an unanswered security contact blocks export',
+    A.validate().errors.some(e => /Defender for Cloud security contact is required/.test(e.message)));
+  c.governance.policySelection.values.email_security_contact = 'not-an-email';
+  ok('a malformed security contact blocks export',
+    A.validate().errors.some(e => /not a valid email address/.test(e.message)));
+  c.governance.policySelection.values.email_security_contact = supplied;
+
+  // Turning everything off is a configuration the wizard refuses to export.
+  const saved = JSON.parse(JSON.stringify(c.governance.policySelection.groups));
+  for (const g of catalog.groups) c.governance.policySelection.groups[g.id] = false;
+  ok('an ungoverned landing zone blocks export',
+    A.validate().errors.some(e => /no Azure Policy governance at all/.test(e.message)));
+  c.governance.policySelection.groups = saved;
+  ok('the fixture is exportable again', A.validate().errors.length === 0, JSON.stringify(A.validate().errors, null, 1));
+}
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

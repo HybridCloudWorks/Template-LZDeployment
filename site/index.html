@@ -782,7 +782,33 @@
       </div>
     </section>
 
-    <!-- 11. OBSERVABILITY -->
+    <!-- 11. POLICIES -->
+    <section class="step" data-step="policies" data-title="Policies">
+      <header class="step-head">
+        <h2>Azure Policy baseline</h2>
+        <p class="lede">Which of the Azure Landing Zones policy assignments this estate creates. The list is generated from the library version this factory pins, so nothing here can offer a policy the deployment will not produce.</p>
+      </header>
+
+      <div class="field">
+        <label>Capability groups</label>
+        <p class="hint">Grouped the way a platform team reasons about them. Everything is on by default except where it would cost real money you have not agreed to. Turning a group off emits <code>creation_enabled = false</code> for its assignments &mdash; they are never created, rather than created and ignored.</p>
+        <div id="policyGroups" class="policy-groups"></div>
+      </div>
+
+      <div class="field" id="policyValuesField" hidden>
+        <label>Values these choices require</label>
+        <p class="hint">The library declares these; a policy that needs one and does not get it is created from the library&rsquo;s own placeholder &mdash; an all-zeroes subscription, or <code>security_contact@replace_me</code>. Export is blocked until they are filled.</p>
+        <div id="policyValues"></div>
+      </div>
+
+      <details class="advanced">
+        <summary>Advanced &mdash; individual assignments</summary>
+        <p class="hint">Every assignment the pinned library defines, with the management groups it attaches to. A setting here overrides its group. Leave this alone unless you have a specific assignment in mind.</p>
+        <div id="policyAdvanced" class="policy-advanced"></div>
+      </details>
+    </section>
+
+    <!-- 12. OBSERVABILITY -->
     <section class="step" data-step="observability" data-title="Observability">
       <header class="step-head">
         <h2>Observability</h2>
@@ -844,7 +870,7 @@
       </div>
     </section>
 
-    <!-- 12. OPERATIONS -->
+    <!-- 13. OPERATIONS -->
     <section class="step" data-step="operations" data-title="Operating model">
       <header class="step-head">
         <h2>Operating model</h2>
@@ -898,7 +924,7 @@
            data-min="1"></div>
     </section>
 
-    <!-- 13. FINOPS -->
+    <!-- 14. FINOPS -->
     <section class="step" data-step="finops" data-title="FinOps">
       <header class="step-head">
         <h2>Cost management</h2>
@@ -956,7 +982,7 @@
       </div>
     </section>
 
-    <!-- 14. NAMING -->
+    <!-- 15. NAMING -->
     <section class="step" data-step="naming" data-title="Naming &amp; tags">
       <header class="step-head">
         <h2>Naming standard &amp; default tags</h2>
@@ -993,7 +1019,7 @@
       <p id="tagCoverage" class="coverage"></p>
     </section>
 
-    <!-- 15. REVIEW -->
+    <!-- 16. REVIEW -->
     <section class="step" data-step="review" data-title="Review &amp; export">
       <header class="step-head">
         <h2>Review &amp; export</h2>
@@ -1030,6 +1056,10 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+<!-- The ALZ policy catalog, generated from the pinned library ref. Loaded as a
+     script rather than fetched as JSON because connect-src is 'none' — see the
+     zero-network note at the top of this file. Must precede app.js. -->
+<script src="alz-policy-catalog.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

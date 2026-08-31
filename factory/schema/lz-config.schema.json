@@ -1162,6 +1162,48 @@
               "default": "CanNotDelete"
             }
           }
+        },
+        "policySelection": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Which Azure Landing Zones policy assignments this estate creates, and what they are configured with. Choices are made against site/alz-policy-catalog.json, generated from the library ref pinned in factory-version.json \u2014 so the wizard can only offer policies the deployment will actually produce. Unselected assignments are emitted as creation_enabled = false into the global layer's policy_assignments_to_modify, keyed by every management group that carries them (many are carried by more than one).",
+          "properties": {
+            "groups": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "description": "Capability group id from the catalog -> whether that group's assignments are created. An absent group is treated as enabled, so a config written before a library bump keeps the ALZ default posture rather than silently dropping newly added policies."
+            },
+            "assignments": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "creationEnabled": {
+                    "type": "boolean",
+                    "description": "False emits creation_enabled = false for this assignment. Overrides the group setting."
+                  },
+                  "enforcementMode": {
+                    "enum": [
+                      "Default",
+                      "DoNotEnforce"
+                    ],
+                    "description": "Overrides governance.policyBaseline.enforcementMode for this one assignment. Default enforces; DoNotEnforce reports compliance without acting."
+                  }
+                }
+              },
+              "description": "Per-assignment overrides from the advanced list, keyed by assignment name as the catalog spells it. Takes precedence over the containing group."
+            },
+            "values": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Policy default values that a selection obliges the client to supply, keyed by the library's default name \u2014 for example ddos_protection_plan_id when DDoS protection is enabled, or email_security_contact when any Defender assignment is. Unsupplied, the assignment would be created from the library's own placeholder (an all-zeroes subscription, or security_contact@replace_me), which is why the wizard refuses to export with an enabled group's required value blank."
+            }
+          }
         }
       }
     },

@@ -494,6 +494,56 @@ select {
 .rep-del:hover:not(:disabled) { color: var(--bad); border-color: var(--bad); }
 .rep-del:disabled { opacity: 0.3; cursor: not-allowed; }
 
+/* ── Policy selection ─────────────────────────────────────────────── */
+
+.policy-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+
+.policy-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  padding: 0.65rem 0.75rem;
+}
+
+.policy-group .check { margin-bottom: 0.3rem; }
+.policy-group .hint { margin: 0.2rem 0 0; }
+.policy-meta { font-family: var(--mono); font-size: 0.74rem; color: var(--text-faint); }
+
+.policy-advanced {
+  max-height: 22rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+}
+
+.policy-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.policy-row:last-child { border-bottom: none; }
+.policy-row select { flex: 0 0 11rem; }
+
+.policy-name { flex: 1 1 auto; min-width: 0; }
+.policy-name code { font-size: 0.78rem; display: block; }
+
+.policy-scope {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Approvals ────────────────────────────────────────────────────── */
 
 .approval-row {
@@ -700,7 +750,7 @@ select {
   .stepbtn { width: auto; }
   .panel { padding: 1.25rem 1rem 3rem; }
   .brand-sub { display: none; }
-  .rep-row, .approval-row { flex-wrap: wrap; }
+  .rep-row, .approval-row, .policy-row { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {

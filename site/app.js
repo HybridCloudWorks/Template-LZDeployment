@@ -28,6 +28,20 @@ const FACTORY_VERSION = '0.11.0';
 
 const DRAFT_KEY = 'alz-factory-draft-v1';
 
+/* The ALZ policy catalog, generated from the pinned library ref and delivered by
+ * a sibling <script> tag (see index.html). It is a script rather than a fetched
+ * JSON because this page's CSP sets connect-src 'none'.
+ *
+ * The guard is load-bearing, not defensive padding: factory/tests/harness.js
+ * evaluates this file on its own with a stub document and no <script> chain, so
+ * a bare read would throw ReferenceError and take the entire wizard suite down.
+ * The harness loads the catalog explicitly, so the fallback should never be the
+ * thing under test — but an empty catalog degrades to "no policies offered"
+ * rather than a blank page. */
+const POLICY_CATALOG = (typeof globalThis !== 'undefined' && globalThis.ALZ_POLICY_CATALOG)
+  ? globalThis.ALZ_POLICY_CATALOG
+  : { groups: [], assignments: {}, defaults: {}, managementGroups: [], ungrouped: [] };
+
 /* Region -> conventional CAF abbreviation. Not exhaustive; unknown regions
  * simply leave the code field for the user to fill. */
 const REGION_CODES = {
@@ -228,6 +242,12 @@ function defaultConfig() {
         denyPublicIpOnNics: false, enforceDiagnosticSettings: true, enforceEncryptionAtRest: true
       },
       policyAsCodeEngines: ['azure-policy', 'conftest'],
+      // An absent group id means enabled, so a config written before a library
+      // bump keeps the ALZ baseline rather than silently dropping whatever the
+      // new library added. DDoS is the one group off by default: the plan is
+      // roughly USD 2,900/month, this factory does not create one, and the
+      // assignment is worthless without a plan ID the client has to own.
+      policySelection: { groups: { ddos: false }, assignments: {}, values: {} },
       complianceFrameworks: [],
       regulatoryNotes: '',
       dataResidencyRegions: [],
@@ -639,6 +659,37 @@ function validate() {
   if (gv.policyAsCodeEngines.includes('sentinel')) {
     err('governance', 'Sentinel policy enforcement was a Terraform Cloud feature; the azurerm-only pipeline (ADR 0015) does not support it. Use Azure Policy or OPA.');
   }
+  // --- Policies
+  // A required default that is not supplied does not fail the render, the
+  // schema, or terraform validate: the ALZ provider resolves defaults at PLAN
+  // time, and the assignment is then built from the library's own placeholder —
+  // security_contact@replace_me, or a plan under an all-zeroes subscription.
+  // This wizard is the only place that failure is visible before apply, so it
+  // blocks the export.
+  for (const [name, askedBy] of requiredPolicyValues()) {
+    const copy = POLICY_VALUE_LABELS[name] || {};
+    const supplied = (gv.policySelection && gv.policySelection.values || {})[name];
+    if (!supplied || !String(supplied).trim()) {
+      err('policies', `${copy.label || name} is required: ${askedBy.join(', ')} ${askedBy.length === 1 ? 'is' : 'are'} selected and the library declares no usable default. Supply it, or turn the assignment off.`);
+      continue;
+    }
+    const value = String(supplied).trim();
+    if (name === 'email_security_contact' && !RE.email.test(value)) {
+      err('policies', `"${value}" is not a valid email address for the Defender security contact.`);
+    }
+    if (name === 'ddos_protection_plan_id' && !/^\/subscriptions\/[0-9a-fA-F-]{36}\/resourceGroups\/[^/]+\/providers\/Microsoft\.Network\/ddosProtectionPlans\/[^/]+$/.test(value)) {
+      err('policies', 'The DDoS plan must be a full resource ID: /subscriptions/<id>/resourceGroups/<rg>/providers/Microsoft.Network/ddosProtectionPlans/<name>.');
+    }
+  }
+  {
+    const { enabled, total } = policyCounts();
+    if (enabled === 0) {
+      err('policies', 'Every policy assignment is turned off. The landing zone would be built with no Azure Policy governance at all.');
+    } else if (enabled < total / 2) {
+      warn('policies', `${total - enabled} of ${total} ALZ policy assignments are turned off. Each one you disable is a control the Azure Landing Zones baseline expects to be present.`);
+    }
+  }
+
   if (gv.dataResidencyRegions.length) {
     const outside = config.azure.allowedLocations.filter((r) => !gv.dataResidencyRegions.includes(r));
     if (outside.length) {
@@ -767,7 +818,10 @@ function estimateRum() {
       ? (c.azure.managementGroups.customHierarchy || []).length
       : w.managementGroupsCafStandard;
 
-  n += w.policyBaselineCore;
+  // Scaled by what the client actually selected: a disabled group is an
+  // assignment that is never created, not one created and ignored.
+  const policy = policyCounts();
+  n += Math.round(w.policyBaselineCore * (policy.total ? policy.enabled / policy.total : 1));
   n += (c.governance.complianceFrameworks || []).length * w.policyPerFramework;
 
   if (c.connectivity.model === 'hub-spoke') {
@@ -982,6 +1036,251 @@ function buildCheckGroup(hostId, items, setPathStr) {
     lbl.appendChild(document.createTextNode(' ' + label));
     host.appendChild(lbl);
   }
+}
+
+/* ---------------------------------------------------------------------
+ * Azure Policy selection
+ *
+ * Everything offered here is read from site/alz-policy-catalog.js, generated
+ * from the ALZ library ref pinned in factory-version.json. The wizard cannot
+ * offer a policy the deployment would not produce, and a library bump changes
+ * this step by regenerating the catalog rather than by editing this file.
+ * ------------------------------------------------------------------- */
+
+/** Short prompts for the default values a client can be asked to supply. The
+ *  catalog carries the library's own description, which explains the value;
+ *  this is the question. */
+const POLICY_VALUE_LABELS = {
+  ddos_protection_plan_id: {
+    label: 'DDoS protection plan resource ID',
+    placeholder: '/subscriptions/<id>/resourceGroups/<rg>/providers/Microsoft.Network/ddosProtectionPlans/<name>'
+  },
+  email_security_contact: {
+    label: 'Defender for Cloud security contact',
+    placeholder: 'security@example.com'
+  }
+};
+
+function policySelection() {
+  const gv = config.governance;
+  if (!gv.policySelection) gv.policySelection = { groups: {}, assignments: {}, values: {} };
+  const sel = gv.policySelection;
+  if (!sel.groups) sel.groups = {};
+  if (!sel.assignments) sel.assignments = {};
+  if (!sel.values) sel.values = {};
+  return sel;
+}
+
+/** Absent means enabled — see the defaultConfig comment. */
+function policyGroupEnabled(id) {
+  const groups = policySelection().groups;
+  return Object.prototype.hasOwnProperty.call(groups, id) ? groups[id] !== false : true;
+}
+
+function policyGroupOf(assignmentName) {
+  return POLICY_CATALOG.groups.find((g) => (g.assignments || []).includes(assignmentName)) || null;
+}
+
+/** The per-assignment override wins over its group; an assignment no group
+ *  claims is enabled, so nothing the library adds is dropped by omission. */
+function policyAssignmentEnabled(name) {
+  const override = policySelection().assignments[name];
+  if (override && typeof override.creationEnabled === 'boolean') return override.creationEnabled;
+  const group = policyGroupOf(name);
+  return group ? policyGroupEnabled(group.id) : true;
+}
+
+function policyEnforcementOf(name) {
+  const override = policySelection().assignments[name];
+  if (override && override.enforcementMode) return override.enforcementMode;
+  return config.governance.policyBaseline.enforcementMode === 'deny' ? 'Default' : 'DoNotEnforce';
+}
+
+/** Which library default values the current selection obliges the client to
+ *  supply, and which enabled assignments are asking. Read per assignment, not
+ *  per group, so switching one assignment off in the advanced list retires its
+ *  question too. Values the factory already computes are never asked for. */
+function requiredPolicyValues() {
+  const owed = new Map();
+  for (const [name, meta] of Object.entries(POLICY_CATALOG.assignments)) {
+    if (!policyAssignmentEnabled(name)) continue;
+    for (const d of meta.requiredDefaults || []) {
+      const decl = POLICY_CATALOG.defaults[d];
+      if (!decl || decl.supplied === 'factory') continue;
+      if (!owed.has(d)) owed.set(d, []);
+      owed.get(d).push(name);
+    }
+  }
+  return [...owed.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+function policyCounts() {
+  const names = Object.keys(POLICY_CATALOG.assignments);
+  const enabled = names.filter(policyAssignmentEnabled).length;
+  return { enabled, total: names.length };
+}
+
+function renderPolicyGroups() {
+  const host = $('#policyGroups');
+  if (!host) return;
+  host.innerHTML = '';
+  for (const group of POLICY_CATALOG.groups) {
+    const wrap = document.createElement('div');
+    wrap.className = 'policy-group';
+
+    const lbl = document.createElement('label');
+    lbl.className = 'check';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = policyGroupEnabled(group.id);
+    cb.addEventListener('change', () => {
+      policySelection().groups[group.id] = cb.checked;
+      renderPolicyValues();
+      renderPolicyAdvanced();
+      onChange(cb);
+    });
+    const strong = document.createElement('strong');
+    strong.textContent = group.label;
+    lbl.appendChild(cb);
+    lbl.appendChild(strong);
+    wrap.appendChild(lbl);
+
+    const meta = document.createElement('p');
+    meta.className = 'hint policy-meta';
+    const owed = (group.requiredDefaults || []).filter((d) => {
+      const decl = POLICY_CATALOG.defaults[d];
+      return decl && decl.supplied !== 'factory';
+    });
+    meta.textContent = `${group.assignments.length} assignment${group.assignments.length === 1 ? '' : 's'}`
+      + (owed.length ? ` — needs ${owed.map((d) => (POLICY_VALUE_LABELS[d] || {}).label || d).join(', ')}` : '');
+    wrap.appendChild(meta);
+
+    const summary = document.createElement('p');
+    summary.className = 'hint';
+    summary.textContent = group.summary;
+    wrap.appendChild(summary);
+
+    host.appendChild(wrap);
+  }
+}
+
+function renderPolicyValues() {
+  const host = $('#policyValues');
+  const field = $('#policyValuesField');
+  if (!host || !field) return;
+  const owed = requiredPolicyValues();
+  field.hidden = owed.length === 0;
+  host.innerHTML = '';
+
+  for (const [name, askedBy] of owed) {
+    const decl = POLICY_CATALOG.defaults[name] || {};
+    const copy = POLICY_VALUE_LABELS[name] || {};
+
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+
+    const lbl = document.createElement('label');
+    lbl.htmlFor = 'pv_' + name;
+    lbl.textContent = copy.label || name;
+    wrap.appendChild(lbl);
+
+    const input = document.createElement('input');
+    input.id = lbl.htmlFor;
+    input.type = 'text';
+    input.spellcheck = false;
+    if (copy.placeholder) input.placeholder = copy.placeholder;
+    input.value = policySelection().values[name] || '';
+    // Deliberately does not re-render this step: rebuilding the host under a
+    // focused input would drop the caret on every keystroke.
+    input.addEventListener('input', () => {
+      policySelection().values[name] = input.value;
+      onChange(input);
+    });
+    wrap.appendChild(input);
+
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = `${decl.description || ''} Required by ${askedBy.join(', ')}.`;
+    wrap.appendChild(hint);
+
+    host.appendChild(wrap);
+  }
+}
+
+function renderPolicyAdvanced() {
+  const host = $('#policyAdvanced');
+  if (!host) return;
+  host.innerHTML = '';
+
+  for (const name of Object.keys(POLICY_CATALOG.assignments).sort()) {
+    const meta = POLICY_CATALOG.assignments[name];
+    const override = policySelection().assignments[name] || {};
+    const group = policyGroupOf(name);
+
+    const row = document.createElement('div');
+    row.className = 'policy-row';
+
+    const idCell = document.createElement('div');
+    idCell.className = 'policy-name';
+    const code = document.createElement('code');
+    code.textContent = name;
+    idCell.appendChild(code);
+    const scope = document.createElement('span');
+    scope.className = 'policy-scope';
+    scope.textContent = (group ? group.label + ' — ' : '') + (meta.managementGroups || []).join(', ');
+    idCell.appendChild(scope);
+    row.appendChild(idCell);
+
+    const create = document.createElement('select');
+    create.setAttribute('aria-label', `Create ${name}`);
+    for (const [value, text] of [
+      ['', `Inherit${group ? ` (${policyGroupEnabled(group.id) ? 'create' : 'do not create'})` : ' (create)'}`],
+      ['true', 'Create'],
+      ['false', 'Do not create']
+    ]) {
+      const opt = document.createElement('option');
+      opt.value = value; opt.textContent = text;
+      create.appendChild(opt);
+    }
+    create.value = typeof override.creationEnabled === 'boolean' ? String(override.creationEnabled) : '';
+
+    const enforce = document.createElement('select');
+    enforce.setAttribute('aria-label', `Enforcement for ${name}`);
+    for (const [value, text] of [
+      ['', 'Inherit enforcement'],
+      ['Default', 'Enforce'],
+      ['DoNotEnforce', 'Report only']
+    ]) {
+      const opt = document.createElement('option');
+      opt.value = value; opt.textContent = text;
+      enforce.appendChild(opt);
+    }
+    enforce.value = override.enforcementMode || '';
+
+    const writeBack = (changed) => {
+      const next = {};
+      if (create.value !== '') next.creationEnabled = create.value === 'true';
+      if (enforce.value !== '') next.enforcementMode = enforce.value;
+      if (Object.keys(next).length) policySelection().assignments[name] = next;
+      else delete policySelection().assignments[name];
+      // Only the value host is rebuilt: re-rendering this list would move
+      // focus off the control the user just changed.
+      renderPolicyValues();
+      onChange(changed);
+    };
+    create.addEventListener('change', () => writeBack(create));
+    enforce.addEventListener('change', () => writeBack(enforce));
+
+    row.appendChild(create);
+    row.appendChild(enforce);
+    host.appendChild(row);
+  }
+}
+
+function renderPolicyStep() {
+  renderPolicyGroups();
+  renderPolicyAdvanced();
+  renderPolicyValues();
 }
 
 function buildRegionDatalist() {
@@ -1232,6 +1531,19 @@ function applyDerivedDefaults(changedEl) {
       writeControl($('#az_drRegionCode'), code);
     }
   }
+  // The Defender security contact and the library's email_security_contact
+  // default are the same fact asked once. Seeding rather than aliasing keeps
+  // the policy value editable: an estate can send policy-driven Defender
+  // notifications somewhere other than the contact recorded on the plan.
+  if (id === 'sec_defEmail' && config.security.defender.securityContactEmail) {
+    const values = policySelection().values;
+    if (!values.email_security_contact) {
+      values.email_security_contact = config.security.defender.securityContactEmail;
+      const input = $('#pv_email_security_contact');
+      if (input) input.value = values.email_security_contact;
+    }
+  }
+
   if (id === 'org_companyShortName') {
     const sn = config.organization.companyShortName;
     if (sn && !$('#gh_repositoryName').dataset.touched) {
@@ -1415,6 +1727,23 @@ function buildConfig() {
   if (!out.connectivity.expressRoute.enabled) out.connectivity.expressRoute = { enabled: false };
   if (!out.connectivity.vpn.enabled) out.connectivity.vpn = { enabled: false };
   if (!out.security.defender.securityContactEmail) delete out.security.defender.securityContactEmail;
+  // Policy selection travels only where it says something. A value for a
+  // default nothing asks for any more would otherwise outlive the choice that
+  // required it and be rendered into the layer regardless.
+  {
+    const sel = out.governance.policySelection || {};
+    const stillOwed = new Set(requiredPolicyValues().map(([name]) => name));
+    for (const name of Object.keys(sel.values || {})) {
+      if (!stillOwed.has(name) || !String(sel.values[name]).trim()) delete sel.values[name];
+    }
+    for (const name of Object.keys(sel.assignments || {})) {
+      if (!Object.keys(sel.assignments[name] || {}).length) delete sel.assignments[name];
+    }
+    for (const key of ['groups', 'assignments', 'values']) {
+      if (sel[key] && !Object.keys(sel[key]).length) delete sel[key];
+    }
+    if (!Object.keys(sel).length) delete out.governance.policySelection;
+  }
   if (!out.github.enterpriseSlug) delete out.github.enterpriseSlug;
   if (!out.azure.drRegion) { delete out.azure.drRegion; delete out.azure.drRegionCode; }
   // Nulls are never meaningful in this contract — they are unfilled inputs.
@@ -1994,6 +2323,14 @@ function configurationMarkdown(cfg) {
     '',
     `Policy engines: ${cfg.governance.policyAsCodeEngines.join(', ')}`,
     '',
+    (() => {
+      const { enabled, total } = policyCounts();
+      const off = POLICY_CATALOG.groups.filter((g) => !policyGroupEnabled(g.id)).map((g) => g.label);
+      return `ALZ policy assignments selected: **${enabled} of ${total}** from `
+        + `\`${POLICY_CATALOG.library.path}@${POLICY_CATALOG.library.ref}\``
+        + (off.length ? `. Groups turned off: ${off.join(', ')}.` : '.');
+    })(),
+    '',
     `Compliance frameworks: ${cfg.governance.complianceFrameworks.length ? cfg.governance.complianceFrameworks.join(', ') : '_none declared_'}`,
     '',
     cfg.governance.regulatoryNotes ? md('### Regulatory notes', '', cfg.governance.regulatoryNotes) : '',
@@ -2328,6 +2665,7 @@ function rebind() {
   buildCheckGroup('defenderPlans', DEFENDER_PLANS, 'security.defender.plans');
   buildCheckGroup('sentinelConnectors', SENTINEL_CONNECTORS, 'security.sentinel.dataConnectors');
   buildCheckGroup('complianceFrameworks', COMPLIANCE_FRAMEWORKS, 'governance.complianceFrameworks');
+  renderPolicyStep();
   renderAllRepeaters();
   onChange(null);
 }
@@ -2376,6 +2714,7 @@ function init() {
   buildCheckGroup('defenderPlans', DEFENDER_PLANS, 'security.defender.plans');
   buildCheckGroup('sentinelConnectors', SENTINEL_CONNECTORS, 'security.sentinel.dataConnectors');
   buildCheckGroup('complianceFrameworks', COMPLIANCE_FRAMEWORKS, 'governance.complianceFrameworks');
+  renderPolicyStep();
   renderAllRepeaters();
 
   // Track whether the user has hand-edited the repo name, so the derived
