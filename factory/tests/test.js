@@ -763,26 +763,15 @@ console.log('\n== 22. Wizard defaults agree with the schema ==');
     }
   })(schema, '');
 
-  // KNOWN EXCEPTION, one entry, and it is the SCHEMA that is wrong rather than
-  // the wizard. governance.complianceFrameworks declares default ["none"], but
-  // the wizard's [] is the correct behaviour: it is a checkbox group where
-  // selecting nothing genuinely means [], estimateRum() costs the list as
-  // `.length * policyPerFramework` (so ["none"] bills a framework's worth of
-  // policy for having chosen none, against the HCP 500-resource cap), and the
-  // compliance document renders the list literally, so ["none"] would print the
-  // string "none" instead of taking its "_none declared_" branch.
-  //
-  // Left as an exception rather than fixed here because changing a schema
-  // default is a contract change, not a review fix, and it predates #128.
-  // Tracked separately. Do not add entries to this list to silence new drift.
-  const knownSchemaDefectPaths = new Set(['governance.complianceFrameworks']);
-
+  // The gate carries no exception list, and must not grow one: an allowlist here
+  // is a schema defect made permanent. governance.complianceFrameworks was the
+  // single entry and is fixed at the source (schema default ["none"] -> [],
+  // decision 0027).
   const cfg = A.defaultConfig();
   const read = (obj, path) => path.split('.').reduce((o, k) => (o === undefined || o === null ? undefined : o[k]), obj);
   const drifted = [];
   let compared = 0;
   for (const [path, schemaDefault] of Object.entries(declared)) {
-    if (knownSchemaDefectPaths.has(path)) continue;
     const wizardDefault = read(cfg, path);
     // A path the wizard does not pre-create is not drift: optional nested slots
     // are stripped from the export and the renderer applies the schema default.
